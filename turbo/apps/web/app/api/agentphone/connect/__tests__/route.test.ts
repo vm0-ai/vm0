@@ -38,22 +38,31 @@ function createConnectRequest(body: Record<string, unknown>): Request {
   });
 }
 
-function createConnectBody(phoneHandle: string) {
+function createConnectBody(
+  phoneHandle: string,
+  channel: "imessage" | "sms" | "mms" = "sms",
+) {
   const { sig, ts } = signTestAgentPhoneConnectParams(
     phoneHandle,
     AGENTPHONE_AGENT_ID,
     SECRETS_ENCRYPTION_KEY,
+    channel,
   );
   return {
     phoneHandle,
     agentphoneAgentId: AGENTPHONE_AGENT_ID,
     timestamp: ts,
     signature: sig,
+    channel,
   };
 }
 
 function uniquePhone(): string {
   return `+1555${uniqueNumericId().slice(0, 7)}`;
+}
+
+function uniqueAppleIdEmail(): string {
+  return `e2e-${uniqueNumericId().slice(0, 8)}@icloud.com`;
 }
 
 function agentPhoneSendMessage() {
@@ -115,6 +124,37 @@ describe("POST /api/agentphone/connect", () => {
     );
     expect(mockAblyChannelsGet).toHaveBeenCalledWith(`user:${user.userId}`);
     expect(mockAblyPublish).toHaveBeenCalledWith("agentphone:changed", null);
+  });
+
+  it("links an iMessage email Apple ID handle to the authenticated user", async () => {
+    context.setupMocks();
+    const user = await context.setupUser();
+    const email = uniqueAppleIdEmail();
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const response = await POST(
+      createConnectRequest(createConnectBody(email, "imessage")),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ phoneHandle: email });
+    await expect(
+      findTestAgentPhoneUserLink(email, "imessage"),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        phoneHandle: email,
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      }),
+    );
+    expect(sendMessage.calls).toHaveLength(1);
+    expect(sendMessage.calls[0]).toEqual(
+      expect.objectContaining({
+        agent_id: AGENTPHONE_AGENT_ID,
+        to_number: email,
+      }),
+    );
   });
 
   it("normalizes phone handles before linking", async () => {

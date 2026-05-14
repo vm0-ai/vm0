@@ -3,26 +3,39 @@ import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
-import { normalizePhoneHandle } from "../../lib/zero/agentphone/shared";
+import {
+  normalizeAgentPhoneHandle,
+  type AgentPhoneChannel,
+} from "../../lib/zero/agentphone/shared";
 
 export async function countTestAgentPhoneMessages(
   phoneHandle: string,
+  channel: AgentPhoneChannel = "sms",
 ): Promise<number> {
   const result = await globalThis.services.db
     .select({ count: sql<number>`count(*)::int` })
     .from(agentphoneMessages)
     .where(
-      eq(agentphoneMessages.phoneHandle, normalizePhoneHandle(phoneHandle)),
+      eq(
+        agentphoneMessages.phoneHandle,
+        normalizeAgentPhoneHandle(phoneHandle, channel),
+      ),
     );
   return result[0]!.count;
 }
 
-export async function findTestAgentPhoneUserLink(phoneHandle: string) {
+export async function findTestAgentPhoneUserLink(
+  phoneHandle: string,
+  channel: AgentPhoneChannel = "sms",
+) {
   const [row] = await globalThis.services.db
     .select()
     .from(agentphoneUserLinks)
     .where(
-      eq(agentphoneUserLinks.phoneHandle, normalizePhoneHandle(phoneHandle)),
+      eq(
+        agentphoneUserLinks.phoneHandle,
+        normalizeAgentPhoneHandle(phoneHandle, channel),
+      ),
     )
     .limit(1);
   return row;

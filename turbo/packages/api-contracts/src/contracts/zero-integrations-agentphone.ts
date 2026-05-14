@@ -9,6 +9,7 @@ const agentPhoneConnectBodySchema = z.object({
   agentphoneAgentId: z.string().min(1),
   timestamp: z.number(),
   signature: z.string().min(1),
+  channel: z.string().min(1).optional(),
 });
 
 const agentPhoneConnectResponseSchema = z.object({

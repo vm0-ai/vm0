@@ -29,7 +29,7 @@ interface ThreadSessionLookup {
 
 export interface AgentPhoneMessageEvent {
   webhookId: string | null;
-  channel: string;
+  channel: AgentPhoneChannel;
   messageId: string;
   conversationId: string | null;
   agentphoneAgentId: string;
@@ -65,6 +65,57 @@ export function appendAgentPhoneSlashCommandRiskWarning(
   return [body, AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE].join("\n\n");
 }
 
+const AGENTPHONE_EMAIL_HANDLE_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/u;
+const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
+
+export type AgentPhoneChannel = "imessage" | "sms" | "mms";
+
+export function isAgentPhoneChannel(value: string): value is AgentPhoneChannel {
+  return value === "imessage" || value === "sms" || value === "mms";
+}
+
+/**
+ * Normalize an inbound AgentPhone handle. SMS/MMS only ever carry E.164 phone
+ * numbers, so we strip everything except digits and `+`. iMessage Apple IDs
+ * additionally allow email-form handles (e.g. `someone@icloud.com`); for that
+ * channel we preserve email-shaped values lower-cased and only fall back to
+ * the digits-and-`+` strip otherwise.
+ */
+export function normalizeAgentPhoneHandle(
+  handle: string,
+  channel: AgentPhoneChannel,
+): string {
+  const trimmed = handle.trim();
+  if (channel === "imessage" && AGENTPHONE_EMAIL_HANDLE_PATTERN.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return trimmed.replace(/[^\d+]/gu, "");
+}
+
+export function isValidAgentPhoneHandle(
+  handle: string,
+  channel: AgentPhoneChannel,
+): boolean {
+  if (channel === "imessage" && AGENTPHONE_EMAIL_HANDLE_PATTERN.test(handle)) {
+    return true;
+  }
+  return AGENTPHONE_PHONE_HANDLE_PATTERN.test(handle);
+}
+
+export function describeAgentPhoneHandleShape(
+  handle: string,
+): "email" | "phone" | "other" {
+  const trimmed = handle.trim();
+  if (AGENTPHONE_EMAIL_HANDLE_PATTERN.test(trimmed)) return "email";
+  if (/^\+?\d+$/u.test(trimmed)) return "phone";
+  return "other";
+}
+
+/**
+ * Legacy phone-only normalizer kept for the AgentPhone provider's own number
+ * (always E.164) and for the in-app SMS verification flow on apps/api. New
+ * call sites should prefer {@link normalizeAgentPhoneHandle}.
+ */
 export function normalizePhoneHandle(handle: string): string {
   return handle.trim().replace(/[^\d+]/gu, "");
 }
@@ -72,8 +123,9 @@ export function normalizePhoneHandle(handle: string): string {
 async function touchAgentPhoneUserLink(
   userLink: AgentPhoneUserLink,
   phoneHandle: string,
+  channel: AgentPhoneChannel,
 ): Promise<AgentPhoneUserLink> {
-  const normalized = normalizePhoneHandle(phoneHandle);
+  const normalized = normalizeAgentPhoneHandle(phoneHandle, channel);
   if (userLink.phoneHandle === normalized) return userLink;
 
   const [updated] = await globalThis.services.db
@@ -87,10 +139,14 @@ async function touchAgentPhoneUserLink(
 
 export async function linkAgentPhoneUserToVm0User(params: {
   phoneHandle: string;
+  channel: AgentPhoneChannel;
   vm0UserId: string;
   orgId: string;
 }): Promise<LinkAgentPhoneUserResult> {
-  const phoneHandle = normalizePhoneHandle(params.phoneHandle);
+  const phoneHandle = normalizeAgentPhoneHandle(
+    params.phoneHandle,
+    params.channel,
+  );
   const [existingPhoneLink] = await globalThis.services.db
     .select()
     .from(agentphoneUserLinks)
@@ -104,7 +160,11 @@ export async function linkAgentPhoneUserToVm0User(params: {
     ) {
       return {
         ok: true,
-        userLink: await touchAgentPhoneUserLink(existingPhoneLink, phoneHandle),
+        userLink: await touchAgentPhoneUserLink(
+          existingPhoneLink,
+          phoneHandle,
+          params.channel,
+        ),
       };
     }
 
@@ -133,6 +193,7 @@ export async function linkAgentPhoneUserToVm0User(params: {
         userLink: await touchAgentPhoneUserLink(
           existingVm0OrgLink,
           phoneHandle,
+          params.channel,
         ),
       };
     }
@@ -160,8 +221,10 @@ export async function linkAgentPhoneUserToVm0User(params: {
 
 export async function resolveAgentPhoneUserLink(
   phoneHandle: string,
+  channel: AgentPhoneChannel,
 ): Promise<AgentPhoneUserLink | null> {
-  const normalized = normalizePhoneHandle(phoneHandle);
+  const normalized = normalizeAgentPhoneHandle(phoneHandle, channel);
+  if (!normalized) return null;
   const [userLink] = await globalThis.services.db
     .select()
     .from(agentphoneUserLinks)
@@ -169,15 +232,20 @@ export async function resolveAgentPhoneUserLink(
     .limit(1);
 
   if (!userLink) return null;
-  return touchAgentPhoneUserLink(userLink, normalized);
+  return touchAgentPhoneUserLink(userLink, normalized, channel);
 }
 
 export async function resolveAgentPhoneUserLinkForOwner(params: {
   phoneHandle: string;
+  channel: AgentPhoneChannel;
   vm0UserId: string;
   orgId: string;
 }): Promise<AgentPhoneUserLink | null> {
-  const normalized = normalizePhoneHandle(params.phoneHandle);
+  const normalized = normalizeAgentPhoneHandle(
+    params.phoneHandle,
+    params.channel,
+  );
+  if (!normalized) return null;
   const [userLink] = await globalThis.services.db
     .select()
     .from(agentphoneUserLinks)
@@ -191,12 +259,13 @@ export async function resolveAgentPhoneUserLinkForOwner(params: {
     .limit(1);
 
   if (!userLink) return null;
-  return touchAgentPhoneUserLink(userLink, normalized);
+  return touchAgentPhoneUserLink(userLink, normalized, params.channel);
 }
 
 export async function resolveAgentPhoneAgentIdForUserLink(params: {
   userLinkId: string;
   phoneHandle: string;
+  channel: AgentPhoneChannel;
   agentphoneAgentId?: string | null;
 }): Promise<string | null> {
   if (params.agentphoneAgentId) return params.agentphoneAgentId;
@@ -209,7 +278,7 @@ export async function resolveAgentPhoneAgentIdForUserLink(params: {
         eq(agentphoneMessages.agentphoneUserLinkId, params.userLinkId),
         eq(
           agentphoneMessages.phoneHandle,
-          normalizePhoneHandle(params.phoneHandle),
+          normalizeAgentPhoneHandle(params.phoneHandle, params.channel),
         ),
       ),
     )
@@ -229,26 +298,28 @@ export async function ensureAgentPhoneOrgAndArtifact(
 export function buildAgentPhoneConnectUrl(params: {
   phoneHandle: string;
   agentphoneAgentId: string;
+  channel: AgentPhoneChannel;
   secret: string;
-  channel?: string | null;
 }): string {
   const ts = Math.floor(Date.now() / 1000);
-  const phoneHandle = normalizePhoneHandle(params.phoneHandle);
-  const sig = signAgentPhoneConnectParams(
-    phoneHandle,
-    params.agentphoneAgentId,
-    ts,
-    params.secret,
+  const phoneHandle = normalizeAgentPhoneHandle(
+    params.phoneHandle,
+    params.channel,
   );
+  const sig = signAgentPhoneConnectParams({
+    phoneHandle,
+    agentphoneAgentId: params.agentphoneAgentId,
+    timestamp: ts,
+    channel: params.channel,
+    secret: params.secret,
+  });
   const query = new URLSearchParams({
     handle: phoneHandle,
     agent: params.agentphoneAgentId,
     ts: String(ts),
     sig,
+    channel: params.channel,
   });
-  if (params.channel) {
-    query.set("channel", params.channel);
-  }
   return `${getAppUrl()}/agentphone/connect?${query.toString()}`;
 }
 
@@ -393,8 +464,14 @@ export async function storeInboundAgentPhoneMessage(params: {
       conversationId: params.event.conversationId,
       agentphoneAgentId: params.event.agentphoneAgentId,
       agentphoneUserLinkId: params.userLinkId ?? null,
-      phoneHandle: normalizePhoneHandle(params.event.fromNumber),
-      fromNumber: normalizePhoneHandle(params.event.fromNumber),
+      phoneHandle: normalizeAgentPhoneHandle(
+        params.event.fromNumber,
+        params.event.channel,
+      ),
+      fromNumber: normalizeAgentPhoneHandle(
+        params.event.fromNumber,
+        params.event.channel,
+      ),
       toNumber: normalizePhoneHandle(params.event.toNumber),
       direction: "inbound",
       channel: params.event.channel,
@@ -418,7 +495,10 @@ export async function storeOutboundAgentPhoneMessage(params: {
   fromNumber: string;
   toNumber: string;
   body: string | undefined;
+  /** Stored verbatim in the DB — usually echoed from the AgentPhone provider. */
   channel: string | null;
+  /** Drives handle normalization (the channel the *user* is on). */
+  userChannel: AgentPhoneChannel;
   mediaUrl?: string | null;
 }): Promise<void> {
   await globalThis.services.db
@@ -428,9 +508,12 @@ export async function storeOutboundAgentPhoneMessage(params: {
       conversationId: params.conversationId,
       agentphoneAgentId: params.agentphoneAgentId,
       agentphoneUserLinkId: params.userLinkId,
-      phoneHandle: normalizePhoneHandle(params.phoneHandle),
+      phoneHandle: normalizeAgentPhoneHandle(
+        params.phoneHandle,
+        params.userChannel,
+      ),
       fromNumber: normalizePhoneHandle(params.fromNumber),
-      toNumber: normalizePhoneHandle(params.toNumber),
+      toNumber: normalizeAgentPhoneHandle(params.toNumber, params.userChannel),
       direction: "outbound",
       channel: params.channel ?? "unknown",
       body: params.body ?? null,
@@ -443,10 +526,14 @@ export async function storeOutboundAgentPhoneMessage(params: {
 export async function fetchAgentPhoneContext(params: {
   userLinkId: string;
   phoneHandle: string;
+  channel: AgentPhoneChannel;
   lastProcessedMessageId?: string;
   currentMessageId?: string;
 }): Promise<{ executionContext: string }> {
-  const phoneHandle = normalizePhoneHandle(params.phoneHandle);
+  const phoneHandle = normalizeAgentPhoneHandle(
+    params.phoneHandle,
+    params.channel,
+  );
   const messages = await globalThis.services.db
     .select({
       messageId: agentphoneMessages.agentphoneMessageId,
@@ -516,10 +603,11 @@ export async function fetchAgentPhoneContext(params: {
 export function enrichAgentPhonePrompt(
   prompt: string,
   phoneHandle: string,
+  channel: AgentPhoneChannel,
   messageId: string,
   mediaUrl: string | null,
 ): { prompt: string; userInfoExtras: UserInfoOptions } {
-  const normalized = normalizePhoneHandle(phoneHandle);
+  const normalized = normalizeAgentPhoneHandle(phoneHandle, channel);
   const parts = [prompt.trim()];
   if (mediaUrl) {
     parts.push(formatAgentPhoneFileForContext({ messageId, mediaUrl }));

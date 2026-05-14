@@ -45,6 +45,10 @@ function uniquePhone(): string {
   return `+1555${uniqueNumericId().slice(0, 7)}`;
 }
 
+function uniqueAppleIdEmail(): string {
+  return `e2e-${uniqueNumericId().slice(0, 8)}@icloud.com`;
+}
+
 interface AgentPhoneSendMessageBody {
   agent_id: string;
   to_number: string;
@@ -213,6 +217,107 @@ describe("POST /api/agentphone/webhook", () => {
       "SMS and MMS replies may not be delivered reliably",
     );
     expect(await countTestAgentPhoneMessages(phone)).toBe(1);
+  });
+
+  it("sends a connect prompt for unlinked iMessage email Apple IDs", async () => {
+    const email = uniqueAppleIdEmail();
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const response = await POST(
+      createWebhookRequest(
+        createWebhookPayload({
+          channel: "imessage",
+          from: email,
+          message: "hello from iMessage email",
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(nextAfterArgForms).toEqual(["fn"]);
+    await context.mocks.flushAfter();
+
+    expect(sendMessage.calls).toHaveLength(1);
+    expect(sendMessage.calls[0]).toEqual(
+      expect.objectContaining({
+        agent_id: AGENTPHONE_AGENT_ID,
+        to_number: email,
+      }),
+    );
+    expect(sendMessage.calls[0]?.body).toContain("/agentphone/connect");
+    expect(sendMessage.calls[0]?.body).toContain(
+      `handle=${encodeURIComponent(email)}`,
+    );
+    expect(sendMessage.calls[0]?.body).toContain("channel=imessage");
+    expect(await countTestAgentPhoneMessages(email, "imessage")).toBe(1);
+  });
+
+  it("routes iMessage email Apple IDs to Zero when the handle is already linked", async () => {
+    const email = uniqueAppleIdEmail();
+    const messageId = uniqueId("msg-imsg-linked");
+    const webhookId = uniqueId("wh-imsg-linked");
+    const user = await context.setupUser();
+    const { composeId } = await createTestCompose(uniqueId("agentphone-agent"));
+    await setDefaultAgentByComposeId(user.orgId, composeId);
+    const link = await insertTestAgentPhoneUserLink({
+      phoneHandle: email,
+      vm0UserId: user.userId,
+      orgId: user.orgId,
+    });
+    const typing = agentPhoneTypingIndicator();
+    server.use(typing.handler);
+
+    const response = await POST(
+      createWebhookRequest(
+        createWebhookPayload({
+          channel: "imessage",
+          from: email,
+          message: "ship the report",
+          messageId,
+        }),
+        { webhookId },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await context.mocks.flushAfter();
+
+    const runs = await findTestRunsByUserAndPromptContaining(
+      user.userId,
+      "ship the report",
+    );
+    expect(runs).toHaveLength(1);
+    const callbacks = await findTestRunCallbacks(runs[0]!.id);
+    expect(callbacks[0]?.payload).toEqual(
+      expect.objectContaining({
+        messageId,
+        channel: "imessage",
+        phoneHandle: email,
+        fromNumber: email,
+        userLinkId: link.id,
+      }),
+    );
+    expect(typing.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores iMessage payloads whose from-handle is neither phone nor email", async () => {
+    const sendMessage = agentPhoneSendMessage();
+    server.use(sendMessage.handler);
+
+    const response = await POST(
+      createWebhookRequest(
+        createWebhookPayload({
+          channel: "imessage",
+          from: "??",
+          message: "garbage handle",
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(nextAfterArgForms).toEqual([]);
+    expect(sendMessage.calls).toHaveLength(0);
   });
 
   it("sends a connect prompt for unlinked MMS handles", async () => {

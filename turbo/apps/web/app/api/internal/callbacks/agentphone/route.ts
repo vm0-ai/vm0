@@ -14,9 +14,11 @@ import {
 } from "../../../../../src/lib/zero/agentphone/footer";
 import { markdownToImessagePlain } from "../../../../../src/lib/zero/agentphone/format";
 import {
+  isAgentPhoneChannel,
   resolveAgentPhoneUserLink,
   saveAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
+  type AgentPhoneChannel,
 } from "../../../../../src/lib/zero/agentphone/shared";
 import { resolveTelegramAuditLogsUrl } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import type { AgentPhoneCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
@@ -117,7 +119,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true });
   }
 
-  const currentUserLink = await resolveAgentPhoneUserLink(payload.phoneHandle);
+  const userChannel: AgentPhoneChannel = isAgentPhoneChannel(payload.channel)
+    ? payload.channel
+    : "sms";
+
+  const currentUserLink = await resolveAgentPhoneUserLink(
+    payload.phoneHandle,
+    userChannel,
+  );
   if (currentUserLink?.id !== payload.userLinkId) {
     log.info("Skipping stale AgentPhone callback for disconnected phone link", {
       runId,
@@ -184,6 +193,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     toNumber: sent.toNumber ?? payload.phoneHandle,
     body,
     channel: sent.channel,
+    userChannel,
   });
 
   if (run) {

@@ -5,6 +5,7 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../shared/logger";
 import type { AgentPhoneCallbackPayload } from "../../../infra/callback/callback-payloads";
 import type { UserInfoOptions } from "../../integration-prompt";
+import type { AgentPhoneChannel } from "../shared";
 import { adaptAgentPhoneTrigger } from "./adapt-agentphone-trigger";
 
 const log = logger("agentphone:run-agent");
@@ -18,7 +19,7 @@ interface RunAgentParams {
   userInfoExtras?: UserInfoOptions;
   phoneHandle: string;
   conversationId: string | null;
-  channel: string;
+  channel: AgentPhoneChannel;
   messageId: string;
   agentphoneAgentId: string;
   userId: string;

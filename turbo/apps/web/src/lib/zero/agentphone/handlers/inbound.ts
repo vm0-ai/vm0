@@ -316,12 +316,14 @@ export async function handleAgentPhoneMessage(
   const { executionContext } = await fetchAgentPhoneContext({
     userLinkId: userLink.id,
     phoneHandle: event.fromNumber,
+    channel: event.channel,
     lastProcessedMessageId,
     currentMessageId: event.messageId,
   });
   const { prompt, userInfoExtras } = enrichAgentPhonePrompt(
     event.body,
     event.fromNumber,
+    event.channel,
     event.messageId,
     event.mediaUrl,
   );

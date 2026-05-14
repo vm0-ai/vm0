@@ -14,6 +14,7 @@ import {
   resolveAgentPhoneAgentIdForUserLink,
   resolveAgentPhoneUserLinkForOwner,
   storeOutboundAgentPhoneMessage,
+  type AgentPhoneChannel,
 } from "../../../../../../src/lib/zero/agentphone/shared";
 import type {
   SendPhoneMessageBody,
@@ -56,8 +57,11 @@ async function sendPhoneTextMessage(params: {
   orgId: string;
 }): Promise<SendPhoneMessageResponse | RouteErrorResponse> {
   const phoneHandle = normalizePhoneHandle(params.body.toNumber);
+  // The in-app phone API only addresses E.164 phone handles (SMS-class).
+  const userChannel: AgentPhoneChannel = "sms";
   const userLink = await resolveAgentPhoneUserLinkForOwner({
     phoneHandle,
+    channel: userChannel,
     vm0UserId: params.userId,
     orgId: params.orgId,
   });
@@ -68,6 +72,7 @@ async function sendPhoneTextMessage(params: {
   const agentphoneAgentId = await resolveAgentPhoneAgentIdForUserLink({
     userLinkId: userLink.id,
     phoneHandle,
+    channel: userChannel,
     agentphoneAgentId: params.body.agentphoneAgentId,
   });
   if (!agentphoneAgentId) {
@@ -91,6 +96,7 @@ async function sendPhoneTextMessage(params: {
       toNumber: sent.toNumber ?? phoneHandle,
       body: params.body.text,
       channel: sent.channel,
+      userChannel,
     });
 
     return {

@@ -141,6 +141,11 @@ function agentPhoneCooldownKeys(params: {
   });
 }
 
+/**
+ * Phone-only normalize for the in-app SMS verification flow (`startLink`).
+ * The inbound iMessage webhook lives in apps/web and has its own channel-aware
+ * `normalizeAgentPhoneHandle` that preserves email-form Apple ID handles.
+ */
 function normalizePhoneHandle(value: string): string {
   return value.trim().replace(/[^\d+]/gu, "");
 }
@@ -167,16 +172,25 @@ function truncateForLog(value: string): string {
   return value.length > 500 ? `${value.slice(0, 500)}...` : value;
 }
 
+// `startLink` only ever delivers via SMS, so we hard-code the channel for
+// signing. Keep the HMAC payload format in lock-step with apps/web's
+// `signAgentPhoneConnectParams` (`<handle>:<agentId>:<ts>:<channel>`) so the
+// platform connect page can verify either origin's signature.
+const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
+
+type AgentPhoneChannel = "imessage" | "sms" | "mms";
+
 function signAgentPhoneConnectParams(params: {
   readonly phoneHandle: string;
   readonly agentphoneAgentId: string;
   readonly timestamp: number;
+  readonly channel: AgentPhoneChannel;
 }): string {
   return createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
     .update(
       `${params.phoneHandle}:${params.agentphoneAgentId}:${String(
         params.timestamp,
-      )}`,
+      )}:${params.channel}`,
     )
     .digest("hex");
 }
@@ -194,7 +208,9 @@ function buildAgentPhoneConnectUrl(params: {
       phoneHandle: params.phoneHandle,
       agentphoneAgentId: params.agentphoneAgentId,
       timestamp,
+      channel: APPS_API_CONNECT_CHANNEL,
     }),
+    channel: APPS_API_CONNECT_CHANNEL,
   });
   return `${env("APP_URL").replace(/\/$/u, "")}/agentphone/connect?${query.toString()}`;
 }

@@ -43,6 +43,7 @@ describe("AgentPhone file context", () => {
     const contextResult = await fetchAgentPhoneContext({
       userLinkId: userLink.id,
       phoneHandle,
+      channel: "sms",
     });
 
     expect(contextResult.executionContext).toContain(
@@ -88,6 +89,7 @@ describe("AgentPhone file context", () => {
     const contextResult = await fetchAgentPhoneContext({
       userLinkId: userLink.id,
       phoneHandle,
+      channel: "sms",
       lastProcessedMessageId: "apmsg-old",
     });
 
@@ -127,6 +129,7 @@ describe("AgentPhone file context", () => {
     const contextResult = await fetchAgentPhoneContext({
       userLinkId: userLink.id,
       phoneHandle,
+      channel: "sms",
       lastProcessedMessageId: "apmsg-history",
       currentMessageId: "apmsg-current",
     });
@@ -143,6 +146,7 @@ describe("AgentPhone file context", () => {
     const result = enrichAgentPhonePrompt(
       "please inspect this",
       "+15551234567",
+      "sms",
       "apmsg-current",
       "https://cdn.agentphone.test/files/report.pdf",
     );

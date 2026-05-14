@@ -127,13 +127,18 @@ export function signTestAgentPhoneConnectParams(
   phoneHandle: string,
   agentphoneAgentId: string,
   secret: string,
+  channel: "imessage" | "sms" | "mms" = "sms",
 ): { sig: string; ts: number } {
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signAgentPhoneConnectParams(
-    normalizePhoneHandle(phoneHandle),
+  const sig = signAgentPhoneConnectParams({
+    phoneHandle:
+      channel === "imessage" && phoneHandle.includes("@")
+        ? phoneHandle.trim().toLowerCase()
+        : normalizePhoneHandle(phoneHandle),
     agentphoneAgentId,
-    ts,
+    timestamp: ts,
+    channel,
     secret,
-  );
+  });
   return { sig, ts };
 }

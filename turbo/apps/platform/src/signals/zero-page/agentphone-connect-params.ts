@@ -3,6 +3,7 @@ interface AgentPhoneConnectParams {
   agentphoneAgentId: string;
   timestamp: number;
   signature: string;
+  channel?: string;
 }
 
 export const AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE =
@@ -53,8 +54,9 @@ function encodeReturnPath(
     ts: String(params.timestamp),
     sig: params.signature,
   });
-  if (channel) {
-    search.set("channel", channel);
+  const effectiveChannel = channel ?? params.channel ?? null;
+  if (effectiveChannel) {
+    search.set("channel", effectiveChannel);
   }
   return `/agentphone/connect?${search.toString()}`;
 }
@@ -103,11 +105,12 @@ export function parseAgentPhoneConnectParams(
     return invalidParams("The signature on this link is not valid.");
   }
 
-  const params = {
+  const params: AgentPhoneConnectParams = {
     phoneHandle,
     agentphoneAgentId,
     timestamp,
     signature,
+    ...(channel ? { channel } : {}),
   };
 
   return {

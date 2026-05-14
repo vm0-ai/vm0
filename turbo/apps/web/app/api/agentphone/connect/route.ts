@@ -7,8 +7,10 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { sendAgentPhoneMessage } from "../../../../src/lib/zero/agentphone/client";
 import {
   ensureAgentPhoneOrgAndArtifact,
+  isAgentPhoneChannel,
   linkAgentPhoneUserToVm0User,
-  normalizePhoneHandle,
+  normalizeAgentPhoneHandle,
+  type AgentPhoneChannel,
 } from "../../../../src/lib/zero/agentphone/shared";
 import { verifyAgentPhoneConnectSignature } from "../../../../src/lib/zero/agentphone/connect-token";
 import { publishUserSignal } from "../../../../src/lib/infra/realtime/client";
@@ -21,6 +23,7 @@ const connectBodySchema = z.object({
   agentphoneAgentId: z.string().min(1),
   timestamp: z.number(),
   signature: z.string().min(1),
+  channel: z.string().min(1).optional(),
 });
 
 function errorResponse(
@@ -58,13 +61,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const body = parsed.data;
-  const phoneHandle = normalizePhoneHandle(body.phoneHandle);
+  const channel: AgentPhoneChannel =
+    body.channel && isAgentPhoneChannel(body.channel) ? body.channel : "sms";
+  const phoneHandle = normalizeAgentPhoneHandle(body.phoneHandle, channel);
   if (
     !phoneHandle ||
     !verifyAgentPhoneConnectSignature({
       phoneHandle,
       agentphoneAgentId: body.agentphoneAgentId,
       timestamp: body.timestamp,
+      channel,
       signature: body.signature,
       secret: env().SECRETS_ENCRYPTION_KEY,
     })
@@ -79,6 +85,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const { org } = await resolveOrg(authCtx);
   const result = await linkAgentPhoneUserToVm0User({
     phoneHandle,
+    channel,
     vm0UserId: authCtx.userId,
     orgId: org.orgId,
   });

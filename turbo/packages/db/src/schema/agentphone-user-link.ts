@@ -11,14 +11,15 @@ import {
 /**
  * Official shared AgentPhone user links.
  *
- * The shared AgentPhone number is global: one external phone handle can
- * connect to exactly one active VM0 account/org at a time.
+ * The shared AgentPhone number is global: one external handle (E.164 phone
+ * for SMS/MMS, or phone or email Apple ID for iMessage) can connect to
+ * exactly one active VM0 account/org at a time.
  */
 export const agentphoneUserLinks = pgTable(
   "agentphone_user_links",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    phoneHandle: varchar("phone_handle", { length: 32 }).notNull(),
+    phoneHandle: varchar("phone_handle", { length: 254 }).notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
