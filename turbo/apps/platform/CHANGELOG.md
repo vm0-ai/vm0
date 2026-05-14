@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.356.4](https://github.com/vm0-ai/vm0/compare/app-v0.356.3...app-v0.356.4) (2026-05-14)
+
+
+### Refactoring
+
+* **onboarding:** rename final step button to "Get Started" ([#13350](https://github.com/vm0-ai/vm0/issues/13350)) ([618e2d2](https://github.com/vm0-ai/vm0/commit/618e2d25128662925d96e038a8eef9c3965b549f))
+
 ## [0.356.3](https://github.com/vm0-ai/vm0/compare/app-v0.356.2...app-v0.356.3) (2026-05-14)
 
 
