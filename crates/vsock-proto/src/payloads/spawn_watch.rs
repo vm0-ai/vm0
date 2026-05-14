@@ -1,4 +1,4 @@
-use crate::ProtocolError;
+use crate::error::ProtocolError;
 use crate::read::{read_u8_at, read_u16_at, read_u32_at};
 use crate::wire::{SPAWN_WATCH_FLAG_STREAM_STDOUT, SPAWN_WATCH_FLAG_SUDO};
 

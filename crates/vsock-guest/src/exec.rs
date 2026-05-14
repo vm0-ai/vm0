@@ -580,6 +580,62 @@ mod tests {
         path.exists()
     }
 
+    #[cfg(target_os = "linux")]
+    fn open_pidfd(pid: libc::pid_t) -> std::io::Result<std::os::fd::OwnedFd> {
+        use std::os::fd::FromRawFd;
+
+        // SAFETY: `pidfd_open` does not dereference user pointers. On success
+        // it returns a new file descriptor owned by this process.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: `fd` is a fresh descriptor returned by `pidfd_open` above.
+        Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as std::os::fd::RawFd) })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_for_pidfd_exit(
+        pidfd: &std::os::fd::OwnedFd,
+        timeout: Duration,
+    ) -> std::io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Ok(false);
+            }
+            let timeout_ms = remaining.as_millis().clamp(1, i32::MAX as u128) as i32;
+            let mut pollfd = libc::pollfd {
+                fd: std::os::fd::AsRawFd::as_raw_fd(pidfd),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: `pollfd` points to one initialized descriptor entry.
+            let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+            if result > 0 {
+                let revents = pollfd.revents;
+                if revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                    return Err(std::io::Error::other("pidfd became invalid while polling"));
+                }
+                if revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                    return Ok(true);
+                }
+                return Err(std::io::Error::other(format!(
+                    "unexpected pidfd poll revents: {revents:#x}"
+                )));
+            }
+            if result == 0 {
+                return Ok(false);
+            }
+            let err = std::io::Error::last_os_error();
+            if err.kind() != std::io::ErrorKind::Interrupted {
+                return Err(err);
+            }
+        }
+    }
+
     fn temp_dir(label: &str) -> (PathBuf, TempDirGuard) {
         let dir = std::env::temp_dir().join(format!(
             "vsock-guest-{label}-{}-{}",
@@ -593,6 +649,48 @@ mod tests {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         let guard = TempDirGuard(dir.clone());
         (dir, guard)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_spawned_child(child: &mut Option<Child>) {
+        if let Some(child) = child.take() {
+            crate::process::kill_and_reap_child(child);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn signal_pidfd(pidfd: &std::os::fd::OwnedFd, signal: libc::c_int) -> std::io::Result<()> {
+        // SAFETY: best-effort cleanup of a test-owned background process.
+        let result = unsafe {
+            libc::syscall(
+                libc::SYS_pidfd_send_signal,
+                std::os::fd::AsRawFd::as_raw_fd(pidfd),
+                signal,
+                std::ptr::null::<libc::siginfo_t>(),
+                0,
+            )
+        };
+        if result == 0 {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        Err(err)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) -> std::io::Result<()> {
+        signal_pidfd(pidfd, libc::SIGKILL)?;
+        if wait_for_pidfd_exit(pidfd, Duration::from_secs(1))? {
+            return Ok(());
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timed out waiting for pidfd process to exit after SIGKILL",
+        ))
     }
 
     #[test]
@@ -973,41 +1071,70 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[test]
     fn spawn_in_own_process_group_timeout_kills_background_child() {
-        let dir = std::env::temp_dir().join(format!(
-            "vsock-guest-pg-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let _guard = TempDirGuard(dir.clone());
+        let (dir, _guard) = temp_dir("pg");
         let ready = dir.join("ready");
-        let survived = dir.join("survived");
+        let background_pid = dir.join("background-pid");
         let ready_arg = shell_escape_value(ready.to_str().unwrap());
-        let survived_arg = shell_escape_value(survived.to_str().unwrap());
-        let script =
-            format!("trap '' HUP; (sleep 1; touch {survived_arg}) & touch {ready_arg}; wait");
+        let background_pid_arg = shell_escape_value(background_pid.to_str().unwrap());
+        let script = format!(
+            "trap '' HUP; tail -f /dev/null & echo $! > {background_pid_arg}; \
+             touch {ready_arg}; wait"
+        );
 
         let mut command = build_exec_command(&script, false);
         command.stdout(Stdio::null()).stderr(Stdio::null());
-        let child = spawn_in_own_process_group(&mut command).unwrap();
-        assert!(
-            wait_for_path(&ready, Duration::from_secs(2)),
-            "background child should be started before timeout kill is tested"
-        );
+        let mut child = Some(spawn_in_own_process_group(&mut command).unwrap());
+        if !wait_for_path(&ready, Duration::from_secs(2)) {
+            kill_spawned_child(&mut child);
+            panic!("background child should be started before timeout kill is tested");
+        }
+        let background_pid_text = match std::fs::read_to_string(&background_pid) {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to read background pid: {e}");
+            }
+        };
+        let background_pid: libc::pid_t = match background_pid_text.trim().parse() {
+            Ok(pid) => pid,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to parse background pid {background_pid_text:?}: {e}");
+            }
+        };
+        let background_pidfd = match open_pidfd(background_pid) {
+            Ok(pidfd) => pidfd,
+            Err(e) => {
+                kill_spawned_child(&mut child);
+                panic!("failed to open pidfd for pid {background_pid}: {e}");
+            }
+        };
 
-        let outcome = wait_with_kill_timeout(child, 100);
-        assert!(matches!(outcome, WaitOutcome::TimedOut));
+        let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
+        if !matches!(outcome, WaitOutcome::TimedOut) {
+            kill_pidfd_and_wait(&background_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
+            panic!("expected timeout kill to return WaitOutcome::TimedOut");
+        }
 
-        std::thread::sleep(Duration::from_millis(1500));
-        assert!(
-            !survived.exists(),
-            "timeout kill should terminate background children in the process group"
-        );
+        match wait_for_pidfd_exit(&background_pidfd, Duration::from_secs(2)) {
+            Ok(true) => {}
+            Ok(false) => {
+                kill_pidfd_and_wait(&background_pidfd)
+                    .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
+                panic!(
+                    "timeout kill should terminate background pid {background_pid} in the process group"
+                );
+            }
+            Err(e) => {
+                let cleanup = kill_pidfd_and_wait(&background_pidfd);
+                panic!(
+                    "failed to wait for background pid {background_pid} exit: {e}; cleanup={cleanup:?}"
+                );
+            }
+        }
     }
 }
