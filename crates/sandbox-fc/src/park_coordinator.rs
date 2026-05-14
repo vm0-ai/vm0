@@ -1023,6 +1023,46 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn dropped_prepare_future_does_not_reopen_dirty_gate() {
+        let coordinator = ParkCoordinator::new();
+        let worker_coordinator = coordinator.clone();
+        let (attempt_tx, attempt_rx) = tokio::sync::oneshot::channel();
+
+        let task = tokio::spawn(async move {
+            worker_coordinator
+                .prepare_park_with(|attempt| async move {
+                    let _ = attempt_tx.send(attempt);
+                    std::future::pending::<PrepareParkEvidence>().await
+                })
+                .await
+        });
+
+        let _attempt = attempt_rx
+            .await
+            .expect("prepare hook should receive an attempt");
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ClosingForPark { .. }
+        ));
+
+        coordinator.mark_dirty(DirtyReason::new("driver shutdown"));
+        task.abort();
+        let join_error = task.await.expect_err("prepare task should be aborted");
+        assert!(join_error.is_cancelled());
+
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("driver shutdown")
+        );
+        assert!(matches!(
+            coordinator.reserve_operation(),
+            Err(LeaseRejection::GateClosed {
+                state: CoordinatorState::Dirty { .. }
+            })
+        ));
+    }
+
     #[test]
     fn concurrent_prepare_and_reserve_are_linearized() {
         for _ in 0..64 {
@@ -1066,6 +1106,79 @@ mod tests {
             }
 
             assert_eq!(coordinator.state(), CoordinatorState::Open);
+        }
+    }
+
+    #[test]
+    fn concurrent_prepare_and_reserved_drop_are_linearized() {
+        for _ in 0..64 {
+            let coordinator = ParkCoordinator::new();
+            let lease = coordinator.reserve_operation().expect("reserve operation");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+
+            let prepare_coordinator = coordinator.clone();
+            let prepare_barrier = std::sync::Arc::clone(&barrier);
+            let prepare_thread = std::thread::spawn(move || {
+                prepare_barrier.wait();
+                prepare_coordinator.begin_prepare_park()
+            });
+
+            let drop_barrier = std::sync::Arc::clone(&barrier);
+            let drop_thread = std::thread::spawn(move || {
+                drop_barrier.wait();
+                drop(lease);
+            });
+
+            let prepare_result = prepare_thread
+                .join()
+                .expect("prepare thread should not panic");
+            drop_thread.join().expect("drop thread should not panic");
+
+            match prepare_result {
+                Ok(attempt) => {
+                    assert!(coordinator.abort_prepare_park(&attempt).is_ok());
+                }
+                Err(PrepareParkError::Busy) => {}
+                other => panic!("unexpected concurrent prepare/drop result: {other:?}"),
+            }
+
+            assert_eq!(coordinator.state(), CoordinatorState::Open);
+            assert_eq!(coordinator.active_operation_count(), 0);
+            assert_eq!(operation_registry_len(&coordinator), 0);
+        }
+    }
+
+    #[test]
+    fn concurrent_prepare_and_possible_guest_write_drop_mark_dirty() {
+        for _ in 0..64 {
+            let coordinator = ParkCoordinator::new();
+            let mut lease = coordinator.reserve_operation().expect("reserve operation");
+            assert!(lease.mark_writing().is_ok());
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+
+            let prepare_coordinator = coordinator.clone();
+            let prepare_barrier = std::sync::Arc::clone(&barrier);
+            let prepare_thread = std::thread::spawn(move || {
+                prepare_barrier.wait();
+                prepare_coordinator.begin_prepare_park()
+            });
+
+            let drop_barrier = std::sync::Arc::clone(&barrier);
+            let drop_thread = std::thread::spawn(move || {
+                drop_barrier.wait();
+                drop(lease);
+            });
+
+            let prepare_result = prepare_thread
+                .join()
+                .expect("prepare thread should not panic");
+            drop_thread.join().expect("drop thread should not panic");
+
+            assert!(matches!(
+                prepare_result,
+                Err(PrepareParkError::Busy | PrepareParkError::Dirty { .. })
+            ));
+            assert_dirty_state(&coordinator);
         }
     }
 
