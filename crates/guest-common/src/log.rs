@@ -489,6 +489,19 @@ mod tests {
     }
 
     #[test]
+    fn write_line_with_newline_preserves_empty_line() {
+        let mut writer = InterruptedPartialWriter {
+            output: Vec::new(),
+            interrupt_next_write: false,
+            max_write_size: 8,
+        };
+
+        write_line_with_newline(&mut writer, "").unwrap();
+
+        assert_eq!(writer.output, b"\n");
+    }
+
+    #[test]
     fn emit_appends_complete_lines_concurrently() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
