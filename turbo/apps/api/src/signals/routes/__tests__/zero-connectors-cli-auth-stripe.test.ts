@@ -762,6 +762,50 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(calls.stop).toHaveLength(0);
   });
 
+  it("does not expire a fresh completing session while another runner owns it", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+    const createdAt = new Date("2026-05-14T00:00:00.000Z");
+    mockNow(createdAt);
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    mockNow(new Date(createdAt.getTime() + 11 * 60 * 1000));
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: nowDate(),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(0);
+
+    const completingSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(completingSession.status).toBe("completing");
+  });
+
   it("recovers a stale completing session and finishes import", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_test_recovered" });

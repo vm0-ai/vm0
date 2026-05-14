@@ -1079,6 +1079,13 @@ async function prepareCliAuthStripeCompletion(args: {
     };
   }
 
+  if (
+    session.status === "completing" &&
+    !isStaleCompletingCliAuthStripeSession(session, args.now)
+  ) {
+    return { ok: false, result: { status: "pending", errorMessage: null } };
+  }
+
   if (isActiveCliAuthStripeSession(session) && args.now > session.expiresAt) {
     const result = await expireCliAuthStripeSession({
       writeDb: args.writeDb,
@@ -1090,12 +1097,6 @@ async function prepareCliAuthStripeCompletion(args: {
   }
 
   if (session.status === "initializing") {
-    return { ok: false, result: { status: "pending", errorMessage: null } };
-  }
-  if (
-    session.status === "completing" &&
-    !isStaleCompletingCliAuthStripeSession(session, args.now)
-  ) {
     return { ok: false, result: { status: "pending", errorMessage: null } };
   }
   if (
