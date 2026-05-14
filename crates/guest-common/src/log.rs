@@ -65,12 +65,11 @@ impl SystemLogState {
 }
 
 fn write_line_with_newline(writer: &mut impl Write, line: &str) -> io::Result<()> {
-    let mut line = line.as_bytes();
-    let mut newline = b"\n".as_slice();
+    let mut bufs = [IoSlice::new(line.as_bytes()), IoSlice::new(b"\n")];
+    let mut bufs = &mut bufs[..];
 
-    while !line.is_empty() || !newline.is_empty() {
-        let bufs = [IoSlice::new(line), IoSlice::new(newline)];
-        let written = match writer.write_vectored(&bufs) {
+    while !bufs.is_empty() {
+        let written = match writer.write_vectored(bufs) {
             Ok(written) => written,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(error),
@@ -82,25 +81,10 @@ fn write_line_with_newline(writer: &mut impl Write, line: &str) -> io::Result<()
             ));
         }
 
-        if written < line.len() {
-            line = line.get(written..).ok_or_else(invalid_write_count)?;
-        } else {
-            let newline_written = written - line.len();
-            line = &[];
-            newline = newline
-                .get(newline_written..)
-                .ok_or_else(invalid_write_count)?;
-        }
+        IoSlice::advance_slices(&mut bufs, written);
     }
 
     Ok(())
-}
-
-fn invalid_write_count() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        "vectored write advanced past system log line",
-    )
 }
 
 fn open_system_log_file(path: &Path) -> std::io::Result<File> {
@@ -466,8 +450,7 @@ mod tests {
                 }
                 let remaining = self.max_write_size - written;
                 let take = remaining.min(buf.len());
-                let chunk = buf.get(..take).ok_or_else(invalid_write_count)?;
-                self.output.extend_from_slice(chunk);
+                self.output.extend(buf.iter().take(take).copied());
                 written += take;
             }
             Ok(written)
