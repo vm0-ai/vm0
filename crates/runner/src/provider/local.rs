@@ -6,12 +6,13 @@
 //! The winning runner executes the job and writes a group-wide
 //! `{job_id}.result` file that `submit` polls for.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -20,7 +21,7 @@ use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
 
-/// Poll interval for discovering new job files.
+/// Poll interval for discovering new job files and local cancel markers.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Job request written by `submit` as a `{job_id}.job` file.
@@ -59,23 +60,48 @@ pub(crate) struct JobResponse {
 /// - `claim()` atomically creates `claims/{job_id}.claim` via `O_EXCL`.
 /// - `complete()` writes `results/{job_id}.result`.
 ///
-/// `discover()` also scans for `cancels/{run_id}.cancel` files and triggers the
-/// corresponding cancellation token from the shared `cancel_tokens` map.
+/// A provider-owned watcher scans `cancels/{run_id}.cancel` independently from
+/// discovery so active-job cancellation remains live while discovery is gated
+/// by capacity or drain mode. `discover()` also performs the same scan as a
+/// fast path, but correctness does not depend on discovery being polled.
 pub struct LocalProvider {
     group_dir: PathBuf,
     supported_profiles: Vec<String>,
     profile_cursor: AtomicUsize,
     cancel: CancellationToken,
+    cancel_scanner: LocalCancelScanner,
+    cancel_watcher: LocalCancelWatcher,
+}
+
+#[derive(Clone)]
+struct LocalCancelScanner {
+    group_dir: PathBuf,
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
+}
+
+struct LocalCancelWatcher {
+    shutdown: CancellationToken,
+    handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl LocalProvider {
     /// Create a new file-queue provider for the given group directory.
     pub fn new(
         group_dir: PathBuf,
+        supported_profiles: Vec<String>,
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<Self> {
+        Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, true)
+    }
+
+    fn new_inner(
+        group_dir: PathBuf,
         mut supported_profiles: Vec<String>,
         cancel: CancellationToken,
         cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        start_cancel_watcher: bool,
     ) -> Arc<Self> {
         supported_profiles.sort();
         supported_profiles.dedup();
@@ -84,39 +110,106 @@ impl LocalProvider {
             profiles = ?supported_profiles,
             "local provider watching"
         );
+        let owned_claims = Arc::new(tokio::sync::Mutex::new(HashSet::new()));
+        let cancel_scanner =
+            LocalCancelScanner::new(group_dir.clone(), cancel_tokens, owned_claims);
+        let cancel_watcher = if start_cancel_watcher {
+            LocalCancelWatcher::start(cancel_scanner.clone())
+        } else {
+            LocalCancelWatcher::disabled()
+        };
         Arc::new(Self {
             group_dir,
             supported_profiles,
             profile_cursor: AtomicUsize::new(0),
             cancel,
-            cancel_tokens,
+            cancel_scanner,
+            cancel_watcher,
         })
+    }
+
+    #[cfg(test)]
+    fn new_without_cancel_watcher(
+        group_dir: PathBuf,
+        supported_profiles: Vec<String>,
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<Self> {
+        Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, false)
+    }
+
+    #[cfg(test)]
+    fn new_with_cancel_watcher(
+        group_dir: PathBuf,
+        supported_profiles: Vec<String>,
+        cancel: CancellationToken,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<Self> {
+        Self::new_inner(group_dir, supported_profiles, cancel, cancel_tokens, true)
+    }
+}
+
+impl LocalCancelScanner {
+    fn new(
+        group_dir: PathBuf,
+        cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        owned_claims: Arc<tokio::sync::Mutex<HashSet<RunId>>>,
+    ) -> Self {
+        Self {
+            group_dir,
+            cancel_tokens,
+            owned_claims,
+        }
     }
 
     /// Scan for `.cancel` files and trigger the corresponding cancel tokens.
     ///
-    /// Only deletes a `.cancel` file after successfully triggering its token.
+    /// Only deletes a `.cancel` file after triggering a token owned by this
+    /// runner. A token can exist before `claim()` succeeds, so ownership is
+    /// tracked separately to avoid stealing another runner's cancel marker.
     /// Files whose `run_id` has no token yet (job not yet claimed) are left in
     /// place so the next scan can retry — this avoids a race where the cancel
     /// file arrives between `discover()` returning the job and the main loop
     /// inserting the token.
-    ///
-    /// Uses `try_lock()` to avoid both async cancellation hazards and
-    /// blocking the tokio runtime.  If the lock is contended (rare — only
-    /// held briefly by the main loop when inserting/removing tokens), the
-    /// scan is silently skipped and retried on the next 100 ms poll.
-    fn scan_cancel_files(&self) {
+    async fn scan_cancel_files(&self) {
+        let cancel_ids = self.collect_cancel_ids();
+        if cancel_ids.is_empty() {
+            return;
+        }
+
+        let tokens = self.snapshot_cancel_tokens(&cancel_ids).await;
+        let owned_claims = self.snapshot_owned_claims(&cancel_ids).await;
+
+        for run_id in cancel_ids {
+            if let Some(token) = tokens.get(&run_id) {
+                let was_cancelled = token.is_cancelled();
+                token.cancel();
+                if !was_cancelled {
+                    info!(run_id = %run_id, "local: cancel file detected, cancelling job");
+                }
+                let should_delete =
+                    owned_claims.contains(&run_id) || !self.cancel_has_pending_target(run_id);
+                if should_delete {
+                    let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
+                }
+            } else if !self.cancel_has_pending_target(run_id) {
+                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
+            }
+        }
+    }
+
+    fn collect_cancel_ids(&self) -> Vec<RunId> {
         let cancel_dir = local_queue::cancels_dir(&self.group_dir);
         let entries = match std::fs::read_dir(&cancel_dir) {
             Ok(e) => e,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
             Err(e) => {
                 warn!(path = %cancel_dir.display(), error = %e, "local: cannot read cancel dir");
-                return;
+                return Vec::new();
             }
         };
-        // Collect cancel run_ids first, then lock once to process them all.
         let mut cancel_ids = Vec::new();
+        let mut seen = HashSet::new();
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("cancel") {
@@ -128,37 +221,39 @@ impl LocalProvider {
             let Ok(run_id) = stem.parse::<RunId>() else {
                 continue;
             };
-            cancel_ids.push(run_id);
-        }
-        if cancel_ids.is_empty() {
-            return;
-        }
-        let Ok(tokens) = self.cancel_tokens.try_lock() else {
-            // Lock contended — skip this scan, retry next poll iteration.
-            return;
-        };
-        let mut missing_token_ids = Vec::new();
-        for run_id in &cancel_ids {
-            if let Some(token) = tokens.get(run_id) {
-                info!(run_id = %run_id, "local: cancel file detected, cancelling job");
-                token.cancel();
-                // Only delete after successful trigger — crash-safe.
-                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, *run_id));
-            } else {
-                missing_token_ids.push(*run_id);
+            if seen.insert(run_id) {
+                cancel_ids.push(run_id);
             }
         }
-        drop(tokens);
+        cancel_ids
+    }
 
-        for run_id in missing_token_ids {
-            // No token yet: keep the request if another local runner may own it
-            // or if the job still exists and may be claimed later. Otherwise the
-            // cancel is stale, commonly from a cancel/complete race after claim
-            // resolution, and can be removed to avoid unbounded queue litter.
-            if !self.cancel_has_pending_target(run_id) {
-                let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
-            }
-        }
+    async fn snapshot_cancel_tokens(
+        &self,
+        cancel_ids: &[RunId],
+    ) -> HashMap<RunId, CancellationToken> {
+        let tokens = self.cancel_tokens.lock().await;
+        cancel_ids
+            .iter()
+            .filter_map(|run_id| tokens.get(run_id).cloned().map(|token| (*run_id, token)))
+            .collect()
+    }
+
+    async fn snapshot_owned_claims(&self, cancel_ids: &[RunId]) -> HashSet<RunId> {
+        let owned = self.owned_claims.lock().await;
+        cancel_ids
+            .iter()
+            .copied()
+            .filter(|run_id| owned.contains(run_id))
+            .collect()
+    }
+
+    async fn mark_owned_claim(&self, run_id: RunId) {
+        self.owned_claims.lock().await.insert(run_id);
+    }
+
+    async fn remove_owned_claim(&self, run_id: RunId) {
+        self.owned_claims.lock().await.remove(&run_id);
     }
 
     fn cancel_has_pending_target(&self, run_id: RunId) -> bool {
@@ -169,6 +264,13 @@ impl LocalProvider {
             return false;
         }
         self.job_file_exists(run_id).unwrap_or(true)
+    }
+
+    fn result_file_has_content(&self, run_id: RunId) -> bool {
+        let result_path = local_queue::result_path(&self.group_dir, run_id);
+        std::fs::metadata(result_path)
+            .map(|metadata| metadata.is_file() && metadata.len() > 0)
+            .unwrap_or(false)
     }
 
     fn job_file_exists(&self, run_id: RunId) -> Option<bool> {
@@ -216,6 +318,69 @@ impl LocalProvider {
         }
 
         Some(None)
+    }
+}
+
+impl LocalCancelWatcher {
+    fn start(scanner: LocalCancelScanner) -> Self {
+        let shutdown = CancellationToken::new();
+        let task_shutdown = shutdown.clone();
+        let handle = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => Some(handle.spawn(async move {
+                loop {
+                    scanner.scan_cancel_files().await;
+                    tokio::select! {
+                        () = task_shutdown.cancelled() => break,
+                        () = tokio::time::sleep(POLL_INTERVAL) => {}
+                    }
+                }
+            })),
+            Err(e) => {
+                warn!(error = %e, "local: cancel watcher not started because no tokio runtime is active");
+                None
+            }
+        };
+
+        Self {
+            shutdown,
+            handle: Mutex::new(handle),
+        }
+    }
+
+    fn disabled() -> Self {
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        Self {
+            shutdown,
+            handle: Mutex::new(None),
+        }
+    }
+
+    async fn shutdown(&self) {
+        self.shutdown.cancel();
+        let handle = self
+            .handle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        let Some(handle) = handle else {
+            return;
+        };
+        if let Err(e) = handle.await {
+            warn!(error = %e, "local: cancel watcher task failed");
+        }
+    }
+}
+
+impl Drop for LocalCancelWatcher {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+    }
+}
+
+impl LocalProvider {
+    fn find_job_file(&self, run_id: RunId) -> Option<Option<PathBuf>> {
+        self.cancel_scanner.find_job_file(run_id)
     }
 
     fn remove_job_file_if_present(&self, run_id: RunId) -> bool {
@@ -358,7 +523,7 @@ impl JobProvider for LocalProvider {
                 return None;
             }
             // Check for cancel requests before looking for new jobs.
-            self.scan_cancel_files();
+            self.cancel_scanner.scan_cancel_files().await;
             if let Some(candidate) = self.find_unclaimed_job() {
                 info!(
                     run_id = %candidate.run_id(),
@@ -477,6 +642,7 @@ impl JobProvider for LocalProvider {
             return None;
         }
 
+        self.cancel_scanner.mark_owned_claim(run_id).await;
         info!(run_id = %run_id, "local: job claimed");
         Some(ExecutionContext {
             run_id,
@@ -523,6 +689,7 @@ impl JobProvider for LocalProvider {
         _sandbox_id: Option<SandboxId>,
         _reuse_result: Option<SandboxReuseResult>,
     ) {
+        self.cancel_scanner.remove_owned_claim(run_id).await;
         if !self.write_result(run_id, exit_code, error) {
             if self.remove_job_file_if_present(run_id) {
                 let _ = std::fs::remove_file(local_queue::cancel_path(&self.group_dir, run_id));
@@ -538,7 +705,9 @@ impl JobProvider for LocalProvider {
 
     async fn heartbeat(&self, _state: &HeartbeatState) {}
 
-    async fn shutdown(&self) {}
+    async fn shutdown(&self) {
+        self.cancel_watcher.shutdown().await;
+    }
 }
 
 #[cfg(test)]
@@ -563,7 +732,25 @@ mod tests {
         cancel: CancellationToken,
         tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     ) -> Arc<LocalProvider> {
-        LocalProvider::new(dir.to_path_buf(), default_profiles(), cancel, tokens)
+        LocalProvider::new_without_cancel_watcher(
+            dir.to_path_buf(),
+            default_profiles(),
+            cancel,
+            tokens,
+        )
+    }
+
+    fn default_provider_with_cancel_watcher(
+        dir: &std::path::Path,
+        cancel: CancellationToken,
+        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) -> Arc<LocalProvider> {
+        LocalProvider::new_with_cancel_watcher(
+            dir.to_path_buf(),
+            default_profiles(),
+            cancel,
+            tokens,
+        )
     }
 
     fn provider_with_profiles(
@@ -572,7 +759,7 @@ mod tests {
         cancel: CancellationToken,
         tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     ) -> Arc<LocalProvider> {
-        LocalProvider::new(
+        LocalProvider::new_without_cancel_watcher(
             dir.to_path_buf(),
             profiles(supported_profiles),
             cancel,
@@ -636,6 +823,16 @@ mod tests {
         let path = local_queue::result_path(dir, job_id);
         let buf = std::fs::read(path).unwrap();
         serde_json::from_slice(&buf).unwrap()
+    }
+
+    async fn wait_for_path_absent(path: &std::path::Path, wait: Duration) {
+        tokio::time::timeout(wait, async {
+            while path.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("path should be removed before timeout");
     }
 
     #[tokio::test]
@@ -937,15 +1134,70 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_file_deleted_after_trigger() {
+    async fn cancel_file_deleted_after_owned_trigger() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let run_id = RunId::new_v4();
+        let job_token = CancellationToken::new();
+        tokens.lock().await.insert(run_id, job_token.clone());
+
+        let provider = default_provider(dir.path(), cancel, tokens);
+        write_job(dir.path(), run_id, "owned");
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), run_id);
+        provider.claim(candidate).await.unwrap();
+
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+
+        provider.cancel_scanner.scan_cancel_files().await;
+        assert!(job_token.is_cancelled(), "cancel token should be triggered");
+        assert!(
+            !cancel_path.exists(),
+            "cancel file should be deleted after triggering an owned token"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_with_preclaim_token_is_kept() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let tokens = empty_cancel_tokens();
 
-        // Insert a token so the cancel file can be matched and deleted.
         let run_id = RunId::new_v4();
         let job_token = CancellationToken::new();
-        tokens.lock().await.insert(run_id, job_token);
+        tokens.lock().await.insert(run_id, job_token.clone());
+
+        let provider = default_provider(dir.path(), cancel, tokens);
+        write_job(dir.path(), run_id, "preclaim");
+
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+
+        provider.cancel_scanner.scan_cancel_files().await;
+
+        assert!(
+            job_token.is_cancelled(),
+            "pre-claim token should be cancelled"
+        );
+        assert!(
+            cancel_path.exists(),
+            "cancel file should stay until this runner owns the claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_file_with_token_but_no_pending_target_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+
+        let run_id = RunId::new_v4();
+        let job_token = CancellationToken::new();
+        tokens.lock().await.insert(run_id, job_token.clone());
 
         let provider = default_provider(dir.path(), cancel, tokens);
 
@@ -953,15 +1205,62 @@ mod tests {
         std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
         std::fs::write(&cancel_path, b"").unwrap();
 
-        // Write a dummy job so discover() returns instead of looping.
-        let job_id = RunId::new_v4();
-        write_job(dir.path(), job_id, "dummy");
+        provider.cancel_scanner.scan_cancel_files().await;
 
-        let _ = provider.discover().await;
+        assert!(
+            job_token.is_cancelled(),
+            "stale token should still be cancelled"
+        );
         assert!(
             !cancel_path.exists(),
-            "cancel file should be deleted after triggering token"
+            "cancel file should be deleted when no claim or job target remains"
         );
+    }
+
+    #[tokio::test]
+    async fn cancel_watcher_triggers_owned_token_without_discover() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+        let provider =
+            default_provider_with_cancel_watcher(dir.path(), cancel, Arc::clone(&tokens));
+
+        let run_id = RunId::new_v4();
+        let job_token = CancellationToken::new();
+        tokens.lock().await.insert(run_id, job_token.clone());
+
+        write_job(dir.path(), run_id, "owned");
+        let candidate = provider.discover().await.unwrap();
+        assert_eq!(candidate.run_id(), run_id);
+        provider.claim(candidate).await.unwrap();
+
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+
+        tokio::time::timeout(Duration::from_secs(2), job_token.cancelled())
+            .await
+            .expect("cancel watcher should trigger token");
+        wait_for_path_absent(&cancel_path, Duration::from_secs(2)).await;
+
+        provider.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn cancel_watcher_shutdown_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let provider = default_provider_with_cancel_watcher(
+            dir.path(),
+            CancellationToken::new(),
+            empty_cancel_tokens(),
+        );
+
+        tokio::time::timeout(Duration::from_secs(2), provider.shutdown())
+            .await
+            .expect("first shutdown should complete");
+        tokio::time::timeout(Duration::from_secs(2), provider.shutdown())
+            .await
+            .expect("second shutdown should complete");
     }
 
     #[tokio::test]

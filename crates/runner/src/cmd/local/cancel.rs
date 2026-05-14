@@ -1,7 +1,7 @@
 //! `runner local cancel` — cancel a job running on a local runner via file queue.
 //!
-//! Writes a `{run_id}.cancel` file into the group cancel directory. The runner's
-//! `LocalProvider` picks it up on its next poll and triggers the corresponding
+//! Writes a `{run_id}.cancel` file into the group cancel directory. The local
+//! runner's cancel watcher picks it up and triggers the corresponding
 //! cancellation token.
 
 use std::process::ExitCode;
