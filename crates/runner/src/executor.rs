@@ -844,27 +844,24 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
         (
             format!("{GUEST_SYSTEM_LOG_PREFIX}{run_id}{GUEST_SYSTEM_LOG_SUFFIX}"),
             log_paths.system_log(run_id),
-            GUEST_LOG_COPY_MAX_BYTES,
         ),
         (
             format!("{GUEST_METRICS_LOG_PREFIX}{run_id}{GUEST_METRICS_LOG_SUFFIX}"),
             log_paths.metrics_log(run_id),
-            GUEST_LOG_COPY_MAX_BYTES,
         ),
         (
             format!("{GUEST_SANDBOX_OPS_LOG_PREFIX}{run_id}{GUEST_SANDBOX_OPS_LOG_SUFFIX}"),
             log_paths.sandbox_ops_log(run_id),
-            GUEST_LOG_COPY_MAX_BYTES,
         ),
     ];
 
-    for (guest_path, host_path, max_bytes) in &files {
+    for (guest_path, host_path) in &files {
         if let Err(e) = sandbox
             .copy_file(
                 guest_path,
                 host_path,
                 CopyFileOptions {
-                    max_bytes: *max_bytes,
+                    max_bytes: GUEST_LOG_COPY_MAX_BYTES,
                     timeout: DEFAULT_EXEC_TIMEOUT,
                     missing_ok: true,
                 },
