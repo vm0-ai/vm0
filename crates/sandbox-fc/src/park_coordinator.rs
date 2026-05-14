@@ -1055,6 +1055,7 @@ mod tests {
             dirty_reason(&coordinator),
             DirtyReason::new("driver shutdown")
         );
+        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
         assert!(matches!(
             coordinator.reserve_operation(),
             Err(LeaseRejection::GateClosed {
@@ -1179,6 +1180,8 @@ mod tests {
                 Err(PrepareParkError::Busy | PrepareParkError::Dirty { .. })
             ));
             assert_dirty_state(&coordinator);
+            assert_eq!(coordinator.active_operation_count(), 0);
+            assert_eq!(operation_registry_len(&coordinator), 1);
         }
     }
 
