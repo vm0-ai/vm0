@@ -11,6 +11,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { voiceChatSessions, voiceChatTasks } from "@vm0/db/schema/voice-chat";
@@ -282,6 +283,15 @@ export const deleteVoiceChatFixture$ = command(
       return row.id;
     });
 
+    await writeDb
+      .delete(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
     await writeDb
       .delete(voiceChatSessions)
       .where(
