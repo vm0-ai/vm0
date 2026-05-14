@@ -401,8 +401,7 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const features = useLastResolved(featureSwitch$);
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
 
-  const isPinned =
-    session.pinnedAt !== null && session.pinnedAt !== undefined;
+  const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
   const isCurrentPage = urlMainThreadId === session.id;
   const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
