@@ -438,173 +438,163 @@ mod tests {
         records.sort_unstable();
         records
     }
+
+    struct CleanupPanickedJobFixture {
+        _dir: tempfile::TempDir,
+        status_path: std::path::PathBuf,
+        status: Arc<StatusTracker>,
+        idle_pool: SharedIdlePool,
+        tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+        orphans: OrphanedActiveRuns,
+    }
+
+    impl CleanupPanickedJobFixture {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let status_path = dir.path().join("status.json");
+            let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+            let idle_pool: SharedIdlePool =
+                Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                    default_timeout: Duration::from_secs(300),
+                    max_idle: 10,
+                })));
+            let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+                Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let orphans = OrphanedActiveRuns::new();
+
+            Self {
+                _dir: dir,
+                status_path,
+                status,
+                idle_pool,
+                tokens,
+                orphans,
+            }
+        }
+
+        async fn cleanup(
+            &self,
+            run_id: RunId,
+            sandbox_id: SandboxId,
+            cleanup_state: RunCleanupState,
+        ) {
+            cleanup_panicked_job(
+                run_id,
+                sandbox_id,
+                Arc::clone(&self.tokens),
+                Arc::clone(&self.status),
+                Arc::clone(&self.idle_pool),
+                cleanup_state,
+                self.orphans.clone(),
+            )
+            .await;
+        }
+    }
+
     #[tokio::test]
     async fn panic_cleanup_status_removed_only_clears_cancel_token() {
-        let dir = tempfile::tempdir().unwrap();
-        let status_path = dir.path().join("status.json");
-        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            })));
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new();
+        let fixture = CleanupPanickedJobFixture::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
-        status.remove_run_if_matching(run_id, sandbox_id).await;
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture
+            .status
+            .remove_run_if_matching(run_id, sandbox_id)
+            .await;
+        fixture
+            .tokens
+            .lock()
+            .await
+            .insert(run_id, CancellationToken::new());
         cleanup_state.mark_status_removed();
 
-        cleanup_panicked_job(
-            run_id,
-            sandbox_id,
-            Arc::clone(&tokens),
-            Arc::clone(&status),
-            idle_pool,
-            cleanup_state,
-            orphans.clone(),
-        )
-        .await;
+        fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
         let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&status_path).await;
+            status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
-        assert_eq!(orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len().await, 0);
     }
 
     #[tokio::test]
     async fn panic_cleanup_active_unknown_keeps_active_and_registers_orphan() {
-        let dir = tempfile::tempdir().unwrap();
-        let status_path = dir.path().join("status.json");
-        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            })));
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new();
+        let fixture = CleanupPanickedJobFixture::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture
+            .tokens
+            .lock()
+            .await
+            .insert(run_id, CancellationToken::new());
 
-        cleanup_panicked_job(
-            run_id,
-            sandbox_id,
-            Arc::clone(&tokens),
-            Arc::clone(&status),
-            idle_pool,
-            RunCleanupState::new(),
-            orphans.clone(),
-        )
-        .await;
+        fixture
+            .cleanup(run_id, sandbox_id, RunCleanupState::new())
+            .await;
 
-        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
         let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&status_path).await;
+            status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(active_runs, vec![run_id.to_string()]);
-        assert_eq!(orphans.len().await, 1);
+        assert_eq!(fixture.orphans.len().await, 1);
     }
 
     #[tokio::test]
     async fn panic_cleanup_destroy_completed_removes_active_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let status_path = dir.path().join("status.json");
-        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            })));
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new();
+        let fixture = CleanupPanickedJobFixture::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture
+            .tokens
+            .lock()
+            .await
+            .insert(run_id, CancellationToken::new());
         cleanup_state.mark_destroy_completed();
 
-        cleanup_panicked_job(
-            run_id,
-            sandbox_id,
-            Arc::clone(&tokens),
-            Arc::clone(&status),
-            idle_pool,
-            cleanup_state,
-            orphans.clone(),
-        )
-        .await;
+        fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
         let (_idle_sessions, active_runs) =
-            status_idle_sessions_and_active_runs(&status_path).await;
+            status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert!(active_runs.is_empty());
-        assert_eq!(orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len().await, 0);
     }
 
     #[tokio::test]
     async fn panic_cleanup_destroy_completed_does_not_remove_reinserted_active_run() {
-        let dir = tempfile::tempdir().unwrap();
-        let status_path = dir.path().join("status.json");
-        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            })));
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new();
+        let fixture = CleanupPanickedJobFixture::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let completed_sandbox_id = SandboxId::new_v4();
         let current_sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, completed_sandbox_id).await;
-        status.add_run(run_id, current_sandbox_id).await;
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        fixture.status.add_run(run_id, completed_sandbox_id).await;
+        fixture.status.add_run(run_id, current_sandbox_id).await;
+        fixture
+            .tokens
+            .lock()
+            .await
+            .insert(run_id, CancellationToken::new());
         cleanup_state.mark_destroy_completed();
 
-        cleanup_panicked_job(
-            run_id,
-            completed_sandbox_id,
-            Arc::clone(&tokens),
-            Arc::clone(&status),
-            idle_pool,
-            cleanup_state,
-            orphans.clone(),
-        )
-        .await;
+        fixture
+            .cleanup(run_id, completed_sandbox_id, cleanup_state)
+            .await;
 
-        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
         assert_eq!(
-            status_active_run_records(&status_path).await,
+            status_active_run_records(&fixture.status_path).await,
             vec![(run_id.to_string(), current_sandbox_id.to_string())],
         );
-        assert_eq!(orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len().await, 0);
     }
 
     #[tokio::test]
     async fn panic_cleanup_idle_pool_owned_refreshes_idle_status_before_removing_active() {
-        let dir = tempfile::tempdir().unwrap();
-        let status_path = dir.path().join("status.json");
-        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
-        let idle_pool: SharedIdlePool =
-            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            })));
-        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
-            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new();
+        let fixture = CleanupPanickedJobFixture::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -621,28 +611,24 @@ mod tests {
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         });
         assert!(matches!(
-            idle_pool.lock().await.park(candidate),
+            fixture.idle_pool.lock().await.park(candidate),
             ParkResult::Parked
         ));
-        status.add_run(run_id, sandbox_id).await;
-        tokens.lock().await.insert(run_id, CancellationToken::new());
+        fixture.status.add_run(run_id, sandbox_id).await;
+        fixture
+            .tokens
+            .lock()
+            .await
+            .insert(run_id, CancellationToken::new());
         cleanup_state.mark_idle_pool_owned();
 
-        cleanup_panicked_job(
-            run_id,
-            sandbox_id,
-            Arc::clone(&tokens),
-            Arc::clone(&status),
-            Arc::clone(&idle_pool),
-            cleanup_state,
-            orphans.clone(),
-        )
-        .await;
+        fixture.cleanup(run_id, sandbox_id, cleanup_state).await;
 
-        assert!(!tokens.lock().await.contains_key(&run_id));
-        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(!fixture.tokens.lock().await.contains_key(&run_id));
+        let (idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&fixture.status_path).await;
         assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
-        assert_eq!(orphans.len().await, 0);
+        assert_eq!(fixture.orphans.len().await, 0);
     }
 }
