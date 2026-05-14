@@ -880,7 +880,8 @@ mod tests {
         ));
 
         task.abort();
-        let _ = task.await;
+        let join_error = task.await.expect_err("prepare task should be aborted");
+        assert!(join_error.is_cancelled());
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert!(coordinator.reserve_operation().is_ok());
