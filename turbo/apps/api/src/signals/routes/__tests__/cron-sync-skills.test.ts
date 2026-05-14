@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import {
   DEFAULT_SKILLS_BRANCH,
+  DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
 import { getSkillStorageName } from "@vm0/core/storage-names";
@@ -121,6 +122,22 @@ const cleanupOfficialTestSkills$ = command(
 const setAllSkillsCommitSha$ = command(
   async ({ set }, commitSha: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
+    const skillName = `${TEST_SKILL_PREFIX}-existing`;
+    await db
+      .insert(skills)
+      .values({
+        url: testSkillUrl(skillName),
+        name: skillName,
+        fullPath: `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`,
+        commitSha,
+        frontmatter: {
+          name: skillName,
+          description: `${skillName} skill`,
+        },
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+
     await db.update(skills).set({ commitSha });
     signal.throwIfAborted();
   },
