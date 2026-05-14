@@ -1,9 +1,11 @@
-//! Rust bindings for selected `@vm0/api-contracts` routes and DTOs.
+//! Rust bindings for selected `@vm0/api-contracts` routes, DTOs, and shared
+//! constants.
 //!
 //! Route constants under [`generated::routes`] are generated from the
 //! TypeScript supported-route registry. Request/response DTOs under
 //! [`generated::types`] are generated from the selected Rust DTO registry.
-//! Regenerate them with:
+//! Narrow cross-language contract constants are generated into focused modules
+//! such as [`generated::model_providers`]. Regenerate all bindings with:
 //!
 //! ```bash
 //! cd turbo && pnpm -F @vm0/api-contracts generate:rust
@@ -17,7 +19,9 @@
 //! Add new Rust-supported routes to
 //! `turbo/packages/api-contracts/src/rust-bindings/routes.ts`, and add new
 //! Rust-supported DTOs to
-//! `turbo/packages/api-contracts/src/rust-bindings/types.ts`.
+//! `turbo/packages/api-contracts/src/rust-bindings/types.ts`. Add shared
+//! constants only when they are part of an explicit Rust/TypeScript contract,
+//! and register them under `turbo/packages/api-contracts/src/rust-bindings/`.
 
 pub mod generated;
 

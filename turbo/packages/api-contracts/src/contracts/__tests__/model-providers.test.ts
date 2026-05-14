@@ -592,15 +592,14 @@ describe("codex-oauth-token codex provider", () => {
     expect(token.split(".")).toHaveLength(1);
   });
 
-  it("CHATGPT_ACCOUNT_ID placeholder equals #11877's literal", () => {
-    // Cross-cut alignment with guest-agent (#11877): the account_id literal
-    // is the single string that crosses both surfaces (firewall placeholder
-    // map AND the auth.json the guest-agent fabricates). Keeping them in
-    // lockstep means future readers can grep one literal and find both.
+  it("firewall placeholders expose the Codex OAuth fake marker bytes", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
-    expect(config.placeholders!.CHATGPT_ACCOUNT_ID).toBe(
-      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
-    );
+    expect(config.placeholders).toEqual({
+      CHATGPT_ACCESS_TOKEN:
+        "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+      CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+      CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    });
   });
 
   it("modelProviderTypeSchema accepts codex-oauth-token", () => {
