@@ -17,13 +17,13 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { Cron } from "croner";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import { isValidTimeZone, safeAsync } from "../utils";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -32,6 +32,7 @@ const log = logger("api:zero:schedules");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 const secretsMapSchema = z.record(z.string(), z.string());
 
@@ -140,6 +141,13 @@ type RunScheduleNowResult =
       readonly kind: "run_error";
       readonly response: RunCreationErrorResponse;
     };
+
+type ExecuteScheduleFailure = Exclude<RunScheduleNowResult, { kind: "ok" }>;
+
+interface ExecuteDueSchedulesResult {
+  readonly executed: number;
+  readonly skipped: number;
+}
 
 interface ChatMessage {
   readonly role: "system" | "user" | "assistant";
@@ -738,6 +746,223 @@ export const enableSchedule$ = command(
       kind: "ok",
       response: scheduleResponse(updated, displayName),
     };
+  },
+);
+
+function isActivePreviousRunStatus(status: string): boolean {
+  return status === "pending" || status === "running";
+}
+
+function isExecuteScheduleFailure(
+  error: unknown,
+): error is ExecuteScheduleFailure {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "kind" in error &&
+    (error.kind === "not_found" ||
+      error.kind === "conflict" ||
+      error.kind === "run_error")
+  );
+}
+
+function scheduleFailureMessage(error: unknown): string {
+  if (!isExecuteScheduleFailure(error)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  if (error.kind === "run_error") {
+    return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
+  }
+  return error.message;
+}
+
+function isInsufficientCreditsFailure(error: unknown): boolean {
+  return (
+    isExecuteScheduleFailure(error) &&
+    error.kind === "run_error" &&
+    error.response.body.error.code === "INSUFFICIENT_CREDITS"
+  );
+}
+
+function nextRunAfterPreRunFailure(args: {
+  readonly schedule: typeof zeroAgentSchedules.$inferSelect;
+  readonly failureTime: Date;
+  readonly shouldDisable: boolean;
+}): Date | null {
+  if (args.shouldDisable) {
+    return null;
+  }
+  if (args.schedule.triggerType === "cron" && args.schedule.cronExpression) {
+    return calculateNextRun(
+      args.schedule.cronExpression,
+      args.schedule.timezone,
+      args.failureTime,
+    );
+  }
+  if (args.schedule.triggerType === "loop" && args.schedule.intervalSeconds) {
+    return new Date(
+      args.failureTime.getTime() + args.schedule.intervalSeconds * 1000,
+    );
+  }
+  return null;
+}
+
+async function recordSchedulePreRunFailure(
+  db: Db,
+  schedule: typeof zeroAgentSchedules.$inferSelect,
+  error: unknown,
+  signal: AbortSignal,
+): Promise<void> {
+  const isCreditError = isInsufficientCreditsFailure(error);
+  const failureMessage = scheduleFailureMessage(error);
+  const failureContext = {
+    scheduleId: schedule.id,
+    scheduleName: schedule.name,
+    orgId: schedule.orgId,
+    userId: schedule.userId,
+    error: failureMessage,
+    stack: error instanceof Error ? error.stack : undefined,
+  };
+  if (isCreditError) {
+    log.warn("Schedule skipped: insufficient credits", failureContext);
+  } else {
+    log.error("Schedule pre-run failed", failureContext);
+  }
+
+  const failureTime = nowDate();
+  const newFailureCount = schedule.consecutiveFailures + 1;
+  const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
+  const nextRunAt = nextRunAfterPreRunFailure({
+    schedule,
+    failureTime,
+    shouldDisable,
+  });
+
+  await db
+    .update(zeroAgentSchedules)
+    .set({
+      consecutiveFailures: newFailureCount,
+      ...(shouldDisable ? { enabled: false } : {}),
+      nextRunAt,
+      updatedAt: failureTime,
+    })
+    .where(eq(zeroAgentSchedules.id, schedule.id));
+  signal.throwIfAborted();
+
+  if (shouldDisable) {
+    log.warn("Schedule auto-disabled after consecutive pre-run failures", {
+      scheduleId: schedule.id,
+      scheduleName: schedule.name,
+      orgId: schedule.orgId,
+      userId: schedule.userId,
+      consecutiveFailures: newFailureCount,
+      reason: isCreditError ? "insufficient_credits" : "pre_run_failure",
+    });
+  }
+}
+
+export const executeDueSchedules$ = command(
+  async ({ set }, signal: AbortSignal): Promise<ExecuteDueSchedulesResult> => {
+    const db = set(writeDb$);
+    const currentTime = nowDate();
+    log.debug("Checking for due schedules", {
+      currentTime: currentTime.toISOString(),
+    });
+
+    const dueSchedules = await db
+      .select()
+      .from(zeroAgentSchedules)
+      .where(
+        and(
+          eq(zeroAgentSchedules.enabled, true),
+          lte(zeroAgentSchedules.nextRunAt, currentTime),
+        ),
+      )
+      .limit(10);
+    signal.throwIfAborted();
+
+    let executed = 0;
+    let skipped = 0;
+
+    for (const schedule of dueSchedules) {
+      if (schedule.lastRunId) {
+        const [lastRun] = await db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, schedule.lastRunId))
+          .limit(1);
+        signal.throwIfAborted();
+
+        if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
+          log.debug("Skipping schedule: previous run still active", {
+            scheduleId: schedule.id,
+            scheduleName: schedule.name,
+          });
+          skipped++;
+          continue;
+        }
+      }
+
+      const [claimed] = await db
+        .update(zeroAgentSchedules)
+        .set({
+          nextRunAt: null,
+          lastRunAt: currentTime,
+          retryStartedAt: null,
+          updatedAt: currentTime,
+          ...(schedule.triggerType === "once" ? { enabled: false } : {}),
+        })
+        .where(
+          and(
+            eq(zeroAgentSchedules.id, schedule.id),
+            eq(zeroAgentSchedules.nextRunAt, schedule.nextRunAt!),
+          ),
+        )
+        .returning();
+      signal.throwIfAborted();
+
+      if (!claimed) {
+        log.debug("Skipping schedule: already claimed", {
+          scheduleId: schedule.id,
+          scheduleName: schedule.name,
+        });
+        skipped++;
+        continue;
+      }
+
+      const runResult = await safeAsync(() => {
+        return set(
+          runScheduleNow$,
+          {
+            body: { scheduleId: schedule.id },
+            orgId: schedule.orgId,
+            apiStartTime: now(),
+          },
+          signal,
+        );
+      });
+      signal.throwIfAborted();
+      if ("error" in runResult) {
+        await recordSchedulePreRunFailure(
+          db,
+          schedule,
+          runResult.error,
+          signal,
+        );
+        skipped++;
+        continue;
+      }
+      const result = runResult.ok;
+      if (result.kind !== "ok") {
+        await recordSchedulePreRunFailure(db, schedule, result, signal);
+        skipped++;
+        continue;
+      }
+      executed++;
+    }
+
+    log.debug("Executed due schedules", { executed, skipped });
+    return { executed, skipped };
   },
 );
 
