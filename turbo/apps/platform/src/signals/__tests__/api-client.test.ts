@@ -247,33 +247,8 @@ describe("zeroClient$ 401 redirect", () => {
   });
 });
 
-describe("zeroClient$ apiBackendMutations routing", () => {
-  it("routes POST contract requests to api host when flag is on", async () => {
-    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
-    detachedSetupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
-    });
-
-    const requestHosts: string[] = [];
-    server.use(
-      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
-        requestHosts.push(new URL(request.url).host);
-        return respond(200, { switches: {} });
-      }),
-    );
-
-    const createClient = context.store.get(zeroClient$);
-    const client = createClient(zeroFeatureSwitchesContract);
-    const result = await client.update({ body: { switches: {} } });
-
-    expect(result.status).toBe(200);
-    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
-  });
-
-  it("keeps POST contract requests on www when flag is off", async () => {
+describe("zeroClient$ apiBackend routing", () => {
+  it("keeps POST contract requests on www when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
@@ -297,13 +272,37 @@ describe("zeroClient$ apiBackendMutations routing", () => {
     expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
-  it("does not affect GET contract requests on zeroClient$", async () => {
+  it("routes POST contract requests to api host when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { apiBackendMutations: true },
+      featureSwitches: { apiBackend: true },
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { switches: {} });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
+    const result = await client.update({ body: { switches: {} } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("keeps GET contract requests on www when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
     });
 
     const requestHosts: string[] = [];
@@ -327,32 +326,37 @@ describe("zeroClient$ apiBackendMutations routing", () => {
     expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
-  it("apiBackend on forces mutations to api regardless of mutations flag", async () => {
+  it("routes GET contract requests to api host when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
-      featureSwitches: { apiBackend: true, apiBackendMutations: false },
+      featureSwitches: { apiBackend: true },
     });
 
     const requestHosts: string[] = [];
     server.use(
-      mockApi(zeroFeatureSwitchesContract.update, ({ request, respond }) => {
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
         requestHosts.push(new URL(request.url).host);
-        return respond(200, { switches: {} });
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
       }),
     );
 
     const createClient = context.store.get(zeroClient$);
-    const client = createClient(zeroFeatureSwitchesContract);
-    const result = await client.update({ body: { switches: {} } });
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
 
     expect(result.status).toBe(200);
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
-  it("apiBase: 'api' override still wins for GET regardless of flag state", async () => {
+  it("apiBase: 'api' override still wins for GET when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,

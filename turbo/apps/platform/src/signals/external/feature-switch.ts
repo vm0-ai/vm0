@@ -56,10 +56,6 @@ export const apiBackendEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.ApiBackend] ?? false;
 });
 
-export const apiBackendMutationsEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.ApiBackendMutations] ?? false;
-});
-
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);
