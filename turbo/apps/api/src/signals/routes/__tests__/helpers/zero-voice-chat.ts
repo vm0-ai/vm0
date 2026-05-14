@@ -19,6 +19,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray, or } from "drizzle-orm";
 
+import { nowDate } from "../../../../lib/time";
 import { writeDb$ } from "../../../external/db";
 
 export interface VoiceChatFixture {
@@ -212,7 +213,14 @@ export const seedVoiceChatRealtimePricing$ = command(
           };
         }),
       )
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [
+          usagePricing.kind,
+          usagePricing.provider,
+          usagePricing.category,
+        ],
+        set: { unitPrice: 1, unitSize: 1_000_000, updatedAt: nowDate() },
+      });
   },
 );
 
