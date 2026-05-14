@@ -68,7 +68,7 @@ function switchToAdminComplete() {
 }
 
 // Step 1 (name workspace) → step 2 (choose tools, pick a connector). Step 2's
-// "Continue in web" is the terminal step of the regular admin flow.
+// "Get Started" is the terminal step of the regular admin flow.
 async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
@@ -84,7 +84,7 @@ async function walkAdminToContinue() {
   click(screen.getByTestId("connector-card-github"));
 
   await waitFor(() => {
-    expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
   });
 }
 
@@ -97,7 +97,7 @@ describe("onboarding continue in web → agent chat page", () => {
 
     switchToAdminComplete();
 
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
@@ -110,7 +110,7 @@ describe("onboarding continue in web → agent chat page", () => {
 // ---------------------------------------------------------------------------
 
 describe("prompt param forwarding", () => {
-  it("should forward ?prompt= to chat page via Continue in web", async () => {
+  it("should forward ?prompt= to chat page via Get Started", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({ context, path: "/onboarding?prompt=hello%20world" });
@@ -118,7 +118,7 @@ describe("prompt param forwarding", () => {
 
     switchToAdminComplete();
 
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
@@ -139,7 +139,7 @@ describe("prompt param forwarding", () => {
 
     switchToAdminComplete();
 
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);

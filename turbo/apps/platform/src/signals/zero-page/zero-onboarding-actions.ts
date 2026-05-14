@@ -151,7 +151,7 @@ export const onboardingNextDisabled$ = computed(async (get) => {
 
 /**
  * Label on the primary forward button. "Try It" finishes a use-case flow,
- * "Continue in web" finishes the regular admin flow, "Next" advances step 1.
+ * "Get Started" finishes the regular admin flow, "Next" advances step 1.
  */
 export const onboardingNextLabel$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
@@ -160,7 +160,7 @@ export const onboardingNextLabel$ = computed(async (get) => {
     return "Try It";
   }
   if (step === "2") {
-    return "Continue in web";
+    return "Get Started";
   }
   return "Next";
 });

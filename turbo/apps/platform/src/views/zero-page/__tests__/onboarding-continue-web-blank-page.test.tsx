@@ -23,7 +23,7 @@ const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 
 function mockAdminOnboardingDeferred() {
   // The first setup call (step 1 eager-init) resolves immediately; the second
-  // call (step 2 connector authorize, triggered by "Continue in web") is
+  // call (step 2 connector authorize, triggered by "Get Started") is
   // deferred so we can observe the skeleton while the command is in-flight.
   const completeDeferred = createDeferredPromise<void>(context.signal);
   let setupCalls = 0;
@@ -88,7 +88,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     click(screen.getByTestId("connector-card-github"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
     });
 
     // Skeleton should be hidden after onboarding page loaded
@@ -99,7 +99,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Click starts the async onboarding completion; the setup API is deferred
     // so the command is in-flight while we assert skeleton visibility.
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     // Skeleton must be visible during the transition (the fix for #7902)
     await waitFor(() => {

@@ -144,7 +144,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
     });
   });
 });

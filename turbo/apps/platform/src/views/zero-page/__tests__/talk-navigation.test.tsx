@@ -314,13 +314,13 @@ describe("talk navigation", () => {
     });
     click(screen.getByTestId("connector-card-github"));
 
-    // Click "Continue in web" which triggers:
+    // Click "Get Started" which triggers:
     // 1. completeZeroOnboarding$ (re-runs setup to authorize the connector)
     // 2. navigate to /agents/:id/chat
     await waitFor(() => {
-      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
     });
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     // The final URL should be /agents/:id/chat (no auto-intro message)
     await waitFor(() => {

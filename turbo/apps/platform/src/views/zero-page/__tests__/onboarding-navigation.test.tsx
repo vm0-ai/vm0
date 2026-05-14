@@ -126,12 +126,12 @@ describe("onboarding navigation", () => {
     // find it instead of treating it as missing and looping back.
     registerAgent(MOCK_AGENT_ID);
 
-    // "Continue in web" finishes onboarding (step 2 is the terminal step) and
+    // "Get Started" finishes onboarding (step 2 is the terminal step) and
     // navigates into the web chat.
     await waitFor(() => {
-      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+      expect(screen.getByText(/Get Started/)).toBeInTheDocument();
     });
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
       expect(pathname()).not.toBe("/onboarding");

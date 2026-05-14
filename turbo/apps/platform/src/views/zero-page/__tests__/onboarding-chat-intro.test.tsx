@@ -55,7 +55,7 @@ async function walkAdminToContinue() {
   click(screen.getByTestId("connector-card-github"));
 
   await waitFor(() => {
-    expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
+    expect(screen.getByText(/Get Started/)).toBeInTheDocument();
   });
 }
 
@@ -93,7 +93,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
       }),
     );
 
-    click(screen.getByText(/Continue in web/));
+    click(screen.getByText(/Get Started/));
 
     // Should navigate directly to the agent chat page
     await waitFor(() => {
