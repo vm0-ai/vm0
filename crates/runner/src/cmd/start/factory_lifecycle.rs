@@ -1,4 +1,4 @@
-//! Sandbox factory startup and shutdown for `runner start`.
+//! Sandbox factory creation and shutdown for `runner start`.
 
 use std::collections::BTreeMap;
 use std::path::Path;

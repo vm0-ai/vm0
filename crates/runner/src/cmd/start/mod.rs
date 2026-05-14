@@ -7,7 +7,7 @@
 //!
 //! The sibling modules keep focused responsibilities out of this orchestration
 //! file:
-//! - `factory_lifecycle`: sandbox factory startup and shutdown.
+//! - `factory_lifecycle`: sandbox factory creation and shutdown.
 //! - `idle_lifecycle`: idle-pool lifecycle, status updates, and destroy helpers.
 //! - `identity`: persistent runner id storage.
 //! - `job_discovery`: discovery branch handling and idle-reuse admission.

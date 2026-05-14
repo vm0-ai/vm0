@@ -312,17 +312,17 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
-        let resources = match self.resources() {
-            Ok(resources) => resources,
-            Err(err) => {
-                warn!(error = %err, "destroy called after factory shutdown");
-                return;
-            }
-        };
         let sandbox = match (sandbox as Box<dyn std::any::Any>).downcast::<FirecrackerSandbox>() {
             Ok(s) => *s,
             Err(_) => {
                 warn!("destroy called with non-firecracker sandbox, ignoring");
+                return;
+            }
+        };
+        let resources = match self.resources() {
+            Ok(resources) => resources,
+            Err(err) => {
+                warn!(id = %sandbox.id, error = %err, "destroy called after factory shutdown");
                 return;
             }
         };
