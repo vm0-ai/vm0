@@ -14,8 +14,6 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { clearAllDetached } from "../../utils";
-import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   addRunToThread$,
   deleteZeroChatThread$,
@@ -343,27 +341,21 @@ describe("POST /api/webhooks/agent/events", () => {
     );
   });
 
-  it("dispatches AgentPhone typing refresh through the API consumer", async () => {
+  it("does not dispatch typing refresh consumers for agent events", async () => {
     const fixture = await seedFixture();
-    await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: fixture.runId,
-        url: "http://localhost/api/internal/callbacks/agentphone",
-        payload: {
-          conversationId: "conv-agentphone-api-events",
-          channel: "imessage",
-        },
-      },
-      context.signal,
-    );
-
-    const typingCalls: string[] = [];
+    const typingConsumerCalls: string[] = [];
     server.use(
       http.post(
-        "https://api.agentphone.to/v1/conversations/:conversationId/typing",
-        ({ params }) => {
-          typingCalls.push(String(params.conversationId));
+        "http://api.test/api/internal/event-consumers/telegram-typing",
+        () => {
+          typingConsumerCalls.push("telegram-typing");
+          return HttpResponse.json({ scheduled: true });
+        },
+      ),
+      http.post(
+        "http://api.test/api/internal/event-consumers/agentphone-typing",
+        () => {
+          typingConsumerCalls.push("agentphone-typing");
           return HttpResponse.json({ scheduled: true });
         },
       ),
@@ -373,14 +365,17 @@ describe("POST /api/webhooks/agent/events", () => {
       webhookClient().send({
         body: {
           runId: fixture.runId,
-          events: [{ type: "tool_result", sequenceNumber: 1 }],
+          events: [
+            { type: "assistant", sequenceNumber: 1 },
+            { type: "item.completed", sequenceNumber: 2 },
+            { type: "tool_result", sequenceNumber: 3 },
+          ],
         },
         headers: authHeaders(fixture),
       }),
       [200],
     );
-    await clearAllDetached();
 
-    expect(typingCalls).toStrictEqual(["conv-agentphone-api-events"]);
+    expect(typingConsumerCalls).toStrictEqual([]);
   });
 });
