@@ -1,7 +1,7 @@
 //! Logging utilities for VM scripts.
 
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{self, IoSlice, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
@@ -54,9 +54,7 @@ impl SystemLogState {
             }
         };
 
-        let mut line = line.as_bytes().to_vec();
-        line.push(b'\n');
-        let result = file.write_all(&line).and_then(|()| file.flush());
+        let result = write_line_with_newline(file, line).and_then(|()| file.flush());
 
         if result.is_err() {
             self.file = None;
@@ -64,6 +62,41 @@ impl SystemLogState {
 
         result
     }
+}
+
+fn write_line_with_newline(file: &mut File, line: &str) -> io::Result<()> {
+    let mut line = line.as_bytes();
+    let mut newline = b"\n".as_slice();
+
+    while !line.is_empty() || !newline.is_empty() {
+        let bufs = [IoSlice::new(line), IoSlice::new(newline)];
+        let written = file.write_vectored(&bufs)?;
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "failed to write system log line",
+            ));
+        }
+
+        if written < line.len() {
+            line = line.get(written..).ok_or_else(invalid_write_count)?;
+        } else {
+            let newline_written = written - line.len();
+            line = &[];
+            newline = newline
+                .get(newline_written..)
+                .ok_or_else(invalid_write_count)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn invalid_write_count() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "vectored write advanced past system log line",
+    )
 }
 
 fn open_system_log_file(path: &Path) -> std::io::Result<File> {
