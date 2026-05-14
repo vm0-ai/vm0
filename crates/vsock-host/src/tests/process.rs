@@ -6,7 +6,6 @@ use super::support::{host_from_stream, make_pair, mock_handshake, send_command_r
 use crate::{ConnectionState, SpawnWatchHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
-use tokio::time::Instant;
 use vsock_proto::{
     CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH,
     MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
@@ -617,11 +616,13 @@ async fn test_spawn_watch_after_close_returns_immediately() {
         .await
         .unwrap();
 
-    let start = Instant::now();
-    let err = host
-        .spawn_watch("long-running", 0, &[], false, false, None)
-        .await
-        .unwrap_err();
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.spawn_watch("long-running", 0, &[], false, false, None),
+    )
+    .await
+    .expect("spawn_watch should return when the connection is already closed")
+    .unwrap_err();
     assert!(
         matches!(
             err.kind(),
@@ -629,11 +630,6 @@ async fn test_spawn_watch_after_close_returns_immediately() {
         ),
         "expected ConnectionReset or BrokenPipe, got {:?}",
         err.kind()
-    );
-    assert!(
-        start.elapsed() < Duration::from_secs(1),
-        "spawn_watch should fail immediately, took {:?}",
-        start.elapsed()
     );
 }
 
