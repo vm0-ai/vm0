@@ -83,7 +83,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("returns connectors array with correct shape", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -109,7 +109,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("filters connectors by keyword matching label", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -131,7 +131,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("filters connectors by keyword matching description", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -153,7 +153,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("returns empty array for non-matching keyword", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -168,7 +168,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("performs case-insensitive keyword search", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
 
@@ -191,7 +191,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("hides feature-flagged connectors without api-token for non-enabled users", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -250,7 +250,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("shows feature-flagged connector with api-token even when flag is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -288,7 +288,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("includes connectors without feature flags", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -315,7 +315,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("exposes openai as api-token only", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -334,7 +334,7 @@ describe("GET /api/zero/connectors/search", () => {
   });
 
   it("shows zapier with api-token even when ZapierConnector flag is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
