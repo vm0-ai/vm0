@@ -139,7 +139,7 @@ pub async fn run_benchmark(
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
-    // Shutdown factory first (releases COW pool, base loop handle), then runtime.
+    // Shutdown factory first (releases the COW pool), then runtime-owned pools.
     factory.shutdown().await;
     runtime.shutdown().await;
     if let Err(e) = mitm.stop().await {

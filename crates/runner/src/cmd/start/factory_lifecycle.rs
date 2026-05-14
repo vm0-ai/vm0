@@ -88,7 +88,7 @@ pub(super) async fn shutdown_factories(
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
         }
     }
-    // Clean up shared resources (netns pool, base loop cache).
+    // Clean up runtime-owned shared resources (netns and NBD device pools).
     let phase = teardown.map(|timer| timer.phase_start("runtime_shutdown"));
     runtime.shutdown().await;
     if let (Some(timer), Some(phase)) = (teardown, phase) {

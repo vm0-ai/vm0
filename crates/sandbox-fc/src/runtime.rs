@@ -27,7 +27,7 @@ pub struct FirecrackerRuntime {
 impl FirecrackerRuntime {
     /// Create a new runtime with shared resources.
     ///
-    /// This allocates a network namespace pool and an empty base loop cache.
+    /// This allocates network namespace and NBD device pools.
     /// All factories created via [`SandboxRuntime::create_factory`] share these
     /// resources.
     pub async fn new(config: sandbox::RuntimeConfig) -> Result<Self, SandboxError> {

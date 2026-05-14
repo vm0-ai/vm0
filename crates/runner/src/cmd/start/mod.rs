@@ -377,7 +377,7 @@ pub async fn run_start(
         }
     };
 
-    // Build sandbox runtime with shared resources (netns pool, base loop cache).
+    // Build sandbox runtime with shared resources (netns and NBD device pools).
     let runtime = runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
