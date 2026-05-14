@@ -5,7 +5,11 @@ import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-sessi
 import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { signAgentPhoneConnectParams } from "../../lib/zero/agentphone/connect-token";
-import { normalizePhoneHandle } from "../../lib/zero/agentphone/shared";
+import {
+  normalizeAgentPhoneHandle,
+  normalizePhoneHandle,
+  type AgentPhoneChannel,
+} from "../../lib/zero/agentphone/shared";
 
 /**
  * @why-db-direct Creates official shared AgentPhone user link rows for inbound
@@ -15,13 +19,15 @@ export async function insertTestAgentPhoneUserLink(params: {
   phoneHandle: string;
   vm0UserId: string;
   orgId: string;
+  channel?: AgentPhoneChannel;
 }): Promise<{ id: string }> {
   initServices();
 
+  const channel: AgentPhoneChannel = params.channel ?? "sms";
   const [row] = await globalThis.services.db
     .insert(agentphoneUserLinks)
     .values({
-      phoneHandle: normalizePhoneHandle(params.phoneHandle),
+      phoneHandle: normalizeAgentPhoneHandle(params.phoneHandle, channel),
       vm0UserId: params.vm0UserId,
       orgId: params.orgId,
     })

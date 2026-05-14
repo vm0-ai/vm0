@@ -264,6 +264,7 @@ describe("POST /api/agentphone/webhook", () => {
       phoneHandle: email,
       vm0UserId: user.userId,
       orgId: user.orgId,
+      channel: "imessage",
     });
     const typing = agentPhoneTypingIndicator();
     server.use(typing.handler);
