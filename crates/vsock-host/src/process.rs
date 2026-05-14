@@ -137,6 +137,11 @@ impl Drop for SpawnOperationRegistrationGuard {
 /// Dropping the handle removes the host-side operation registration. It does
 /// not send a guest-side cancellation request; this matches the previous
 /// host-side wait timeout/drop behavior.
+///
+/// If stdout streaming is enabled, call [`take_stdout_receiver`](Self::take_stdout_receiver)
+/// before [`wait`](Self::wait). Waiting consumes the handle and drops any
+/// unclaimed stdout receiver so streamed output is not buffered without a
+/// reader.
 pub struct SpawnWatchHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
@@ -172,6 +177,11 @@ impl SpawnWatchHandle {
                 "spawn_watch operation closed",
             )
         })?;
+
+        // `wait` consumes the handle, so an unclaimed stdout receiver can no
+        // longer be observed by the caller. Drop it before waiting to avoid
+        // buffering streamed stdout in an unbounded channel with no reader.
+        drop(self.stdout_rx.take());
 
         let result = rx
             .await

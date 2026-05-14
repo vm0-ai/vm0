@@ -1291,7 +1291,7 @@ fn streaming_monitor_clean_exit_returns_before_long_timeout() {
     let _ = handle.join();
 }
 
-/// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that pid.
+/// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that request.
 /// The host only registers the stdout stream after processing the spawn
 /// result, so a chunk sent first would be dropped by older host code.
 #[test]

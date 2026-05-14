@@ -359,6 +359,80 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
 }
 
 #[tokio::test]
+async fn test_wait_drops_unclaimed_stdout_receiver() {
+    let (host_stream, mut guest) = make_pair();
+    let send_chunk = Arc::new(Notify::new());
+    let send_exit = Arc::new(Notify::new());
+
+    {
+        let send_chunk = Arc::clone(&send_chunk);
+        let send_exit = Arc::clone(&send_exit);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let spawn_seq = msgs[0].seq;
+
+            let payload = vsock_proto::encode_spawn_watch_result(556);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+
+            send_chunk.notified().await;
+            let chunk_payload = vsock_proto::encode_stdout_chunk(556, b"unclaimed chunk");
+            let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &chunk_payload).unwrap();
+            guest.write_all(&chunk).await.unwrap();
+
+            send_exit.notified().await;
+            let exit_payload = vsock_proto::encode_process_exit(556, 0, b"", b"");
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
+            guest.write_all(&exit_msg).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+    }
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_watch("streaming", 0, &[], false, true, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 556);
+    assert_eq!(registration_counts(&host), (0, 1, 1));
+
+    let wait = handle.wait();
+    tokio::pin!(wait);
+    tokio::select! {
+        biased;
+        result = &mut wait => panic!("spawn wait completed before exit: {result:?}"),
+        _ = tokio::task::yield_now() => {}
+    }
+
+    send_chunk.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if registration_counts(&host) == (0, 1, 0) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("wait should drop unclaimed stdout receiver before buffering chunks");
+
+    send_exit.notify_one();
+    let event = tokio::time::timeout(Duration::from_secs(5), &mut wait)
+        .await
+        .expect("spawn wait should complete")
+        .unwrap();
+    assert_eq!(event.exit_code, 0);
+}
+
+#[tokio::test]
 async fn test_spawn_watch_cancel_cleans_up_registrations() {
     let (host_stream, mut guest) = make_pair();
     let request_seen = Arc::new(Notify::new());
