@@ -12,6 +12,7 @@ import {
   completeCliAuthStripe$,
   startCliAuthStripe,
 } from "../services/cli-auth-stripe.service";
+import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route";
 
 const connectorWriteAuth = {
@@ -62,7 +63,7 @@ function cliAuthStripeUnavailable(message: string, code: string) {
 }
 
 const startCliAuthStripeInner$ = command(
-  async ({ get }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const overrides = await get(
       userFeatureSwitchOverrides(auth.orgId, auth.userId),
@@ -80,6 +81,7 @@ const startCliAuthStripeInner$ = command(
     }
 
     const result = await startCliAuthStripe({
+      writeDb: set(writeDb$),
       orgId: auth.orgId,
       userId: auth.userId,
       signal,

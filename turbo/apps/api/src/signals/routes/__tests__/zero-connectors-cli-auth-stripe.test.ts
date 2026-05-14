@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -210,6 +211,14 @@ async function enableCliAuthStripe(userId: string, orgId: string) {
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
+    .delete(connectorCliAuthSessions)
+    .where(
+      and(
+        eq(connectorCliAuthSessions.userId, userId),
+        eq(connectorCliAuthSessions.orgId, orgId),
+      ),
+    );
+  await db
     .delete(connectors)
     .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
   await db
@@ -223,6 +232,27 @@ async function cleanupUser(userId: string, orgId: string) {
         eq(userFeatureSwitches.orgId, orgId),
       ),
     );
+}
+
+function cliAuthStripeSessions(userId: string, orgId: string) {
+  return store
+    .set(writeDb$)
+    .select()
+    .from(connectorCliAuthSessions)
+    .where(
+      and(
+        eq(connectorCliAuthSessions.userId, userId),
+        eq(connectorCliAuthSessions.orgId, orgId),
+        eq(connectorCliAuthSessions.connectorType, "stripe"),
+        eq(connectorCliAuthSessions.source, "stripe-cli"),
+      ),
+    );
+}
+
+async function onlyCliAuthStripeSession(userId: string, orgId: string) {
+  const rows = await cliAuthStripeSessions(userId, orgId);
+  expect(rows).toHaveLength(1);
+  return rows[0]!;
 }
 
 describe("CLI auth for Stripe connector routes", () => {
@@ -268,7 +298,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("starts CLI auth for Stripe and returns browser confirmation details", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox();
 
     const response = await accept(
@@ -289,6 +319,9 @@ describe("CLI auth for Stripe connector routes", () => {
       interval: 5,
     });
     expect(response.body.sessionToken).not.toContain("poll-token");
+    expect(response.body.sessionToken).not.toContain(
+      "sandbox_stripe_cli_auth_test",
+    );
     expect(calls.create[0]).toMatchObject({
       runtime: "node24",
       timeoutMs: 15 * 60 * 1000,
@@ -303,10 +336,24 @@ describe("CLI auth for Stripe connector routes", () => {
     );
     expect(startScript).not.toContain("releases/latest");
     expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      connectorType: "stripe",
+      source: "stripe-cli",
+      status: "awaiting_user_approval",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      approvalUrl:
+        "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
+      verificationCode: "enjoy-enough-outwit-win",
+      errorMessage: null,
+    });
+    expect(session.encryptedProviderState).toBeTruthy();
+    expect(session.encryptedProviderState).not.toContain("poll-token");
   });
 
   it("stops the sandbox when Stripe returns an unexpected completion URL", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({
       startNextStep:
         "stripe login --complete 'https://example.test/stripecli/auth/poll-token'",
@@ -325,10 +372,17 @@ describe("CLI auth for Stripe connector routes", () => {
       "Stripe CLI response included an unexpected completion URL",
     );
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      errorMessage: "Stripe CLI response included an unexpected completion URL",
+    });
   });
 
   it("stops the sandbox when Stripe returns an unexpected browser URL", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({
       startBrowserUrl:
         "https://example.test/stripecli/confirm_auth?t=start-token",
@@ -347,10 +401,17 @@ describe("CLI auth for Stripe connector routes", () => {
       "Stripe CLI response included an unexpected browser URL",
     );
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      errorMessage: "Stripe CLI response included an unexpected browser URL",
+    });
   });
 
   it("redacts secrets from failed Stripe CLI command output", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     mockStripeCliSandbox({
       startExitCode: 1,
       startStderr:
@@ -373,6 +434,12 @@ describe("CLI auth for Stripe connector routes", () => {
       "sk_test_should_not_leak",
     );
     expect(response.body.error.message).not.toContain("poll-token");
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("error");
+    expect(session.errorMessage).toContain("STRIPE_SECRET=[redacted]");
+    expect(session.errorMessage).not.toContain("sk_test_should_not_leak");
+    expect(session.errorMessage).not.toContain("poll-token");
   });
 
   it("completes CLI auth for Stripe, stores STRIPE_TOKEN, and stops the sandbox", async () => {
@@ -429,6 +496,11 @@ describe("CLI auth for Stripe connector routes", () => {
       type: "user",
     });
     expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_imported");
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("imported");
+    expect(session.completedAt).toBeInstanceOf(Date);
+    expect(session.errorMessage).toBeNull();
   });
 
   it("replaces existing Stripe OAuth local state while importing STRIPE_TOKEN", async () => {
@@ -544,6 +616,12 @@ describe("CLI auth for Stripe connector routes", () => {
     );
     expect(calls.stop).toHaveLength(1);
 
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      errorMessage: "Stripe CLI config did not contain a test mode API key",
+    });
+
     const secretRows = await store
       .set(writeDb$)
       .select({ id: secrets.id })
@@ -559,7 +637,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("returns pending and keeps the sandbox alive when browser auth is not approved yet", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ completeExitCode: 124 });
 
     const start = await accept(
@@ -583,6 +661,10 @@ describe("CLI auth for Stripe connector routes", () => {
     });
     expect(calls.read).toHaveLength(0);
     expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("awaiting_user_approval");
+    expect(session.completedAt).toBeNull();
   });
 
   it("rejects invalid completion tokens", async () => {
@@ -602,7 +684,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("rejects expired completion tokens and stops the sandbox", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox();
     const createdAt = new Date("2026-05-14T00:00:00.000Z");
     mockNow(createdAt);
@@ -627,6 +709,9 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
     expect(calls.run).toHaveLength(1);
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("expired");
   });
 
   it("rejects completion tokens from a different user", async () => {
