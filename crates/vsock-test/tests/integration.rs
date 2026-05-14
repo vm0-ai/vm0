@@ -883,20 +883,25 @@ async fn test_concurrent_exec_not_blocked() {
     // Launch a slow exec and wait until its guest-side shell has started
     // before submitting the fast exec.
     let slow = h.exec(&slow_command, 10000, &[], false);
+    let (fast_done_tx, fast_done_rx) = tokio::sync::oneshot::channel();
     let fast = async {
         wait_for_path(&ready_marker, Duration::from_secs(3)).await;
-        tokio::time::timeout(Duration::from_secs(3), h.exec("echo ok", 5000, &[], false))
-            .await
-            .expect("fast exec timed out — slow exec is blocking the event loop")
-            .expect("fast exec failed")
+        let result =
+            tokio::time::timeout(Duration::from_secs(3), h.exec("echo ok", 5000, &[], false))
+                .await
+                .expect("fast exec timed out — slow exec is blocking the event loop")
+                .expect("fast exec failed");
+        let _ = fast_done_tx.send(());
+        result
     };
 
     let (_, fast_result) = tokio::join!(
-        // We don't care about slow's result — just cancel it after fast completes
+        // We don't care about slow's result — cancel the future once the fast
+        // exec proves the guest event loop is not blocked.
         async {
             tokio::select! {
                 r = slow => Some(r),
-                _ = tokio::time::sleep(Duration::from_secs(5)) => None,
+                _ = fast_done_rx => None,
             }
         },
         fast

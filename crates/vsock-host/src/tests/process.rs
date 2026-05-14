@@ -839,6 +839,66 @@ async fn test_mismatched_active_process_exit_pid_closes_and_cleans_up() {
     );
 }
 
+async fn assert_bad_active_stdout_chunk_closes_and_cleans_up(payload: Vec<u8>) {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        let spawn_seq = msgs[0].seq;
+
+        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result =
+            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+        let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &payload).unwrap();
+        let mut combined = result;
+        combined.extend_from_slice(&chunk);
+        guest.write_all(&combined).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let mut handle = host
+        .spawn_watch("bad-stdout", 0, &[], false, true, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 123);
+    let mut stdout_rx = handle.take_stdout_receiver().unwrap();
+
+    let err = wait_spawn(handle).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    let received = tokio::time::timeout(Duration::from_secs(5), stdout_rx.recv())
+        .await
+        .expect("stdout receiver should close");
+    assert!(received.is_none(), "bad stdout chunk must not be delivered");
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "bad active stdout_chunk must close and clean registrations",
+    );
+}
+
+#[tokio::test]
+async fn test_malformed_active_stdout_chunk_closes_and_cleans_up() {
+    assert_bad_active_stdout_chunk_closes_and_cleans_up(b"\x00".to_vec()).await;
+}
+
+#[tokio::test]
+async fn test_mismatched_active_stdout_chunk_pid_closes_and_cleans_up() {
+    assert_bad_active_stdout_chunk_closes_and_cleans_up(vsock_proto::encode_stdout_chunk(
+        321,
+        b"wrong-pid",
+    ))
+    .await;
+}
+
 #[tokio::test]
 async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
     let (host_stream, mut guest) = make_pair();
