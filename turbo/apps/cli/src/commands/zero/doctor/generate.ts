@@ -12,7 +12,7 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-type BuiltInGenerationType = "image" | "video" | "voice";
+type BuiltInGenerationType = "image" | "presentation" | "video" | "voice";
 type DoctorGenerationType = ConnectorGenerationType | BuiltInGenerationType;
 
 interface BuiltInGenerationProvider {
@@ -30,6 +30,14 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       label: "Built-in",
       model: "gpt-image-2",
       command: "zero built-in generate image -h",
+      reason: "available without connector setup",
+    },
+  ],
+  presentation: [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate presentation -h",
       reason: "available without connector setup",
     },
   ],

@@ -1325,6 +1325,15 @@ export {
   type ZeroVideoIoGenerateResponse,
 } from "./zero-video-io-generate";
 export {
+  zeroPresentationIoGenerateContract,
+  zeroPresentationIoGenerateRequestSchema,
+  zeroPresentationIoGenerateResponseSchema,
+  zeroPresentationIoUsageSchema,
+  type ZeroPresentationIoGenerateContract,
+  type ZeroPresentationIoGenerateRequest,
+  type ZeroPresentationIoGenerateResponse,
+} from "./zero-presentation-io-generate";
+export {
   internalCallbacksAgentContract,
   type InternalCallbacksAgentContract,
 } from "./internal-callbacks-agent";
