@@ -680,7 +680,8 @@ async fn run_in_sandbox(
             Some(stderr)
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
-            // error file written by the guest-agent (e.g. checkpoint failures).
+            // error file written by the guest-agent (for checkpoint or
+            // no-history finalization failures).
             read_guest_error_file(sandbox, context.run_id).await
         }
     } else {
