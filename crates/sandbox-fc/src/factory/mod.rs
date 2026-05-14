@@ -38,6 +38,8 @@ pub(crate) struct FirecrackerFactory {
     device_pool: nbd_cow::pool::DevicePoolHandle,
     cleanup_group: FactoryCleanupGroup,
     resources: Option<StartedFactoryResources>,
+    /// Best-effort release authority for sandboxes destroyed after shutdown.
+    shutdown_netns_pool: Option<NetnsPoolHandle>,
 }
 
 struct StartedFactoryResources {
@@ -173,6 +175,7 @@ impl FirecrackerFactory {
                 cow_pool,
                 leak_cleaner,
             }),
+            shutdown_netns_pool: None,
         })
     }
 
@@ -319,14 +322,22 @@ impl SandboxFactory for FirecrackerFactory {
                 return;
             }
         };
-        let resources = match self.resources() {
-            Ok(resources) => resources,
-            Err(err) => {
-                warn!(id = %sandbox.id, error = %err, "destroy called after factory shutdown");
-                return;
-            }
+        let netns_pool = match self.resources.as_ref() {
+            Some(resources) => resources.netns_pool.clone(),
+            None => match self.shutdown_netns_pool.clone() {
+                Some(netns_pool) => {
+                    warn!(
+                        id = %sandbox.id,
+                        "destroy called after factory shutdown; running best-effort cleanup"
+                    );
+                    netns_pool
+                }
+                None => {
+                    warn!(id = %sandbox.id, "destroy called after factory shutdown");
+                    return;
+                }
+            },
         };
-        let netns_pool = resources.netns_pool.clone();
         let sandbox_id = sandbox.id.clone();
 
         // Move all cleanup-owned resources into a task before the first await.
@@ -355,6 +366,7 @@ impl SandboxFactory for FirecrackerFactory {
             leak_cleaner,
             ..
         } = resources;
+        self.shutdown_netns_pool = Some(netns_pool.clone());
 
         // Close the leak channel and let the drain task finish queued cleanup
         // before we unwrap the shared pool Arcs below.
@@ -469,7 +481,8 @@ mod tests {
         factory.shutdown().await;
 
         assert!(factory.resources.is_none());
-        assert_eq!(pool.strong_count_for_test(), 2);
+        assert!(factory.shutdown_netns_pool.is_some());
+        assert_eq!(pool.strong_count_for_test(), 3);
     }
 
     #[tokio::test]
@@ -484,7 +497,8 @@ mod tests {
         factory.shutdown().await;
 
         assert!(factory.resources.is_none());
-        assert_eq!(pool.strong_count_for_test(), 1);
+        assert!(factory.shutdown_netns_pool.is_some());
+        assert_eq!(pool.strong_count_for_test(), 2);
     }
 
     fn test_config(base_dir: PathBuf) -> FirecrackerConfig {
@@ -510,6 +524,7 @@ mod tests {
             ),
             cleanup_group: FactoryCleanupGroup::new(),
             resources: None,
+            shutdown_netns_pool: None,
         }
     }
 
@@ -544,6 +559,7 @@ mod tests {
                 cow_pool,
                 leak_cleaner,
             }),
+            shutdown_netns_pool: None,
         }
     }
 
