@@ -376,6 +376,8 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsContract,
   cronReconcileBillingEntitlementsResponseSchema,
+  cronSyncSkillsContract,
+  cronSyncSkillsResponseSchema,
   cronTelegramCleanupContract,
   cronTelegramCleanupResponseSchema,
   cronVoiceChatCleanupContract,
@@ -388,6 +390,7 @@ export {
   type CronDrainEmailOutboxContract,
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
+  type CronSyncSkillsContract,
   type CronTelegramCleanupContract,
   type CronVoiceChatCleanupContract,
 } from "./cron";

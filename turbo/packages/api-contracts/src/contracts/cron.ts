@@ -77,6 +77,16 @@ const cronDrainEmailOutboxResponseSchema = z.object({
   cleaned: z.number(),
 });
 
+const cronSyncSkillsResponseSchema = z.object({
+  success: z.literal(true),
+  commitSha: z.string(),
+  synced: z.number(),
+  skipped: z.number(),
+  failed: z.number(),
+  removed: z.number(),
+  total: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -171,6 +181,19 @@ export const cronDrainEmailOutboxContract = c.router({
   },
 });
 
+export const cronSyncSkillsContract = c.router({
+  sync: {
+    method: "GET",
+    path: "/api/cron/sync-skills",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSyncSkillsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Sync official skills from the skills repository",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",
@@ -194,6 +217,7 @@ export type CronAggregateInsightsContract =
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronVoiceChatCleanupContract = typeof cronVoiceChatCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
+export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 
 // Export schemas for reuse
 export {
@@ -205,5 +229,6 @@ export {
   cronTelegramCleanupResponseSchema,
   cronVoiceChatCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
+  cronSyncSkillsResponseSchema,
   cronAggregateInsightsResponseSchema,
 };
