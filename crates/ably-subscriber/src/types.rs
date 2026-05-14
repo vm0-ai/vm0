@@ -120,7 +120,9 @@ pub struct TimingConfig {
     pub close_timeout: Duration,
     /// Timeout wrapping each individual reconnect attempt.
     pub reconnect_timeout: Duration,
-    /// Default `max_idle_interval` when the server doesn't specify one.
+    /// Fallback `max_idle_interval` when the server omits connection details.
+    /// If connection details are present but `maxIdleInterval` is zero or
+    /// absent, no idle timeout is enforced, matching Ably realtime semantics.
     pub default_max_idle_interval: Duration,
     /// Default `connection_state_ttl` when the server doesn't specify one.
     pub default_connection_state_ttl: Duration,
