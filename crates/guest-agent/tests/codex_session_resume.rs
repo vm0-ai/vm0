@@ -359,6 +359,44 @@ async fn read_session_history_codex_marker_skips_symlinks() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn read_session_history_codex_marker_rejects_symlinked_sessions_root() {
+    use std::os::unix::fs::symlink;
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let real_sessions_dir = tmp.path().join("real-sessions");
+    let sessions_link = tmp.path().join("sessions-link");
+    std::fs::create_dir_all(&real_sessions_dir).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    std::fs::write(
+        real_sessions_dir.join(format!("{thread_id}.jsonl")),
+        b"outside-root-history\n",
+    )
+    .unwrap();
+    symlink(&real_sessions_dir, &sessions_link).unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_link.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must not follow a symlinked sessions root");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected symlinked sessions root to be ignored, got: {msg}"
+    );
+}
+
 #[tokio::test]
 async fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal

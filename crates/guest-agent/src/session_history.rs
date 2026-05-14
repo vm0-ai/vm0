@@ -72,6 +72,13 @@ fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
 /// "session file not found" rather than guessing at an alternative,
 /// because picking the wrong session would corrupt resume state.
 fn find_codex_session_file(sessions_dir: &Path, thread_id: &str) -> Option<PathBuf> {
+    if !std::fs::symlink_metadata(sessions_dir)
+        .ok()
+        .is_some_and(|metadata| metadata.file_type().is_dir())
+    {
+        return None;
+    }
+
     let id_norm = thread_id.replace('-', "");
     find_codex_session_file_recursive(sessions_dir, &id_norm)
 }
