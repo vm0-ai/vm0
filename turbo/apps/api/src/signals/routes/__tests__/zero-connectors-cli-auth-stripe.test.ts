@@ -319,7 +319,8 @@ describe("CLI auth for Stripe connector routes", () => {
     await setupUser();
     mockStripeCliSandbox({
       startExitCode: 1,
-      startStderr: "failed STRIPE_SECRET=sk_test_should_not_leak",
+      startStderr:
+        "failed STRIPE_SECRET=sk_test_should_not_leak https://dashboard.stripe.com/stripecli/auth/poll-token",
     });
 
     const response = await accept(
@@ -331,9 +332,13 @@ describe("CLI auth for Stripe connector routes", () => {
     );
 
     expect(response.body.error.message).toContain("STRIPE_SECRET=[redacted]");
+    expect(response.body.error.message).toContain(
+      "https://dashboard.stripe.com/stripecli/[redacted]",
+    );
     expect(response.body.error.message).not.toContain(
       "sk_test_should_not_leak",
     );
+    expect(response.body.error.message).not.toContain("poll-token");
   });
 
   it("completes CLI auth for Stripe, stores STRIPE_TOKEN, and stops the sandbox", async () => {

@@ -193,11 +193,18 @@ function commandText(result: SandboxCommandResult): string {
   return [result.stdout.text, result.stderr.text].filter(Boolean).join("\n");
 }
 
+function redactCliAuthStripeCommandText(value: string): string {
+  return redactSandboxMessage(value).replace(
+    /https:\/\/dashboard\.stripe\.com\/stripecli\/(?:auth|confirm_auth)[^\s'"]*/g,
+    "https://dashboard.stripe.com/stripecli/[redacted]",
+  );
+}
+
 function commandFailedMessage(
   phase: string,
   result: SandboxCommandResult,
 ): string {
-  const output = redactSandboxMessage(commandText(result).trim());
+  const output = redactCliAuthStripeCommandText(commandText(result).trim());
   const suffix = output ? `: ${output.slice(0, 500)}` : "";
   return `${phase} exited with code ${String(result.exitCode)}${suffix}`;
 }
