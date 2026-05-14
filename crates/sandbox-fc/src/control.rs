@@ -936,6 +936,11 @@ mod tests {
             matches!(coordinator.state(), CoordinatorState::Dirty { .. }),
             "cancelled in-flight control exec should mark the operation gate dirty"
         );
+        assert_eq!(
+            coordinator.active_operation_count(),
+            0,
+            "cancelled in-flight control exec should not leave an active operation"
+        );
 
         guest_task.abort();
         let _ = guest_task.await;

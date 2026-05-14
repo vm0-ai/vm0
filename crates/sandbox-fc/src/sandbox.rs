@@ -2193,6 +2193,11 @@ mod tests {
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
+        assert_eq!(
+            coordinator.active_operation_count(),
+            0,
+            "dropped spawn exit future should not leave an active operation"
+        );
     }
 
     /// Exercise the `monitor_process` crash detection flow through real child
