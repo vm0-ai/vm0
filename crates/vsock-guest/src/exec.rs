@@ -681,9 +681,16 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) -> std::io::Result<bool> {
+    fn kill_pidfd_and_wait(pidfd: &std::os::fd::OwnedFd) -> std::io::Result<()> {
         signal_pidfd(pidfd, libc::SIGKILL)?;
-        wait_for_pidfd_exit(pidfd, Duration::from_secs(1))
+        if wait_for_pidfd_exit(pidfd, Duration::from_secs(1))? {
+            return Ok(());
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timed out waiting for pidfd process to exit after SIGKILL",
+        ))
     }
 
     #[test]
