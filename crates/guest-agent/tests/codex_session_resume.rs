@@ -312,6 +312,53 @@ async fn read_session_history_codex_marker_with_no_match_fails_fast() {
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn read_session_history_codex_marker_skips_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    setup_env_once();
+    let _guard = TEST_MUTEX.lock().unwrap();
+    reset_session_files();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let sessions_dir = tmp.path().join("sessions");
+    let outside_dir = tmp.path().join("outside");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::create_dir_all(&outside_dir).unwrap();
+
+    let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let outside_history = outside_dir.join(format!("{thread_id}.jsonl"));
+    std::fs::write(&outside_history, b"outside-history\n").unwrap();
+
+    symlink(&outside_dir, sessions_dir.join("linked-outside")).unwrap();
+    symlink(
+        &outside_history,
+        sessions_dir.join(format!("{thread_id}.jsonl")),
+    )
+    .unwrap();
+    symlink(
+        "/definitely/missing/codex-history.jsonl",
+        sessions_dir.join("dangling.jsonl"),
+    )
+    .unwrap();
+
+    let path_file = tmp.path().join("path.txt");
+    let marker = format!(
+        "CODEX_SEARCH:{}:{thread_id}",
+        sessions_dir.to_string_lossy()
+    );
+    std::fs::write(&path_file, marker.as_bytes()).unwrap();
+
+    let err = guest_agent::session_history::read_session_history(path_file.to_str().unwrap())
+        .expect_err("codex lookup must not follow symlinked history paths");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Codex session file not found"),
+        "expected symlinked candidates to be ignored, got: {msg}"
+    );
+}
+
 #[tokio::test]
 async fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal

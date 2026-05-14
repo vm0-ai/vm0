@@ -72,44 +72,46 @@ fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
 /// "session file not found" rather than guessing at an alternative,
 /// because picking the wrong session would corrupt resume state.
 fn find_codex_session_file(sessions_dir: &Path, thread_id: &str) -> Option<PathBuf> {
-    let mut all_jsonl = Vec::new();
-    walk_recursive(sessions_dir, &mut all_jsonl, |p| {
-        let s = p.to_string_lossy();
-        s.ends_with(".jsonl") || s.ends_with(".jsonl.zst")
-    });
-
     let id_norm = thread_id.replace('-', "");
-    for path in all_jsonl {
-        if let Some(name) = path.file_name() {
-            let name_norm = name.to_string_lossy().replace('-', "");
-            if name_norm.contains(&id_norm) {
-                return Some(path);
+    find_codex_session_file_recursive(sessions_dir, &id_norm)
+}
+
+/// DFS walk of `dir`, returning the first matching real file. Symlinks
+/// are skipped because the Codex sessions tree is user-controlled
+/// filesystem state and checkpoint lookup must not follow it outside the
+/// expected history directory.
+fn find_codex_session_file_recursive(dir: &Path, id_norm: &str) -> Option<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return None;
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let path = entry.path();
+        if file_type.is_dir() {
+            if let Some(found) = find_codex_session_file_recursive(&path, id_norm) {
+                return Some(found);
             }
+        } else if file_type.is_file() && codex_session_filename_matches(&path, id_norm) {
+            return Some(path);
         }
     }
 
     None
 }
 
-/// DFS walk of `dir`, pushing matching paths into `sink`. Silently skips
-/// directories that fail to open — codex's date-based layout means most
-/// `YYYY/MM/DD/` subtrees won't exist on a given run, and an io error here
-/// would mask the real lookup failure (no matching file) downstream.
-fn walk_recursive<F>(dir: &Path, sink: &mut Vec<PathBuf>, predicate: F)
-where
-    F: Fn(&Path) -> bool + Copy,
-{
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+fn codex_session_filename_matches(path: &Path, id_norm: &str) -> bool {
+    let Some(name) = path.file_name() else {
+        return false;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            walk_recursive(&path, sink, predicate);
-        } else if predicate(&path) {
-            sink.push(path);
-        }
+    let name = name.to_string_lossy();
+    if !(name.ends_with(".jsonl") || name.ends_with(".jsonl.zst")) {
+        return false;
     }
+
+    let name_norm = name.replace('-', "");
+    name_norm.contains(id_norm)
 }
 
 /// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.
@@ -139,10 +141,11 @@ fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
 // (both Claude literal-path and codex marker → recursive scan + zstd
 // decode) lives in `crates/guest-agent/tests/codex_session_resume.rs`,
 // driven via the `send_event` → checkpoint flow. The internal helpers
-// (`find_codex_session_file`, `walk_recursive`, `read_history_bytes`,
-// `decode_marker`) are exercised transitively by those integration
-// tests, in line with the project's "integration tests only" policy
-// (`docs/testing.md`, `CLAUDE.md`).
+// (`find_codex_session_file`, `find_codex_session_file_recursive`,
+// `codex_session_filename_matches`, `read_history_bytes`, `decode_marker`)
+// are exercised transitively by those integration tests, in line with
+// the project's "integration tests only" policy (`docs/testing.md`,
+// `CLAUDE.md`).
 //
 // `decode_marker` is the one piece of non-trivial parsing logic; if it
 // regresses, the integration tests will catch it because the codex flow
