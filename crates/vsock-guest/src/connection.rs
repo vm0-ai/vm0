@@ -5,16 +5,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use vsock_proto::{self, MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_READY, MSG_SPAWN_WATCH};
+use vsock_proto::{
+    self, MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SPAWN_WATCH, MSG_WRITE_FILE,
+};
 
 use crate::command::{
     CommandRegistry, CommandWorkerRequest, cancel_command_operation, send_command_error,
     start_command_operation,
 };
 use crate::error::to_io_error;
-use crate::handlers::{MessageOutcome, handle_message};
+use crate::handlers::{
+    MessageOutcome, decode_write_file_message, handle_decoded_write_file_message, handle_message,
+};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
+use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
@@ -38,6 +44,97 @@ impl Drop for ConnectionCancelGuard {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);
     }
+}
+
+fn acquire_operation_guard(
+    operation_state: &OperationState,
+    seq: u32,
+    writer: &GuestWriter,
+) -> io::Result<Option<OperationGuard>> {
+    match operation_state.acquire() {
+        Ok(guard) => Ok(Some(guard)),
+        Err(AcquireOperationError::Quiescing) => {
+            send_command_error(seq, "guest operations are quiescing", writer)?;
+            Ok(None)
+        }
+    }
+}
+
+fn reject_operation_if_quiescing(
+    operation_state: &OperationState,
+    seq: u32,
+    writer: &GuestWriter,
+) -> io::Result<bool> {
+    if operation_state.is_quiescing() {
+        send_command_error(seq, "guest operations are quiescing", writer)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn send_empty_response(msg_type: u8, seq: u32, writer: &GuestWriter) -> io::Result<()> {
+    let response = vsock_proto::encode(msg_type, seq, &[]).map_err(to_io_error)?;
+    writer.write_frame(&response)
+}
+
+fn validate_empty_control_payload(
+    seq: u32,
+    payload_name: &'static str,
+    payload: &[u8],
+    writer: &GuestWriter,
+) -> io::Result<bool> {
+    match vsock_proto::decode_empty_payload(payload_name, payload) {
+        Ok(()) => Ok(true),
+        Err(error) => {
+            send_command_error(seq, &error.to_string(), writer)?;
+            Ok(false)
+        }
+    }
+}
+
+fn handle_quiesce_operations(
+    seq: u32,
+    payload: &[u8],
+    operation_state: &OperationState,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    if !validate_empty_control_payload(
+        seq,
+        "quiesce_operations payload must be empty",
+        payload,
+        writer,
+    )? {
+        return Ok(());
+    }
+
+    match operation_state.enter_quiescing() {
+        QuiesceResult::Quiesced => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
+        QuiesceResult::Busy { pending } => send_command_error(
+            seq,
+            &format!("guest operations still pending: {pending}"),
+            writer,
+        ),
+    }
+}
+
+fn handle_resume_operations(
+    seq: u32,
+    payload: &[u8],
+    operation_state: &OperationState,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    if !validate_empty_control_payload(
+        seq,
+        "resume_operations payload must be empty",
+        payload,
+        writer,
+    )? {
+        return Ok(());
+    }
+
+    operation_state.resume();
+    send_empty_response(MSG_OPERATIONS_RESUMED, seq, writer)
 }
 
 /// Connect to vsock (Linux only - this binary runs inside Firecracker VM)
@@ -107,6 +204,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
     let command_registry = CommandRegistry::default();
+    let operation_state = OperationState::default();
 
     let mut decoder = vsock_proto::Decoder::new();
 
@@ -139,10 +237,19 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     send_command_error(0, "command start requires non-zero sequence", &writer)?;
                     continue;
                 }
+                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
+                    continue;
+                }
                 let decoded =
                     vsock_proto::decode_command_start(&msg.payload).map_err(to_io_error)?;
+                let Some(operation_guard) =
+                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
+                else {
+                    continue;
+                };
                 start_command_operation(
                     CommandWorkerRequest::from_decoded(msg.seq, decoded),
+                    operation_guard,
                     writer.clone(),
                     connection_cancel.clone(),
                     command_registry.clone(),
@@ -155,7 +262,15 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 vsock_proto::decode_command_cancel(&msg.payload).map_err(to_io_error)?;
                 cancel_command_operation(&command_registry, msg.seq);
             } else if msg.msg_type == MSG_SPAWN_WATCH {
+                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
+                    continue;
+                }
                 let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
+                let Some(operation_guard) =
+                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
+                else {
+                    continue;
+                };
                 // handle_spawn_watch writes the response itself (before
                 // spawning the streaming thread) to prevent a race where
                 // stdout chunks could arrive at the host before the result.
@@ -169,9 +284,29 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         stdout_log_path: d.stdout_log_path,
                     },
                     msg.seq,
+                    operation_guard,
                     writer.clone(),
                     connection_cancel.clone(),
                 )?;
+            } else if msg.msg_type == MSG_WRITE_FILE {
+                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
+                    continue;
+                }
+                let decoded = decode_write_file_message(&msg)?;
+                let Some(operation_guard) =
+                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
+                else {
+                    continue;
+                };
+                let response = handle_decoded_write_file_message(msg.seq, decoded)?;
+                let result = writer.write_frame_after_lock(&response, || {
+                    operation_guard.release();
+                });
+                result?;
+            } else if msg.msg_type == MSG_QUIESCE_OPERATIONS {
+                handle_quiesce_operations(msg.seq, &msg.payload, &operation_state, &writer)?;
+            } else if msg.msg_type == MSG_RESUME_OPERATIONS {
+                handle_resume_operations(msg.seq, &msg.payload, &operation_state, &writer)?;
             } else {
                 match handle_message(&msg)? {
                     MessageOutcome::Response(response) => {

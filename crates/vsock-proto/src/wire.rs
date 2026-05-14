@@ -23,6 +23,10 @@ pub const MSG_COMMAND_START: u8 = 0x0B;
 pub const MSG_COMMAND_OUTPUT: u8 = 0x0C;
 pub const MSG_COMMAND_RESULT: u8 = 0x0D;
 pub const MSG_COMMAND_CANCEL: u8 = 0x0E;
+pub const MSG_QUIESCE_OPERATIONS: u8 = 0x0F;
+pub const MSG_OPERATIONS_QUIESCED: u8 = 0x10;
+pub const MSG_RESUME_OPERATIONS: u8 = 0x11;
+pub const MSG_OPERATIONS_RESUMED: u8 = 0x12;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.

@@ -14,6 +14,7 @@ pub mod heartbeat;
 pub mod http;
 pub mod masker;
 pub mod metrics;
+mod nofollow_fs;
 pub mod paths;
 pub mod session_history;
 pub mod telemetry;

@@ -11,6 +11,10 @@ import { createHash } from "node:crypto";
  * apps/web while the rest of Zero's bearer-token web API still authenticates
  * through requireAuth/resolveOrg in the Next.js runtime.
  *
+ * Intentional exception: built-in generation routes are implemented in
+ * apps/api, but CLI callers use VM0_API_URL and therefore need thin web
+ * proxies in local and production environments.
+ *
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/checkpoints/[id]/route.ts",
@@ -188,6 +192,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
   "app/api/zero/image-io/generate/route.ts",
+  "app/api/zero/presentation-io/generate/route.ts",
   "app/api/zero/video-io/generate/route.ts",
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
@@ -266,7 +271,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "5e8082ddcf4bbe6cf7e654efacb0a57a135c24645d3403cbe7c2c22157927e17";
+  "07bb5f3af42fb0fbb0b1bb5b460c19869103a6969395d9f16ed379f9233843f8";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

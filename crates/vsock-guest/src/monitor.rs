@@ -11,6 +11,7 @@ use crate::error::to_io_error;
 use crate::exec::{EnvScriptGuard, format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
+use crate::quiesce::OperationGuard;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, await_drain_deadline, finalize_buffered_result, finalize_wait_outcome,
@@ -33,6 +34,7 @@ struct StreamingMonitorRequest {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    operation_guard: OperationGuard,
 }
 
 struct BufferedMonitorRequest {
@@ -43,6 +45,7 @@ struct BufferedMonitorRequest {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
+    operation_guard: OperationGuard,
 }
 
 struct StreamingSetupFailure {
@@ -55,6 +58,7 @@ struct StreamingSetupFailure {
     stdout_handle: Option<JoinHandle<()>>,
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
+    operation_guard: OperationGuard,
     error: String,
 }
 
@@ -81,15 +85,24 @@ pub(crate) struct SpawnWatchRequest<'a> {
 pub(crate) fn handle_spawn_watch(
     request: SpawnWatchRequest<'_>,
     seq: u32,
+    operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
 ) -> io::Result<()> {
-    handle_spawn_watch_with_spawner(request, seq, writer, connection_cancel, SystemThreadSpawner)
+    handle_spawn_watch_with_spawner(
+        request,
+        seq,
+        operation_guard,
+        writer,
+        connection_cancel,
+        SystemThreadSpawner,
+    )
 }
 
 fn handle_spawn_watch_with_spawner<S>(
     request: SpawnWatchRequest<'_>,
     seq: u32,
+    operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     spawner: S,
@@ -117,7 +130,10 @@ where
                 format_env_diagnostics(request.command, request.env)
             ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
-            writer.write_frame(&response)?;
+            let result = writer.write_frame_after_lock(&response, || {
+                operation_guard.release();
+            });
+            result?;
             return Ok(());
         }
     };
@@ -143,11 +159,13 @@ where
         Ok(r) => r,
         Err(e) => {
             kill_and_reap_child(child);
+            operation_guard.release();
             return Err(to_io_error(e));
         }
     };
     if let Err(e) = writer.write_frame(&response) {
         kill_and_reap_child(child);
+        operation_guard.release();
         return Err(e);
     }
 
@@ -166,6 +184,7 @@ where
                 env_script,
                 writer,
                 connection_cancel,
+                operation_guard: operation_guard.clone(),
             },
             spawner,
         ) {
@@ -186,6 +205,7 @@ where
                 env_script,
                 writer,
                 connection_cancel,
+                operation_guard: operation_guard.clone(),
             },
             spawner,
         ) {
@@ -229,10 +249,12 @@ where
         env_script,
         writer,
         connection_cancel,
+        operation_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let monitor_spawner = spawner.clone();
     let exit_writer = writer.clone();
+    let monitor_operation_guard = operation_guard.clone();
     let result = spawner.spawn_unit(
         THREAD_STREAM_MONITOR,
         Box::new(move || {
@@ -254,19 +276,21 @@ where
                     env_script,
                     writer,
                     connection_cancel,
+                    operation_guard: monitor_operation_guard,
                 },
                 monitor_spawner,
             );
         }),
     );
     if let Err(e) = &result {
-        send_process_exit(
+        send_process_exit_after_lock(
             seq,
             pid,
             1,
             &[],
             format!("Failed to spawn streaming monitor thread: {e}").as_bytes(),
             &exit_writer,
+            || operation_guard.release(),
         );
     }
     result.map(|_| ())
@@ -286,6 +310,7 @@ where
         env_script,
         writer,
         connection_cancel,
+        operation_guard,
     } = request;
     let _env_script = env_script;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -321,6 +346,7 @@ where
                     stdout_handle: None,
                     env_script: _env_script,
                     writer,
+                    operation_guard: operation_guard.clone(),
                     error: format!("Failed to spawn stderr drain thread: {e}"),
                 });
                 return;
@@ -402,6 +428,7 @@ where
                     stdout_handle: None,
                     env_script: _env_script,
                     writer,
+                    operation_guard: operation_guard.clone(),
                     error: format!("Failed to spawn stdout drain thread: {e}"),
                 });
                 return;
@@ -456,7 +483,9 @@ where
         ),
     );
 
-    send_process_exit(seq, pid, exit_code, &[], &stderr, &writer);
+    send_process_exit_after_lock(seq, pid, exit_code, &[], &stderr, &writer, || {
+        operation_guard.release();
+    });
 }
 
 fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
@@ -470,6 +499,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         stdout_handle,
         env_script,
         writer,
+        operation_guard,
         error,
     } = failure;
     let _env_script = env_script;
@@ -482,7 +512,9 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
     if let Some(handle) = stdout_handle {
         let _ = handle.join();
     }
-    send_process_exit(seq, pid, 1, &[], error.as_bytes(), &writer);
+    send_process_exit_after_lock(seq, pid, 1, &[], error.as_bytes(), &writer, || {
+        operation_guard.release();
+    });
 }
 
 /// Buffered monitor: waits for process exit while concurrently draining
@@ -499,10 +531,12 @@ where
         env_script,
         writer,
         connection_cancel,
+        operation_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let exit_writer = writer.clone();
     let monitor_spawner = spawner.clone();
+    let monitor_operation_guard = operation_guard.clone();
     let result = spawner.spawn_unit(
         THREAD_BUFFERED_MONITOR,
         Box::new(move || {
@@ -533,32 +567,37 @@ where
                 ),
             );
 
-            send_process_exit(seq, pid, exit_code, &stdout, &stderr, &writer);
+            send_process_exit_after_lock(seq, pid, exit_code, &stdout, &stderr, &writer, || {
+                monitor_operation_guard.release();
+            });
             drop(env_script);
         }),
     );
     if let Err(e) = &result {
-        send_process_exit(
+        send_process_exit_after_lock(
             seq,
             pid,
             1,
             &[],
             format!("Failed to spawn buffered monitor thread: {e}").as_bytes(),
             &exit_writer,
+            || operation_guard.release(),
         );
     }
     result.map(|_| ())
 }
 
-/// Send a process_exit notification over vsock (best-effort).
-fn send_process_exit(
+fn send_process_exit_after_lock<F>(
     seq: u32,
     pid: u32,
     exit_code: i32,
     stdout: &[u8],
     stderr: &[u8],
     writer: &GuestWriter,
-) {
+    after_lock: F,
+) where
+    F: FnOnce(),
+{
     let payload = vsock_proto::encode_process_exit(pid, exit_code, stdout, stderr);
     let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &payload) {
         Ok(msg) => msg,
@@ -567,7 +606,7 @@ fn send_process_exit(
             return;
         }
     };
-    if let Err(e) = writer.write_frame(&exit_msg) {
+    if let Err(e) = writer.write_frame_after_lock(&exit_msg, after_lock) {
         log("ERROR", &format!("Failed to send process_exit: {}", e));
     }
 }
@@ -602,6 +641,10 @@ mod tests {
         messages.remove(0)
     }
 
+    fn operation_guard() -> OperationGuard {
+        crate::quiesce::OperationState::default().acquire().unwrap()
+    }
+
     #[test]
     fn spawn_watch_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
         let (guest, mut host) = UnixStream::pair().unwrap();
@@ -619,6 +662,7 @@ mod tests {
                 stdout_log_path: None,
             },
             7,
+            operation_guard(),
             writer,
             cancel,
             FailingThreadSpawner::fail_once(THREAD_STREAM_MONITOR),
@@ -663,6 +707,7 @@ mod tests {
                 stdout_log_path: None,
             },
             8,
+            operation_guard(),
             writer,
             cancel,
             FailingThreadSpawner::fail_once(THREAD_STREAM_STDOUT),
@@ -707,6 +752,7 @@ mod tests {
                 stdout_log_path: None,
             },
             10,
+            operation_guard(),
             writer,
             cancel,
             FailingThreadSpawner::fail_once(THREAD_STREAM_STDERR),
@@ -751,6 +797,7 @@ mod tests {
                 stdout_log_path: None,
             },
             9,
+            operation_guard(),
             writer,
             cancel,
             FailingThreadSpawner::fail_once(THREAD_BUFFERED_MONITOR),
@@ -795,6 +842,7 @@ mod tests {
                 stdout_log_path: None,
             },
             11,
+            operation_guard(),
             writer,
             cancel,
             FailingThreadSpawner::fail_once(THREAD_DRAIN_STDOUT),

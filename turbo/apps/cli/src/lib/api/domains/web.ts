@@ -264,6 +264,40 @@ interface GenerateWebVideoResult {
   requestId?: string;
 }
 
+interface GenerateWebPresentationOptions {
+  prompt: string;
+  style?: string;
+  slideCount?: number;
+  imageCount?: number;
+  theme?: string;
+  audience?: string;
+  title?: string;
+}
+
+interface GenerateWebPresentationResult {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  creditsCharged: number;
+  model: string;
+  style: string;
+  theme: string;
+  slideCount: number;
+  imageCount: number;
+  imageUrls: string[];
+  imageCreditsCharged: number;
+  textCreditsCharged: number;
+  title: string;
+  responseId?: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+}
+
 interface PrepareUploadResponse {
   id: string;
   filename: string;
@@ -560,4 +594,59 @@ export async function generateWebVideo(
   }
 
   return (await response.json()) as GenerateWebVideoResult;
+}
+
+/**
+ * Generate a billed HTML presentation from a prompt and receive the permanent
+ * /f URL. Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT
+ * / Clerk session.
+ */
+export async function generateWebPresentation(
+  options: GenerateWebPresentationOptions,
+): Promise<GenerateWebPresentationResult> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(
+    new URL("/api/zero/presentation-io/generate", baseUrl),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: options.prompt,
+        ...(options.style ? { style: options.style } : {}),
+        ...(options.slideCount !== undefined
+          ? { slideCount: options.slideCount }
+          : {}),
+        ...(options.imageCount !== undefined
+          ? { imageCount: options.imageCount }
+          : {}),
+        ...(options.theme ? { theme: options.theme } : {}),
+        ...(options.audience ? { audience: options.audience } : {}),
+        ...(options.title ? { title: options.title } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate presentation",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+
+  return (await response.json()) as GenerateWebPresentationResult;
 }

@@ -3,7 +3,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use vsock_proto::{CommandTermination, Decoder, MSG_COMMAND_START, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
+use vsock_proto::{
+    CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK,
+};
 
 use super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
 use crate::VsockHost;
@@ -60,6 +64,170 @@ async fn test_shutdown() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     assert!(host.shutdown(Duration::from_secs(2)).await);
+}
+
+#[tokio::test]
+async fn quiesce_operations_sends_request_and_accepts_empty_ack() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
+        assert!(msgs[0].payload.is_empty());
+
+        let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.quiesce_operations(Duration::from_secs(2))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn resume_operations_sends_request_and_accepts_empty_ack() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_RESUME_OPERATIONS);
+        assert!(msgs[0].payload.is_empty());
+
+        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.resume_operations(Duration::from_secs(2))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn quiesce_operations_surfaces_guest_error() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
+
+        let payload = vsock_proto::encode_error("guest operations still pending: 1");
+        let resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host
+        .quiesce_operations(Duration::from_secs(2))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest operations still pending: 1");
+}
+
+#[tokio::test]
+async fn quiesce_operations_rejects_wrong_ack_type() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host
+        .quiesce_operations(Duration::from_secs(2))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("unexpected lifecycle response type")
+    );
+}
+
+#[tokio::test]
+async fn quiesce_operations_rejects_non_empty_ack_payload() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, b"x").unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host
+        .quiesce_operations(Duration::from_secs(2))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("operations_quiesced payload must be empty")
+    );
+}
+
+#[tokio::test]
+async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
+    let (host_stream, mut guest) = make_pair();
+    let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
+
+        receive_late_ack.await.unwrap();
+        let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&late).await.unwrap();
+
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_RESUME_OPERATIONS);
+        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+    send_late_ack.send(()).unwrap();
+    host.resume_operations(Duration::from_secs(2))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

@@ -17,6 +17,7 @@ use crate::error::to_io_error;
 use crate::exec::{format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
+use crate::quiesce::OperationGuard;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
@@ -120,6 +121,7 @@ struct WaitFailureContext<'a> {
     stderr_policy: CommandOutputPolicy,
     registration: &'a CommandRegistration,
     writer: &'a GuestWriter,
+    operation_guard: &'a OperationGuard,
 }
 
 pub(crate) struct CommandWorkerRequest {
@@ -186,12 +188,14 @@ struct CommandResultFrame<'a> {
 
 pub(crate) fn start_command_operation(
     request: CommandWorkerRequest,
+    operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     registry: CommandRegistry,
 ) -> io::Result<()> {
     start_command_operation_with_spawner(
         request,
+        operation_guard,
         writer,
         connection_cancel,
         registry,
@@ -201,6 +205,7 @@ pub(crate) fn start_command_operation(
 
 fn start_command_operation_with_spawner<S>(
     request: CommandWorkerRequest,
+    operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     registry: CommandRegistry,
@@ -221,6 +226,7 @@ where
     let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
     let worker_spawner = spawner.clone();
+    let worker_operation_guard = operation_guard.clone();
     let result = spawner.spawn_unit(
         THREAD_COMMAND_WORKER,
         Box::new(move || {
@@ -230,6 +236,7 @@ where
                 connection_cancel,
                 command_cancel,
                 registration,
+                worker_operation_guard,
                 worker_spawner,
             );
         }),
@@ -243,7 +250,7 @@ where
                 "ERROR",
                 &format!("command: worker spawn failed seq={seq}: {e}"),
             );
-            send_command_result(
+            send_command_result_after_lock(
                 CommandResultFrame {
                     seq,
                     termination: CommandTermination::StartFailed,
@@ -253,6 +260,7 @@ where
                     diagnostic: &diagnostic,
                 },
                 &writer,
+                || operation_guard.release(),
             )
         }
     }
@@ -279,6 +287,7 @@ fn run_command_worker<S>(
     connection_cancel: Arc<AtomicBool>,
     command_cancel: Arc<AtomicBool>,
     registration: CommandRegistration,
+    operation_guard: OperationGuard,
     spawner: S,
 ) where
     S: ThreadSpawner,
@@ -296,6 +305,7 @@ fn run_command_worker<S>(
                 diagnostic: &diagnostic,
             },
             &writer,
+            &operation_guard,
         );
         return;
     }
@@ -319,6 +329,7 @@ fn run_command_worker<S>(
                     diagnostic: &diagnostic,
                 },
                 &writer,
+                &operation_guard,
             );
             return;
         }
@@ -336,6 +347,7 @@ fn run_command_worker<S>(
         stderr_policy: request.stderr,
         registration: &registration,
         writer: &writer,
+        operation_guard: &operation_guard,
     };
 
     let stdout = match child.stdout.take() {
@@ -444,6 +456,7 @@ fn run_command_worker<S>(
                     diagnostic: &format!("failed to spawn stderr drain thread: {e}"),
                 },
                 &writer,
+                &operation_guard,
             );
             return;
         }
@@ -518,6 +531,7 @@ fn run_command_worker<S>(
             diagnostic: &diagnostic,
         },
         &writer,
+        &operation_guard,
     );
 }
 
@@ -753,6 +767,7 @@ fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailur
             diagnostic,
         },
         failure.writer,
+        failure.operation_guard,
     );
 }
 
@@ -760,15 +775,23 @@ fn send_final_and_complete(
     registration: &CommandRegistration,
     frame: CommandResultFrame<'_>,
     writer: &GuestWriter,
+    operation_guard: &OperationGuard,
 ) {
-    let result = send_command_result(frame, writer);
+    let result = send_command_result_after_lock(frame, writer, || operation_guard.release());
     registration.complete();
     if let Err(e) = result {
         log("ERROR", &format!("Failed to send command_result: {e}"));
     }
 }
 
-fn send_command_result(frame: CommandResultFrame<'_>, writer: &GuestWriter) -> io::Result<()> {
+fn send_command_result_after_lock<F>(
+    frame: CommandResultFrame<'_>,
+    writer: &GuestWriter,
+    after_lock: F,
+) -> io::Result<()>
+where
+    F: FnOnce(),
+{
     let payload = vsock_proto::encode_command_result(
         frame.termination,
         frame.duration_ms,
@@ -779,7 +802,7 @@ fn send_command_result(frame: CommandResultFrame<'_>, writer: &GuestWriter) -> i
     .map_err(to_io_error)?;
     let encoded =
         vsock_proto::encode(MSG_COMMAND_RESULT, frame.seq, &payload).map_err(to_io_error)?;
-    writer.write_frame(&encoded)
+    writer.write_frame_after_lock(&encoded, after_lock)
 }
 
 fn captured_output(result: &BoundedDrainResult) -> CommandCapturedOutput<'_> {
@@ -907,6 +930,10 @@ mod tests {
         }
     }
 
+    fn operation_guard() -> OperationGuard {
+        crate::quiesce::OperationState::default().acquire().unwrap()
+    }
+
     fn wait_for_registry_release(registry: &CommandRegistry, seq: u32) {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
@@ -979,6 +1006,7 @@ mod tests {
 
         start_command_operation_with_spawner(
             request(42, "echo should-not-run"),
+            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
@@ -1005,6 +1033,7 @@ mod tests {
 
         start_command_operation_with_spawner(
             request(11, "echo duplicate"),
+            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry,
@@ -1027,6 +1056,7 @@ mod tests {
 
         start_command_operation_with_spawner(
             request(43, "sleep 60"),
+            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
@@ -1052,6 +1082,7 @@ mod tests {
 
         start_command_operation_with_spawner(
             request(45, "sleep 60"),
+            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
@@ -1082,6 +1113,7 @@ mod tests {
 
         start_command_operation_with_spawner(
             request,
+            operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),

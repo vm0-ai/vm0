@@ -49,6 +49,7 @@ function isCliAuthStripeEnabled(params: {
 const completeCliAuthStripeBody$ = bodyResultOf(
   zeroCliAuthStripeContract.complete,
 );
+const startCliAuthStripeBody$ = bodyResultOf(zeroCliAuthStripeContract.start);
 
 function cliAuthStripeUnavailable(message: string, code: string) {
   return {
@@ -80,10 +81,17 @@ const startCliAuthStripeInner$ = command(
       return cliAuthStripeDisabled;
     }
 
+    const body = await get(startCliAuthStripeBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
     const result = await startCliAuthStripe({
       writeDb: set(writeDb$),
       orgId: auth.orgId,
       userId: auth.userId,
+      mode: body.data.mode,
       signal,
     });
     signal.throwIfAborted();
@@ -98,6 +106,7 @@ const startCliAuthStripeInner$ = command(
         sessionToken: result.sessionToken,
         type: "stripe" as const,
         status: "pending" as const,
+        mode: result.mode,
         browserUrl: result.browserUrl,
         verificationCode: result.verificationCode,
         expiresIn: result.expiresIn,

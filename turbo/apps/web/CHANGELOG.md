@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.365.0](https://github.com/vm0-ai/vm0/compare/web-v12.364.0...web-v12.365.0) (2026-05-14)
+
+
+### Features
+
+* **api:** persist cli auth sessions ([#13317](https://github.com/vm0-ai/vm0/issues/13317)) ([c42dc30](https://github.com/vm0-ai/vm0/commit/c42dc30fe738dbcc76788a5442745933279c8866))
+
+
+### Bug Fixes
+
+* filter typing event consumers ([#13337](https://github.com/vm0-ai/vm0/issues/13337)) ([cf9611d](https://github.com/vm0-ai/vm0/commit/cf9611d25a3ff8bcc9cf45431058dc7e615b2ae6))
+
+
+### Refactoring
+
+* proxy remote-agent through api backend rewrite ([#13324](https://github.com/vm0-ai/vm0/issues/13324)) ([e2e3f59](https://github.com/vm0-ai/vm0/commit/e2e3f596f125ea7ca03732fc208b1e4e76cbb0da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.23.0
+    * @vm0/core bumped to 8.276.1
+    * @vm0/db bumped to 1.11.0
+
 ## [12.364.0](https://github.com/vm0-ai/vm0/compare/web-v12.363.1...web-v12.364.0) (2026-05-14)
 
 

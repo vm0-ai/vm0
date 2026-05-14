@@ -215,4 +215,5 @@ export {
   generateWebVoice,
   generateWebImage,
   generateWebVideo,
+  generateWebPresentation,
 } from "./domains/web";

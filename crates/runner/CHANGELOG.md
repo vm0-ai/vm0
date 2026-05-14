@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.42](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.41...runner-rs-v0.100.42) (2026-05-14)
+
+
+### Bug Fixes
+
+* **runner:** close network log source before upload flush ([#13336](https://github.com/vm0-ai/vm0/issues/13336)) ([c8440eb](https://github.com/vm0-ai/vm0/commit/c8440eb2ab1b05175cd30e0200a5d11687b5226f))
+
 ## [0.100.41](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.40...runner-rs-v0.100.41) (2026-05-14)
 
 

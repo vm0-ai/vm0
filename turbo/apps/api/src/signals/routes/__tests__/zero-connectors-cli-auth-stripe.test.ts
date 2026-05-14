@@ -108,10 +108,13 @@ function startOutput(
 }
 
 function stripeConfig(apiKey: string) {
+  const keyName = apiKey.includes("_live_")
+    ? "live_mode_api_key"
+    : "test_mode_api_key";
   return `[default]
 account_id = "acct_test"
 display_name = "Test Account"
-test_mode_api_key = "${apiKey}"
+${keyName} = "${apiKey}"
 test_mode_pub_key = "pk_test_123"
 `;
 }
@@ -317,12 +320,50 @@ describe("CLI auth for Stripe connector routes", () => {
     const response = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "invalid" } as never,
       }),
       [403],
     );
 
     expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(calls.create).toHaveLength(0);
+  });
+
+  it("rejects missing mode before creating a session or sandbox", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {} as never,
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    await expect(cliAuthStripeSessions(userId, orgId)).resolves.toStrictEqual(
+      [],
+    );
+    expect(calls.create).toHaveLength(0);
+  });
+
+  it("rejects invalid mode before creating a session or sandbox", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "invalid" } as never,
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    await expect(cliAuthStripeSessions(userId, orgId)).resolves.toStrictEqual(
+      [],
+    );
     expect(calls.create).toHaveLength(0);
   });
 
@@ -333,7 +374,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const response = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -341,6 +382,7 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(response.body).toMatchObject({
       type: "stripe",
       status: "pending",
+      mode: "test",
       browserUrl:
         "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
       verificationCode: "enjoy-enough-outwit-win",
@@ -391,7 +433,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const response = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [503],
     );
@@ -420,7 +462,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const response = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [503],
     );
@@ -448,7 +490,7 @@ describe("CLI auth for Stripe connector routes", () => {
     await expect(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
     ).rejects.toThrow();
 
@@ -471,7 +513,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const response = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [503],
     );
@@ -502,7 +544,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -549,7 +591,7 @@ describe("CLI auth for Stripe connector routes", () => {
         ),
       );
     expect(secret).toMatchObject({
-      description: "Stripe CLI test mode restricted key",
+      description: "Stripe CLI test mode API key",
       type: "user",
     });
     expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_imported");
@@ -594,7 +636,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -648,14 +690,14 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(decryptSecretValue(secret!.encryptedValue)).toBe("sk_test_imported");
   });
 
-  it("rejects live mode Stripe keys and stops the sandbox", async () => {
+  it("rejects live mode Stripe keys for a test-mode session and stops the sandbox", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_live_imported" });
 
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -693,6 +735,119 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(secretRows).toStrictEqual([]);
   });
 
+  it("completes live-mode CLI auth with a restricted live key", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_live_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "live" },
+      }),
+      [200],
+    );
+    expect(start.body.mode).toBe("live");
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body.status).toBe("complete");
+    expect(calls.stop).toHaveLength(1);
+
+    const [secret] = await store
+      .set(writeDb$)
+      .select({
+        encryptedValue: secrets.encryptedValue,
+        description: secrets.description,
+      })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "STRIPE_TOKEN"),
+          eq(secrets.type, "user"),
+        ),
+      );
+    expect(secret).toMatchObject({
+      description: "Stripe CLI live mode API key",
+    });
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_live_imported");
+  });
+
+  it("completes live-mode CLI auth with a secret live key", async () => {
+    const { userId, orgId } = await setupUser();
+    mockStripeCliSandbox({ configApiKey: "sk_live_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "live" },
+      }),
+      [200],
+    );
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body.status).toBe("complete");
+
+    const [secret] = await store
+      .set(writeDb$)
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, "STRIPE_TOKEN"),
+          eq(secrets.type, "user"),
+        ),
+      );
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe("sk_live_imported");
+  });
+
+  it("rejects test mode Stripe keys for a live-mode session and stops the sandbox", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "live" },
+      }),
+      [200],
+    );
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [503],
+    );
+
+    expect(complete.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
+    expect(complete.body.error.message).toBe(
+      "Stripe CLI config did not contain a live mode API key",
+    );
+    expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      errorMessage: "Stripe CLI config did not contain a live mode API key",
+    });
+  });
+
   it("returns pending and keeps the sandbox alive when browser auth is not approved yet", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ completeExitCode: 124 });
@@ -700,7 +855,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -730,7 +885,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -770,7 +925,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -814,7 +969,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -855,7 +1010,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -904,7 +1059,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -977,7 +1132,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );
@@ -1006,7 +1161,7 @@ describe("CLI auth for Stripe connector routes", () => {
     const start = await accept(
       client().start({
         headers: { authorization: "Bearer clerk-session" },
-        body: {},
+        body: { mode: "test" },
       }),
       [200],
     );

@@ -237,6 +237,27 @@ describe("zero doctor generate command", () => {
     expect(text).not.toContain("Next actions:");
   });
 
+  it("suggests the built-in presentation command", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], []),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "presentation"]);
+
+    const text = output();
+    expect(text).toContain("Presentation generation choices for current agent");
+    expect(text).toContain("Connectors:");
+    expect(text).toContain(
+      "No ready presentation generation connectors found.",
+    );
+    expect(text).toContain("Built-in provider:");
+    expect(text).toContain("Model: gpt-5.5");
+    expect(text).toContain("Use: zero built-in generate presentation -h");
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+  });
+
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(

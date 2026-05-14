@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.46.0](https://github.com/vm0-ai/vm0/compare/api-v1.45.0...api-v1.46.0) (2026-05-14)
+
+
+### Features
+
+* add local-browser pairing runtime ([#13329](https://github.com/vm0-ai/vm0/issues/13329)) ([63d66fb](https://github.com/vm0-ai/vm0/commit/63d66fbb868996e9d41a897cda5bf8bd45bfbddc))
+* **api:** persist cli auth sessions ([#13317](https://github.com/vm0-ai/vm0/issues/13317)) ([c42dc30](https://github.com/vm0-ai/vm0/commit/c42dc30fe738dbcc76788a5442745933279c8866))
+
+
+### Bug Fixes
+
+* filter typing event consumers ([#13337](https://github.com/vm0-ai/vm0/issues/13337)) ([cf9611d](https://github.com/vm0-ai/vm0/commit/cf9611d25a3ff8bcc9cf45431058dc7e615b2ae6))
+
+
+### Refactoring
+
+* extract stripe cli auth parser ([#13342](https://github.com/vm0-ai/vm0/issues/13342)) ([2be05b8](https://github.com/vm0-ai/vm0/commit/2be05b8d1a33d0ab28b66bed8a4e51fe9b658c56))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.23.0
+    * @vm0/core bumped to 8.276.1
+    * @vm0/db bumped to 1.11.0
+
 ## [1.45.0](https://github.com/vm0-ai/vm0/compare/api-v1.44.2...api-v1.45.0) (2026-05-14)
 
 

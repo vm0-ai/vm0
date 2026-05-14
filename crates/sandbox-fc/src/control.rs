@@ -7,6 +7,11 @@
 //!
 //! Length-prefixed JSON frames: `[4-byte big-endian length][JSON payload]`.
 //! One request per connection, one response per connection.
+//!
+//! The request payload is [`ExecRequest`]. The response payload is
+//! [`ExecResponse`], serialized as an untagged JSON object: command-result
+//! responses contain command result fields, and error responses contain an
+//! `error` field.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -34,12 +39,21 @@ use crate::paths::{RuntimePaths, SockPaths};
 // Protocol types
 // -----------------------------------------------------------------------
 
-/// Request from `runner exec` client.
+/// Request from a `runner exec` client.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecRequest {
+    /// Command text to execute inside the guest.
     pub command: String,
+    /// Command timeout in seconds.
+    ///
+    /// When this field is omitted during JSON deserialization, it defaults to
+    /// 30 seconds.
     #[serde(default = "default_timeout")]
     pub timeout_secs: u32,
+    /// Whether to request sudo execution inside the guest.
+    ///
+    /// When this field is omitted during JSON deserialization, it defaults to
+    /// `false`. The guest command runner decides how sudo is applied.
     #[serde(default)]
     pub sudo: bool,
 }
@@ -48,18 +62,43 @@ fn default_timeout() -> u32 {
     30
 }
 
-/// Response to `runner exec` client.
+/// Response to a `runner exec` client.
+///
+/// This enum is serialized without a tag. Clients should distinguish variants
+/// by shape: a command result response contains command result fields, while an
+/// error response contains only an `error` string.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ExecResponse {
+    /// Command execution produced a captured result.
+    ///
+    /// This variant does not imply a zero exit code; inspect `exit_code` for the
+    /// command's status.
     Success {
+        /// Process exit code returned by the guest command runner.
         exit_code: i32,
+        /// Base64-encoded captured stdout bytes.
+        ///
+        /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
+        /// decodes it before returning `sandbox::RemoteExecResult`.
         stdout: String,
+        /// Base64-encoded captured stderr bytes.
+        ///
+        /// This is not plain UTF-8 text. `FirecrackerControl::exec_remote`
+        /// decodes it before returning `sandbox::RemoteExecResult`.
         stderr: String,
+        /// Whether stdout was cut at the capture limit.
+        ///
+        /// Truncation is independent of the command exit code.
         stdout_truncated: bool,
+        /// Whether stderr was cut at the capture limit.
+        ///
+        /// Truncation is independent of the command exit code.
         stderr_truncated: bool,
     },
+    /// Request failed before a command result could be returned.
     Error {
+        /// Human-readable error message for operators and clients.
         error: String,
     },
 }
@@ -480,9 +519,13 @@ fn control_start_error(error: GuestOperationStartError) -> String {
 // Client
 // -----------------------------------------------------------------------
 
-/// Send an exec request to a control socket and return the response.
+/// Send an exec request to a control socket and return the wire response.
 ///
 /// Used by `runner exec` to communicate with a running sandbox.
+///
+/// The returned [`ExecResponse::Success`] still contains base64-encoded stdout
+/// and stderr. Use `FirecrackerControl::exec_remote` when the caller wants
+/// decoded byte buffers.
 pub async fn send_exec(
     sock_path: &Path,
     request: &ExecRequest,

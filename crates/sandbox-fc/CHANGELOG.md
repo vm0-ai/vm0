@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.31.0...sandbox-fc-v0.32.0) (2026-05-14)
+
+
+### Features
+
+* **sandbox-fc:** gate guest operations for park ([#13322](https://github.com/vm0-ai/vm0/issues/13322)) ([d0cf16d](https://github.com/vm0-ai/vm0/commit/d0cf16daaa47dbcfe7413a87b3b568b26ff5210a))
+
+
+### Documentation
+
+* **sandbox-fc:** document exec control payloads ([#13340](https://github.com/vm0-ai/vm0/issues/13340)) ([756b847](https://github.com/vm0-ai/vm0/commit/756b847e753898e6e4ea928187852a7d20948f21))
+
 ## [0.31.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.30.3...sandbox-fc-v0.31.0) (2026-05-14)
 
 
