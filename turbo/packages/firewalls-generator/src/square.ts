@@ -1,7 +1,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.squareup.com/reference/square";
-const PLACEHOLDER_VALUE = "EAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal";
+const PLACEHOLDER_VALUE =
+  "EAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal";
 
 function generateTypeScript(): string {
   const lines: string[] = [
