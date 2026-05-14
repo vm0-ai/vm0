@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { secretConnectorMetadataMapSchema } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
@@ -120,6 +121,56 @@ const artifactSnapshotsSchema = z.array(
  */
 const volumeVersionsSnapshotSchema = z.object({
   versions: z.record(z.string(), z.string()),
+});
+
+const firewallAuthErrorSchema = z.object({
+  error: z.object({
+    message: z.string(),
+    code: z.string(),
+    connectors: z.array(z.string()).optional(),
+  }),
+});
+
+const firewallAuthResponseSchema = z.object({
+  headers: z.record(z.string(), z.string()),
+  base: z.string().optional(),
+  query: z.record(z.string(), z.string()).optional(),
+  expiresAt: z.number().nullable(),
+  resolvedSecrets: z.array(z.string()),
+  refreshedConnectors: z.array(z.string()),
+  refreshedSecrets: z.array(z.string()),
+});
+
+export const webhookFirewallAuthContract = c.router({
+  /**
+   * POST /api/webhooks/agent/firewall/auth
+   * Resolve firewall auth templates and refresh OAuth tokens on demand.
+   */
+  resolve: {
+    method: "POST",
+    path: "/api/webhooks/agent/firewall/auth",
+    headers: authHeadersSchema,
+    body: z.object({
+      encryptedSecrets: z.string().min(1),
+      authHeaders: z.record(z.string(), z.string()),
+      authBase: z.string().optional(),
+      authQuery: z.record(z.string(), z.string()).optional(),
+      secretConnectorMap: z.record(z.string(), z.string()).optional(),
+      secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
+      vars: z.record(z.string(), z.string()).optional(),
+      forceRefresh: z.boolean().optional(),
+    }),
+    responses: {
+      200: firewallAuthResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      424: firewallAuthErrorSchema,
+      502: firewallAuthErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Resolve firewall auth templates",
+  },
 });
 
 /**
@@ -532,6 +583,7 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
 export type WebhookCheckpointsPrepareHistoryContract =
