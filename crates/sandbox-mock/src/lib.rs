@@ -983,10 +983,6 @@ impl SandboxFactory for MockSandboxFactory {
         "mock-config-hash".into()
     }
 
-    async fn startup(&mut self) -> Result<()> {
-        Ok(())
-    }
-
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
         if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
@@ -1577,8 +1573,7 @@ mod tests {
     #[tokio::test]
     async fn overrides_count_park_and_unpark_calls_across_factory_sandboxes() {
         let overrides = Arc::new(MockSandboxOverrides::new());
-        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
         let mut first = factory.create(test_sandbox_config()).await.unwrap();
         let mut second = factory.create(test_sandbox_config()).await.unwrap();
@@ -1597,8 +1592,7 @@ mod tests {
     #[tokio::test]
     async fn overrides_count_destroy_calls_across_factory_sandboxes() {
         let overrides = Arc::new(MockSandboxOverrides::new());
-        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
         let first = factory.create(test_sandbox_config()).await.unwrap();
         let second = factory.create(test_sandbox_config()).await.unwrap();
@@ -2167,8 +2161,7 @@ mod tests {
     #[tokio::test]
     async fn overrides_record_spawn_watch_output_modes_in_order() {
         let overrides = Arc::new(MockSandboxOverrides::new());
-        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let buffered = sandbox
             .spawn_watch(&SpawnWatchRequest {
@@ -2232,8 +2225,7 @@ mod tests {
     #[tokio::test]
     async fn wait_exit_rejects_consumed_spawn_handle() {
         let runtime = MockSandboxRuntime::new();
-        let mut factory = runtime.create_factory(test_factory_config()).await.unwrap();
-        factory.startup().await.unwrap();
+        let factory = runtime.create_factory(test_factory_config()).await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let mut handle = sandbox
             .spawn_watch(&SpawnWatchRequest {
@@ -2292,7 +2284,6 @@ mod tests {
     #[tokio::test]
     async fn factory_creates_sandbox() {
         let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         assert!(!sandbox.id().is_empty());
         factory.destroy(sandbox).await;
@@ -2367,8 +2358,7 @@ mod tests {
 
     #[tokio::test]
     async fn factory_create_queued_error() {
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
         factory.push_create_result(Err(SandboxError::Initialization {
             phase: SandboxInitializationPhase::SandboxAllocation,
             message: "out of resources".into(),

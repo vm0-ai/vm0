@@ -1822,11 +1822,6 @@ impl NetnsPoolHandle {
         Self::new(pool)
     }
 
-    #[cfg(test)]
-    pub(crate) fn strong_count_for_test(&self) -> usize {
-        Arc::strong_count(&self.inner)
-    }
-
     pub(crate) async fn acquire(&self) -> Result<NetnsLease> {
         loop {
             let plan = {

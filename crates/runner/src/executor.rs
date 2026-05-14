@@ -828,6 +828,8 @@ const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
 const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
 const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
 const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
+const GUEST_SANDBOX_OPS_LOG_PREFIX: &str = "/tmp/vm0-sandbox-ops-";
+const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
@@ -846,6 +848,10 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
         (
             format!("{GUEST_METRICS_LOG_PREFIX}{run_id}{GUEST_METRICS_LOG_SUFFIX}"),
             log_paths.metrics_log(run_id),
+        ),
+        (
+            format!("{GUEST_SANDBOX_OPS_LOG_PREFIX}{run_id}{GUEST_SANDBOX_OPS_LOG_SUFFIX}"),
+            log_paths.sandbox_ops_log(run_id),
         ),
     ];
 
@@ -1556,10 +1562,6 @@ mod tests {
 
         fn config_hash(&self) -> String {
             "destroy-panic".into()
-        }
-
-        async fn startup(&mut self) -> sandbox::Result<()> {
-            self.inner.startup().await
         }
 
         async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
@@ -2752,9 +2754,13 @@ mod tests {
         .await
         .unwrap();
 
-        // Queue two guest-copy results: system log + metrics log.
+        // Queue guest-copy results: system log + metrics log + sandbox ops log.
         sandbox.push_copy_file_result(Ok(b"system log line 1\nsystem log line 2\n".to_vec()));
         sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+        sandbox.push_copy_file_result(Ok(
+            b"{\"action_type\":\"final_telemetry_upload\",\"duration_ms\":10,\"success\":true}\n"
+                .to_vec(),
+        ));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
@@ -2768,6 +2774,53 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
+
+        let sandbox_ops_log = tokio::fs::read_to_string(log_paths.sandbox_ops_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert!(sandbox_ops_log.contains("final_telemetry_upload"));
+
+        let calls = sandbox.copy_file_calls();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(
+            calls[2].path,
+            format!("/tmp/vm0-sandbox-ops-{}.jsonl", ctx.run_id)
+        );
+        assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
+        assert_eq!(calls[0].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
+        assert_eq!(calls[1].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
+        assert_eq!(calls[2].max_bytes, GUEST_LOG_COPY_MAX_BYTES);
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        sandbox.push_copy_file_result(Ok(b"system log\n".to_vec()));
+        sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(system_log, "system log\n");
+
+        let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
+        assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
+
+        let calls = sandbox.copy_file_calls();
+        assert_eq!(calls.len(), 3);
+        assert!(
+            calls[2].missing_ok,
+            "missing sandbox ops log should be a best-effort no-op"
+        );
     }
 
     #[tokio::test]
@@ -2780,12 +2833,14 @@ mod tests {
         // Copy fails (file doesn't exist in guest).
         sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
         sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
         // Host files should not be created
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
+        assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
     }
 
     #[tokio::test]
@@ -2797,11 +2852,13 @@ mod tests {
 
         sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
         sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
+        sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
 
         copy_guest_logs(&sandbox, &ctx, &log_paths).await;
 
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
+        assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
     }
 
     // -----------------------------------------------------------------------
@@ -2992,8 +3049,7 @@ mod tests {
     async fn execute_inner_happy_path() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let (exit_code, error_msg) =
             run_execute_inner(&factory, &minimal_context(), &config, &default_params())
@@ -3008,8 +3064,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-        let mut factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides.clone());
-        factory.startup().await.unwrap();
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides.clone());
 
         let (exit_code, error_msg) =
             run_execute_inner(&factory, &minimal_context(), &config, &default_params())
@@ -3028,8 +3083,7 @@ mod tests {
     async fn execute_inner_with_snapshot_runs_clock_fix_and_reseed() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let params = JobParams {
             restore_guest_state: true,
@@ -3045,8 +3099,7 @@ mod tests {
     async fn execute_inner_with_storage_manifest() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
@@ -3068,8 +3121,7 @@ mod tests {
     async fn execute_inner_with_resume_session() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let mut ctx = minimal_context();
         ctx.resume_session = Some(ResumeSession {
@@ -3086,8 +3138,7 @@ mod tests {
     async fn execute_inner_create_failure_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
         factory.push_create_result(Err(sandbox_create_error("no free devices")));
 
         let err = run_execute_inner(&factory, &minimal_context(), &config, &default_params())
@@ -3107,8 +3158,7 @@ mod tests {
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_error(
             "wait timeout",
         ));
-        let mut factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
-        factory.startup().await.unwrap();
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
 
         let (exit_code, error) =
             run_execute_inner(&factory, &minimal_context(), &config, &default_params())
@@ -3127,10 +3177,9 @@ mod tests {
         overrides.push_start_result(Err(SandboxError::Start {
             message: "boot failed".into(),
         }));
-        let mut factory = DestroyPanicFactory {
+        let factory = DestroyPanicFactory {
             inner: MockSandboxFactory::with_overrides(overrides),
         };
-        factory.startup().await.unwrap();
 
         let ctx = minimal_context();
         let mut telemetry = test_telemetry(&config, &ctx);
@@ -3158,8 +3207,7 @@ mod tests {
     async fn execute_job_wraps_execute_inner() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (outcome, _telemetry) = execute_job(
@@ -3183,8 +3231,7 @@ mod tests {
     async fn execute_job_create_failure_returns_exit_1() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
         factory.push_create_result(Err(sandbox_create_error("boom")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -3213,8 +3260,7 @@ mod tests {
     async fn execute_job_reuse_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         // First: create a sandbox via normal execute_job
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -3248,8 +3294,7 @@ mod tests {
     async fn execute_job_reuse_with_session_context() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         // First turn: execute with resume_session
         let mut ctx = minimal_context();
@@ -3302,8 +3347,7 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         // Execute first job
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -3482,8 +3526,7 @@ mod tests {
     async fn execute_job_nonzero_exit_still_returns_sandbox() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (outcome, _telemetry) = execute_job(
@@ -3904,8 +3947,7 @@ mod tests {
     async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (_outcome, telemetry) = execute_job(
@@ -3934,8 +3976,7 @@ mod tests {
     async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let mut factory = MockSandboxFactory::new();
-        factory.startup().await.unwrap();
+        let factory = MockSandboxFactory::new();
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (outcome, _telemetry) = execute_job(

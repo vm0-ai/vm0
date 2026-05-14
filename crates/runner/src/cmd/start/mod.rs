@@ -7,7 +7,7 @@
 //!
 //! The sibling modules keep focused responsibilities out of this orchestration
 //! file:
-//! - `factory_lifecycle`: sandbox factory startup and shutdown.
+//! - `factory_lifecycle`: sandbox factory creation and shutdown.
 //! - `idle_lifecycle`: idle-pool lifecycle, status updates, and destroy helpers.
 //! - `identity`: persistent runner id storage.
 //! - `job_discovery`: discovery branch handling and idle-reuse admission.
@@ -377,7 +377,7 @@ pub async fn run_start(
         }
     };
 
-    // Build sandbox runtime with shared resources (netns pool, base loop cache).
+    // Build sandbox runtime with shared resources (netns and NBD device pools).
     let runtime = runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),

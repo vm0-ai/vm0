@@ -14,9 +14,6 @@ pub trait SandboxFactory: Send + Sync {
     /// snapshots.  The hash covers boot args, guest network parameters, and
     /// any other factory-specific settings baked into the snapshot.
     fn config_hash(&self) -> String;
-    /// Initialize factory resources (pools, connections, etc.).
-    /// Must be called before `create()` or `destroy()`.
-    async fn startup(&mut self) -> Result<()>;
     /// Create a new sandbox instance with the given configuration.
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>>;
     /// Tear down a sandbox, releasing all resources back to the factory pools.

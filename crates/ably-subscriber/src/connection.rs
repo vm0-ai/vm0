@@ -296,10 +296,10 @@ pub(crate) struct ConnState {
     pub connection_key: Option<String>,
     pub channel_serial: Option<String>,
     pub connection_state_ttl: Duration,
-    pub max_idle_interval: Duration,
+    pub max_idle_interval: Option<Duration>,
     pub disconnected_at: Option<Instant>,
     pub token: TokenDetails,
-    pub token_renewal_at: Instant,
+    pub token_renewal_at: Option<Instant>,
 }
 
 impl ConnState {
@@ -309,7 +309,7 @@ impl ConnState {
             connection_key: None,
             channel_serial: None,
             connection_state_ttl: timing.default_connection_state_ttl,
-            max_idle_interval: timing.default_max_idle_interval,
+            max_idle_interval: Some(timing.default_max_idle_interval),
             disconnected_at: None,
             token_renewal_at: Self::compute_renewal_at(&token, timing.token_renewal_margin),
             token,
@@ -328,24 +328,25 @@ impl ConnState {
             if let Some(ref key) = details.connection_key {
                 self.connection_key = Some(key.clone());
             }
-            if let Some(ttl) = details.connection_state_ttl {
-                self.connection_state_ttl = Duration::from_millis(ttl.max(0) as u64);
+            if let Some(ttl) = details.connection_state_ttl
+                && let Some(ttl) = positive_external_millis(ttl)
+            {
+                self.connection_state_ttl = ttl;
             }
-            if let Some(idle) = details.max_idle_interval {
-                self.max_idle_interval = Duration::from_millis(idle.max(0) as u64);
-            }
+            self.max_idle_interval = details.max_idle_interval.and_then(positive_external_millis);
         }
     }
 
-    fn compute_renewal_at(token: &TokenDetails, margin: Duration) -> Instant {
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64;
-        let remaining_ms = (token.expires - now_ms).max(0) as u64;
-        let margin_ms = margin.as_millis() as u64;
-        let renew_in = Duration::from_millis(remaining_ms.saturating_sub(margin_ms));
-        Instant::now() + renew_in
+    fn compute_renewal_at(token: &TokenDetails, margin: Duration) -> Option<Instant> {
+        let now_ms = unix_now_ms();
+        let remaining_ms = token.expires.saturating_sub(now_ms);
+        if remaining_ms <= 0 {
+            return Some(Instant::now());
+        }
+
+        let renew_in_ms = (remaining_ms as u128).saturating_sub(margin.as_millis());
+        let renew_in = Duration::from_millis(u64::try_from(renew_in_ms).ok()?);
+        checked_deadline_after(renew_in)
     }
 
     /// Resume is allowed while the Ably connection state is still retained and
@@ -359,6 +360,38 @@ impl ConnState {
             false
         }
     }
+}
+
+fn unix_now_ms() -> i64 {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    i64::try_from(now_ms).unwrap_or(i64::MAX)
+}
+
+fn positive_external_millis(value: i64) -> Option<Duration> {
+    if value <= 0 {
+        return None;
+    }
+    Some(Duration::from_millis(value as u64))
+}
+
+fn checked_deadline_after(duration: Duration) -> Option<Instant> {
+    Instant::now().checked_add(duration)
+}
+
+fn checked_deadline_from(start: Instant, duration: Duration) -> Option<Instant> {
+    start.checked_add(duration)
+}
+
+fn idle_deadline(
+    max_idle_interval: Option<Duration>,
+    heartbeat_margin: Duration,
+) -> Option<(Instant, Duration)> {
+    let idle_timeout = max_idle_interval?.checked_add(heartbeat_margin)?;
+    let deadline = checked_deadline_after(idle_timeout)?;
+    Some((deadline, idle_timeout))
 }
 
 // ---------------------------------------------------------------------------
@@ -703,9 +736,9 @@ fn suspend_deadline(p: &EventLoopState) -> Option<Instant> {
     {
         return None;
     }
-    p.conn_state
-        .disconnected_at
-        .map(|disconnected_at| disconnected_at + p.conn_state.connection_state_ttl)
+    p.conn_state.disconnected_at.and_then(|disconnected_at| {
+        checked_deadline_from(disconnected_at, p.conn_state.connection_state_ttl)
+    })
 }
 
 fn should_enter_suspended_retry(p: &EventLoopState) -> bool {
@@ -871,8 +904,8 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
             };
-            let idle_timeout = p.conn_state.max_idle_interval + p.timing.heartbeat_margin;
-            let idle_deadline = Instant::now() + idle_timeout;
+            let idle_deadline =
+                idle_deadline(p.conn_state.max_idle_interval, p.timing.heartbeat_margin);
 
             tokio::select! {
                 biased;
@@ -883,7 +916,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     return;
                 }
 
-                _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
+                _ = sleep_until_optional(p.conn_state.token_renewal_at), if p.conn_state.token_renewal_at.is_some() => {
                     let connect_timeout = p.timing.connect_timeout;
                     let result = tokio::select! {
                         biased;
@@ -961,7 +994,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     }
                 }
 
-                _ = tokio::time::sleep_until(idle_deadline) => {
+                _ = sleep_until_optional(idle_deadline.map(|(deadline, _)| deadline)), if idle_deadline.is_some() => {
+                    let Some((_, idle_timeout)) = idle_deadline else {
+                        continue;
+                    };
                     disconnect_reason = Some(format!("heartbeat timeout after {idle_timeout:?}"));
                     immediate_retry = true;
                     close_before_reconnect = true;
@@ -1436,7 +1472,7 @@ async fn handle_renewal_result(
         return true;
     }
 
-    p.conn_state.token_renewal_at = Instant::now() + p.timing.token_renewal_retry_delay;
+    p.conn_state.token_renewal_at = checked_deadline_after(p.timing.token_renewal_retry_delay);
     false
 }
 
@@ -1713,7 +1749,176 @@ mod tests {
         assert_eq!(state.connection_id.as_deref(), Some("conn-1"));
         assert_eq!(state.connection_key.as_deref(), Some("conn-1!key"));
         assert_eq!(state.connection_state_ttl, Duration::from_millis(60000));
-        assert_eq!(state.max_idle_interval, Duration::from_millis(10000));
+        assert_eq!(state.max_idle_interval, Some(Duration::from_millis(10000)));
+        assert!(state.token_renewal_at.is_some());
+    }
+
+    #[test]
+    fn conn_state_ignores_non_positive_connection_state_ttl() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        for ttl in [0, -1] {
+            let msg = ProtocolMessage {
+                action: action::CONNECTED,
+                connection_details: Some(ConnectionDetails {
+                    connection_state_ttl: Some(ttl),
+                    max_idle_interval: Some(10000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
+            let state = ConnState::from_connected(&msg, token.clone(), &timing);
+            assert_eq!(
+                state.connection_state_ttl,
+                timing.default_connection_state_ttl
+            );
+        }
+    }
+
+    #[test]
+    fn conn_state_keeps_default_connection_state_ttl_when_details_omit_ttl() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_details: Some(ConnectionDetails {
+                connection_state_ttl: None,
+                max_idle_interval: Some(10000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let state = ConnState::from_connected(&msg, token, &timing);
+        assert_eq!(
+            state.connection_state_ttl,
+            timing.default_connection_state_ttl
+        );
+        assert_eq!(state.max_idle_interval, Some(Duration::from_millis(10000)));
+    }
+
+    #[test]
+    fn conn_state_disables_idle_timeout_for_missing_or_non_positive_idle_interval() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        for idle in [None, Some(0), Some(-1)] {
+            let msg = ProtocolMessage {
+                action: action::CONNECTED,
+                connection_details: Some(ConnectionDetails {
+                    connection_state_ttl: Some(60000),
+                    max_idle_interval: idle,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
+            let state = ConnState::from_connected(&msg, token.clone(), &timing);
+            assert_eq!(state.max_idle_interval, None);
+        }
+    }
+
+    #[test]
+    fn idle_deadline_is_disabled_without_max_idle_interval() {
+        assert_eq!(idle_deadline(None, Duration::from_secs(10)), None);
+    }
+
+    #[test]
+    fn conn_state_uses_default_idle_interval_without_connection_details() {
+        let timing = TimingConfig::default();
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 3_600_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_details: None,
+            ..Default::default()
+        };
+
+        let state = ConnState::from_connected(&msg, token, &timing);
+        assert_eq!(
+            state.max_idle_interval,
+            Some(timing.default_max_idle_interval)
+        );
+    }
+
+    #[test]
+    fn conn_state_handles_huge_external_timing_values_without_panicking() {
+        let msg = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_details: Some(ConnectionDetails {
+                connection_state_ttl: Some(i64::MAX),
+                max_idle_interval: Some(i64::MAX),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: i64::MAX,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        let state = ConnState::from_connected(&msg, token, &TimingConfig::default());
+        let _ = idle_deadline(state.max_idle_interval, Duration::from_secs(10));
+        let _ = checked_deadline_from(Instant::now(), state.connection_state_ttl);
+        let _ = state.token_renewal_at;
+    }
+
+    #[test]
+    fn expired_token_renewal_is_scheduled_immediately() {
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: 0,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
+            .expect("expired tokens should still schedule renewal");
+        assert!(renewal_at <= Instant::now());
+    }
+
+    #[test]
+    fn token_inside_renewal_margin_is_scheduled_immediately() {
+        let token = TokenDetails {
+            token: "tok".to_string(),
+            expires: unix_now_ms() + 60_000,
+            issued: 0,
+            capability: None,
+            client_id: None,
+        };
+
+        let renewal_at = ConnState::compute_renewal_at(&token, Duration::from_secs(300))
+            .expect("tokens inside the renewal margin should schedule renewal");
+        assert!(renewal_at <= Instant::now());
     }
 
     #[test]
@@ -1723,7 +1928,7 @@ mod tests {
             connection_key: Some("c1!key".to_string()),
             channel_serial: None,
             connection_state_ttl: Duration::from_secs(120),
-            max_idle_interval: Duration::from_secs(15),
+            max_idle_interval: Some(Duration::from_secs(15)),
             disconnected_at: None,
             token: TokenDetails {
                 token: "t".to_string(),
@@ -1732,7 +1937,7 @@ mod tests {
                 capability: None,
                 client_id: None,
             },
-            token_renewal_at: Instant::now() + Duration::from_secs(3600),
+            token_renewal_at: checked_deadline_after(Duration::from_secs(3600)),
         };
 
         // No disconnected_at → cannot resume

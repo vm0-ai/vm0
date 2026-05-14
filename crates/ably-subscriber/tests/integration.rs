@@ -2174,6 +2174,59 @@ async fn heartbeat_timeout_triggers_reconnect() {
     server_task.await.unwrap();
 }
 
+#[tokio::test]
+async fn zero_max_idle_interval_disables_heartbeat_timeout() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let (advance_tx, advance_rx) = tokio::sync::oneshot::channel();
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    max_idle_interval_ms: 0,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Old behavior treated maxIdleInterval=0 as heartbeat_margin and
+        // disconnected before this message. Ably semantics disable the idle
+        // timeout when no maximum idle interval is promised.
+        advance_rx.await.unwrap();
+        tokio::time::advance(Duration::from_secs(2)).await;
+        send_message(&mut conn, "ch", "after-zero-idle", serde_json::json!("ok"))
+            .await
+            .unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.heartbeat_margin = Duration::from_secs(1);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    tokio::time::pause();
+    let _ = advance_tx.send(());
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after zero idle interval")
+        .unwrap();
+    match event {
+        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("after-zero-idle")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Test 20: retry continues indefinitely and enters suspended after TTL expiry
 // ---------------------------------------------------------------------------
@@ -3398,23 +3451,33 @@ async fn channel_error_backpressure_closes_socket_before_subscription_close() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 26: expired connection_state_ttl skips resume (fresh connect)
+// Test 26: non-positive connection_state_ttl keeps the default resume window
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn expired_ttl_skips_resume() {
+async fn non_positive_ttl_keeps_default_resume_window() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
-    mock_token_endpoint(&http, "testKey.testId");
+    let token_path = "/keys/testKey.testId/requestToken";
+    let now = now_ms();
+    let token_mock = http.mock(|when, then| {
+        when.method(POST).path(token_path);
+        then.status(201)
+            .header("content-type", "application/json")
+            .json_body(serde_json::json!({
+                "token": "mock-token-abc",
+                "expires": now + 3_600_000,
+                "issued": now,
+                "capability": "{\"*\":[\"*\"]}",
+            }));
+    });
 
     let ws_port = ws.port;
-    let (resume_tx, resume_rx) = tokio::sync::oneshot::channel::<bool>();
     let (message_seen_tx, message_seen_rx) = tokio::sync::oneshot::channel::<()>();
 
     let server_task = tokio::spawn(async move {
-        // First connection with an already-expired connection_state_ttl.
-        // The server-provided TTL overrides the TimingConfig default, so we
-        // set it here to ensure can_resume() is false on reconnect.
+        // Non-positive connectionStateTtl should be treated as absent, not as
+        // an already-expired resume window.
         let conn = ws
             .accept_and_handshake_with_opts(
                 "ch",
@@ -3428,24 +3491,17 @@ async fn expired_ttl_skips_resume() {
             .unwrap();
         drop(conn);
 
-        // Second connection — send CONNECTED with the *same* conn_id.
-        // If client tried resume and got the same ID, it would skip ATTACH.
-        // But since TTL expired, can_resume()=false → fresh connect → ATTACH.
-        let mut conn2 = ws.accept_and_handshake("ch", "conn-2").await.unwrap();
-
-        // The fact that accept_and_handshake succeeded (it reads ATTACH and
-        // sends ATTACHED) proves the client sent ATTACH, i.e. did NOT resume.
-        let _ = resume_tx.send(true);
+        let mut conn2 = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
 
         send_message(
             &mut conn2,
             "ch",
-            "after-fresh-connect",
+            "after-default-ttl-resume",
             serde_json::json!("ok"),
         )
         .await
         .unwrap();
-        wait_for_test_observation(message_seen_rx, "after-fresh-connect message").await;
+        wait_for_test_observation(message_seen_rx, "after-default-ttl-resume message").await;
     });
 
     let mut timing = TimingConfig::default();
@@ -3476,22 +3532,20 @@ async fn expired_ttl_skips_resume() {
         }
     }
 
-    // Message after fresh connect
+    // Message after reconnect proves the subscription is still alive.
     let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
         .await
         .expect("timed out waiting for message")
         .unwrap();
     match event {
         Event::Message(msg) => {
-            assert_eq!(msg.name.as_deref(), Some("after-fresh-connect"));
+            assert_eq!(msg.name.as_deref(), Some("after-default-ttl-resume"));
             message_seen_tx.send(()).unwrap();
         }
         other => panic!("expected Message, got {other:?}"),
     }
 
-    // Verify server saw ATTACH (meaning client did NOT resume)
-    let did_attach = resume_rx.await.expect("server task panicked");
-    assert!(did_attach, "client should have sent ATTACH (no resume)");
+    token_mock.assert_calls(1);
     server_task.await.unwrap();
 }
 

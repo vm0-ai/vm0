@@ -8,7 +8,8 @@
 //! - MessagePack binary protocol (Ably default)
 //! - Automatic connection resume after disconnection
 //! - Proactive token renewal before expiry
-//! - Heartbeat-based connection liveness detection
+//! - Heartbeat-based connection liveness detection when Ably advertises a
+//!   positive idle interval
 //!
 //! # Example
 //! ```no_run

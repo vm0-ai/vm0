@@ -788,8 +788,9 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
 
 /// Delete stale log files (older than [`JOB_LOG_MAX_AGE`]).
 ///
-/// Covers per-job logs (`network-*.jsonl`, `system-*.log`, `metrics-*.jsonl`)
-/// and runner instance logs (`runner-*.log`). Returns `(files_removed, bytes_freed)`.
+/// Covers per-job logs (`network-*.jsonl`, `system-*.log`, `metrics-*.jsonl`,
+/// `sandbox-ops-*.jsonl`) and runner instance logs (`runner-*.log`).
+/// Returns `(files_removed, bytes_freed)`.
 async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();
     let Some(mut entries) = read_dir_or_missing(&logs_dir).await? else {
@@ -3116,7 +3117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gc_job_logs_deletes_stale_system_and_metrics() {
+    async fn gc_job_logs_deletes_stale_system_metrics_and_sandbox_ops() {
         use std::fs::FileTimes;
         use std::time::Duration;
 
@@ -3141,10 +3142,19 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
+        let sandbox_ops_log =
+            logs_dir.join("sandbox-ops-550e8400-e29b-41d4-a716-446655440000.jsonl");
+        std::fs::write(&sandbox_ops_log, "{}").unwrap();
+        std::fs::File::open(&sandbox_ops_log)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
         let (removed, _) = gc_job_logs(&home, false).await.unwrap();
-        assert_eq!(removed, 2);
+        assert_eq!(removed, 3);
         assert!(!system_log.exists());
         assert!(!metrics_log.exists());
+        assert!(!sandbox_ops_log.exists());
     }
 
     #[tokio::test]
