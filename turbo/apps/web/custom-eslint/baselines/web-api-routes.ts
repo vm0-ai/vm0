@@ -273,7 +273,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "7701f39441671f40f72f1ac6da88a1bd84ed75bef917ec39fe884f454aead833";
+  "bba95ded7ac326a4f8b0186ad94f859b1ab4a601b93b7b433c37bb625972b34b";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,
