@@ -123,8 +123,11 @@ impl ParkCoordinator {
         Fut: Future<Output = PrepareParkEvidence>,
     {
         let attempt = self.begin_prepare_park()?;
+        let abort_on_drop = ParkAttemptDropGuard::new(Arc::clone(&self.inner), attempt);
         let evidence = hook(attempt).await;
-        self.complete_prepare_park(&attempt, evidence)
+        let result = self.complete_prepare_park(&attempt, evidence);
+        abort_on_drop.disarm();
+        result
     }
 
     pub(crate) fn mark_parked(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
@@ -406,6 +409,42 @@ struct Inner {
     next_operation_id: u64,
     next_attempt_id: u64,
     operations: BTreeMap<OperationId, OperationEntry>,
+}
+
+struct ParkAttemptDropGuard {
+    inner: Arc<Mutex<Inner>>,
+    attempt: ParkAttempt,
+    armed: bool,
+}
+
+impl ParkAttemptDropGuard {
+    fn new(inner: Arc<Mutex<Inner>>, attempt: ParkAttempt) -> Self {
+        Self {
+            inner,
+            attempt,
+            armed: true,
+        }
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ParkAttemptDropGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let mut inner = lock_inner(&self.inner);
+        if matches!(
+            inner.state,
+            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == self.attempt.id
+        ) {
+            inner.state = CoordinatorState::Open;
+        }
+    }
 }
 
 impl Inner {
@@ -778,5 +817,88 @@ mod tests {
             coordinator.state(),
             CoordinatorState::ReadyForPark { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn dropped_prepare_future_reopens_gate_and_stales_attempt() {
+        let coordinator = ParkCoordinator::new();
+        let worker_coordinator = coordinator.clone();
+        let (attempt_tx, attempt_rx) = tokio::sync::oneshot::channel();
+
+        let task = tokio::spawn(async move {
+            worker_coordinator
+                .prepare_park_with(|attempt| async move {
+                    let _ = attempt_tx.send(attempt);
+                    std::future::pending::<PrepareParkEvidence>().await
+                })
+                .await
+        });
+
+        let stale_attempt = attempt_rx
+            .await
+            .expect("prepare hook should receive an attempt");
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::ClosingForPark { .. }
+        ));
+
+        task.abort();
+        let _ = task.await;
+
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert!(coordinator.reserve_operation().is_ok());
+        assert!(matches!(
+            coordinator.complete_prepare_park(&stale_attempt, PrepareParkEvidence::AgentQuiesced),
+            Err(PrepareParkError::StaleAttempt {
+                state: CoordinatorState::Open,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn concurrent_prepare_and_reserve_are_linearized() {
+        for _ in 0..64 {
+            let coordinator = ParkCoordinator::new();
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+
+            let prepare_coordinator = coordinator.clone();
+            let prepare_barrier = std::sync::Arc::clone(&barrier);
+            let prepare_thread = std::thread::spawn(move || {
+                prepare_barrier.wait();
+                prepare_coordinator.begin_prepare_park()
+            });
+
+            let reserve_coordinator = coordinator.clone();
+            let reserve_barrier = std::sync::Arc::clone(&barrier);
+            let reserve_thread = std::thread::spawn(move || {
+                reserve_barrier.wait();
+                reserve_coordinator.reserve_operation()
+            });
+
+            let prepare_result = prepare_thread
+                .join()
+                .expect("prepare thread should not panic");
+            let reserve_result = reserve_thread
+                .join()
+                .expect("reserve thread should not panic");
+
+            match (prepare_result, reserve_result) {
+                (
+                    Ok(attempt),
+                    Err(LeaseRejection::GateClosed {
+                        state: CoordinatorState::ClosingForPark { .. },
+                    }),
+                ) => {
+                    assert!(coordinator.abort_prepare_park(&attempt).is_ok());
+                }
+                (Err(PrepareParkError::Busy), Ok(lease)) => {
+                    drop(lease);
+                }
+                other => panic!("unexpected concurrent prepare/reserve result: {other:?}"),
+            }
+
+            assert_eq!(coordinator.state(), CoordinatorState::Open);
+        }
     }
 }
