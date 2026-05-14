@@ -2180,6 +2180,7 @@ async fn zero_max_idle_interval_disables_heartbeat_timeout() {
     let ws = MockAblyServer::start().await.unwrap();
     mock_token_endpoint(&http, "testKey.testId");
 
+    let (advance_tx, advance_rx) = tokio::sync::oneshot::channel();
     let ws_port = ws.port;
     let server_task = tokio::spawn(async move {
         let mut conn = ws
@@ -2197,19 +2198,22 @@ async fn zero_max_idle_interval_disables_heartbeat_timeout() {
         // Old behavior treated maxIdleInterval=0 as heartbeat_margin and
         // disconnected before this message. Ably semantics disable the idle
         // timeout when no maximum idle interval is promised.
-        tokio::time::sleep(Duration::from_millis(75)).await;
+        advance_rx.await.unwrap();
+        tokio::time::advance(Duration::from_secs(2)).await;
         send_message(&mut conn, "ch", "after-zero-idle", serde_json::json!("ok"))
             .await
             .unwrap();
     });
 
     let mut timing = TimingConfig::default();
-    timing.heartbeat_margin = Duration::from_millis(20);
+    timing.heartbeat_margin = Duration::from_secs(1);
     let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
 
     assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    tokio::time::pause();
+    let _ = advance_tx.send(());
 
     let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
         .await
