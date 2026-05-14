@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.365.2](https://github.com/vm0-ai/vm0/compare/web-v12.365.1...web-v12.365.2) (2026-05-14)
+
+
+### Refactoring
+
+* **onboarding:** simplify to admin-only workspace setup ([#13330](https://github.com/vm0-ai/vm0/issues/13330)) ([8d1d2ce](https://github.com/vm0-ai/vm0/commit/8d1d2ce78d03b6e53c497ce5ba433cfca061b622))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.24.1
+    * @vm0/core bumped to 8.276.3
+    * @vm0/db bumped to 1.11.2
+
 ## [12.365.1](https://github.com/vm0-ai/vm0/compare/web-v12.365.0...web-v12.365.1) (2026-05-14)
 
 

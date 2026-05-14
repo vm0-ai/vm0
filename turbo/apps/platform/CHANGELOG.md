@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.356.3](https://github.com/vm0-ai/vm0/compare/app-v0.356.2...app-v0.356.3) (2026-05-14)
+
+
+### Refactoring
+
+* **onboarding:** simplify to admin-only workspace setup ([#13330](https://github.com/vm0-ai/vm0/issues/13330)) ([8d1d2ce](https://github.com/vm0-ai/vm0/commit/8d1d2ce78d03b6e53c497ce5ba433cfca061b622))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.24.1
+    * @vm0/core bumped to 8.276.3
+
 ## [0.356.2](https://github.com/vm0-ai/vm0/compare/app-v0.356.1...app-v0.356.2) (2026-05-14)
 
 
