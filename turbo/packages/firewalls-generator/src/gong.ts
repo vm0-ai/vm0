@@ -39,7 +39,7 @@ function generateTypeScript(): string {
     '      base: "https://${{ vars.GONG_API_BASE }}",',
     "      auth: {",
     "        headers: {",
-    '          Authorization:',
+    "          Authorization:",
     '            "${{ basic(secrets.GONG_ACCESS_KEY, secrets.GONG_ACCESS_KEY_SECRET) }}",',
     "        },",
     "      },",
