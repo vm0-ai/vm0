@@ -298,7 +298,7 @@ async function handlePost(request: Request): Promise<Response> {
   });
 
   await db.insert(usageEvent).values({
-    runId: null,
+    runId: authCtx.runId ?? null,
     idempotencyKey: randomUUID(),
     orgId: org.orgId,
     userId: authCtx.userId,

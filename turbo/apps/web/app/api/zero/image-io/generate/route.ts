@@ -533,7 +533,7 @@ async function handlePost(request: Request): Promise<Response> {
   await db.insert(usageEvent).values(
     usageRows.map((row) => {
       return {
-        runId: null,
+        runId: authCtx.runId ?? null,
         idempotencyKey: randomUUID(),
         orgId: org.orgId,
         userId: authCtx.userId,

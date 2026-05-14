@@ -653,6 +653,7 @@ describe("POST /api/zero/voice-io/*", () => {
       );
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
+      runId,
       quantity: 2,
       creditsCharged: expectedCredits(2, pricing),
       status: "processed",

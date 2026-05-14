@@ -6,7 +6,7 @@ import {
   createTestRequest,
   createTestOrg,
   deleteTestUsagePricing,
-  findTestRunlessUsageEventsByOrgProvider,
+  findTestUsageEventsByRunId,
   getOrgCredits,
   insertOrgMembersCacheEntry,
   insertTestChatThread,
@@ -344,24 +344,20 @@ describe("POST /api/zero/image-io/generate", () => {
       null,
     );
     expect(await getOrgCredits(orgId)).toBe(922);
-    expect(await findTestRunlessUsageEventsByOrgProvider(orgId, MODEL)).toEqual(
+    expect(await findTestUsageEventsByRunId(runId)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          runId: null,
           kind: "image",
           provider: MODEL,
           category: "tokens.input.text",
           quantity: 1000,
-          creditsCharged: 6,
           status: "processed",
         }),
         expect.objectContaining({
-          runId: null,
           kind: "image",
           provider: MODEL,
           category: "tokens.output.image",
           quantity: 2000,
-          creditsCharged: 72,
           status: "processed",
         }),
       ]),

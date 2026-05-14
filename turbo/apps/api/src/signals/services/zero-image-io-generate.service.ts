@@ -676,7 +676,7 @@ export const recordGeneratedImage$ = command(
     await writeDb.insert(usageEvent).values(
       usageRows.map((row) => {
         return {
-          runId: null,
+          runId: params.runId ?? null,
           idempotencyKey: randomUUID(),
           orgId: params.orgId,
           userId: params.userId,

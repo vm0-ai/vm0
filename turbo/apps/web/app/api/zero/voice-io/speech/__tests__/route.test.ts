@@ -243,7 +243,7 @@ describe("POST /api/zero/voice-io/speech", () => {
     expect(openAiCalled).toBe(false);
   });
 
-  it("stores a /f WAV file, records it as a run artifact, and keeps usage runless", async () => {
+  it("stores a /f WAV file, records it as a run artifact, and attributes usage to the run", async () => {
     const userId = uniqueId("speech-ok");
     const { orgId } = await setupOrg(userId);
     const { token, runId, threadId } = await setupRunScopedToken(userId, orgId);
@@ -330,7 +330,15 @@ describe("POST /api/zero/voice-io/speech", () => {
       null,
     );
     expect(await getOrgCredits(orgId)).toBe(996);
-    expect(await findTestUsageEventsByRunId(runId)).toEqual([]);
+    expect(await findTestUsageEventsByRunId(runId)).toEqual([
+      expect.objectContaining({
+        kind: "audio",
+        provider: "gpt-4o-mini-tts",
+        category: "output_audio_seconds",
+        quantity: 10,
+        status: "processed",
+      }),
+    ]);
   });
 
   it("estimates WAV duration from actual data bytes when data chunk size is oversized", async () => {

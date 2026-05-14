@@ -702,6 +702,7 @@ describe("POST /api/zero/video-io/generate", () => {
       );
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
+      runId,
       category: "output_video_seconds.audio",
       quantity: 8,
       creditsCharged: 1440,

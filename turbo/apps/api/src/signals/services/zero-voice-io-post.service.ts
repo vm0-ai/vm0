@@ -829,7 +829,7 @@ export const recordGeneratedSpeech$ = command(
     signal.throwIfAborted();
 
     await writeDb.insert(usageEvent).values({
-      runId: null,
+      runId: params.runId ?? null,
       idempotencyKey: randomUUID(),
       orgId: params.orgId,
       userId: params.userId,

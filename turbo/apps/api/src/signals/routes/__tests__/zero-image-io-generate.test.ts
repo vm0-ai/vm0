@@ -659,18 +659,21 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(usageRows).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          runId,
           category: "tokens.input.text",
           quantity: usage.textInputTokens,
           status: "processed",
           billingError: null,
         }),
         expect.objectContaining({
+          runId,
           category: "tokens.input.image",
           quantity: usage.imageInputTokens,
           status: "processed",
           billingError: null,
         }),
         expect.objectContaining({
+          runId,
           category: "tokens.output.image",
           quantity: usage.imageOutputTokens,
           status: "processed",
