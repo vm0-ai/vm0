@@ -84,15 +84,22 @@ impl Harness {
         let base_path = dir.join("vsock").to_string_lossy().to_string();
         let listener_path = format!("{base_path}_1000");
 
-        let guest = start_guest(&listener_path);
-        let host = VsockHost::wait_for_connection(&base_path, Duration::from_secs(5))
-            .await
-            .expect("host connection failed");
+        let mut guest = Some(start_guest(&listener_path));
+        let host = match VsockHost::wait_for_connection(&base_path, Duration::from_secs(5)).await {
+            Ok(host) => host,
+            Err(err) => {
+                if let Some(g) = guest.take() {
+                    let _ = g.join();
+                }
+                let _ = std::fs::remove_dir_all(&dir);
+                panic!("host connection failed: {err}");
+            }
+        };
 
         Self {
             dir,
             host: Some(host),
-            guest: Some(guest),
+            guest,
         }
     }
 
