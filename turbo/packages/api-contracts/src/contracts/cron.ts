@@ -66,6 +66,11 @@ const cronTelegramCleanupResponseSchema = z.object({
   deleted: z.number(),
 });
 
+const cronVoiceChatCleanupResponseSchema = z.object({
+  success: z.literal(true),
+  reasonerReset: z.number(),
+});
+
 const cronAggregateInsightsSkippedResponseSchema = z.object({
   users: z.number(),
   skipped: z.literal(true),
@@ -134,6 +139,19 @@ export const cronTelegramCleanupContract = c.router({
   },
 });
 
+export const cronVoiceChatCleanupContract = c.router({
+  cleanup: {
+    method: "GET",
+    path: "/api/cron/voice-chat-cleanup",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronVoiceChatCleanupResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Reset stuck voice-chat reasoners",
+  },
+});
+
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",
@@ -155,6 +173,7 @@ export type CronReconcileBillingEntitlementsContract =
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
+export type CronVoiceChatCleanupContract = typeof cronVoiceChatCleanupContract;
 
 // Export schemas for reuse
 export {
@@ -164,5 +183,6 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
+  cronVoiceChatCleanupResponseSchema,
   cronAggregateInsightsResponseSchema,
 };

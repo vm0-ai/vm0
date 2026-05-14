@@ -374,6 +374,8 @@ export {
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupContract,
   cronTelegramCleanupResponseSchema,
+  cronVoiceChatCleanupContract,
+  cronVoiceChatCleanupResponseSchema,
   cleanupResultSchema,
   cleanupResponseSchema,
   type CronAggregateInsightsContract,
@@ -382,6 +384,7 @@ export {
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
   type CronTelegramCleanupContract,
+  type CronVoiceChatCleanupContract,
 } from "./cron";
 export {
   orgDefaultAgentContract,

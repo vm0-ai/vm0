@@ -24,6 +24,7 @@ import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
+import { cronVoiceChatCleanupRoutes } from "./routes/cron-voice-chat-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { generateImageRoutes } from "./routes/generate-image";
@@ -213,6 +214,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
+  ...cronVoiceChatCleanupRoutes,
   ...deviceTokenRoutes,
   ...emailUnsubscribeRoutes,
   ...generateImageRoutes,
