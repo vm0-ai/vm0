@@ -635,7 +635,7 @@ fn resolve_control_socket_in(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::park_coordinator::ParkCoordinator;
+    use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
     use tokio::sync::oneshot;
     use vsock_host::VsockHost;
     use vsock_proto::{Decoder, MSG_COMMAND_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
@@ -903,7 +903,8 @@ mod tests {
 
         let sock_path = dir.path().join("control.sock");
         let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
-        let mut handle = bind_server(sock_path.clone(), test_gate(guest))
+        let (gate, coordinator) = test_gate_with_coordinator(guest);
+        let mut handle = bind_server(sock_path.clone(), gate)
             .unwrap()
             .spawn(CancellationToken::new());
         let client = tokio::spawn({
@@ -931,6 +932,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(client_result.is_err());
+        assert!(
+            matches!(coordinator.state(), CoordinatorState::Dirty { .. }),
+            "cancelled in-flight control exec should mark the operation gate dirty"
+        );
 
         guest_task.abort();
         let _ = guest_task.await;
