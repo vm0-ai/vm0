@@ -2797,6 +2797,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        sandbox.push_copy_file_result(Ok(b"system log\n".to_vec()));
+        sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(system_log, "system log\n");
+
+        let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
+        assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
+
+        let calls = sandbox.copy_file_calls();
+        assert_eq!(calls.len(), 3);
+        assert!(
+            calls[2].missing_ok,
+            "missing sandbox ops log should be a best-effort no-op"
+        );
+    }
+
+    #[tokio::test]
     async fn copy_guest_logs_skips_on_nonzero_exit() {
         let dir = tempfile::tempdir().unwrap();
         let log_paths = LogPaths::new(dir.path().to_path_buf());
