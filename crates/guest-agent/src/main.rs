@@ -690,16 +690,30 @@ mod tests {
     }
 
     #[test]
-    fn final_telemetry_does_not_record_recursive_upload_op() {
+    fn final_telemetry_success_does_not_record_recursive_upload_op() {
         let _test_state_guard = lock_test_state();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
-            .block_on(final_telemetry_does_not_record_recursive_upload_op_inner());
+            .block_on(assert_final_telemetry_does_not_record_recursive_upload_op(
+                200,
+            ));
     }
 
-    async fn final_telemetry_does_not_record_recursive_upload_op_inner() {
+    #[test]
+    fn final_telemetry_failure_does_not_record_recursive_upload_op() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(assert_final_telemetry_does_not_record_recursive_upload_op(
+                500,
+            ));
+    }
+
+    async fn assert_final_telemetry_does_not_record_recursive_upload_op(status: u16) {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
         unsafe {
@@ -726,7 +740,7 @@ mod tests {
             when.method(POST)
                 .path("/api/webhooks/agent/telemetry")
                 .body_includes("before_final_telemetry");
-            then.status(200)
+            then.status(status)
                 .header("Content-Type", "application/json")
                 .json_body(json!({}));
         });
