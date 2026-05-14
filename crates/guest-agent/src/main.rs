@@ -455,21 +455,13 @@ fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool 
     cli_exit_code == 0 && exit_code == 0
 }
 
-/// Final telemetry upload — records timing and logs on failure.
+/// Final telemetry upload — best-effort and logs on failure.
 /// The complete API is called by the runner after VM exits, not by guest-agent.
 async fn final_telemetry(telemetry: &Telemetry) {
     log_info!(LOG_TAG, "Performing final telemetry upload...");
-    let telemetry_start = Instant::now();
-    let telemetry_ok = telemetry.flush(UploadMode::Final).await.is_ok();
-    if !telemetry_ok {
+    if telemetry.flush(UploadMode::Final).await.is_err() {
         log_error!(LOG_TAG, "Final telemetry upload failed");
     }
-    record_sandbox_op(
-        "final_telemetry_upload",
-        telemetry_start.elapsed(),
-        telemetry_ok,
-        None,
-    );
 }
 
 #[cfg(test)]
@@ -695,6 +687,88 @@ mod tests {
         assert!(should_create_success_checkpoint(0, 0));
         assert!(!should_create_success_checkpoint(0, 1));
         assert!(!should_create_success_checkpoint(1, 1));
+    }
+
+    #[test]
+    fn final_telemetry_success_does_not_record_recursive_upload_op() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(assert_final_telemetry_does_not_record_recursive_upload_op(
+                200,
+            ));
+    }
+
+    #[test]
+    fn final_telemetry_failure_does_not_record_recursive_upload_op() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(assert_final_telemetry_does_not_record_recursive_upload_op(
+                500,
+            ));
+    }
+
+    async fn assert_final_telemetry_does_not_record_recursive_upload_op(status: u16) {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let system_log_path = tmp.path().join("system.log");
+        let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let cleanup_paths = [
+            system_log_path.to_string_lossy().into_owned(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/telemetry")
+                .body_includes("before_final_telemetry");
+            then.status(status)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        record_sandbox_op(
+            "before_final_telemetry",
+            Duration::from_millis(1),
+            true,
+            None,
+        );
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http);
+
+        final_telemetry(&telemetry).await;
+        telemetry.shutdown().await;
+
+        telemetry_mock.assert_calls_async(1).await;
+        telemetry_mock.delete_async().await;
+        let sandbox_ops = std::fs::read_to_string(paths::sandbox_ops_file()).unwrap_or_default();
+        assert!(
+            !sandbox_ops.contains("final_telemetry_upload"),
+            "final telemetry must not record telemetry-upload telemetry through the same stream"
+        );
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]

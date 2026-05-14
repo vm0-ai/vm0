@@ -21,6 +21,10 @@
 
 use std::path::{Path, PathBuf};
 
+use api_contracts::generated::model_providers::codex_oauth_token::placeholders::{
+    CHATGPT_ACCOUNT_ID as PLACEHOLDER_CHATGPT_ACCOUNT_ID,
+    CHATGPT_REFRESH_TOKEN as PLACEHOLDER_CHATGPT_REFRESH_TOKEN,
+};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
@@ -30,30 +34,10 @@ use crate::error::AgentError;
 // ---------------------------------------------------------------------------
 // Placeholder constants
 //
-// These literals MUST match the firewall's expected placeholder bytes for
-// ChatGPT request rewriting. The api-contracts firewall config that owns
-// the matching side lives at:
-//     turbo/packages/api-contracts/src/contracts/model-providers.ts
-// (per Epic #11872, sub-issue #11878). If you change these constants,
-// update both files in the same PR — drift produces silent 401s from
-// the upstream API because the firewall will fail to recognize and
-// replace the placeholder bytes.
+// The ChatGPT OAuth placeholder byte strings are generated from the
+// TypeScript model-provider contract. That keeps guest-agent's fabricated
+// auth.json aligned with the firewall's egress replacement map.
 // ---------------------------------------------------------------------------
-
-/// Placeholder workspace account id written into `auth.json` `tokens.account_id`
-/// and the JWT `chatgpt_account_id` claim. The firewall replaces these bytes
-/// on egress with the real account id from server-side secrets.
-pub(crate) const PLACEHOLDER_CHATGPT_ACCOUNT_ID: &str = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
-
-/// Placeholder refresh_token written into `~/.codex/auth.json` in
-/// codex-oauth mode. Non-empty by design (#12077): newer codex CLI
-/// versions reject auth.json with empty `refresh_token` at boot — codex
-/// exits 1 within milliseconds before any HTTP egress, so the firewall
-/// replacement layer never gets a chance. The opaque marker shape mirrors
-/// `PLACEHOLDER_CHATGPT_ACCOUNT_ID` and is recognizable in audit greps.
-/// The firewall replaces this string with the real refresh_token on the
-/// /oauth/token egress path; the sandbox itself never sees a real token.
-pub(crate) const PLACEHOLDER_CHATGPT_REFRESH_TOKEN: &str = "rt_VM0_PLACEHOLDER_DO_NOT_TRUST";
 
 /// Placeholder ChatGPT plan type. Must be a non-`free` plan name; codex
 /// rejects `free`. The real plan type is enforced server-side at provider

@@ -184,6 +184,12 @@ export {
   type TelegramCallbackPayload,
 } from "./internal-callbacks-telegram";
 export {
+  internalCallbacksAgentPhoneContract,
+  agentPhoneCallbackPayloadSchema,
+  type InternalCallbacksAgentPhoneContract,
+  type AgentPhoneCallbackPayload,
+} from "./internal-callbacks-agentphone";
+export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
@@ -896,6 +902,7 @@ export {
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
   zeroComputerConnectorContract,
+  zeroLocalBrowserConnectorContract,
   zeroRemoteAgentConnectorContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
@@ -905,6 +912,7 @@ export {
   type ZeroConnectorSessionsContract,
   type ZeroConnectorSessionByIdContract,
   type ZeroComputerConnectorContract,
+  type ZeroLocalBrowserConnectorContract,
   type ZeroRemoteAgentConnectorContract,
 } from "./zero-connectors";
 export {
@@ -1065,6 +1073,8 @@ export {
   type IntegrationsPhoneMessageContract,
   type SendPhoneMessageBody,
   type SendPhoneMessageResponse,
+  integrationsPhoneDownloadFileContract,
+  type IntegrationsPhoneDownloadFileContract,
   integrationsTelegramBotListContract,
   type IntegrationsTelegramBotListContract,
   type TelegramBotListItem,

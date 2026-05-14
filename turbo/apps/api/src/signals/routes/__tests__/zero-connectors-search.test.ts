@@ -5,14 +5,55 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { createStore } from "ccstate";
+import { and, eq } from "drizzle-orm";
+import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const store = createStore();
+
+async function enableLocalBrowser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(userFeatureSwitches).values({
+    orgId,
+    userId,
+    switches: { [FeatureSwitchKey.LocalBrowserUse]: true },
+  });
+}
 
 describe("GET /api/zero/connectors/search", () => {
+  const seededFeatureSwitches: {
+    readonly orgId: string;
+    readonly userId: string;
+  }[] = [];
+
+  afterEach(async () => {
+    const writeDb = store.set(writeDb$);
+    while (seededFeatureSwitches.length > 0) {
+      const fixture = seededFeatureSwitches.pop();
+      if (fixture) {
+        await writeDb
+          .delete(userFeatureSwitches)
+          .where(
+            and(
+              eq(userFeatureSwitches.orgId, fixture.orgId),
+              eq(userFeatureSwitches.userId, fixture.userId),
+            ),
+          );
+      }
+    }
+  });
+
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroConnectorsSearchContract);
     const response = await accept(
@@ -147,6 +188,47 @@ describe("GET /api/zero/connectors/search", () => {
       return c.id === "computer";
     });
     expect(computer).toBeUndefined();
+  });
+
+  it("hides local-browser when the feature is disabled", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const localBrowser = response.body.connectors.find((c) => {
+      return c.id === "local-browser";
+    });
+    expect(localBrowser).toBeUndefined();
+  });
+
+  it("shows local-browser as an api connector when the feature is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFeatureSwitches.push({ orgId, userId });
+    await enableLocalBrowser(orgId, userId);
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const response = await accept(
+      client.search({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const localBrowser = response.body.connectors.find((c) => {
+      return c.id === "local-browser";
+    });
+    expect(localBrowser).toBeDefined();
+    expect(localBrowser?.authMethods).toStrictEqual(["api"]);
   });
 
   it("shows feature-flagged connector with api-token even when flag is disabled", async () => {

@@ -22,6 +22,7 @@ import * as modelStatSchema from "./schema/model-stat";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
+import * as connectorCliAuthSessionSchema from "./schema/connector-cli-auth-session";
 import * as usageEventSchema from "./schema/usage-event";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
@@ -61,6 +62,7 @@ import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
+import * as localBrowserSchema from "./schema/local-browser";
 import * as remoteAgentSchema from "./schema/remote-agent";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as voiceChatSchema from "./schema/voice-chat";
@@ -100,6 +102,7 @@ export const schema = {
   ...variableSchema,
   ...composeJobSchema,
   ...connectorSchema,
+  ...connectorCliAuthSessionSchema,
   ...usageEventSchema,
   ...usageDailySchema,
   ...emailThreadSessionSchema,
@@ -134,6 +137,7 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,
   ...computerUseHostSchema,
+  ...localBrowserSchema,
   ...remoteAgentSchema,
   ...insightsDailySchema,
   ...voiceChatSchema,

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
@@ -36,7 +38,24 @@ async function seedConnector(args: {
 
 async function deleteConnectorsByOrg(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
-  await writeDb.delete(connectors).where(eq(connectors.orgId, orgId));
+  await Promise.all([
+    writeDb.delete(connectors).where(eq(connectors.orgId, orgId)),
+    writeDb
+      .delete(userFeatureSwitches)
+      .where(eq(userFeatureSwitches.orgId, orgId)),
+  ]);
+}
+
+async function enableLocalBrowser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(userFeatureSwitches).values({
+    orgId,
+    userId,
+    switches: { [FeatureSwitchKey.LocalBrowserUse]: true },
+  });
 }
 
 describe("GET /api/zero/connectors", () => {
@@ -94,6 +113,60 @@ describe("GET /api/zero/connectors", () => {
         return c.type === "github";
       }),
     ).toBeTruthy();
+  });
+
+  it("hides connected local-browser connector when the feature is disabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    await seedConnector({
+      orgId,
+      userId,
+      type: "local-browser",
+      authMethod: "api",
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const response = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    const localBrowser = response.body.connectors.find((c) => {
+      return c.type === "local-browser";
+    });
+    expect(localBrowser).toBeUndefined();
+  });
+
+  it("returns connected local-browser connector when the feature is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    await enableLocalBrowser(orgId, userId);
+    await seedConnector({
+      orgId,
+      userId,
+      type: "local-browser",
+      authMethod: "api",
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsMainContract);
+    const response = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    const localBrowser = response.body.connectors.find((c) => {
+      return c.type === "local-browser";
+    });
+    expect(localBrowser).toBeDefined();
+    expect(localBrowser?.authMethod).toBe("api");
   });
 
   it("returns 401 when not authenticated", async () => {

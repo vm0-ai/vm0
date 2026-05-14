@@ -96,6 +96,7 @@ import { langfuseHandler } from "./providers/langfuse-handler";
 import { langsmithHandler } from "./providers/langsmith-handler";
 import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
+import { localBrowserHandler } from "./providers/local-browser-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { lumaHandler } from "./providers/luma-handler";
 import { lumaAiHandler } from "./providers/luma-ai-handler";
@@ -192,6 +193,8 @@ import { servicenowHandler } from "./providers/servicenow-handler";
 import { testrailHandler } from "./providers/testrail-handler";
 import { twilioHandler } from "./providers/twilio-handler";
 import { squareHandler } from "./providers/square-handler";
+import { gongHandler } from "./providers/gong-handler";
+import { ironcladHandler } from "./providers/ironclad-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
@@ -309,6 +312,7 @@ export const PROVIDER_HANDLERS: Record<
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
+  "local-browser": localBrowserHandler,
   "remote-agent": remoteAgentHandler,
   reportei: reporteiHandler,
   serpapi: serpapiHandler,
@@ -387,6 +391,8 @@ export const PROVIDER_HANDLERS: Record<
   testrail: testrailHandler,
   twilio: twilioHandler,
   square: squareHandler,
+  gong: gongHandler,
+  ironclad: ironcladHandler,
 };
 
 /**

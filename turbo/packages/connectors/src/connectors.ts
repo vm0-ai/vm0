@@ -52,6 +52,7 @@ import { figma } from "./connectors/figma";
 import { mercury } from "./connectors/mercury";
 import { minimax } from "./connectors/minimax";
 import { reportei } from "./connectors/reportei";
+import { localBrowser } from "./connectors/local-browser";
 import { remoteAgent } from "./connectors/remote-agent";
 import { serpapi } from "./connectors/serpapi";
 import { salesforce } from "./connectors/salesforce";
@@ -187,6 +188,8 @@ import { servicenow } from "./connectors/servicenow";
 import { testrail } from "./connectors/testrail";
 import { twilio } from "./connectors/twilio";
 import { square } from "./connectors/square";
+import { gong } from "./connectors/gong";
+import { ironclad } from "./connectors/ironclad";
 
 /**
  * Secret field configuration for connector auth methods
@@ -430,6 +433,7 @@ const CONNECTOR_TYPES_DEF = {
   ...mercury,
   ...minimax,
   ...reportei,
+  ...localBrowser,
   ...remoteAgent,
   ...serpapi,
   ...salesforce,
@@ -565,6 +569,8 @@ const CONNECTOR_TYPES_DEF = {
   ...testrail,
   ...twilio,
   ...square,
+  ...gong,
+  ...ironclad,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

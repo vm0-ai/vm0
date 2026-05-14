@@ -1,15 +1,11 @@
+import { createHash } from "node:crypto";
+
 /**
  * Existing Next.js API routes in apps/web at the point web route growth was
  * frozen. New API routes should be implemented in apps/api instead.
  *
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries without an intentional exception.
- *
- * Intentional exception (Epic #12128, Plan D): the voice-chat realtime
- * billing surface lives in apps/web because the relay design is killed by
- * Vercel's lack of WebSocket-upgrade support. The browser self-reports
- * `response.done` and `transcription.completed` usage to these
- * Vercel-served endpoints; apps/api would not be a viable home today.
  *
  * Intentional exception: remote-agent routes are implemented in apps/api, but
  * CLI and platform callers use the same VM0_API_URL prefix as `vm0 auth login`
@@ -20,15 +16,8 @@
  * apps/web while the rest of Zero's bearer-token web API still authenticates
  * through requireAuth/resolveOrg in the Next.js runtime.
  *
- * Intentional exception: official shared AgentPhone messaging uses the same
- * in-process callback/run machinery as Telegram. Keep the webhook, connect
- * redirect, and internal callback routes in apps/web until integration
- * callbacks move out of the Next.js runtime.
  */
 export const WEB_API_ROUTE_BASELINE = [
-  "app/api/zero/voice-chat/[id]/usage/route.ts",
-  "app/api/zero/voice-chat/[id]/session-started/route.ts",
-  "app/api/zero/voice-chat/[id]/session-ended/route.ts",
   "app/api/agent/checkpoints/[id]/route.ts",
   "app/api/agent/composes/[id]/instructions/route.ts",
   "app/api/agent/composes/[id]/metadata/route.ts",
@@ -47,8 +36,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/queue/route.ts",
   "app/api/agent/runs/route.ts",
   "app/api/agent/sessions/[id]/route.ts",
-  "app/api/agentphone/connect/route.ts",
-  "app/api/agentphone/webhook/route.ts",
   "app/api/auth/me/route.ts",
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
@@ -85,14 +72,12 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/callbacks/agent/route.ts",
   "app/api/internal/callbacks/chat/route.ts",
   "app/api/internal/callbacks/github/issues/route.ts",
-  "app/api/internal/callbacks/agentphone/route.ts",
   "app/api/internal/callbacks/schedule/cron/route.ts",
   "app/api/internal/callbacks/schedule/loop/route.ts",
   "app/api/internal/callbacks/slack/org/route.ts",
   "app/api/internal/callbacks/telegram/route.ts",
   "app/api/internal/callbacks/voice-chat/route.ts",
   "app/api/internal/event-consumers/axiom/route.ts",
-  "app/api/internal/event-consumers/agentphone-typing/route.ts",
   "app/api/internal/event-consumers/chat-assistant/route.ts",
   "app/api/internal/event-consumers/telegram-typing/route.ts",
   "app/api/internal/event-consumers/voice-chat/route.ts",
@@ -202,10 +187,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/slack/route.ts",
   "app/api/zero/integrations/slack/upload-file/complete/route.ts",
   "app/api/zero/integrations/slack/upload-file/init/route.ts",
-  "app/api/zero/integrations/phone/download-file/route.ts",
-  "app/api/zero/integrations/phone/message/route.ts",
-  "app/api/zero/integrations/phone/upload-file/complete/route.ts",
-  "app/api/zero/integrations/phone/upload-file/init/route.ts",
   "app/api/zero/integrations/telegram/bots/route.ts",
   "app/api/zero/integrations/telegram/download-file/route.ts",
   "app/api/zero/integrations/telegram/message/route.ts",
@@ -289,6 +270,15 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/voice-io/tts/route.ts",
   "app/api/zero/web/download-file/route.ts",
 ] as const;
+
+export const WEB_API_ROUTE_BASELINE_HASH =
+  "bba95ded7ac326a4f8b0186ad94f859b1ab4a601b93b7b433c37bb625972b34b";
+
+export function computeWebApiRouteBaselineHash(
+  routes: readonly string[] = WEB_API_ROUTE_BASELINE,
+): string {
+  return createHash("sha256").update(routes.join("\n")).digest("hex");
+}
 
 export const WEB_API_ROUTE_BASELINE_SET = new Set<string>(
   WEB_API_ROUTE_BASELINE,

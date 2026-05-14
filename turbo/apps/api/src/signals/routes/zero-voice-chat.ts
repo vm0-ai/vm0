@@ -16,9 +16,12 @@ import { voiceChatTalkerPayload } from "../services/voice-chat-talker.service";
 import {
   appendVoiceChatItem$,
   checkVoiceChatCredits$,
+  createVoiceChatRealtimeSession$,
   createVoiceChatEphemeralToken$,
   createVoiceChatSession$,
   createVoiceChatTask$,
+  endVoiceChatRealtimeSession$,
+  recordVoiceChatRealtimeUsage$,
   serializeVoiceChatSession,
   serializeVoiceChatItem,
   serializeVoiceChatTask,
@@ -362,6 +365,138 @@ const tokenInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+const postUsageEventBody$ = bodyResultOf(zeroVoiceChatContract.postUsageEvent);
+
+const postUsageEventInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const gates = await get(voiceChatGates(auth));
+    signal.throwIfAborted();
+    if (!gates.voiceChatEnabled) {
+      return notFound("Voice-chat session not found");
+    }
+    if (!gates.realtimeBillingEnabled) {
+      return { status: 200 as const, body: { creditsExhausted: false } };
+    }
+
+    const body = await get(postUsageEventBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    if (
+      body.data.eventType === "transcription.completed" &&
+      body.data.outputAudioTokens !== undefined
+    ) {
+      return badRequestMessage(
+        "transcription.completed cannot include outputAudioTokens",
+      );
+    }
+
+    const params = get(pathParamsOf(zeroVoiceChatContract.postUsageEvent));
+    const session = await get(
+      voiceChatSessionDetail(auth.orgId, auth.userId, params.id),
+    );
+    signal.throwIfAborted();
+    if (!session) {
+      return notFound("Voice-chat session not found");
+    }
+
+    const result = await set(
+      recordVoiceChatRealtimeUsage$,
+      {
+        voiceChatSessionId: params.id,
+        orgId: session.orgId,
+        userId: session.userId,
+        providerEventId: body.data.providerEventId,
+        eventType: body.data.eventType,
+        tokens: {
+          inputText: body.data.inputTextTokens,
+          inputAudio: body.data.inputAudioTokens,
+          inputCachedText: body.data.inputCachedTextTokens,
+          inputCachedAudio: body.data.inputCachedAudioTokens,
+          outputText: body.data.outputTextTokens,
+          outputAudio: body.data.outputAudioTokens,
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: { creditsExhausted: result.creditsExhausted },
+    };
+  },
+);
+
+const sessionStartedInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const gates = await get(voiceChatGates(auth));
+    signal.throwIfAborted();
+    if (!gates.voiceChatEnabled) {
+      return notFound("Voice-chat session not found");
+    }
+    if (!gates.realtimeBillingEnabled) {
+      return { status: 200 as const, body: { id: null } };
+    }
+
+    const params = get(pathParamsOf(zeroVoiceChatContract.sessionStarted));
+    const session = await get(
+      voiceChatSessionDetail(auth.orgId, auth.userId, params.id),
+    );
+    signal.throwIfAborted();
+    if (!session) {
+      return notFound("Voice-chat session not found");
+    }
+
+    const id = await set(
+      createVoiceChatRealtimeSession$,
+      {
+        voiceChatSessionId: params.id,
+        orgId: session.orgId,
+        userId: session.userId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { id } };
+  },
+);
+
+const sessionEndedBody$ = bodyResultOf(zeroVoiceChatContract.sessionEnded);
+
+const sessionEndedInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const body = await get(sessionEndedBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const params = get(pathParamsOf(zeroVoiceChatContract.sessionEnded));
+    const ended = await set(
+      endVoiceChatRealtimeSession$,
+      {
+        voiceChatSessionId: params.id,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        realtimeSessionId: body.data.relaySessionId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!ended) {
+      return notFound("Voice-chat realtime session not found");
+    }
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
 export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
   {
     route: zeroVoiceChatContract.createSession,
@@ -417,6 +552,27 @@ export const zeroVoiceChatRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       tokenInner$,
+    ),
+  },
+  {
+    route: zeroVoiceChatContract.postUsageEvent,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      postUsageEventInner$,
+    ),
+  },
+  {
+    route: zeroVoiceChatContract.sessionStarted,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      sessionStartedInner$,
+    ),
+  },
+  {
+    route: zeroVoiceChatContract.sessionEnded,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      sessionEndedInner$,
     ),
   },
 ];

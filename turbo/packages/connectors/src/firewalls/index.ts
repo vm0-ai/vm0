@@ -211,6 +211,8 @@ import { servicenowFirewall } from "./servicenow.generated";
 import { testrailFirewall } from "./testrail.generated";
 import { twilioFirewall } from "./twilio.generated";
 import { squareFirewall } from "./square.generated";
+import { gongFirewall } from "./gong.generated";
+import { ironcladFirewall } from "./ironclad.generated";
 
 export * from "../firewall-types";
 
@@ -411,6 +413,8 @@ const CONNECTOR_FIREWALLS = {
   testrail: testrailFirewall,
   twilio: twilioFirewall,
   square: squareFirewall,
+  gong: gongFirewall,
+  ironclad: ironcladFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**
@@ -571,6 +575,7 @@ export type NonFirewallConnectorType =
   | "codex-oauth"
   // Other
   | "computer" // not an API connector
+  | "local-browser" // virtual connector backed by a user-authorized browser host
   | "remote-agent"; // virtual connector backed by vm0's remote-agent API
 
 /**

@@ -25,12 +25,15 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import {
   voiceChatItems,
+  voiceChatRealtimeSessions,
   voiceChatSessions,
   voiceChatTasks,
 } from "@vm0/db/schema/voice-chat";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { v5 as uuidv5 } from "uuid";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -40,6 +43,7 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { safeAsync, safeJsonParse } from "../utils";
 import { createAgentRun$ } from "./agent-run-create.service";
+import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -63,8 +67,10 @@ const COMPACT_INTERVAL_MS = 60_000;
 const MIN_COMPACT_SHRINK_FRACTION = 0.1;
 const RECENT_ITEMS_LIMIT = 20;
 const MODEL_USAGE_KIND = "model";
+const REALTIME_SESSION_PROVIDER = "openai";
 const REALTIME_PROVIDER = "gpt-realtime-2";
 const TRANSCRIPTION_PROVIDER = "gpt-4o-mini-transcribe";
+const VOICE_CHAT_USAGE_NAMESPACE = "dd3f7425-aa8f-56d0-87cb-6158c8c621de";
 const REALTIME_TOKEN_CATEGORIES = [
   "tokens.input.text",
   "tokens.input.audio",
@@ -112,6 +118,7 @@ const logReasoner = logger("zero:voice-chat:reasoner");
 const logCompactor = logger("zero:voice-chat:compact");
 const logTask = logger("zero:voice-chat:task");
 const logToken = logger("api:zero:voice-chat:token");
+const logUsage = logger("api:zero:voice-chat:usage");
 
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
@@ -199,6 +206,45 @@ interface OpenAiTokenError extends Error {
   readonly name: typeof OPENAI_TOKEN_ERROR_TAG;
   readonly status: number;
   readonly body: string;
+}
+
+type VoiceChatUsageEventType = "response.done" | "transcription.completed";
+
+interface VoiceChatUsageTokens {
+  readonly inputText?: number;
+  readonly inputAudio?: number;
+  readonly inputCachedText?: number;
+  readonly inputCachedAudio?: number;
+  readonly outputText?: number;
+  readonly outputAudio?: number;
+}
+
+interface RecordVoiceChatRealtimeUsageInput {
+  readonly voiceChatSessionId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly providerEventId: string;
+  readonly eventType: VoiceChatUsageEventType;
+  readonly tokens: VoiceChatUsageTokens;
+}
+
+interface RecordVoiceChatRealtimeUsageResult {
+  readonly creditsExhausted: boolean;
+  readonly rowsInserted: number;
+}
+
+interface VoiceChatUsageCategoryRow {
+  readonly category: string;
+  readonly quantity: number;
+}
+
+function buildVoiceChatUsageIdempotencyKey(parts: {
+  readonly voiceChatSessionId: string;
+  readonly providerEventId: string;
+  readonly category: string;
+}): string {
+  const name = `${parts.voiceChatSessionId}:${parts.providerEventId}:${parts.category}`;
+  return uuidv5(name, VOICE_CHAT_USAGE_NAMESPACE);
 }
 
 function openRouterRequestSignal(signal: AbortSignal): AbortSignal {
@@ -1989,6 +2035,197 @@ export const voiceChatRealtimePricingGate$ = computed(
     }
 
     return missing.length === 0 ? null : pricingNotConfigured(missing);
+  },
+);
+
+function voiceChatUsageProviderFor(eventType: VoiceChatUsageEventType): string {
+  return eventType === "response.done"
+    ? REALTIME_PROVIDER
+    : TRANSCRIPTION_PROVIDER;
+}
+
+function buildVoiceChatUsageRows(
+  eventType: VoiceChatUsageEventType,
+  tokens: VoiceChatUsageTokens,
+): VoiceChatUsageCategoryRow[] {
+  if (eventType === "response.done") {
+    const allowed = REALTIME_TOKEN_CATEGORIES;
+    const candidates: VoiceChatUsageCategoryRow[] = [
+      { category: "tokens.input.text", quantity: tokens.inputText ?? 0 },
+      { category: "tokens.input.audio", quantity: tokens.inputAudio ?? 0 },
+      {
+        category: "tokens.input.cached_text",
+        quantity: tokens.inputCachedText ?? 0,
+      },
+      {
+        category: "tokens.input.cached_audio",
+        quantity: tokens.inputCachedAudio ?? 0,
+      },
+      { category: "tokens.output.text", quantity: tokens.outputText ?? 0 },
+      { category: "tokens.output.audio", quantity: tokens.outputAudio ?? 0 },
+    ];
+    return candidates.filter((row) => {
+      return (
+        row.quantity > 0 &&
+        (allowed as readonly string[]).includes(row.category)
+      );
+    });
+  }
+
+  const allowed = TRANSCRIPTION_TOKEN_CATEGORIES;
+  const candidates: VoiceChatUsageCategoryRow[] = [
+    { category: "tokens.input.audio", quantity: tokens.inputAudio ?? 0 },
+    { category: "tokens.input.text", quantity: tokens.inputText ?? 0 },
+    { category: "tokens.output.text", quantity: tokens.outputText ?? 0 },
+  ];
+  return candidates.filter((row) => {
+    return (
+      row.quantity > 0 && (allowed as readonly string[]).includes(row.category)
+    );
+  });
+}
+
+export const createVoiceChatRealtimeSession$ = command(
+  async (
+    { set },
+    args: {
+      readonly voiceChatSessionId: string;
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    const writeDb = set(writeDb$);
+    const [inserted] = await writeDb
+      .insert(voiceChatRealtimeSessions)
+      .values({
+        voiceChatSessionId: args.voiceChatSessionId,
+        orgId: args.orgId,
+        userId: args.userId,
+        provider: REALTIME_SESSION_PROVIDER,
+        model: REALTIME_PROVIDER,
+        transcriptionModel: TRANSCRIPTION_PROVIDER,
+        status: "active",
+      })
+      .returning({ id: voiceChatRealtimeSessions.id });
+    signal.throwIfAborted();
+    return inserted?.id ?? null;
+  },
+);
+
+export const endVoiceChatRealtimeSession$ = command(
+  async (
+    { set },
+    args: {
+      readonly voiceChatSessionId: string;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly realtimeSessionId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        id: voiceChatRealtimeSessions.id,
+        orgId: voiceChatRealtimeSessions.orgId,
+        userId: voiceChatRealtimeSessions.userId,
+        voiceChatSessionId: voiceChatRealtimeSessions.voiceChatSessionId,
+      })
+      .from(voiceChatRealtimeSessions)
+      .where(eq(voiceChatRealtimeSessions.id, args.realtimeSessionId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (
+      !row ||
+      row.voiceChatSessionId !== args.voiceChatSessionId ||
+      row.orgId !== args.orgId ||
+      row.userId !== args.userId
+    ) {
+      return false;
+    }
+
+    await writeDb
+      .update(voiceChatRealtimeSessions)
+      .set({ status: "ended", endedAt: nowDate() })
+      .where(
+        and(
+          eq(voiceChatRealtimeSessions.id, args.realtimeSessionId),
+          eq(voiceChatRealtimeSessions.status, "active"),
+        ),
+      );
+    signal.throwIfAborted();
+    return true;
+  },
+);
+
+export const recordVoiceChatRealtimeUsage$ = command(
+  async (
+    { set },
+    input: RecordVoiceChatRealtimeUsageInput,
+    signal: AbortSignal,
+  ): Promise<RecordVoiceChatRealtimeUsageResult> => {
+    const writeDb = set(writeDb$);
+    const provider = voiceChatUsageProviderFor(input.eventType);
+    const rows = buildVoiceChatUsageRows(input.eventType, input.tokens);
+
+    if (rows.length === 0) {
+      logUsage.warn("usage event has no billable token fields; dropping", {
+        voiceChatSessionId: input.voiceChatSessionId,
+        providerEventId: input.providerEventId,
+        eventType: input.eventType,
+      });
+      return { creditsExhausted: false, rowsInserted: 0 };
+    }
+
+    await writeDb
+      .insert(usageEvent)
+      .values(
+        rows.map((row) => {
+          return {
+            runId: null,
+            idempotencyKey: buildVoiceChatUsageIdempotencyKey({
+              voiceChatSessionId: input.voiceChatSessionId,
+              providerEventId: input.providerEventId,
+              category: row.category,
+            }),
+            orgId: input.orgId,
+            userId: input.userId,
+            kind: MODEL_USAGE_KIND,
+            provider,
+            category: row.category,
+            quantity: row.quantity,
+          };
+        }),
+      )
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+    signal.throwIfAborted();
+
+    await set(processOrgUsageEvents$, input.orgId, signal);
+    signal.throwIfAborted();
+
+    await writeDb
+      .update(voiceChatRealtimeSessions)
+      .set({ lastUsageAt: nowDate() })
+      .where(
+        and(
+          eq(
+            voiceChatRealtimeSessions.voiceChatSessionId,
+            input.voiceChatSessionId,
+          ),
+          eq(voiceChatRealtimeSessions.status, "active"),
+        ),
+      );
+    signal.throwIfAborted();
+
+    const credits = await set(
+      checkVoiceChatCredits$,
+      { orgId: input.orgId, userId: input.userId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { creditsExhausted: credits !== null, rowsInserted: rows.length };
   },
 );
 

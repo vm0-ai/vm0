@@ -1,15 +1,20 @@
 [package]
 name = "vsock-test"
-version = "0.9.34"
+version = "0.9.35"
 edition.workspace = true
 
 [dependencies]
 guest-write-file.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-host.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
 
 [lints]
 workspace = true

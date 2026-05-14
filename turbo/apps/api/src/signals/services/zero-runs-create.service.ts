@@ -90,6 +90,7 @@ interface UserInfo {
   readonly telegramUsername?: string;
   readonly telegramUserId?: string;
   readonly telegramLanguage?: string;
+  readonly agentphoneHandle?: string;
 }
 
 interface ZeroAgentConfig {
@@ -265,6 +266,9 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
   }
   if (userInfo.telegramLanguage) {
     lines.push(`Telegram language: ${userInfo.telegramLanguage}`);
+  }
+  if (userInfo.agentphoneHandle) {
+    lines.push(`Text message handle: ${userInfo.agentphoneHandle}`);
   }
   return lines.join("\n");
 }
@@ -562,6 +566,7 @@ export const createZeroIntegrationRun$ = command(
         | "telegramUsername"
         | "telegramUserId"
         | "telegramLanguage"
+        | "agentphoneHandle"
       >;
     },
     signal: AbortSignal,
@@ -665,6 +670,7 @@ export const createZeroRun$ = command(
         | "telegramUsername"
         | "telegramUserId"
         | "telegramLanguage"
+        | "agentphoneHandle"
       >;
       readonly callbacks?: readonly RunCallback[];
       readonly selectedModelOverride?: string;

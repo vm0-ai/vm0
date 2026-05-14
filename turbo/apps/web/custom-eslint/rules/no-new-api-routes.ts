@@ -2,7 +2,9 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 
 import {
+  computeWebApiRouteBaselineHash,
   WEB_API_ROUTE_BASELINE,
+  WEB_API_ROUTE_BASELINE_HASH,
   WEB_API_ROUTE_BASELINE_SET,
 } from "../baselines/web-api-routes.ts";
 import { createRule } from "../utils.ts";
@@ -11,6 +13,7 @@ const APP_API_ROUTE_PREFIX = "app/api/";
 const APP_API_ROUTE_MARKER = "/app/api/";
 const ROUTE_SUFFIX = "/route.ts";
 
+const reportedBaselineHashRoots = new Set<string>();
 const reportedStaleBaselineRoots = new Set<string>();
 
 function normalizePath(value: string): string {
@@ -63,6 +66,10 @@ function staleBaselineMessageData(missingRoutes: readonly string[]): {
   };
 }
 
+export function webApiRouteBaselineHashIsCurrent(): boolean {
+  return computeWebApiRouteBaselineHash() === WEB_API_ROUTE_BASELINE_HASH;
+}
+
 export const noNewApiRoutes = createRule({
   name: "no-new-api-routes",
   defaultOptions: [],
@@ -79,6 +86,8 @@ export const noNewApiRoutes = createRule({
         "Do not add new API routes under apps/web/app/api. Add this route to apps/api and keep web as legacy/fallback only.",
       staleApiRouteBaseline:
         "Web API route baseline contains {{count}} deleted route(s). Remove stale baseline entries: {{routes}}",
+      changedApiRouteBaseline:
+        "Web API route baseline changed without updating WEB_API_ROUTE_BASELINE_HASH. Remove accidental baseline edits instead of allowlisting new web API routes.",
     },
   },
   create(context) {
@@ -97,6 +106,16 @@ export const noNewApiRoutes = createRule({
         }
 
         const webRoot = webRootFromFilename(context.filename);
+        if (!reportedBaselineHashRoots.has(webRoot)) {
+          reportedBaselineHashRoots.add(webRoot);
+          if (!webApiRouteBaselineHashIsCurrent()) {
+            context.report({
+              node,
+              messageId: "changedApiRouteBaseline",
+            });
+          }
+        }
+
         if (reportedStaleBaselineRoots.has(webRoot)) {
           return;
         }

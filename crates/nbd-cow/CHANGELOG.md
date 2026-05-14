@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.21](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.20...nbd-cow-v0.4.21) (2026-05-14)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid flush buffer allocation ([#13308](https://github.com/vm0-ai/vm0/issues/13308)) ([8c9e685](https://github.com/vm0-ai/vm0/commit/8c9e6854454b6a791c146056e88066a8ebd084ee))
+
 ## [0.4.20](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.19...nbd-cow-v0.4.20) (2026-05-12)
 
 

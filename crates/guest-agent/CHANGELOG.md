@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.1...guest-agent-v0.31.2) (2026-05-14)
+
+
+### Bug Fixes
+
+* write codex auth atomically ([#13296](https://github.com/vm0-ai/vm0/issues/13296)) ([9ccf7dc](https://github.com/vm0-ai/vm0/commit/9ccf7dc7409339cf06c7aca8219915c8cf19f979))
+
+
+### Refactoring
+
+* **api-contracts:** generate codex oauth placeholders ([#13315](https://github.com/vm0-ai/vm0/issues/13315)) ([b9cd208](https://github.com/vm0-ai/vm0/commit/b9cd208dd81a1798b5e946b12581c3648bee0ddd))
+
 ## [0.31.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.0...guest-agent-v0.31.1) (2026-05-14)
 
 

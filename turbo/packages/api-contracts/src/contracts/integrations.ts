@@ -158,6 +158,32 @@ export const integrationsPhoneMessageContract = c.router({
 export type IntegrationsPhoneMessageContract =
   typeof integrationsPhoneMessageContract;
 
+const phoneDownloadFileQuerySchema = z.object({
+  file_id: z.string().min(1, "file_id query parameter is required"),
+});
+
+export const integrationsPhoneDownloadFileContract = c.router({
+  download: {
+    method: "GET",
+    path: "/api/zero/integrations/phone/download-file",
+    headers: authHeadersSchema,
+    query: phoneDownloadFileQuerySchema,
+    responses: {
+      200: c.type<Blob>(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      413: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Download an AgentPhone media attachment",
+  },
+});
+
+export type IntegrationsPhoneDownloadFileContract =
+  typeof integrationsPhoneDownloadFileContract;
+
 /**
  * Integration Telegram bot list contract
  * GET /api/zero/integrations/telegram/bots

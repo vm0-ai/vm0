@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -9,8 +10,9 @@ import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { getApiTestMocks } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { clearMockNow, mockNow } from "../../../lib/time";
+import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import {
   clearMockSandboxClient,
   emptyBoundedTextOutput,
@@ -68,17 +70,37 @@ function commandResult(args: {
   };
 }
 
+type CommandResultInput =
+  | SandboxCommandResult
+  | Promise<SandboxCommandResult>
+  | (() => SandboxCommandResult | Promise<SandboxCommandResult>);
+
+function resolveCommandResult(input: CommandResultInput) {
+  return typeof input === "function" ? input() : input;
+}
+
+function deferred<T>() {
+  let resolveDeferred!: (value: T) => void;
+  let rejectDeferred!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolveDeferred = resolve;
+    rejectDeferred = reject;
+  });
+  return { promise, resolve: resolveDeferred, reject: rejectDeferred } as const;
+}
+
 function startOutput(
   args: {
     readonly browserUrl?: string;
     readonly nextStep?: string;
+    readonly verificationCode?: string;
   } = {},
 ) {
   return JSON.stringify({
     browser_url:
       args.browserUrl ??
       "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
-    verification_code: "enjoy-enough-outwit-win",
+    verification_code: args.verificationCode ?? "enjoy-enough-outwit-win",
     next_step:
       args.nextStep ??
       "stripe login --complete 'https://dashboard.stripe.com/stripecli/auth/poll-token'",
@@ -99,12 +121,15 @@ function mockStripeCliSandbox(
     readonly startExitCode?: number;
     readonly startBrowserUrl?: string;
     readonly startNextStep?: string;
+    readonly startVerificationCode?: string;
     readonly startStderr?: string;
     readonly completeExitCode?: number;
+    readonly completeResults?: readonly CommandResultInput[];
     readonly configApiKey?: string;
   } = {},
 ) {
   const handle = { sandboxId: "sandbox_stripe_cli_auth_test" };
+  const completeResults = [...(args.completeResults ?? [])];
   const calls = {
     create: [] as CreateSandboxOptions[],
     run: [] as {
@@ -143,12 +168,17 @@ function mockStripeCliSandbox(
                 : startOutput({
                     browserUrl: args.startBrowserUrl,
                     nextStep: args.startNextStep,
+                    verificationCode: args.startVerificationCode,
                   }),
             stderr: args.startStderr,
           }),
         );
       }
       if (script.includes("--complete")) {
+        const completeResult = completeResults.shift();
+        if (completeResult) {
+          return Promise.resolve(resolveCommandResult(completeResult));
+        }
         return Promise.resolve(
           commandResult({
             sandboxId: commandHandle.sandboxId,
@@ -210,6 +240,14 @@ async function enableCliAuthStripe(userId: string, orgId: string) {
 async function cleanupUser(userId: string, orgId: string) {
   const db = store.set(writeDb$);
   await db
+    .delete(connectorCliAuthSessions)
+    .where(
+      and(
+        eq(connectorCliAuthSessions.userId, userId),
+        eq(connectorCliAuthSessions.orgId, orgId),
+      ),
+    );
+  await db
     .delete(connectors)
     .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
   await db
@@ -223,6 +261,27 @@ async function cleanupUser(userId: string, orgId: string) {
         eq(userFeatureSwitches.orgId, orgId),
       ),
     );
+}
+
+function cliAuthStripeSessions(userId: string, orgId: string) {
+  return store
+    .set(writeDb$)
+    .select()
+    .from(connectorCliAuthSessions)
+    .where(
+      and(
+        eq(connectorCliAuthSessions.userId, userId),
+        eq(connectorCliAuthSessions.orgId, orgId),
+        eq(connectorCliAuthSessions.connectorType, "stripe"),
+        eq(connectorCliAuthSessions.source, "stripe-cli"),
+      ),
+    );
+}
+
+async function onlyCliAuthStripeSession(userId: string, orgId: string) {
+  const rows = await cliAuthStripeSessions(userId, orgId);
+  expect(rows).toHaveLength(1);
+  return rows[0]!;
 }
 
 describe("CLI auth for Stripe connector routes", () => {
@@ -268,7 +327,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("starts CLI auth for Stripe and returns browser confirmation details", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox();
 
     const response = await accept(
@@ -289,6 +348,9 @@ describe("CLI auth for Stripe connector routes", () => {
       interval: 5,
     });
     expect(response.body.sessionToken).not.toContain("poll-token");
+    expect(response.body.sessionToken).not.toContain(
+      "sandbox_stripe_cli_auth_test",
+    );
     expect(calls.create[0]).toMatchObject({
       runtime: "node24",
       timeoutMs: 15 * 60 * 1000,
@@ -303,10 +365,24 @@ describe("CLI auth for Stripe connector routes", () => {
     );
     expect(startScript).not.toContain("releases/latest");
     expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      connectorType: "stripe",
+      source: "stripe-cli",
+      status: "awaiting_user_approval",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      approvalUrl:
+        "https://dashboard.stripe.com/stripecli/confirm_auth?t=start-token",
+      verificationCode: "enjoy-enough-outwit-win",
+      errorMessage: null,
+    });
+    expect(session.encryptedProviderState).toBeTruthy();
+    expect(session.encryptedProviderState).not.toContain("poll-token");
   });
 
   it("stops the sandbox when Stripe returns an unexpected completion URL", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({
       startNextStep:
         "stripe login --complete 'https://example.test/stripecli/auth/poll-token'",
@@ -325,10 +401,17 @@ describe("CLI auth for Stripe connector routes", () => {
       "Stripe CLI response included an unexpected completion URL",
     );
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      errorMessage: "Stripe CLI response included an unexpected completion URL",
+    });
   });
 
   it("stops the sandbox when Stripe returns an unexpected browser URL", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({
       startBrowserUrl:
         "https://example.test/stripecli/confirm_auth?t=start-token",
@@ -347,10 +430,38 @@ describe("CLI auth for Stripe connector routes", () => {
       "Stripe CLI response included an unexpected browser URL",
     );
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+      errorMessage: "Stripe CLI response included an unexpected browser URL",
+    });
+  });
+
+  it("stops the sandbox when persisting the started session fails", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({
+      startVerificationCode: "x".repeat(129),
+    });
+
+    await expect(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+    ).rejects.toThrow();
+
+    expect(calls.stop).toHaveLength(1);
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "initializing",
+      sandboxId: "sandbox_stripe_cli_auth_test",
+    });
   });
 
   it("redacts secrets from failed Stripe CLI command output", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     mockStripeCliSandbox({
       startExitCode: 1,
       startStderr:
@@ -373,11 +484,20 @@ describe("CLI auth for Stripe connector routes", () => {
       "sk_test_should_not_leak",
     );
     expect(response.body.error.message).not.toContain("poll-token");
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("error");
+    expect(session.errorMessage).toContain("STRIPE_SECRET=[redacted]");
+    expect(session.errorMessage).not.toContain("sk_test_should_not_leak");
+    expect(session.errorMessage).not.toContain("poll-token");
   });
 
   it("completes CLI auth for Stripe, stores STRIPE_TOKEN, and stops the sandbox", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_test_imported" });
+    getApiTestMocks().ably.publish.mockRejectedValueOnce(
+      new Error("Ably publish failed"),
+    );
 
     const start = await accept(
       client().start({
@@ -408,6 +528,10 @@ describe("CLI auth for Stripe connector routes", () => {
       "/vercel/sandbox/cli-auth/stripe/config/stripe/config.toml",
     );
     expect(calls.stop).toHaveLength(1);
+    expect(getApiTestMocks().ably.publish).toHaveBeenCalledWith(
+      "connector:changed",
+      null,
+    );
 
     const db = store.set(writeDb$);
     const [secret] = await db
@@ -429,6 +553,11 @@ describe("CLI auth for Stripe connector routes", () => {
       type: "user",
     });
     expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_imported");
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("imported");
+    expect(session.completedAt).toBeInstanceOf(Date);
+    expect(session.errorMessage).toBeNull();
   });
 
   it("replaces existing Stripe OAuth local state while importing STRIPE_TOKEN", async () => {
@@ -544,6 +673,12 @@ describe("CLI auth for Stripe connector routes", () => {
     );
     expect(calls.stop).toHaveLength(1);
 
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "error",
+      errorMessage: "Stripe CLI config did not contain a test mode API key",
+    });
+
     const secretRows = await store
       .set(writeDb$)
       .select({ id: secrets.id })
@@ -559,7 +694,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("returns pending and keeps the sandbox alive when browser auth is not approved yet", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ completeExitCode: 124 });
 
     const start = await accept(
@@ -583,6 +718,238 @@ describe("CLI auth for Stripe connector routes", () => {
     });
     expect(calls.read).toHaveLength(0);
     expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("awaiting_user_approval");
+    expect(session.completedAt).toBeNull();
+  });
+
+  it("returns pending without rerunning completion while another runner owns the session", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: nowDate(),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(0);
+  });
+
+  it("does not expire a fresh completing session while another runner owns it", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+    const createdAt = new Date("2026-05-14T00:00:00.000Z");
+    mockNow(createdAt);
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    mockNow(new Date(createdAt.getTime() + 11 * 60 * 1000));
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: nowDate(),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(0);
+
+    const completingSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(completingSession.status).toBe("completing");
+  });
+
+  it("expires a stale completing session after the session ttl", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+    const createdAt = new Date("2026-05-14T00:00:00.000Z");
+    mockNow(createdAt);
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    mockNow(new Date(createdAt.getTime() + 11 * 60 * 1000));
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: new Date(createdAt.getTime() + 8 * 60 * 1000),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.code).toBe("BAD_REQUEST");
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
+
+    const expiredSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(expiredSession.status).toBe("expired");
+  });
+
+  it("recovers a stale completing session and finishes import", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_recovered" });
+    const now = new Date("2026-05-14T00:00:00.000Z");
+    mockNow(now);
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    await store
+      .set(writeDb$)
+      .update(connectorCliAuthSessions)
+      .set({
+        status: "completing",
+        updatedAt: new Date(now.getTime() - 5 * 60 * 1000),
+      })
+      .where(eq(connectorCliAuthSessions.id, session.id));
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body.status).toBe("complete");
+    expect(calls.run).toHaveLength(2);
+    expect(calls.read).toHaveLength(1);
+    expect(calls.stop).toHaveLength(1);
+
+    const recoveredSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(recoveredSession.status).toBe("imported");
+  });
+
+  it("keeps a superseded runner from overwriting a recovered session", async () => {
+    const { userId, orgId } = await setupUser();
+    const firstCompleteStarted = deferred<void>();
+    const firstCompleteResult = deferred<SandboxCommandResult>();
+    const calls = mockStripeCliSandbox({
+      configApiKey: "rk_test_recovered",
+      completeResults: [
+        () => {
+          firstCompleteStarted.resolve();
+          return firstCompleteResult.promise;
+        },
+        commandResult({ exitCode: 0, stdout: "> Done\n" }),
+      ],
+    });
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    const firstComplete = accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+    await firstCompleteStarted.promise;
+
+    const claimedSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(claimedSession.status).toBe("completing");
+    mockNow(new Date(claimedSession.updatedAt.getTime() + 5 * 60 * 1000));
+
+    const secondComplete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+    expect(secondComplete.body.status).toBe("complete");
+
+    firstCompleteResult.resolve(
+      commandResult({
+        exitCode: 1,
+        stderr: "old runner completed after the claim was superseded",
+      }),
+    );
+    const firstCompleteResponse = await firstComplete;
+
+    expect(firstCompleteResponse.body).toStrictEqual({
+      status: "pending",
+      errorMessage: null,
+    });
+    expect(calls.run).toHaveLength(3);
+    expect(calls.read).toHaveLength(1);
+    expect(calls.stop).toHaveLength(1);
+
+    const recoveredSession = await onlyCliAuthStripeSession(userId, orgId);
+    expect(recoveredSession.status).toBe("imported");
+    expect(recoveredSession.errorMessage).toBeNull();
   });
 
   it("rejects invalid completion tokens", async () => {
@@ -602,7 +969,7 @@ describe("CLI auth for Stripe connector routes", () => {
   });
 
   it("rejects expired completion tokens and stops the sandbox", async () => {
-    await setupUser();
+    const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox();
     const createdAt = new Date("2026-05-14T00:00:00.000Z");
     mockNow(createdAt);
@@ -627,6 +994,9 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
     expect(calls.run).toHaveLength(1);
     expect(calls.stop).toHaveLength(1);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("expired");
   });
 
   it("rejects completion tokens from a different user", async () => {

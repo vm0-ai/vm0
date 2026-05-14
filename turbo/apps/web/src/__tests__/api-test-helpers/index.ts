@@ -191,20 +191,6 @@ export {
   telegramThreadSessionExists,
 } from "./telegram";
 export {
-  deleteTestAgentPhoneUserLinkById,
-  insertTestAgentPhoneUserLink,
-  seedTestAgentPhoneUserAgentPreference,
-  createAgentPhoneThreadSession,
-  insertTestAgentPhoneMessage,
-  signTestAgentPhoneConnectParams,
-  countTestAgentPhoneMessages,
-  findTestAgentPhoneUserLink,
-  findTestAgentPhoneUserLinksByVm0UserId,
-  findTestAgentPhoneUserAgentPreference,
-  agentphoneThreadSessionExists,
-  findTestAgentPhoneThreadSession,
-} from "./agentphone";
-export {
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   updateOrgStripeSubscription,

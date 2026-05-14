@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.356.0](https://github.com/vm0-ai/vm0/compare/app-v0.355.0...app-v0.356.0) (2026-05-14)
+
+
+### Features
+
+* add gong and ironclad connectors ([#13310](https://github.com/vm0-ai/vm0/issues/13310)) ([80e6787](https://github.com/vm0-ai/vm0/commit/80e6787db33195cf43f431b589f99f2c67df55d4))
+* add local-browser connector foundation ([#13241](https://github.com/vm0-ai/vm0/issues/13241)) ([74eaaaa](https://github.com/vm0-ai/vm0/commit/74eaaaa0ea6876014d08562ae284db1cc10139a5))
+
+
+### Bug Fixes
+
+* improve model provider icons in dark mode ([#13266](https://github.com/vm0-ai/vm0/issues/13266)) ([be6e5fa](https://github.com/vm0-ai/vm0/commit/be6e5fa050cf721b1f4171dc270b0caa047012e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.22.0
+    * @vm0/connectors bumped to 1.11.0
+    * @vm0/core bumped to 8.276.0
+
 ## [0.355.0](https://github.com/vm0-ai/vm0/compare/app-v0.354.0...app-v0.355.0) (2026-05-14)
 
 
