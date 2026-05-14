@@ -366,11 +366,15 @@ impl LogPaths {
         self.dir.join(format!("metrics-{run_id}.jsonl"))
     }
 
+    pub fn sandbox_ops_log(&self, run_id: RunId) -> PathBuf {
+        self.dir.join(format!("sandbox-ops-{run_id}.jsonl"))
+    }
+
     /// Whether `name` matches any GC-eligible log file pattern.
     ///
-    /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`, `proxy-*`)
-    /// runner instance logs (`runner-*.log`), and stale `.vm0tmp-*` copies of
-    /// those files left behind by a killed runner.
+    /// Includes per-job logs (`network-*`, `system-*`, `metrics-*`,
+    /// `sandbox-ops-*`, `proxy-*`) runner instance logs (`runner-*.log`), and
+    /// stale `.vm0tmp-*` copies of those files left behind by a killed runner.
     pub fn is_gc_eligible_log(name: &str) -> bool {
         Self::is_final_gc_eligible_log(name) || Self::is_gc_eligible_log_temp(name)
     }
@@ -379,6 +383,7 @@ impl LogPaths {
         (name.starts_with("network-") && name.ends_with(".jsonl"))
             || (name.starts_with("system-") && name.ends_with(".log"))
             || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
+            || (name.starts_with("sandbox-ops-") && name.ends_with(".jsonl"))
             || (name.starts_with("proxy-") && name.ends_with(".jsonl"))
             || (name.starts_with("runner-") && name.ends_with(".log"))
     }
@@ -562,6 +567,11 @@ mod tests {
         assert!(lp.network_log(id).to_string_lossy().contains("network-"));
         assert!(lp.system_log(id).to_string_lossy().contains("system-"));
         assert!(lp.metrics_log(id).to_string_lossy().contains("metrics-"));
+        assert!(
+            lp.sandbox_ops_log(id)
+                .to_string_lossy()
+                .contains("sandbox-ops-")
+        );
         assert!(lp.proxy_log(id).to_string_lossy().contains("proxy-"));
     }
 
@@ -577,6 +587,9 @@ mod tests {
             "metrics-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
         assert!(LogPaths::is_gc_eligible_log(
+            "sandbox-ops-550e8400-e29b-41d4-a716-446655440000.jsonl"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
             "proxy-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
@@ -585,6 +598,9 @@ mod tests {
         ));
         assert!(LogPaths::is_gc_eligible_log(
             ".metrics-550e8400-e29b-41d4-a716-446655440000.jsonl.vm0tmp-101-7-2"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            ".sandbox-ops-550e8400-e29b-41d4-a716-446655440000.jsonl.vm0tmp-101-7-3"
         ));
     }
 
