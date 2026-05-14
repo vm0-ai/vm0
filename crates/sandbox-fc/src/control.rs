@@ -9,8 +9,9 @@
 //! One request per connection, one response per connection.
 //!
 //! The request payload is [`ExecRequest`]. The response payload is
-//! [`ExecResponse`], serialized as an untagged JSON object: successful responses
-//! contain command result fields, and failed requests contain an `error` field.
+//! [`ExecResponse`], serialized as an untagged JSON object: command-result
+//! responses contain command result fields, and error responses contain an
+//! `error` field.
 
 use std::io;
 use std::path::{Path, PathBuf};
