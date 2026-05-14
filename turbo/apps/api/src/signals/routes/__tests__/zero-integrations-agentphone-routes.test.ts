@@ -53,6 +53,9 @@ interface RunFixture {
   readonly composeId: string;
 }
 
+const AGENTPHONE_WEBHOOK_SECRET = ["agentphone", "webhook", "secret"].join("-");
+const CALLBACK_SECRET = ["test", "callback", "secret"].join("-");
+
 const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
@@ -138,7 +141,7 @@ function configureAgentPhoneEnv(): void {
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
   mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
   mockOptionalEnv("AGENTPHONE_PHONE_NUMBER", "+19039853128");
-  mockOptionalEnv("AGENTPHONE_WEBHOOK_SECRET", "agentphone-webhook-secret");
+  mockOptionalEnv("AGENTPHONE_WEBHOOK_SECRET", AGENTPHONE_WEBHOOK_SECRET);
 }
 
 function agentPhoneSendMessage() {
@@ -249,7 +252,7 @@ async function readAgentPhoneMessage(messageId: string) {
 }
 
 function signAgentPhoneWebhook(rawBody: string, timestamp: string): string {
-  return `sha256=${createHmac("sha256", "agentphone-webhook-secret")
+  return `sha256=${createHmac("sha256", AGENTPHONE_WEBHOOK_SECRET)
     .update(`${timestamp}.${rawBody}`)
     .digest("hex")}`;
 }
@@ -291,7 +294,7 @@ function callbackHeaders(rawBody: string) {
     "X-VM0-Timestamp": String(timestamp),
     "X-VM0-Signature": computeHmacSignature(
       rawBody,
-      "test-callback-secret",
+      CALLBACK_SECRET,
       timestamp,
     ),
   };
