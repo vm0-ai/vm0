@@ -2,7 +2,11 @@ import { Readable } from "node:stream";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getVercelSandboxClient } from "../vercel-sandbox";
+import { mockOptionalEnv } from "../../../lib/env";
+import {
+  getVercelSandboxClient,
+  getVercelSandboxCredentials,
+} from "../vercel-sandbox";
 import {
   clearMockSandboxCleanupTimeoutMs,
   clearMockSandboxClient,
@@ -189,6 +193,46 @@ describe("sandbox utilities", () => {
 });
 
 describe("Vercel sandbox client test override", () => {
+  it("uses access-token credentials outside Vercel when all local env vars exist", () => {
+    mockOptionalEnv("VERCEL_TEAM_ID", "team_test");
+    mockOptionalEnv("VERCEL_PROJECT_ID", "project_test");
+    mockOptionalEnv("VERCEL_TOKEN", "token_test");
+
+    expect(getVercelSandboxCredentials()).toStrictEqual({
+      teamId: "team_test",
+      projectId: "project_test",
+      token: "token_test",
+    });
+  });
+
+  it("lets the SDK resolve OIDC credentials in Vercel runtimes", () => {
+    mockOptionalEnv("VERCEL_ENV", "preview");
+    mockOptionalEnv("VERCEL_TEAM_ID", "team_test");
+    mockOptionalEnv("VERCEL_PROJECT_ID", "project_test");
+    mockOptionalEnv("VERCEL_TOKEN", "token_test");
+
+    expect(getVercelSandboxCredentials()).toBeUndefined();
+  });
+
+  it("lets the SDK resolve explicit OIDC credentials when present", () => {
+    mockOptionalEnv("VERCEL_OIDC_TOKEN", "oidc_test");
+    mockOptionalEnv("VERCEL_TEAM_ID", "team_test");
+    mockOptionalEnv("VERCEL_PROJECT_ID", "project_test");
+    mockOptionalEnv("VERCEL_TOKEN", "token_test");
+
+    expect(getVercelSandboxCredentials()).toBeUndefined();
+  });
+
+  it("fails fast when local access-token credentials are incomplete", () => {
+    mockOptionalEnv("VERCEL_TOKEN", "token_test");
+
+    expect(() => {
+      getVercelSandboxCredentials();
+    }).toThrow(
+      "Missing Vercel Sandbox access-token environment variables: VERCEL_TEAM_ID, VERCEL_PROJECT_ID",
+    );
+  });
+
   it("allows tests to override cleanup timeout", () => {
     expect(() => {
       mockSandboxCleanupTimeoutMs(1);

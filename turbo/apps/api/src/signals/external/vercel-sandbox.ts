@@ -1,3 +1,4 @@
+import { optionalEnv } from "../../lib/env";
 import { singleton } from "../../lib/singleton";
 import {
   createBoundedTextCollector,
@@ -20,9 +21,20 @@ import {
 
 type VercelSandboxSdk = typeof import("@vercel/sandbox");
 type VercelNetworkPolicy = import("@vercel/sandbox").NetworkPolicy;
+type VercelSandboxCredentials = {
+  readonly teamId: string;
+  readonly projectId: string;
+  readonly token: string;
+};
 
 export const VERCEL_SANDBOX_SMOKE_RUNTIME = "node24";
 export const VERCEL_SANDBOX_SMOKE_TIMEOUT_MS = 60 * 1000;
+
+const VERCEL_SANDBOX_ACCESS_TOKEN_ENV_NAMES = [
+  "VERCEL_TEAM_ID",
+  "VERCEL_PROJECT_ID",
+  "VERCEL_TOKEN",
+] as const;
 
 const getVercelSandboxClass = singleton(
   async (): Promise<VercelSandboxSdk["Sandbox"]> => {
@@ -32,12 +44,63 @@ const getVercelSandboxClass = singleton(
   },
 );
 
+function isVercelOidcRuntime(): boolean {
+  return Boolean(
+    optionalEnv("VERCEL_OIDC_TOKEN") ||
+    optionalEnv("VERCEL") ||
+    optionalEnv("VERCEL_ENV") ||
+    optionalEnv("VERCEL_URL"),
+  );
+}
+
+export function getVercelSandboxCredentials():
+  | VercelSandboxCredentials
+  | undefined {
+  // In deployed Vercel runtimes, let the SDK resolve and refresh OIDC tokens.
+  if (isVercelOidcRuntime()) {
+    return undefined;
+  }
+
+  const teamId = optionalEnv("VERCEL_TEAM_ID");
+  const projectId = optionalEnv("VERCEL_PROJECT_ID");
+  const token = optionalEnv("VERCEL_TOKEN");
+  const values = {
+    VERCEL_TEAM_ID: teamId,
+    VERCEL_PROJECT_ID: projectId,
+    VERCEL_TOKEN: token,
+  };
+  const missing = VERCEL_SANDBOX_ACCESS_TOKEN_ENV_NAMES.filter((name) => {
+    return !values[name];
+  });
+
+  if (missing.length === VERCEL_SANDBOX_ACCESS_TOKEN_ENV_NAMES.length) {
+    return undefined;
+  }
+  if (!teamId || !projectId || !token) {
+    throw new Error(
+      `Missing Vercel Sandbox access-token environment variables: ${missing.join(
+        ", ",
+      )}`,
+    );
+  }
+
+  return {
+    teamId,
+    projectId,
+    token,
+  };
+}
+
 async function getSandbox(
   handle: SandboxHandle,
   signal?: AbortSignal,
 ): Promise<Awaited<ReturnType<VercelSandboxSdk["Sandbox"]["get"]>>> {
   const Sandbox = await getVercelSandboxClass();
-  return Sandbox.get({ sandboxId: handle.sandboxId, signal });
+  return Sandbox.get({
+    ...getVercelSandboxCredentials(),
+    sandboxId: handle.sandboxId,
+    signal,
+  });
 }
 
 async function vercelSandboxOperation<T>(
@@ -58,6 +121,7 @@ function createRealVercelSandboxClient(): SandboxClient {
       return vercelSandboxOperation("create", async () => {
         const Sandbox = await getVercelSandboxClass();
         const sandbox = await Sandbox.create({
+          ...getVercelSandboxCredentials(),
           runtime: options.runtime,
           timeout: options.timeoutMs,
           resources: options.resources,
