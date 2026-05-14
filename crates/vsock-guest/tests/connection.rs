@@ -1301,13 +1301,52 @@ fn resume_operations_is_idempotent() {
 }
 
 #[test]
+fn quiesce_operations_is_idempotent_while_quiesced() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_quiesce_operations(&mut host_stream, 223);
+    let first = read_message(&mut host_stream);
+    assert_eq!(first.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(first.seq, 223);
+
+    send_quiesce_operations(&mut host_stream, 224);
+    let second = read_message(&mut host_stream);
+    assert_eq!(second.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(second.seq, 224);
+
+    send_command_start(
+        &mut host_stream,
+        225,
+        "printf should-not-run",
+        5000,
+        CommandOutputPolicy::Capture { limit_bytes: 64 },
+        CommandOutputPolicy::Discard,
+    );
+    let fenced = read_message(&mut host_stream);
+    assert_eq!(fenced.msg_type, MSG_ERROR);
+    assert_eq!(fenced.seq, 225);
+    assert!(
+        vsock_proto::decode_error(&fenced.payload)
+            .unwrap()
+            .contains("guest operations are quiescing")
+    );
+
+    send_resume_operations(&mut host_stream, 226);
+    let resumed = read_message(&mut host_stream);
+    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    assert_eq!(resumed.seq, 226);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn malformed_quiesce_resume_payloads_do_not_change_state() {
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_control_payload(&mut host_stream, MSG_QUIESCE_OPERATIONS, 223, b"unexpected");
+    send_control_payload(&mut host_stream, MSG_QUIESCE_OPERATIONS, 227, b"unexpected");
     let quiesce_error = read_message(&mut host_stream);
     assert_eq!(quiesce_error.msg_type, MSG_ERROR);
-    assert_eq!(quiesce_error.seq, 223);
+    assert_eq!(quiesce_error.seq, 227);
     assert!(
         vsock_proto::decode_error(&quiesce_error.payload)
             .unwrap()
@@ -1316,28 +1355,28 @@ fn malformed_quiesce_resume_payloads_do_not_change_state() {
 
     send_command_start(
         &mut host_stream,
-        224,
+        228,
         "printf open",
         5000,
         CommandOutputPolicy::Capture { limit_bytes: 64 },
         CommandOutputPolicy::Discard,
     );
-    let (_chunks, open_result) = read_command_result(&mut host_stream, 224);
+    let (_chunks, open_result) = read_command_result(&mut host_stream, 228);
     assert_eq!(
         open_result.termination,
         CommandTermination::Exited { exit_code: 0 }
     );
     assert_eq!(open_result.stdout, Some(b"open".to_vec()));
 
-    send_quiesce_operations(&mut host_stream, 225);
+    send_quiesce_operations(&mut host_stream, 229);
     let quiesced = read_message(&mut host_stream);
     assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
-    assert_eq!(quiesced.seq, 225);
+    assert_eq!(quiesced.seq, 229);
 
-    send_control_payload(&mut host_stream, MSG_RESUME_OPERATIONS, 226, b"unexpected");
+    send_control_payload(&mut host_stream, MSG_RESUME_OPERATIONS, 230, b"unexpected");
     let resume_error = read_message(&mut host_stream);
     assert_eq!(resume_error.msg_type, MSG_ERROR);
-    assert_eq!(resume_error.seq, 226);
+    assert_eq!(resume_error.seq, 230);
     assert!(
         vsock_proto::decode_error(&resume_error.payload)
             .unwrap()
@@ -1346,7 +1385,7 @@ fn malformed_quiesce_resume_payloads_do_not_change_state() {
 
     send_command_start(
         &mut host_stream,
-        227,
+        231,
         "printf should-not-run",
         5000,
         CommandOutputPolicy::Capture { limit_bytes: 64 },
@@ -1354,17 +1393,17 @@ fn malformed_quiesce_resume_payloads_do_not_change_state() {
     );
     let fenced = read_message(&mut host_stream);
     assert_eq!(fenced.msg_type, MSG_ERROR);
-    assert_eq!(fenced.seq, 227);
+    assert_eq!(fenced.seq, 231);
     assert!(
         vsock_proto::decode_error(&fenced.payload)
             .unwrap()
             .contains("guest operations are quiescing")
     );
 
-    send_resume_operations(&mut host_stream, 228);
+    send_resume_operations(&mut host_stream, 232);
     let resumed = read_message(&mut host_stream);
     assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
-    assert_eq!(resumed.seq, 228);
+    assert_eq!(resumed.seq, 232);
 
     finish_guest_connection(handle, host_stream);
 }
