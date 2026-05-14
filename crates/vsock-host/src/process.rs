@@ -57,10 +57,6 @@ impl ConnectedProcessState {
         self.operations.get_mut(&seq)
     }
 
-    fn contains_operation(&self, seq: u32) -> bool {
-        self.operations.contains_key(&seq)
-    }
-
     fn take_operation(&mut self, seq: u32) -> Option<SpawnOperation> {
         self.operations.remove(&seq)
     }
@@ -184,28 +180,17 @@ fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
 }
 
 pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let active = {
-        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        matches!(
-            &*guard,
-            ConnectionState::Connected { process, .. } if process.contains_operation(msg.seq)
-        )
-    };
-    if !active {
-        return Ok(());
-    }
-
-    let (_pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-    let sender = {
+    let (sender, data) = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Connected { process, .. } => process
-                .operation_mut(msg.seq)
-                .and_then(|operation| operation.stdout_tx.clone()),
-            ConnectionState::Closed { .. } => None,
-        }
+        let ConnectionState::Connected { process, .. } = &mut *guard else {
+            return Ok(());
+        };
+        let Some(operation) = process.operation_mut(msg.seq) else {
+            return Ok(());
+        };
+        let (_pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        (operation.stdout_tx.clone(), data)
     };
 
     if let Some(tx) = sender
@@ -223,19 +208,22 @@ pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> i
 }
 
 pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let active = {
-        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        matches!(
-            &*guard,
-            ConnectionState::Connected { process, .. } if process.contains_operation(msg.seq)
-        )
+    let (operation, pid, exit_code, stdout, stderr) = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        let ConnectionState::Connected { process, .. } = &mut *guard else {
+            return Ok(());
+        };
+        if process.operation_mut(msg.seq).is_none() {
+            return Ok(());
+        }
+        let (pid, exit_code, stdout, stderr) = vsock_proto::decode_process_exit(&msg.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let Some(operation) = process.take_operation(msg.seq) else {
+            return Ok(());
+        };
+        (operation, pid, exit_code, stdout, stderr)
     };
-    if !active {
-        return Ok(());
-    }
 
-    let (pid, exit_code, stdout, stderr) = vsock_proto::decode_process_exit(&msg.payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
     let event = ProcessExitEvent {
         pid,
         exit_code,
@@ -243,17 +231,7 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
         stderr: stderr.to_vec(),
     };
 
-    let operation = {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Connected { process, .. } => process.take_operation(msg.seq),
-            ConnectionState::Closed { .. } => None,
-        }
-    };
-
-    if let Some(operation) = operation {
-        let _ = operation.exit_tx.send(Ok(event));
-    }
+    let _ = operation.exit_tx.send(Ok(event));
 
     Ok(())
 }

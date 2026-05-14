@@ -365,6 +365,68 @@ async fn test_spawn_watch_cancel_cleans_up_registrations() {
 }
 
 #[tokio::test]
+async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
+    let (host_stream, mut guest) = make_pair();
+    let release_late_frames = Arc::new(Notify::new());
+
+    {
+        let release_late_frames = Arc::clone(&release_late_frames);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let dropped_seq = msgs[0].seq;
+            let payload = vsock_proto::encode_spawn_watch_result(66);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, dropped_seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+
+            release_late_frames.notified().await;
+            let bad_stdout = vsock_proto::encode(MSG_STDOUT_CHUNK, dropped_seq, b"\x00").unwrap();
+            let bad_exit = vsock_proto::encode(MSG_PROCESS_EXIT, dropped_seq, b"\x00").unwrap();
+            guest.write_all(&bad_stdout).await.unwrap();
+            guest.write_all(&bad_exit).await.unwrap();
+
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            let next_seq = msgs[0].seq;
+            let payload = vsock_proto::encode_spawn_watch_result(67);
+            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, next_seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+            let exit_payload = vsock_proto::encode_process_exit(67, 0, b"still-alive", b"");
+            let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, next_seq, &exit_payload).unwrap();
+            guest.write_all(&exit_msg).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+    }
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_watch("drop-before-late-frame", 0, &[], false, true, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 66);
+    drop(handle);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+
+    release_late_frames.notify_one();
+
+    let next = host
+        .spawn_watch("next-spawn", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let event = wait_spawn(next).await.unwrap();
+    assert_eq!(event.pid, 67);
+    assert_eq!(event.stdout, b"still-alive");
+}
+
+#[tokio::test]
 async fn test_spawn_watch_after_close_returns_immediately() {
     let (host_stream, mut guest) = make_pair();
 
