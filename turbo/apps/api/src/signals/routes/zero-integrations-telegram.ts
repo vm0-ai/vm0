@@ -33,6 +33,11 @@ import {
   zeroTelegramBots,
   zeroTelegramInstallation,
 } from "../services/zero-telegram-data.service";
+import {
+  registerTelegramBot$,
+  setupTelegramStatus$,
+  telegramWebhook$,
+} from "../services/zero-telegram-post.service";
 import { inferMimetype } from "../../lib/mimetype";
 import type { RouteEntry } from "../route";
 
@@ -153,6 +158,11 @@ const telegramReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "telegram:read",
+} as const;
+
+const telegramSetupAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
 } as const;
 
 const getTelegramBotsInner$ = computed(async (get) => {
@@ -293,6 +303,20 @@ const getTelegramDownloadFileInner$ = computed(async (get) => {
       );
     });
 });
+
+const registerTelegramBotInner$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    return set(registerTelegramBot$, auth, signal);
+  },
+);
+
+const setupTelegramStatusInner$ = command(
+  ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    return set(setupTelegramStatus$, auth, signal);
+  },
+);
 
 const getIntegrationTelegramAvatar$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -485,6 +509,18 @@ export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsTelegramContract.authCallback,
     handler: getIntegrationTelegramAuthCallback$,
+  },
+  {
+    route: zeroIntegrationsTelegramContract.register,
+    handler: authRoute(telegramSetupAuth, registerTelegramBotInner$),
+  },
+  {
+    route: zeroIntegrationsTelegramContract.setupStatus,
+    handler: authRoute(telegramSetupAuth, setupTelegramStatusInner$),
+  },
+  {
+    route: zeroIntegrationsTelegramContract.webhook,
+    handler: telegramWebhook$,
   },
   {
     route: zeroIntegrationsTelegramContract.avatar,

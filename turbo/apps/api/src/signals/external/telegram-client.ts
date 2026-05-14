@@ -73,6 +73,7 @@ interface TelegramBotInfo {
   readonly id: number;
   readonly username: string;
   readonly first_name: string;
+  readonly can_read_all_group_messages?: boolean;
 }
 
 export async function getMe(token: string): Promise<TelegramBotInfo> {
@@ -108,6 +109,64 @@ export async function deleteWebhook(token: string): Promise<void> {
   const response = await fetch(
     `https://api.telegram.org/bot${token}/deleteWebhook`,
     { method: "POST" },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram API error: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data: unknown = await response.json();
+  if (isTelegramApiErrorPayload(data)) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+}
+
+export async function setWebhook(
+  token: string,
+  url: string,
+  secretToken: string,
+): Promise<void> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/setWebhook`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        secret_token: secretToken,
+        allowed_updates: ["message"],
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram API error: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data: unknown = await response.json();
+  if (isTelegramApiErrorPayload(data)) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+}
+
+export async function setMyCommands(
+  token: string,
+  commands: readonly {
+    readonly command: string;
+    readonly description: string;
+  }[],
+): Promise<void> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/setMyCommands`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands }),
+    },
   );
 
   if (!response.ok) {
@@ -217,6 +276,13 @@ export type SendTelegramMessageResult =
       readonly description: string | undefined;
     };
 
+export interface TelegramReplyMarkup {
+  readonly inline_keyboard: readonly (readonly {
+    readonly text: string;
+    readonly url: string;
+  }[])[];
+}
+
 interface TelegramSentMessage {
   readonly message_id: number;
   readonly chat: { readonly id: number };
@@ -235,6 +301,7 @@ export async function sendMessage(
   options: {
     readonly replyToMessageId?: number;
     readonly messageThreadId?: number;
+    readonly replyMarkup?: TelegramReplyMarkup;
   } = {},
 ): Promise<SendTelegramMessageResult> {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -248,6 +315,9 @@ export async function sendMessage(
   }
   if (options.messageThreadId !== undefined) {
     payload.message_thread_id = options.messageThreadId;
+  }
+  if (options.replyMarkup !== undefined) {
+    payload.reply_markup = options.replyMarkup;
   }
 
   const response = await fetch(url, {

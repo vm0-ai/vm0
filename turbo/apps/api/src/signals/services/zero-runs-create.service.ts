@@ -86,6 +86,10 @@ interface UserInfo {
   readonly timezone: string | null;
   readonly slackDisplayName?: string;
   readonly slackUserId?: string;
+  readonly telegramDisplayName?: string;
+  readonly telegramUsername?: string;
+  readonly telegramUserId?: string;
+  readonly telegramLanguage?: string;
 }
 
 interface ZeroAgentConfig {
@@ -249,6 +253,18 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
   }
   if (userInfo.slackUserId) {
     lines.push(`Slack user ID: ${userInfo.slackUserId}`);
+  }
+  if (userInfo.telegramDisplayName) {
+    lines.push(`Telegram display name: ${userInfo.telegramDisplayName}`);
+  }
+  if (userInfo.telegramUsername) {
+    lines.push(`Telegram username: ${userInfo.telegramUsername}`);
+  }
+  if (userInfo.telegramUserId) {
+    lines.push(`Telegram user ID: ${userInfo.telegramUserId}`);
+  }
+  if (userInfo.telegramLanguage) {
+    lines.push(`Telegram language: ${userInfo.telegramLanguage}`);
   }
   return lines.join("\n");
 }
@@ -634,7 +650,12 @@ export const createZeroRun$ = command(
       readonly appendSystemPrompt?: string;
       readonly userInfoExtras?: Pick<
         UserInfo,
-        "slackDisplayName" | "slackUserId"
+        | "slackDisplayName"
+        | "slackUserId"
+        | "telegramDisplayName"
+        | "telegramUsername"
+        | "telegramUserId"
+        | "telegramLanguage"
       >;
       readonly callbacks?: readonly RunCallback[];
       readonly selectedModelOverride?: string;

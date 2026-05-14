@@ -149,6 +149,8 @@ export interface ApiTestMocks {
     readonly getMe: AsyncMock;
     readonly getFile: AsyncMock;
     readonly deleteWebhook: AsyncMock;
+    readonly setWebhook: AsyncMock;
+    readonly setMyCommands: AsyncMock;
     readonly getUserProfilePhotos: AsyncMock;
   };
   readonly otel: {
@@ -288,6 +290,8 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     getMe: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     getFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     deleteWebhook: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    setWebhook: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    setMyCommands: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     getUserProfilePhotos: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
@@ -609,6 +613,8 @@ vi.mock("../signals/external/telegram-client", async () => {
     getMe: apiTestMocks.telegram.getMe,
     getFile: apiTestMocks.telegram.getFile,
     deleteWebhook: apiTestMocks.telegram.deleteWebhook,
+    setWebhook: apiTestMocks.telegram.setWebhook,
+    setMyCommands: apiTestMocks.telegram.setMyCommands,
     getUserProfilePhotos: apiTestMocks.telegram.getUserProfilePhotos,
   };
 });
@@ -756,6 +762,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.telegram.getFile.mockReset();
   apiTestMocks.telegram.deleteWebhook.mockReset();
   apiTestMocks.telegram.deleteWebhook.mockResolvedValue(undefined);
+  apiTestMocks.telegram.setWebhook.mockReset();
+  apiTestMocks.telegram.setWebhook.mockResolvedValue(undefined);
+  apiTestMocks.telegram.setMyCommands.mockReset();
+  apiTestMocks.telegram.setMyCommands.mockResolvedValue(undefined);
   apiTestMocks.telegram.getUserProfilePhotos.mockReset();
   apiTestMocks.otel.registerOTel.mockReset();
   apiTestMocks.sentry.captureException.mockReset();

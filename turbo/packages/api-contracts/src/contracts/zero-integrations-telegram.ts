@@ -120,6 +120,10 @@ const telegramSetupStatusSchema = z.object({
   privacyDisabled: z.boolean(),
 });
 
+const telegramWebhookPathParamsSchema = z.object({
+  telegramBotId: z.string().min(1),
+});
+
 /**
  * Zero integrations Telegram contract
  * Covers all Telegram integration endpoints.
@@ -285,6 +289,31 @@ export const zeroIntegrationsTelegramContract = c.router({
       409: apiErrorSchema,
     },
     summary: "Check Telegram bot setup state before registration",
+  },
+  webhook: {
+    method: "POST",
+    path: "/api/telegram/webhook/:telegramBotId",
+    pathParams: telegramWebhookPathParamsSchema,
+    body: z.unknown(),
+    responses: {
+      200: c.otherResponse({
+        contentType: "text/plain",
+        body: z.string(),
+      }),
+      400: c.otherResponse({
+        contentType: "text/plain",
+        body: z.string(),
+      }),
+      401: c.otherResponse({
+        contentType: "text/plain",
+        body: z.string(),
+      }),
+      404: c.otherResponse({
+        contentType: "text/plain",
+        body: z.string(),
+      }),
+    },
+    summary: "Handle Telegram bot webhook updates",
   },
 });
 
