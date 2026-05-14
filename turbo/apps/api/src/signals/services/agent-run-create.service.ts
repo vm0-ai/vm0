@@ -418,6 +418,19 @@ function buildCustomSkillVolumes(
   });
 }
 
+function buildInjectedSkillVolumes(
+  args: CreateAgentRunArgs,
+  framework: SupportedFramework,
+): readonly AdditionalVolume[] | undefined {
+  if (!args.injectSkillVolumes) {
+    return undefined;
+  }
+  return [
+    ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
+    ...buildCustomSkillVolumes(args.injectSkillVolumes.customSkills, framework),
+  ];
+}
+
 function isRouteError(value: unknown): value is CreateRunErrorResult {
   return (
     typeof value === "object" &&
@@ -2890,17 +2903,8 @@ async function prepareRunContext(
     framework,
     bodyArtifacts: body.artifacts,
   });
-  const skillVolumes = args.injectSkillVolumes
-    ? [
-        ...buildSystemSkillVolumes(args.allowedConnectorTypes ?? [], framework),
-        ...buildCustomSkillVolumes(
-          args.injectSkillVolumes.customSkills,
-          framework,
-        ),
-      ]
-    : undefined;
   const additionalVolumes = mergeAdditionalVolumes({
-    prepend: skillVolumes,
+    prepend: buildInjectedSkillVolumes(args, framework),
     base: body.additionalVolumes ?? resolved.additionalVolumes,
   });
 
