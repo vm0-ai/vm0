@@ -44,7 +44,6 @@ const CLI_AUTH_STRIPE_CONFIG_HOME = `${CLI_AUTH_STRIPE_ROOT}/config`;
 const CLI_AUTH_STRIPE_CONFIG_PATH = `${CLI_AUTH_STRIPE_CONFIG_HOME}/stripe/config.toml`;
 const CLI_AUTH_STRIPE_CONNECTOR_TYPE = "stripe";
 const CLI_AUTH_STRIPE_SOURCE = "stripe-cli";
-const CLI_AUTH_STRIPE_MODE: StripeCliAuthMode = "test";
 const STRIPE_TOKEN_SECRET_NAME = "STRIPE_TOKEN";
 const STRIPE_OAUTH_SECRET_NAMES = [
   "STRIPE_ACCESS_TOKEN",
@@ -60,6 +59,7 @@ const cliAuthStripeSessionTokenSchema = z.object({
 const cliAuthStripeProviderStateSchema = z.object({
   version: z.literal(1),
   type: z.literal("stripe"),
+  mode: z.enum(["test", "live"]).default("test"),
   pollUrl: z.url(),
 });
 
@@ -82,6 +82,7 @@ type CliAuthStripeStartResult =
       readonly sessionToken: string;
       readonly browserUrl: string;
       readonly verificationCode: string;
+      readonly mode: StripeCliAuthMode;
       readonly expiresIn: number;
       readonly interval: number;
     }
@@ -501,6 +502,7 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
   readonly output: StripeCliAuthStartOutput;
+  readonly mode: StripeCliAuthMode;
 }) {
   await args.writeDb
     .update(connectorCliAuthSessions)
@@ -511,6 +513,7 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
       encryptedProviderState: encodeProviderState({
         version: 1,
         type: "stripe",
+        mode: args.mode,
         pollUrl: args.output.pollUrl,
       }),
       errorMessage: null,
@@ -523,6 +526,7 @@ export async function startCliAuthStripe(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
+  readonly mode: StripeCliAuthMode;
   readonly signal: AbortSignal;
   readonly now?: Date;
 }): Promise<CliAuthStripeStartResult> {
@@ -559,6 +563,7 @@ export async function startCliAuthStripe(args: {
       writeDb: args.writeDb,
       sessionId: session.id,
       output: startResult.output,
+      mode: args.mode,
     });
   });
   if ("error" in persistResult) {
@@ -579,6 +584,7 @@ export async function startCliAuthStripe(args: {
     }),
     browserUrl: startResult.output.browserUrl,
     verificationCode: startResult.output.verificationCode,
+    mode: args.mode,
     expiresIn: CLI_AUTH_STRIPE_SESSION_TTL_SECONDS,
     interval: CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS,
   };
@@ -667,6 +673,7 @@ async function importCliAuthStripeConnector(args: {
   readonly claimedAt: Date;
   readonly orgId: string;
   readonly userId: string;
+  readonly mode: StripeCliAuthMode;
   readonly apiKey: string;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
@@ -675,6 +682,7 @@ async function importCliAuthStripeConnector(args: {
   const encryptedValue = encryptSecretValue(args.apiKey);
   const updatedAt = nowDate();
   const writeDb = args.set(writeDb$);
+  const description = `Stripe CLI ${args.mode} mode API key`;
   await writeDb.transaction(async (tx) => {
     await tx
       .delete(connectors)
@@ -704,14 +712,14 @@ async function importCliAuthStripeConnector(args: {
         userId: args.userId,
         name: STRIPE_TOKEN_SECRET_NAME,
         encryptedValue,
-        description: "Stripe CLI test mode restricted key",
+        description,
         type: "user",
       })
       .onConflictDoUpdate({
         target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
         set: {
           encryptedValue,
-          description: "Stripe CLI test mode restricted key",
+          description,
           updatedAt,
         },
       });
@@ -788,6 +796,7 @@ async function completeCliAuthStripeInSandbox(args: {
 async function readCliAuthStripeApiKey(args: {
   readonly client: SandboxClient;
   readonly sandbox: SandboxHandle;
+  readonly mode: StripeCliAuthMode;
   readonly signal: AbortSignal;
 }): Promise<
   | { readonly ok: true; readonly apiKey: string }
@@ -831,10 +840,7 @@ async function readCliAuthStripeApiKey(args: {
 
   const configData = configResult.value.data;
   const apiKeyResult = await safeSync(() => {
-    return parseStripeCliAuthConfig(
-      configData.toString("utf8"),
-      CLI_AUTH_STRIPE_MODE,
-    );
+    return parseStripeCliAuthConfig(configData.toString("utf8"), args.mode);
   });
   if ("error" in apiKeyResult) {
     const message =
@@ -1182,6 +1188,7 @@ async function completeClaimedCliAuthStripe(args: {
   const apiKeyResult = await readCliAuthStripeApiKey({
     client: args.client,
     sandbox: args.sandbox,
+    mode: args.providerState.mode,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
@@ -1208,6 +1215,7 @@ async function completeClaimedCliAuthStripe(args: {
       claimedAt,
       orgId: args.orgId,
       userId: args.userId,
+      mode: args.providerState.mode,
       apiKey: apiKeyResult.apiKey,
       signal: args.signal,
     });

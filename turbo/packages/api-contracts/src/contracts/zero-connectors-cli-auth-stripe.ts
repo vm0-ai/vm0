@@ -6,10 +6,13 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const cliAuthStripeModeSchema = z.enum(["test", "live"]);
+
 const cliAuthStripeStartResponseSchema = z.object({
   sessionToken: z.string(),
   type: z.literal("stripe"),
   status: z.literal("pending"),
+  mode: cliAuthStripeModeSchema,
   browserUrl: z.url(),
   verificationCode: z.string().min(1),
   expiresIn: z.number().int().positive(),
@@ -37,7 +40,7 @@ export const zeroCliAuthStripeContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/stripe/cli-auth/sessions",
     headers: authHeadersSchema,
-    body: z.object({}).optional(),
+    body: z.object({ mode: cliAuthStripeModeSchema }),
     responses: {
       200: cliAuthStripeStartResponseSchema,
       400: apiErrorSchema,
