@@ -1268,6 +1268,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancel_file_with_token_terminal_result_and_leftover_claim_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+
+        let run_id = RunId::new_v4();
+        let job_token = CancellationToken::new();
+        tokens.lock().await.insert(run_id, job_token.clone());
+
+        let provider = default_provider(dir.path(), cancel, tokens);
+
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let result_path = local_queue::result_path(dir.path(), run_id);
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(result_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&result_path, b"terminal").unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+
+        provider.cancel_scanner.scan_cancel_files().await;
+
+        assert!(
+            job_token.is_cancelled(),
+            "stale token should still observe the cancel"
+        );
+        assert!(
+            !cancel_path.exists(),
+            "terminal result should let stale token markers be deleted"
+        );
+    }
+
+    #[tokio::test]
     async fn cancel_watcher_triggers_owned_token_without_discover() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
