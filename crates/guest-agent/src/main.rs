@@ -477,8 +477,10 @@ mod tests {
     use super::*;
     use httpmock::prelude::*;
     use serde_json::json;
+    use std::sync::LazyLock;
 
     static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
 
     fn lock_test_state() -> std::sync::MutexGuard<'static, ()> {
         TEST_STATE_LOCK
@@ -716,7 +718,8 @@ mod tests {
     }
 
     async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
-        let server = MockServer::start();
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
         unsafe {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
@@ -769,7 +772,8 @@ mod tests {
     }
 
     async fn complete_execution_creates_recovery_checkpoint_after_cli_failure_inner() {
-        let server = MockServer::start();
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
         unsafe {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
