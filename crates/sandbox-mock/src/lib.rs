@@ -893,6 +893,9 @@ impl Sandbox for MockSandbox {
                 message: "spawn_watch handle already consumed".to_string(),
             });
         };
+        // `wait_exit` consumes the handle; an unclaimed stream receiver can no
+        // longer be observed by the caller and would otherwise buffer forever.
+        drop(handle.stdout_rx.take());
 
         if let Some(overrides) = &self.overrides {
             // Block until the test signals (gives a window for cancellation).
@@ -2258,6 +2261,32 @@ mod tests {
             }
             Err(other) => panic!("expected wait_exit operation error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn wait_exit_drops_unclaimed_stdout_receiver_before_waiting() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(MockSandboxOverrides::with_wait_exit_gate(Arc::clone(&gate)));
+        let sandbox = MockSandbox::with_overrides("test", overrides);
+        let (stdout_tx, stdout_rx) = tokio::sync::mpsc::unbounded_channel();
+        let handle = SpawnHandle::new(
+            1,
+            Some(stdout_rx),
+            Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
+        );
+
+        let wait =
+            tokio::spawn(async move { sandbox.wait_exit(handle, Duration::from_secs(5)).await });
+        tokio::time::timeout(test_timeout(), async {
+            while !stdout_tx.is_closed() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("wait_exit should drop an unclaimed stdout receiver before blocking");
+
+        gate.notify_waiters();
+        wait.await.unwrap().unwrap();
     }
 
     #[tokio::test]

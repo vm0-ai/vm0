@@ -1483,6 +1483,9 @@ impl Sandbox for FirecrackerSandbox {
                 self.has_backend_crashed(),
             )
         })?;
+        // `wait_exit` consumes the handle; an unclaimed stream receiver can no
+        // longer be observed by the caller and would otherwise buffer forever.
+        drop(handle.stdout_rx.take());
 
         tokio::select! {
             biased;
