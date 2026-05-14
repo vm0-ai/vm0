@@ -484,6 +484,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
     } as Record<string, string>,
     models: [
+      "anthropic/claude-opus-4.7",
       "anthropic/claude-opus-4.6",
       "anthropic/claude-opus-4.5",
       "anthropic/claude-sonnet-4.6",
@@ -495,6 +496,53 @@ export const MODEL_PROVIDER_TYPES = {
       "zai/glm-5-turbo",
     ] as string[],
     defaultModel: "anthropic/claude-sonnet-4.6",
+  },
+  // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
+  // and same API key (shared secretName), but routes through OpenRouter's
+  // OpenAI-compatible endpoint surface for GPT models that codex CLI requires.
+  // Pairing rule: the claude-code entry serves Anthropic Messages API
+  // (/v1/messages); this codex entry serves OpenAI Chat Completions / Responses
+  // (/v1/chat/completions, /v1/responses) under the same /api/v1 prefix.
+  "openrouter-codex": {
+    framework: "codex" as const,
+    secretName: "OPENROUTER_API_KEY",
+    label: "OpenRouter (Codex)",
+    secretLabel: "API key",
+    helpText: "Get your API key at: https://openrouter.ai/settings/keys",
+    environmentMapping: {
+      OPENAI_API_KEY: "$secret",
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "openai/gpt-5.5",
+      "openai/gpt-5.4",
+      "openai/gpt-5.4-mini",
+    ] as string[],
+    defaultModel: "openai/gpt-5.5",
+  },
+  // Codex-framework twin of vercel-ai-gateway. Vercel exposes both
+  // Anthropic Messages and OpenAI Chat Completions / Responses on the same
+  // base URL, distinguished by path. The claude-code entry uses /v1/messages;
+  // this codex entry uses /v1/chat/completions or /v1/responses (codex CLI
+  // picks the path it needs).
+  "vercel-ai-gateway-codex": {
+    framework: "codex" as const,
+    secretName: "VERCEL_AI_GATEWAY_API_KEY",
+    label: "Vercel AI Gateway (Codex)",
+    secretLabel: "API key",
+    helpText: "Get your API key from the Vercel AI Gateway dashboard",
+    environmentMapping: {
+      OPENAI_API_KEY: "$secret",
+      OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "openai/gpt-5.5",
+      "openai/gpt-5.4",
+      "openai/gpt-5.4-mini",
+    ] as string[],
+    defaultModel: "openai/gpt-5.5",
   },
   "openai-api-key": {
     framework: "codex" as const,
@@ -726,6 +774,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "claude-code-oauth-token",
     "anthropic-api-key",
     "openrouter-api-key",
+    "vercel-ai-gateway",
   ],
   "claude-opus-4-6": [
     "vm0",
@@ -742,9 +791,27 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway",
   ],
   "claude-haiku-4-5": ["vm0", "openrouter-api-key"],
-  "gpt-5.5": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.4": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.4-mini": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.5": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
+  "gpt-5.4": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
+  "gpt-5.4-mini": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "deepseek-v4-flash": ["vm0", "deepseek-api-key", "openrouter-api-key"],
   "kimi-k2.6": [
@@ -779,10 +846,21 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "glm-5.1": "z-ai/glm-5.1",
   },
   "vercel-ai-gateway": {
+    "claude-opus-4-7": "anthropic/claude-opus-4.7",
     "claude-opus-4-6": "anthropic/claude-opus-4.6",
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
     "kimi-k2.6": "moonshotai/kimi-k2.6",
     "kimi-k2.5": "moonshotai/kimi-k2.5",
+  },
+  "openrouter-codex": {
+    "gpt-5.5": "openai/gpt-5.5",
+    "gpt-5.4": "openai/gpt-5.4",
+    "gpt-5.4-mini": "openai/gpt-5.4-mini",
+  },
+  "vercel-ai-gateway-codex": {
+    "gpt-5.5": "openai/gpt-5.5",
+    "gpt-5.4": "openai/gpt-5.4",
+    "gpt-5.4-mini": "openai/gpt-5.4-mini",
   },
 };
 
@@ -886,10 +964,20 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
   if (type === "codex-oauth-token") {
     return "https://chatgpt.com/backend-api/codex";
   }
-  // Other codex providers use OpenAI's Responses API — the only inference
-  // endpoint codex hits today. Scoping to /v1/responses keeps token
-  // replacement narrow (admin endpoints like /v1/files don't see the swap).
+  // Codex framework providers split into two shapes:
+  //   1. OpenAI direct (no OPENAI_BASE_URL override) — codex hits /v1/responses
+  //      exclusively, so we scope the firewall tightly to that path. Admin
+  //      endpoints like /v1/files stay outside the token-replacement surface.
+  //   2. OpenAI-compatible gateways (openrouter-codex, vercel-ai-gateway-codex)
+  //      set OPENAI_BASE_URL — these can serve /v1/chat/completions and
+  //      /v1/responses interchangeably under the same /v1 prefix. We scope
+  //      to that base directly so codex can use either path the gateway
+  //      supports without re-listing endpoints here.
   if (getFrameworkForType(type) === "codex") {
+    const overrideBase = getEnvironmentMapping(type)?.OPENAI_BASE_URL;
+    if (overrideBase) {
+      return overrideBase.replace(/\/+$/, "");
+    }
     return "https://api.openai.com/v1/responses";
   }
   const base = (
@@ -1010,6 +1098,25 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     { name: "Authorization", valuePrefix: "Bearer" },
     "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
+  // Codex-framework twin of openrouter-api-key. Same key shape as the
+  // claude-code entry; the difference is the firewall base URL — codex
+  // SDK hits OpenAI-compatible paths (/chat/completions, /responses)
+  // under https://openrouter.ai/api/v1, derived from the OPENAI_BASE_URL
+  // mapping by getFirewallBaseUrl.
+  "openrouter-codex": mpFirewall(
+    "openrouter-codex",
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "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",
+  ),
+  // Codex-framework twin of vercel-ai-gateway. Same placeholder format
+  // (Vercel gateway proxies upstream); base URL scoped to /v1 prefix by
+  // getFirewallBaseUrl so codex can use either /chat/completions or
+  // /responses paths the gateway exposes.
+  "vercel-ai-gateway-codex": mpFirewall(
+    "vercel-ai-gateway-codex",
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
+  ),
   // Placeholder: sk-proj-{156 chars}T3BlbkFJ{156 chars} (typical project key shape)
   // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
   "openai-api-key": mpFirewall(
@@ -1106,6 +1213,8 @@ export const modelProviderTypeSchema = z.enum([
   "deepseek-api-key",
   "zai-api-key",
   "vercel-ai-gateway",
+  "openrouter-codex",
+  "vercel-ai-gateway-codex",
   "openai-api-key",
   "codex-oauth-token",
   "azure-foundry",
@@ -1253,14 +1362,25 @@ export function getEnvironmentMapping(
 }
 
 /**
- * Get the ANTHROPIC_BASE_URL for a model provider type.
- * Returns null for Anthropic-native providers (no base URL override).
+ * Get the upstream base URL for a model provider type.
+ *
+ * Returns the framework-appropriate base URL override from
+ * environmentMapping — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL
+ * for codex. Returns null when the provider relies on the SDK's default
+ * (Anthropic-native providers, OpenAI direct).
+ *
+ * Used by areProvidersCompatible to detect session-continuation safety
+ * across provider swaps. Providers hitting the same upstream URL are
+ * compatible; different URLs imply different upstreams and so a
+ * potentially different request/response contract.
  */
 export function getProviderBaseUrl(type: ModelProviderType): string | null {
   const config = MODEL_PROVIDER_TYPES[type];
   if (!("environmentMapping" in config)) return null;
-  const url = config.environmentMapping["ANTHROPIC_BASE_URL"];
-  return url ?? null;
+  const anthropicUrl = config.environmentMapping["ANTHROPIC_BASE_URL"];
+  if (anthropicUrl) return anthropicUrl;
+  const openaiUrl = config.environmentMapping["OPENAI_BASE_URL"];
+  return openaiUrl ?? null;
 }
 
 /**

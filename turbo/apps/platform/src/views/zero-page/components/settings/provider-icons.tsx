@@ -23,6 +23,8 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "zai-api-key": chatglmIcon,
     "moonshot-api-key": kimiIcon,
     "vercel-ai-gateway": vercelIcon,
+    "openrouter-codex": openrouterIcon,
+    "vercel-ai-gateway-codex": vercelIcon,
     "openai-api-key": openaiIcon,
     "codex-oauth-token": openaiIcon,
     "azure-foundry": azureIcon,

@@ -42,124 +42,113 @@ interface ProviderUIOverrides {
   authMethodLabelOverrides?: Record<string, string>;
 }
 
+const PROVIDER_UI_OVERRIDES = Object.freeze<
+  Partial<Record<ModelProviderType, ProviderUIOverrides>>
+>({
+  "claude-code-oauth-token": {
+    label: "Claude Code (OAuth token)",
+    description:
+      "Leverage Claude Code's exceptional intelligence to build and run agents.",
+  },
+  "codex-oauth-token": {
+    description:
+      "Sign in with your ChatGPT subscription (Plus / Pro / Business / Edu / Enterprise). Workspace selection happens on auth.openai.com.",
+  },
+  "anthropic-api-key": {
+    description:
+      "Power your agents with Claude models for advanced reasoning and analysis.",
+  },
+  "openrouter-api-key": {
+    description:
+      "Route to 200+ models from multiple providers through unified interface.",
+    defaultModel: "anthropic/claude-sonnet-4.5",
+  },
+  "moonshot-api-key": {
+    description:
+      "Process extensive context with up to 200k tokens for complex workflows.",
+  },
+  "minimax-api-key": {
+    description:
+      "Generate multimodal content including text, images, and voice.",
+  },
+  "zai-api-key": {
+    description:
+      "Access Zhipu AI's ChatGLM models with excellent performance at competitive pricing.",
+  },
+  "deepseek-api-key": {
+    label: "Deepseek",
+    description:
+      "Execute deep reasoning and analytical tasks with cost-effective performance.",
+  },
+  "vercel-ai-gateway": {
+    description:
+      "Access Claude models through Vercel AI Gateway with a unified API.",
+  },
+  "openrouter-codex": {
+    description: "Route GPT models through OpenRouter for codex-style agents.",
+    defaultModel: "openai/gpt-5.5",
+  },
+  "vercel-ai-gateway-codex": {
+    description:
+      "Route GPT models through Vercel AI Gateway for codex-style agents.",
+  },
+  "azure-foundry": {
+    label: "Azure foundry portal",
+    description:
+      "Deploy enterprise-grade AI with Azure security and compliance.",
+    authMethodLabelOverrides: { "api-key": "API key" },
+    secretFieldOverrides: {
+      ANTHROPIC_FOUNDRY_API_KEY: {
+        label: "Anthropic foundry API key",
+        placeholder: "API key from Azure Foundry portal",
+      },
+      ANTHROPIC_FOUNDRY_RESOURCE: {
+        label: "Anthropic foundry resource",
+        placeholder: "Enter Anthropic foundry resource",
+      },
+    },
+  },
+  vm0: {
+    label: "Built-in model",
+    description:
+      "Powered by Claude — uses your VM0 credits. No API key needed.",
+  },
+  "aws-bedrock": {
+    description:
+      "Scale foundation models with AWS enterprise security and infrastructure.",
+    authMethodLabelOverrides: {
+      "api-key": "Bedrock API key",
+      "access-keys": "IAM access keys",
+    },
+    secretFieldOverrides: {
+      AWS_BEARER_TOKEN_BEDROCK: {
+        label: "Bedrock API key",
+        placeholder: "Bedrock API key from AWS console",
+      },
+      AWS_REGION: {
+        label: "AWS region",
+        placeholder: "e.g., us-east-1, us-west-2",
+      },
+      AWS_ACCESS_KEY_ID: {
+        label: "AWS access key ID",
+        placeholder: "IAM access key ID",
+      },
+      AWS_SECRET_ACCESS_KEY: {
+        label: "AWS secret access key",
+        placeholder: "IAM secret access key",
+      },
+      AWS_SESSION_TOKEN: {
+        label: "AWS session token",
+        placeholder: "Optional, for temporary secrets",
+      },
+    },
+  },
+});
+
 function getOverrides(
   type: ModelProviderType,
 ): ProviderUIOverrides | undefined {
-  if (type === "claude-code-oauth-token") {
-    return {
-      label: "Claude Code (OAuth token)",
-      description:
-        "Leverage Claude Code's exceptional intelligence to build and run agents.",
-    };
-  }
-  if (type === "codex-oauth-token") {
-    return {
-      description:
-        "Sign in with your ChatGPT subscription (Plus / Pro / Business / Edu / Enterprise). Workspace selection happens on auth.openai.com.",
-    };
-  }
-  if (type === "anthropic-api-key") {
-    return {
-      description:
-        "Power your agents with Claude models for advanced reasoning and analysis.",
-    };
-  }
-  if (type === "openrouter-api-key") {
-    return {
-      description:
-        "Route to 200+ models from multiple providers through unified interface.",
-      defaultModel: "anthropic/claude-sonnet-4.5",
-    };
-  }
-  if (type === "moonshot-api-key") {
-    return {
-      description:
-        "Process extensive context with up to 200k tokens for complex workflows.",
-    };
-  }
-  if (type === "minimax-api-key") {
-    return {
-      description:
-        "Generate multimodal content including text, images, and voice.",
-    };
-  }
-  if (type === "zai-api-key") {
-    return {
-      description:
-        "Access Zhipu AI's ChatGLM models with excellent performance at competitive pricing.",
-    };
-  }
-  if (type === "deepseek-api-key") {
-    return {
-      label: "Deepseek",
-      description:
-        "Execute deep reasoning and analytical tasks with cost-effective performance.",
-    };
-  }
-  if (type === "vercel-ai-gateway") {
-    return {
-      description:
-        "Access Claude models through Vercel AI Gateway with a unified API.",
-    };
-  }
-  if (type === "azure-foundry") {
-    return {
-      label: "Azure foundry portal",
-      description:
-        "Deploy enterprise-grade AI with Azure security and compliance.",
-      authMethodLabelOverrides: { "api-key": "API key" },
-      secretFieldOverrides: {
-        ANTHROPIC_FOUNDRY_API_KEY: {
-          label: "Anthropic foundry API key",
-          placeholder: "API key from Azure Foundry portal",
-        },
-        ANTHROPIC_FOUNDRY_RESOURCE: {
-          label: "Anthropic foundry resource",
-          placeholder: "Enter Anthropic foundry resource",
-        },
-      },
-    };
-  }
-  if (type === "vm0") {
-    return {
-      label: "Built-in model",
-      description:
-        "Powered by Claude — uses your VM0 credits. No API key needed.",
-    };
-  }
-  if (type === "aws-bedrock") {
-    return {
-      description:
-        "Scale foundation models with AWS enterprise security and infrastructure.",
-      authMethodLabelOverrides: {
-        "api-key": "Bedrock API key",
-        "access-keys": "IAM access keys",
-      },
-      secretFieldOverrides: {
-        AWS_BEARER_TOKEN_BEDROCK: {
-          label: "Bedrock API key",
-          placeholder: "Bedrock API key from AWS console",
-        },
-        AWS_REGION: {
-          label: "AWS region",
-          placeholder: "e.g., us-east-1, us-west-2",
-        },
-        AWS_ACCESS_KEY_ID: {
-          label: "AWS access key ID",
-          placeholder: "IAM access key ID",
-        },
-        AWS_SECRET_ACCESS_KEY: {
-          label: "AWS secret access key",
-          placeholder: "IAM secret access key",
-        },
-        AWS_SESSION_TOKEN: {
-          label: "AWS session token",
-          placeholder: "Optional, for temporary secrets",
-        },
-      },
-    };
-  }
-  return undefined;
+  return PROVIDER_UI_OVERRIDES[type];
 }
 
 /**
