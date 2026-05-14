@@ -59,7 +59,7 @@ const cliAuthStripeSessionTokenSchema = z.object({
 const cliAuthStripeProviderStateSchema = z.object({
   version: z.literal(1),
   type: z.literal("stripe"),
-  mode: z.enum(["test", "live"]).default("test"),
+  mode: z.enum(["test", "live"]),
   pollUrl: z.url(),
 });
 
