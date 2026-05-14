@@ -638,7 +638,9 @@ mod tests {
     use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
     use tokio::sync::oneshot;
     use vsock_host::VsockHost;
-    use vsock_proto::{Decoder, MSG_COMMAND_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage};
+    use vsock_proto::{
+        Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    };
 
     fn test_gate(guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>) -> GuestOperationGate {
         GuestOperationGate::new(guest, ParkCoordinator::new())
@@ -1000,6 +1002,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn control_exec_terminal_guest_error_completes_operation_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let vsock_base = dir.path().join("vsock");
+        let host_task = {
+            let vsock_base = vsock_base.display().to_string();
+            tokio::spawn(async move {
+                VsockHost::wait_for_connection(&vsock_base, Duration::from_secs(5)).await
+            })
+        };
+        let guest_task = tokio::spawn(mock_guest_errors_exec(vsock_base, "guest refused exec"));
+        let vsock = host_task.await.unwrap().unwrap();
+
+        let sock_path = dir.path().join("control.sock");
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let (gate, coordinator) = test_gate_with_coordinator(guest);
+        let mut handle = bind_server(sock_path.clone(), gate)
+            .unwrap()
+            .spawn(CancellationToken::new());
+
+        let request = ExecRequest {
+            command: "exit-before-start".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+        let response = send_exec(&sock_path, &request, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        match response {
+            ExecResponse::Error { error } => {
+                assert!(
+                    error.contains("guest refused exec"),
+                    "unexpected error: {error}"
+                );
+            }
+            ExecResponse::Success { .. } => panic!("expected guest error"),
+        }
+        assert_eq!(coordinator.active_operation_count(), 0);
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("terminal guest error should complete the operation");
+        coordinator.abort_prepare_park(&attempt).unwrap();
+
+        handle.shutdown().await;
+        guest_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn bind_server_reports_bind_failure() {
         let dir = tempfile::tempdir().unwrap();
         let sock_path = dir.path().join("control.sock");
@@ -1070,6 +1120,29 @@ mod tests {
 
     async fn mock_guest_records_exec(vsock_base: PathBuf, exec_seen: oneshot::Sender<()>) {
         mock_guest_until_exec(vsock_base, exec_seen, false).await;
+    }
+
+    async fn mock_guest_errors_exec(vsock_base: PathBuf, error: &'static str) {
+        let listener_path = PathBuf::from(format!(
+            "{}_{}",
+            vsock_base.display(),
+            vsock_proto::VSOCK_PORT
+        ));
+        wait_for_socket_exists(&listener_path).await;
+
+        let mut stream = UnixStream::connect(&listener_path).await.unwrap();
+        let mut decoder = Decoder::new();
+        mock_vsock_handshake(&mut stream, &mut decoder).await;
+
+        loop {
+            let message = read_vsock_message(&mut stream, &mut decoder).await;
+            if message.msg_type == MSG_COMMAND_START {
+                let payload = vsock_proto::encode_error(error);
+                let frame = vsock_proto::encode(MSG_ERROR, message.seq, &payload).unwrap();
+                stream.write_all(&frame).await.unwrap();
+                return;
+            }
+        }
     }
 
     async fn mock_guest_until_exec(

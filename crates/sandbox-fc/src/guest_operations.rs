@@ -119,6 +119,23 @@ impl GuestOperation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn gate_without_guest() -> (GuestOperationGate, ParkCoordinator) {
+        let coordinator = ParkCoordinator::new();
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        (
+            GuestOperationGate::new(guest, coordinator.clone()),
+            coordinator,
+        )
+    }
+
+    fn assert_prepare_can_start(coordinator: &ParkCoordinator) {
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("operation start failure should not leave an active lease");
+        coordinator.abort_prepare_park(&attempt).unwrap();
+    }
 
     #[test]
     fn timeout_and_transport_errors_are_not_terminal_guest_evidence() {
@@ -140,5 +157,85 @@ mod tests {
 
         assert!(guest_error_is_terminal(&error, false));
         assert!(!guest_error_is_terminal(&error, true));
+    }
+
+    #[tokio::test]
+    async fn control_operation_without_guest_releases_reserved_lease() {
+        let (gate, coordinator) = gate_without_guest();
+
+        let error = match gate.begin_control_operation().await {
+            Ok(_) => panic!("expected no-guest error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, GuestOperationStartError::NoGuest);
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[tokio::test]
+    async fn sandbox_operation_without_guest_releases_reserved_lease() {
+        let (gate, coordinator) = gate_without_guest();
+
+        let error = match gate.begin_sandbox_operation(|| SandboxState::Running).await {
+            Ok(_) => panic!("expected not-running error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            GuestOperationStartError::NotRunning {
+                state: SandboxState::Running
+            }
+        );
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[tokio::test]
+    async fn sandbox_crash_after_reserve_releases_reserved_lease() {
+        let (gate, coordinator) = gate_without_guest();
+        let calls = AtomicUsize::new(0);
+
+        let error = match gate
+            .begin_sandbox_operation(|| {
+                if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    SandboxState::Running
+                } else {
+                    SandboxState::Crashed
+                }
+            })
+            .await
+        {
+            Ok(_) => panic!("expected backend-crashed error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, GuestOperationStartError::BackendCrashed);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[tokio::test]
+    async fn closed_gate_rejects_without_active_lease() {
+        let (gate, coordinator) = gate_without_guest();
+        let attempt = coordinator
+            .begin_prepare_park()
+            .expect("gate should enter closing state");
+
+        let error = match gate.begin_control_operation().await {
+            Ok(_) => panic!("expected gate-closed error"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            GuestOperationStartError::GateClosed {
+                state: CoordinatorState::ClosingForPark { .. }
+            }
+        ));
+        assert_eq!(coordinator.active_operation_count(), 0);
+        coordinator.abort_prepare_park(&attempt).unwrap();
     }
 }

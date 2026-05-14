@@ -2200,6 +2200,32 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn gated_spawn_exit_future_error_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let lease = active_spawn_watch_lease(&coordinator);
+        let exit = gated_spawn_exit_future(
+            async { Err(io::Error::new(io::ErrorKind::ConnectionReset, "closed")) },
+            lease,
+        );
+
+        let error = match exit.await {
+            Ok(_) => panic!("expected spawn exit error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(
+            coordinator.active_operation_count(),
+            0,
+            "failed spawn exit future should not leave an active operation"
+        );
+    }
+
     /// Exercise the `monitor_process` crash detection flow through real child
     /// exit. A running process exit should mark the sandbox crashed and wake
     /// current subscribers.
