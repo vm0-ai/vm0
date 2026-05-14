@@ -1214,6 +1214,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancel_file_with_preclaim_token_and_other_runner_claim_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let tokens = empty_cancel_tokens();
+
+        let run_id = RunId::new_v4();
+        let job_token = CancellationToken::new();
+        tokens.lock().await.insert(run_id, job_token.clone());
+
+        let provider = default_provider(dir.path(), cancel, tokens);
+
+        let cancel_path = local_queue::cancel_path(dir.path(), run_id);
+        let claim_path = local_queue::claim_path(dir.path(), run_id);
+        std::fs::create_dir_all(cancel_path.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(claim_path.parent().unwrap()).unwrap();
+        std::fs::write(&cancel_path, b"").unwrap();
+        std::fs::write(&claim_path, b"").unwrap();
+
+        provider.cancel_scanner.scan_cancel_files().await;
+
+        assert!(
+            job_token.is_cancelled(),
+            "pre-claim token should still observe cancellation"
+        );
+        assert!(
+            cancel_path.exists(),
+            "cancel file should stay for the runner that owns the claim"
+        );
+    }
+
+    #[tokio::test]
     async fn cancel_file_with_token_but_no_pending_target_is_deleted() {
         let dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
@@ -1306,6 +1337,19 @@ mod tests {
                 .await
                 .contains(&run_id),
             "claim should be tracked as locally owned"
+        );
+
+        provider
+            .cancel_scanner
+            .prune_owned_claims_without_tokens()
+            .await;
+        assert!(
+            provider
+                .cancel_scanner
+                .snapshot_owned_claims(&[run_id])
+                .await
+                .contains(&run_id),
+            "owned claim should stay while its cancel token is still active"
         );
 
         tokens.lock().await.remove(&run_id);
