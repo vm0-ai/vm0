@@ -75,6 +75,7 @@ jobs:
       guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
       guest-write-file-changed: ${{ steps.detect.outputs.guest-write-file-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
+      vsock-test-changed: ${{ steps.detect.outputs.vsock-test-changed }}
       crates-runner-consumer-needed: ${{ steps.runner-tests.outputs.crates-runner-consumer-needed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
@@ -126,6 +127,7 @@ jobs:
           check_crate guest-reseed
           check_crate guest-write-file
           check_crate nbd-cow
+          check_crate vsock-test
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
