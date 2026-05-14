@@ -20,6 +20,7 @@ pub struct ProcessExitEvent {
 
 struct SpawnOperation {
     pid: Option<u32>,
+    streams_stdout: bool,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
     exit_tx: oneshot::Sender<io::Result<ProcessExitEvent>>,
 }
@@ -259,6 +260,12 @@ pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> i
         let (pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         require_recorded_lifecycle_pid("stdout_chunk", operation.pid, pid)?;
+        if !operation.streams_stdout {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("stdout_chunk for non-streaming spawn_watch pid {pid}"),
+            ));
+        }
         (operation.stdout_tx.clone(), data)
     };
 
@@ -348,6 +355,7 @@ pub(crate) async fn spawn_watch_on_shared(
                     seq,
                     SpawnOperation {
                         pid: None,
+                        streams_stdout: stream_stdout,
                         stdout_tx,
                         exit_tx,
                     },
