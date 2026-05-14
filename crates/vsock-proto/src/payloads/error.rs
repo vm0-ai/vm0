@@ -1,4 +1,4 @@
-use crate::ProtocolError;
+use crate::error::ProtocolError;
 use crate::read::read_u16_at;
 
 /// Encode error payload: `[2B error_len][error]`.

@@ -1,4 +1,4 @@
-use crate::ProtocolError;
+use crate::error::ProtocolError;
 use crate::read::{read_i32_at, read_u32_at};
 
 fn append_output_pair(p: &mut Vec<u8>, stdout: &[u8], stderr: &[u8]) {
