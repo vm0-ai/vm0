@@ -836,7 +836,7 @@ mod tests {
                 if call_count <= 2 {
                     Ok(())
                 } else {
-                    // Fail on the 3rd call (i=2).
+                    // Fail on the 3rd call.
                     Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
                 }
             })
@@ -859,7 +859,7 @@ mod tests {
     fn flush_buffered_recovers_on_retry_after_mid_drain_failure() {
         let (_b, _c, mut cow) = seed_cow_with_writes(&[(0, 0xA0), (1, 0xA1), (2, 0xA2), (3, 0xA3)]);
 
-        // Stage 1: mid-drain failure at i=2.
+        // Stage 1: mid-drain failure on the 3rd call.
         let mut call_count = 0;
         let _ = cow.flush_buffered(|_off, _data| {
             call_count += 1;
@@ -896,15 +896,15 @@ mod tests {
                 if call_count <= 3 {
                     Ok(())
                 } else {
-                    // Fail on the 4th call (i=3, last block).
+                    // Fail on the 4th call, which is the last block.
                     Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
                 }
             })
             .unwrap_err();
         assert!(matches!(err, NbdCowError::Io(_)));
 
-        // Guards the skip(i) arithmetic at the tail boundary: only block 3
-        // should be restored; blocks [0..=2] stay written.
+        // Guards the tail boundary: only block 3 should be restored; blocks
+        // [0..=2] stay written.
         assert_eq!(cow.dirty_block_count(), 3);
         assert_eq!(cow.buffered_block_count(), 1);
         assert_eq!(cow.buffer_bytes(), 4096);
