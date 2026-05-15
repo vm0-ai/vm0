@@ -1138,6 +1138,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
 
       - name: Deploy Host Worker to Cloudflare
+        shell: bash
         working-directory: turbo
         env:
           CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
