@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -89,6 +89,78 @@ describe("connect modal - content by auth method", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
+  it("shows Remote Agent connector-specific API content", async () => {
+    await openConnectModal("remote-agent", {
+      featureSwitches: { [FeatureSwitchKey.RemoteAgent]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Online hosts")).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/No online hosts yet/)).toBeInTheDocument();
+    expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
+  });
+
+  it("shows Local Browser connector-specific API content", async () => {
+    await openConnectModal("local-browser", {
+      featureSwitches: { [FeatureSwitchKey.LocalBrowserUse]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Browser extension")).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Browser hosts")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
+  });
+
+  it("keeps API-only content visible while OAuth is settling elsewhere", async () => {
+    vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
+
+    let callCount = 0;
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ respond, never }) => {
+        callCount++;
+        if (callCount === 1) {
+          return respond(200, {
+            connectors: [],
+            configuredTypes: [],
+            connectorProvidedSecretNames: [],
+          });
+        }
+        return never();
+      }),
+    );
+
+    await openConnectModal("github", {
+      featureSwitches: { [FeatureSwitchKey.RemoteAgent]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Sign in with GitHub"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Connecting...")).toBeInTheDocument();
+    });
+
+    context.store.set(setSelectedConnectorType$, "remote-agent");
+
+    await waitFor(() => {
+      expect(screen.getByText("Online hosts")).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).queryByText("Saving permissions..."),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Connecting...")).not.toBeInTheDocument();
+  });
+
   it("shows OAuth and API token choices when both auth methods are available", async () => {
     await openConnectModal("deel", {
       featureSwitches: { [FeatureSwitchKey.DeelConnector]: true },
@@ -98,8 +170,27 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByText("Sign in with Deel")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("or")).toBeInTheDocument();
     expect(screen.getByText("API Token")).toBeInTheDocument();
+    expect(screen.getByText("or")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
+  });
+
+  it("hides CLI auth when other auth methods have modal UI", async () => {
+    await openConnectModal("stripe", {
+      featureSwitches: {
+        [FeatureSwitchKey.StripeConnector]: true,
+        [FeatureSwitchKey.CliAuthStripe]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText("CLI authentication is not available yet"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Stripe CLI")).not.toBeInTheDocument();
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 });
