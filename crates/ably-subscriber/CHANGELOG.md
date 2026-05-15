@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.11](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.10...ably-subscriber-v0.7.11) (2026-05-15)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** avoid overflowing channel deadlines ([#13440](https://github.com/vm0-ai/vm0/issues/13440)) ([f1be9b2](https://github.com/vm0-ai/vm0/commit/f1be9b270ed9b09b962395baffe2e7bd77ef6593))
+
 ## [0.7.10](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.9...ably-subscriber-v0.7.10) (2026-05-14)
 
 

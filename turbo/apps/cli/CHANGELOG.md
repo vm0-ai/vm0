@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.154.1](https://github.com/vm0-ai/vm0/compare/cli-v9.154.0...cli-v9.154.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* update image generation defaults ([#13471](https://github.com/vm0-ai/vm0/issues/13471)) ([73db760](https://github.com/vm0-ai/vm0/commit/73db760e0240dfc332c6283d84bcd18028e018a4))
+
 ## [9.154.0](https://github.com/vm0-ai/vm0/compare/cli-v9.153.0...cli-v9.154.0) (2026-05-15)
 
 

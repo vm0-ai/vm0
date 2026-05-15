@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.101.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.0...runner-rs-v0.101.1) (2026-05-15)
+
+
+### Refactoring
+
+* **mitm-addon:** centralize firewall billing state ([#13463](https://github.com/vm0-ai/vm0/issues/13463)) ([4681a45](https://github.com/vm0-ai/vm0/commit/4681a4553ffa30a2091b72a3071f170f53796383))
+
 ## [0.101.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.45...runner-rs-v0.101.0) (2026-05-15)
 
 

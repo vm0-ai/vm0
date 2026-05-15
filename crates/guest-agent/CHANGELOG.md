@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.31.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.3...guest-agent-v0.31.4) (2026-05-15)
+
+
+### Refactoring
+
+* **guest-agent:** extract cli command building ([#13460](https://github.com/vm0-ai/vm0/issues/13460)) ([fc3de78](https://github.com/vm0-ai/vm0/commit/fc3de78e4e9977623e03fb2b8aad39e24c77a943))
+* **guest-agent:** extract cli stderr diagnostics ([#13467](https://github.com/vm0-ai/vm0/issues/13467)) ([4412206](https://github.com/vm0-ai/vm0/commit/4412206ad10e5bebcd77aead7e709a02f83e7ee7))
+
 ## [0.31.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.2...guest-agent-v0.31.3) (2026-05-14)
 
 

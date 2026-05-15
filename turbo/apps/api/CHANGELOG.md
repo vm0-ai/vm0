@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.51.1](https://github.com/vm0-ai/vm0/compare/api-v1.51.0...api-v1.51.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* align host worker deploy with release-please ([#13466](https://github.com/vm0-ai/vm0/issues/13466)) ([95b2669](https://github.com/vm0-ai/vm0/commit/95b2669913ddae625191ffe97ea6af56e756b340))
+* isolate image pricing route test ([#13469](https://github.com/vm0-ai/vm0/issues/13469)) ([af7e3f6](https://github.com/vm0-ai/vm0/commit/af7e3f639073e014670fe5c842973a2fbcc7a32d))
+* limit built-in generations per run ([#13453](https://github.com/vm0-ai/vm0/issues/13453)) ([36acef6](https://github.com/vm0-ai/vm0/commit/36acef6a0a8a6e807622521253ed0024e6f5bd42))
+* update image generation defaults ([#13471](https://github.com/vm0-ai/vm0/issues/13471)) ([73db760](https://github.com/vm0-ai/vm0/commit/73db760e0240dfc332c6283d84bcd18028e018a4))
+
+
+### Refactoring
+
+* cut over zero uploads complete route ([#13462](https://github.com/vm0-ai/vm0/issues/13462)) ([b2aa8d6](https://github.com/vm0-ai/vm0/commit/b2aa8d6ec593331beb660cba2e8a6b009ab3b274))
+* cut over zero web file download route ([#13432](https://github.com/vm0-ai/vm0/issues/13432)) ([a205f29](https://github.com/vm0-ai/vm0/commit/a205f296f793b7860ce742863fcb6cea32d11475))
+* **web:** cut over usage runs route to api backend ([#13447](https://github.com/vm0-ai/vm0/issues/13447)) ([2ab9f26](https://github.com/vm0-ai/vm0/commit/2ab9f26365b3df091e064df2607f4ee6d5a556df))
+* **web:** proxy voice-chat item append to api ([#13413](https://github.com/vm0-ai/vm0/issues/13413)) ([8b80563](https://github.com/vm0-ai/vm0/commit/8b805631d52b790b3ed9d30a555cf907bdf62d3c))
+* **web:** proxy voice-chat session detail to API backend ([#13411](https://github.com/vm0-ai/vm0/issues/13411)) ([b2f8eef](https://github.com/vm0-ai/vm0/commit/b2f8eef87c453738bcf6422d5b77478f5a5e6839))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.14.2
+
 ## [1.51.0](https://github.com/vm0-ai/vm0/compare/api-v1.50.0...api-v1.51.0) (2026-05-15)
 
 

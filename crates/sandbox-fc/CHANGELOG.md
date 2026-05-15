@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.33.1...sandbox-fc-v0.33.2) (2026-05-15)
+
+
+### Refactoring
+
+* rename vsock command operation ([#13465](https://github.com/vm0-ai/vm0/issues/13465)) ([bd1742b](https://github.com/vm0-ai/vm0/commit/bd1742b001bec3edf81cd5daf410294f722315e6))
+
 ## [0.33.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.33.0...sandbox-fc-v0.33.1) (2026-05-15)
 
 

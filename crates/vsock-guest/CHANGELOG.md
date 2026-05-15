@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.16.1...vsock-guest-v0.16.2) (2026-05-15)
+
+
+### Refactoring
+
+* rename vsock command operation ([#13465](https://github.com/vm0-ai/vm0/issues/13465)) ([bd1742b](https://github.com/vm0-ai/vm0/commit/bd1742b001bec3edf81cd5daf410294f722315e6))
+* **vsock-guest:** rename shell command helpers ([#13419](https://github.com/vm0-ai/vm0/issues/13419)) ([f87d4c7](https://github.com/vm0-ai/vm0/commit/f87d4c7d19d2cf6b6d736550f0ba8ed60e7c2551))
+
 ## [0.16.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.16.0...vsock-guest-v0.16.1) (2026-05-15)
 
 

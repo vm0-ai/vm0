@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.369.1](https://github.com/vm0-ai/vm0/compare/web-v12.369.0...web-v12.369.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* limit built-in generations per run ([#13453](https://github.com/vm0-ai/vm0/issues/13453)) ([36acef6](https://github.com/vm0-ai/vm0/commit/36acef6a0a8a6e807622521253ed0024e6f5bd42))
+* remove built-in generation prompt details ([#13468](https://github.com/vm0-ai/vm0/issues/13468)) ([cff95b2](https://github.com/vm0-ai/vm0/commit/cff95b241e9560639df487085f72c37bf8e5b3d0))
+* update image generation defaults ([#13471](https://github.com/vm0-ai/vm0/issues/13471)) ([73db760](https://github.com/vm0-ai/vm0/commit/73db760e0240dfc332c6283d84bcd18028e018a4))
+
+
+### Refactoring
+
+* cut over zero uploads complete route ([#13462](https://github.com/vm0-ai/vm0/issues/13462)) ([b2aa8d6](https://github.com/vm0-ai/vm0/commit/b2aa8d6ec593331beb660cba2e8a6b009ab3b274))
+* cut over zero usage members route ([#13470](https://github.com/vm0-ai/vm0/issues/13470)) ([7eb8af4](https://github.com/vm0-ai/vm0/commit/7eb8af4eda5d98048e538f8e9461d916a50b2c2b))
+* cut over zero web file download route ([#13432](https://github.com/vm0-ai/vm0/issues/13432)) ([a205f29](https://github.com/vm0-ai/vm0/commit/a205f296f793b7860ce742863fcb6cea32d11475))
+* **web:** cut over usage runs route to api backend ([#13447](https://github.com/vm0-ai/vm0/issues/13447)) ([2ab9f26](https://github.com/vm0-ai/vm0/commit/2ab9f26365b3df091e064df2607f4ee6d5a556df))
+* **web:** proxy voice-chat item append to api ([#13413](https://github.com/vm0-ai/vm0/issues/13413)) ([8b80563](https://github.com/vm0-ai/vm0/commit/8b805631d52b790b3ed9d30a555cf907bdf62d3c))
+* **web:** proxy voice-chat session detail to API backend ([#13411](https://github.com/vm0-ai/vm0/issues/13411)) ([b2f8eef](https://github.com/vm0-ai/vm0/commit/b2f8eef87c453738bcf6422d5b77478f5a5e6839))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.14.2
+
 ## [12.369.0](https://github.com/vm0-ai/vm0/compare/web-v12.368.0...web-v12.369.0) (2026-05-15)
 
 
