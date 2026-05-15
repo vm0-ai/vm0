@@ -137,7 +137,10 @@ function requestDownload(args: {
   readonly fileId?: string;
   readonly token?: string;
 }): Promise<Response> {
-  const search = args.fileId ? `?file_id=${args.fileId}` : "";
+  const search =
+    args.fileId === undefined
+      ? ""
+      : `?file_id=${encodeURIComponent(args.fileId)}`;
   const headers: Record<string, string> = args.token
     ? { authorization: `Bearer ${args.token}` }
     : {};
@@ -186,6 +189,14 @@ describe("GET /api/zero/web/download-file", () => {
     await expectErrorResponse(response, 400, "BAD_REQUEST");
   });
 
+  it("returns 400 when file_id query param is empty", async () => {
+    const { token } = await mintFileReadToken();
+
+    const response = await requestDownload({ fileId: "", token });
+
+    await expectErrorResponse(response, 400, "BAD_REQUEST");
+  });
+
   it("returns 404 when the file is not found in S3", async () => {
     const { token } = await mintFileReadToken();
     mockS3Objects([]);
@@ -213,6 +224,32 @@ describe("GET /api/zero/web/download-file", () => {
     expect(response.headers.get("content-type")).toBe("text/plain");
     expect(response.headers.get("x-file-name")).toBe("test_file.txt");
     expect(response.headers.get("x-file-mimetype")).toBe("text/plain");
+    expect(response.headers.get("content-length")).toBe(
+      String(fileContent.length),
+    );
+    const receivedBytes = Buffer.from(await response.arrayBuffer());
+    expect(receivedBytes.equals(fileContent)).toBeTruthy();
+  });
+
+  it("encodes the file name header while preserving the binary body", async () => {
+    const fileId = "encoded-name-uuid";
+    const fileContent = Buffer.from([0, 1, 2, 3, 255]);
+    const { token, userId } = await mintFileReadToken();
+    const filename = "report 2026 #final.bin";
+    mockS3Objects([
+      {
+        key: `uploads/${userId}/${fileId}/${filename}`,
+        size: fileContent.length,
+        body: fileContent,
+      },
+    ]);
+
+    const response = await requestDownload({ fileId, token });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-file-name")).toBe(
+      encodeURIComponent(filename),
+    );
     expect(response.headers.get("content-length")).toBe(
       String(fileContent.length),
     );

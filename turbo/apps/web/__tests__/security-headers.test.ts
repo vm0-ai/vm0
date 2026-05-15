@@ -70,6 +70,15 @@ async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
   return rewrites.beforeFiles ?? [];
 }
 
+async function getApiBackendRewriteMatcher(): Promise<
+  (pathname: string) => boolean
+> {
+  const rewriteModule = (await import("../api-backend-rewrites.js")) as {
+    matchesApiBackendRewritePath: (pathname: string) => boolean;
+  };
+  return rewriteModule.matchesApiBackendRewritePath;
+}
+
 function findHeader(
   headers: Array<{ key: string; value: string }>,
   name: string,
@@ -264,6 +273,10 @@ describe("API backend rewrites", () => {
           source: VOICE_CHAT_SESSION_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/voice-chat/:id",
         },
+        {
+          source: "/api/zero/web/download-file",
+          destination: "https://api.example.test/api/zero/web/download-file",
+        },
       ]),
     );
   });
@@ -315,6 +328,17 @@ describe("API backend rewrites", () => {
       rewrites.some((rewrite) => {
         return rewrite.source === "/api/:path*";
       }),
+    ).toBe(false);
+  });
+
+  it("should match the zero web download route for middleware pass-through", async () => {
+    const matchesApiBackendRewritePath = await getApiBackendRewriteMatcher();
+
+    expect(matchesApiBackendRewritePath("/api/zero/web/download-file")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/web/download-file/extra"),
     ).toBe(false);
   });
 });

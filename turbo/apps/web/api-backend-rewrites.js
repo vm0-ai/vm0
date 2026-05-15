@@ -76,6 +76,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/voice-chat/:id",
     ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE,
   ],
+  ["/api/zero/web/download-file", "/api/zero/web/download-file"],
 ];
 
 export function matchesApiBackendRewritePath(pathname) {
