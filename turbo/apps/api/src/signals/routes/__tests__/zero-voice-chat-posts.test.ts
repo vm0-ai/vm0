@@ -590,6 +590,82 @@ describe("POST /api/zero/voice-chat/:id/tasks (createTask)", () => {
 });
 
 describe("POST /api/zero/voice-chat/:id/trigger-reasoning", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const response = await accept(
+      client().triggerReasoning({
+        headers: {},
+        params: { id: randomUUID() },
+        body: {},
+      }),
+      [401],
+    );
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 404 when Trinity is disabled", async () => {
+    const fixture = await track(
+      store.set(seedVoiceChatFixture$, {}, context.signal),
+    );
+    const agentId = await store.set(
+      seedVoiceChatAgent$,
+      fixture,
+      {},
+      context.signal,
+    );
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      client().triggerReasoning({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: {},
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session does not exist", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().triggerReasoning({
+        headers: authHeaders(),
+        params: { id: randomUUID() },
+        body: {},
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 for a session owned by another user or org", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().triggerReasoning({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: {},
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
   it("queues a reasoner tick for an owned session", async () => {
     const { fixture, agentId } = await seedEnabledFixture();
     const sessionId = await store.set(

@@ -1,6 +1,4 @@
-import { NextRequest } from "next/server";
 import { uniqueId } from "../../../../../src/__tests__/test-helpers";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTestOrg,
   insertOrgModelPolicy,
@@ -12,8 +10,6 @@ import {
 } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { seedTestVoiceChatSession } from "../../../../../src/__tests__/db-test-seeders/voice-chat";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-
-const BASE_URL = "http://localhost:3000/api/zero/voice-chat";
 
 export async function setupVoiceChatOrg(userId: string): Promise<{
   orgId: string;
@@ -63,16 +59,4 @@ export async function seedVoiceChatSession(opts: {
 }): Promise<{ id: string }> {
   const id = await seedTestVoiceChatSession(opts);
   return { id };
-}
-
-export function postRequest(path: string, body?: unknown): NextRequest {
-  return createTestRequest(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-}
-
-export function paramsFor(id: string): { params: Promise<{ id: string }> } {
-  return { params: Promise.resolve({ id }) };
 }

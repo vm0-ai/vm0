@@ -10,24 +10,6 @@ export const voiceChatTokenBodySchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
 
-// Gate on Trinity — the voice-chat surface's dedicated flag introduced in
-// #10618. Trinity is the only UI entry point into these endpoints (the
-// standalone /voice-chat page was removed in #10627), so the
-// backend follows the same switch.
-export async function isVoiceChatEnabled(
-  authCtx: AuthContext,
-): Promise<boolean> {
-  const overrides = await loadFeatureSwitchOverrides(
-    authCtx.orgId,
-    authCtx.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.Trinity, {
-    orgId: authCtx.orgId,
-    userId: authCtx.userId,
-    overrides,
-  });
-}
-
 interface VoiceChatGates {
   /** FeatureSwitchKey.Trinity — top-level voice-chat gate (#10618). */
   voiceChatEnabled: boolean;
@@ -43,9 +25,6 @@ interface VoiceChatGates {
 
 /**
  * Resolve both voice-chat feature gates with a single overrides load.
- * Use this in routes that need to make per-branch decisions; the older
- * `isVoiceChatEnabled` is kept for callers that only need the Trinity
- * gate.
  */
 export async function loadVoiceChatGates(
   authCtx: AuthContext,
