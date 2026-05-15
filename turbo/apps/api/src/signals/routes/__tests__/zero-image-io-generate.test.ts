@@ -329,13 +329,8 @@ async function restoreImagePricingRows(
         };
       }),
     )
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: sql`excluded.unit_price`,
-        unitSize: sql`excluded.unit_size`,
-        updatedAt: sql`now()`,
-      },
     });
 }
 
