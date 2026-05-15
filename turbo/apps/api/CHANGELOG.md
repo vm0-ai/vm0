@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.48.0](https://github.com/vm0-ai/vm0/compare/api-v1.47.2...api-v1.48.0) (2026-05-15)
+
+
+### Features
+
+* add local-browser read command queue ([#13338](https://github.com/vm0-ai/vm0/issues/13338)) ([a627678](https://github.com/vm0-ai/vm0/commit/a627678ad051ba97d9d4748418b89784542275ea))
+* add zero hosted sites ([#13135](https://github.com/vm0-ai/vm0/issues/13135)) ([7e5c995](https://github.com/vm0-ai/vm0/commit/7e5c995810af12c79a2c704459dba2265df2d23d))
+* harden cli auth lifecycle ([#13361](https://github.com/vm0-ai/vm0/issues/13361)) ([37b9b84](https://github.com/vm0-ai/vm0/commit/37b9b8478feb294b06e921d377cf47b198405937))
+
+
+### Bug Fixes
+
+* route api chat runs through zero run service ([#13362](https://github.com/vm0-ai/vm0/issues/13362)) ([4b66ccf](https://github.com/vm0-ai/vm0/commit/4b66ccf8d1b964cc5e4d5f91479d30ac3385b6f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.25.0
+    * @vm0/connectors bumped to 1.12.0
+    * @vm0/core bumped to 8.277.0
+    * @vm0/db bumped to 1.12.0
+
 ## [1.47.2](https://github.com/vm0-ai/vm0/compare/api-v1.47.1...api-v1.47.2) (2026-05-15)
 
 

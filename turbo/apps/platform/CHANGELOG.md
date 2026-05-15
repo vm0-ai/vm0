@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.357.0](https://github.com/vm0-ai/vm0/compare/app-v0.356.5...app-v0.357.0) (2026-05-15)
+
+
+### Features
+
+* add agora connector ([#13359](https://github.com/vm0-ai/vm0/issues/13359)) ([34b7fd4](https://github.com/vm0-ai/vm0/commit/34b7fd4c56eed187ef5667b16a5fcbbe3453e1c2))
+* add snowflake connector ([#13356](https://github.com/vm0-ai/vm0/issues/13356)) ([2ff9dc4](https://github.com/vm0-ai/vm0/commit/2ff9dc4029a39d503f7999c75521131d7ee0e9c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.25.0
+    * @vm0/connectors bumped to 1.12.0
+    * @vm0/core bumped to 8.277.0
+
 ## [0.356.5](https://github.com/vm0-ai/vm0/compare/app-v0.356.4...app-v0.356.5) (2026-05-15)
 
 

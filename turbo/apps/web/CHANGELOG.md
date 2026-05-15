@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.366.0](https://github.com/vm0-ai/vm0/compare/web-v12.365.3...web-v12.366.0) (2026-05-15)
+
+
+### Features
+
+* add local-browser read command queue ([#13338](https://github.com/vm0-ai/vm0/issues/13338)) ([a627678](https://github.com/vm0-ai/vm0/commit/a627678ad051ba97d9d4748418b89784542275ea))
+* add zero hosted sites ([#13135](https://github.com/vm0-ai/vm0/issues/13135)) ([7e5c995](https://github.com/vm0-ai/vm0/commit/7e5c995810af12c79a2c704459dba2265df2d23d))
+
+
+### Bug Fixes
+
+* **web:** prevent api route baseline growth ([#13370](https://github.com/vm0-ai/vm0/issues/13370)) ([e8e1c52](https://github.com/vm0-ai/vm0/commit/e8e1c52c41e2b6c25156cb064b7293ec38f40200))
+
+
+### Refactoring
+
+* replace api proxy routes with rewrites ([#13365](https://github.com/vm0-ai/vm0/issues/13365)) ([53d9dfc](https://github.com/vm0-ai/vm0/commit/53d9dfcbbfcd2a9988aafe7b2e30e8a87d112d74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.25.0
+    * @vm0/connectors bumped to 1.12.0
+    * @vm0/core bumped to 8.277.0
+    * @vm0/db bumped to 1.12.0
+
 ## [12.365.3](https://github.com/vm0-ai/vm0/compare/web-v12.365.2...web-v12.365.3) (2026-05-15)
 
 
