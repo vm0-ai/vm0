@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.15.2...vsock-host-v0.15.3) (2026-05-15)
+
+
+### Refactoring
+
+* **vsock-host:** add normal operation tracker ([#13464](https://github.com/vm0-ai/vm0/issues/13464)) ([f4754b1](https://github.com/vm0-ai/vm0/commit/f4754b15b6134cc13c424adaaf5ad5372aec5798))
+
 ## [0.15.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.15.1...vsock-host-v0.15.2) (2026-05-15)
 
 

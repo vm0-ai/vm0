@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.4...guest-agent-v0.31.5) (2026-05-15)
+
+
+### Refactoring
+
+* **guest-agent:** extract cli event delivery state ([#13477](https://github.com/vm0-ai/vm0/issues/13477)) ([c17e528](https://github.com/vm0-ai/vm0/commit/c17e528867b79ca8cb5acb36d01aecca26f725fe))
+
 ## [0.31.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.3...guest-agent-v0.31.4) (2026-05-15)
 
 
