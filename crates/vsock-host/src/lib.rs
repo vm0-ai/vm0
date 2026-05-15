@@ -620,7 +620,7 @@ impl VsockHost {
         .await
     }
 
-    /// Start a request-scoped exec operation using the unified command protocol.
+    /// Start a request-scoped exec operation using the exec operation protocol.
     pub async fn start_exec_operation(
         &self,
         request: ExecOperationRequest<'_>,

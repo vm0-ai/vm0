@@ -286,7 +286,7 @@ fn validate_copy_exec_result(
 }
 
 impl VsockHost {
-    /// Read a small file from the guest through command capture.
+    /// Read a small file from the guest through exec capture.
     ///
     /// Missing files return `Ok(None)`. Files larger than `max_bytes` return
     /// an error instead of silently returning truncated bytes.
@@ -299,7 +299,7 @@ impl VsockHost {
         let stdout_limit_bytes = u32::try_from(max_bytes).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "read_file max_bytes exceeds command capture limit",
+                "read_file max_bytes exceeds exec capture limit",
             )
         })?;
         if stdout_limit_bytes == 0 {
@@ -372,7 +372,7 @@ impl VsockHost {
         let stream_limit_bytes = u32::try_from(options.max_bytes).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "copy_file max_bytes exceeds command stream limit",
+                "copy_file max_bytes exceeds exec stream limit",
             )
         })?;
         if options.timeout_ms == 0 {

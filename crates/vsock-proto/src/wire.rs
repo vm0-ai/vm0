@@ -56,4 +56,12 @@ mod tests {
         assert_eq!(MSG_SPAWN_PROCESS, 0x05);
         assert_eq!(MSG_SPAWN_PROCESS_RESULT, 0x06);
     }
+
+    #[test]
+    fn exec_operation_keeps_existing_wire_values() {
+        assert_eq!(MSG_EXEC_START, 0x0B);
+        assert_eq!(MSG_EXEC_OUTPUT, 0x0C);
+        assert_eq!(MSG_EXEC_RESULT, 0x0D);
+        assert_eq!(MSG_EXEC_CANCEL, 0x0E);
+    }
 }
