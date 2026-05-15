@@ -18,7 +18,7 @@ pub struct ProcessExitEvent {
     pub stderr: Vec<u8>,
 }
 
-struct SpawnOperation {
+struct ProcessOperation {
     pid: Option<u32>,
     streams_stdout: bool,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
@@ -28,7 +28,7 @@ struct SpawnOperation {
 /// Process lifecycle state while the vsock connection is open.
 pub(crate) struct ConnectedProcessState {
     /// Active spawn_process operations keyed by request sequence number.
-    operations: HashMap<u32, SpawnOperation>,
+    operations: HashMap<u32, ProcessOperation>,
 }
 
 impl ConnectedProcessState {
@@ -47,7 +47,7 @@ impl ConnectedProcessState {
         )
     }
 
-    fn insert_operation(&mut self, seq: u32, operation: SpawnOperation) {
+    fn insert_operation(&mut self, seq: u32, operation: ProcessOperation) {
         self.operations.insert(seq, operation);
     }
 
@@ -55,11 +55,11 @@ impl ConnectedProcessState {
         self.operations.remove(&seq);
     }
 
-    fn operation_mut(&mut self, seq: u32) -> Option<&mut SpawnOperation> {
+    fn operation_mut(&mut self, seq: u32) -> Option<&mut ProcessOperation> {
         self.operations.get_mut(&seq)
     }
 
-    fn take_operation(&mut self, seq: u32) -> Option<SpawnOperation> {
+    fn take_operation(&mut self, seq: u32) -> Option<ProcessOperation> {
         self.operations.remove(&seq)
     }
 
@@ -114,19 +114,19 @@ impl ClosedProcessState {
     }
 }
 
-/// Spawn operation map moved out during close so drops happen outside
+/// Process operation map moved out during close so drops happen outside
 /// `Shared.state`.
 pub(crate) struct ProcessOperationMap {
-    _operations: HashMap<u32, SpawnOperation>,
+    _operations: HashMap<u32, ProcessOperation>,
 }
 
-struct SpawnOperationRegistrationGuard {
+struct ProcessOperationRegistrationGuard {
     shared: Arc<Shared>,
     seq: u32,
     disarmed: bool,
 }
 
-impl SpawnOperationRegistrationGuard {
+impl ProcessOperationRegistrationGuard {
     fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self {
             shared,
@@ -140,10 +140,10 @@ impl SpawnOperationRegistrationGuard {
     }
 }
 
-impl Drop for SpawnOperationRegistrationGuard {
+impl Drop for ProcessOperationRegistrationGuard {
     fn drop(&mut self) {
         if !self.disarmed {
-            remove_spawn_operation(&self.shared, self.seq);
+            remove_process_operation(&self.shared, self.seq);
         }
     }
 }
@@ -210,12 +210,12 @@ impl GuestProcessHandle {
 impl Drop for GuestProcessHandle {
     fn drop(&mut self) {
         if let Some(seq) = self.seq.take() {
-            remove_spawn_operation(&self.shared, seq);
+            remove_process_operation(&self.shared, seq);
         }
     }
 }
 
-fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
+fn remove_process_operation(shared: &Arc<Shared>, seq: u32) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard {
         process.remove_operation(seq);
@@ -356,7 +356,7 @@ pub(crate) async fn spawn_process_on_shared(
             ConnectionState::Connected { process, .. } => {
                 process.insert_operation(
                     seq,
-                    SpawnOperation {
+                    ProcessOperation {
                         pid: None,
                         streams_stdout: stream_stdout,
                         stdout_tx,
@@ -366,7 +366,7 @@ pub(crate) async fn spawn_process_on_shared(
             }
         }
     }
-    let mut registration_guard = SpawnOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    let mut registration_guard = ProcessOperationRegistrationGuard::new(Arc::clone(shared), seq);
 
     let resp = request_raw_on_shared(
         shared,

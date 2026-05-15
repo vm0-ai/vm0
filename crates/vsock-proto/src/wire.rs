@@ -46,3 +46,14 @@ pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
 pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_process_keeps_existing_wire_values() {
+        assert_eq!(MSG_SPAWN_PROCESS, 0x05);
+        assert_eq!(MSG_SPAWN_PROCESS_RESULT, 0x06);
+    }
+}
