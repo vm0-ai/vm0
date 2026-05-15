@@ -90,9 +90,7 @@ describe("connect modal - content by auth method", () => {
   });
 
   it("shows Remote Agent connector-specific API content", async () => {
-    await openConnectModal("remote-agent", {
-      featureSwitches: { [FeatureSwitchKey.RemoteAgent]: true },
-    });
+    await openConnectModal("remote-agent");
 
     await waitFor(() => {
       expect(screen.getByText("Online hosts")).toBeInTheDocument();
@@ -135,9 +133,7 @@ describe("connect modal - content by auth method", () => {
       }),
     );
 
-    await openConnectModal("github", {
-      featureSwitches: { [FeatureSwitchKey.RemoteAgent]: true },
-    });
+    await openConnectModal("github");
 
     await waitFor(() => {
       expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
