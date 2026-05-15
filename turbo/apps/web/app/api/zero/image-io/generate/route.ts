@@ -213,6 +213,7 @@ type ImageSafetyTolerance = (typeof SAFETY_TOLERANCES)[number];
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 type ImageModel = keyof typeof IMAGE_MODEL_CONFIGS;
 type ImageProvider = (typeof IMAGE_MODEL_CONFIGS)[ImageModel]["provider"];
+type ImageModelConfig = (typeof IMAGE_MODEL_CONFIGS)[ImageModel];
 
 interface ImageOptions {
   prompt: string;
@@ -246,6 +247,11 @@ interface ImagePricingRow {
   category: ImagePricingCategory;
   unitPrice: number;
   unitSize: number;
+}
+
+interface ImageOutputOptions {
+  outputFormat: ImageOutputFormat;
+  outputCompression: number | undefined;
 }
 
 interface ParsedImageGeneration {
@@ -465,11 +471,7 @@ function validateImageSize(model: ImageModel, size: string): Response | null {
   return null;
 }
 
-function parseImageOptions(body: unknown): ImageOptions | Response {
-  if (!isRecord(body)) {
-    return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
-  }
-
+function parsePrompt(body: Record<string, unknown>): string | Response {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length === 0) {
     return errorResponse("prompt is required", "BAD_REQUEST", 400);
@@ -482,6 +484,10 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return prompt;
+}
+
+function parseImageModel(body: Record<string, unknown>): ImageModel | Response {
   const rawModel = readString(body, "model", DEFAULT_MODEL);
   const model = normalizeImageModel(rawModel);
   if (!model) {
@@ -491,12 +497,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
       400,
     );
   }
-  const modelConfig = IMAGE_MODEL_CONFIGS[model];
 
-  const size = readString(body, "size", "1024x1024");
-  const sizeError = validateImageSize(model, size);
-  if (sizeError) return sizeError;
+  return model;
+}
 
+function parseImageQuality(
+  body: Record<string, unknown>,
+): ImageQuality | Response {
   const quality = readString(body, "quality", "medium");
   if (!includesString(QUALITIES, quality)) {
     return errorResponse(
@@ -506,6 +513,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return quality;
+}
+
+function parseImageBackground(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageBackground | Response {
   const background = readString(body, "background", "auto");
   if (!includesString(BACKGROUNDS, background)) {
     return errorResponse(
@@ -525,6 +539,14 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return background;
+}
+
+function parseImageOutputOptions(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  background: ImageBackground,
+): ImageOutputOptions | Response {
   const outputFormat = readString(body, "outputFormat", "png");
   if (!includesString(OUTPUT_FORMATS, outputFormat)) {
     return errorResponse(
@@ -578,6 +600,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return { outputFormat, outputCompression };
+}
+
+function parseImageModeration(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageModeration | Response {
   const moderation = readString(body, "moderation", "auto");
   if (!includesString(MODERATIONS, moderation)) {
     return errorResponse(
@@ -594,6 +623,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return moderation;
+}
+
+function parseImageSeed(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): number | undefined | Response {
   const seed = readOptionalSafeInteger(body, "seed");
   if (seed instanceof Response) return seed;
   if (seed !== undefined && !modelConfig.supportsSeed) {
@@ -604,6 +640,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return seed;
+}
+
+function parseSafetyTolerance(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageSafetyTolerance | Response {
   const safetyTolerance = readString(body, "safetyTolerance", "4");
   if (!includesString(SAFETY_TOLERANCES, safetyTolerance)) {
     return errorResponse(
@@ -620,6 +663,13 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return safetyTolerance;
+}
+
+function parseEnhancePrompt(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): boolean | Response {
   const enhancePrompt = readBoolean(
     body,
     "enhancePrompt",
@@ -633,6 +683,46 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  return enhancePrompt;
+}
+
+function parseImageOptions(body: unknown): ImageOptions | Response {
+  if (!isRecord(body)) {
+    return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
+  }
+
+  const prompt = parsePrompt(body);
+  if (prompt instanceof Response) return prompt;
+
+  const model = parseImageModel(body);
+  if (model instanceof Response) return model;
+  const modelConfig = IMAGE_MODEL_CONFIGS[model];
+
+  const size = readString(body, "size", "1024x1024");
+  const sizeError = validateImageSize(model, size);
+  if (sizeError) return sizeError;
+
+  const quality = parseImageQuality(body);
+  if (quality instanceof Response) return quality;
+
+  const background = parseImageBackground(body, modelConfig);
+  if (background instanceof Response) return background;
+
+  const outputOptions = parseImageOutputOptions(body, modelConfig, background);
+  if (outputOptions instanceof Response) return outputOptions;
+
+  const moderation = parseImageModeration(body, modelConfig);
+  if (moderation instanceof Response) return moderation;
+
+  const seed = parseImageSeed(body, modelConfig);
+  if (seed instanceof Response) return seed;
+
+  const safetyTolerance = parseSafetyTolerance(body, modelConfig);
+  if (safetyTolerance instanceof Response) return safetyTolerance;
+
+  const enhancePrompt = parseEnhancePrompt(body, modelConfig);
+  if (enhancePrompt instanceof Response) return enhancePrompt;
+
   return {
     prompt,
     model,
@@ -640,8 +730,8 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     size,
     quality,
     background,
-    outputFormat,
-    outputCompression,
+    outputFormat: outputOptions.outputFormat,
+    outputCompression: outputOptions.outputCompression,
     moderation,
     seed,
     safetyTolerance,
