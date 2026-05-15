@@ -22,6 +22,11 @@ interface BuiltInGenerationProvider {
   reason: string;
 }
 
+interface BuiltInGenerationCommand {
+  label: string;
+  command: string;
+}
+
 const BUILT_IN_GENERATION_PROVIDERS: Partial<
   Record<DoctorGenerationType, readonly BuiltInGenerationProvider[]>
 > = {
@@ -131,6 +136,27 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
   ],
 };
 
+const BUILT_IN_GENERATION_COMMANDS: Partial<
+  Record<DoctorGenerationType, BuiltInGenerationCommand>
+> = {
+  image: {
+    label: "Built-in image generation",
+    command: "zero built-in generate image -h",
+  },
+  video: {
+    label: "Built-in video generation",
+    command: "zero built-in generate video -h",
+  },
+  presentation: {
+    label: "Built-in presentation generation",
+    command: "zero built-in generate presentation -h",
+  },
+  voice: {
+    label: "Built-in voice generation",
+    command: "zero built-in generate voice -h",
+  },
+};
+
 const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
   "image",
   "video",
@@ -194,6 +220,12 @@ function getBuiltInProviders(
   generationType: DoctorGenerationType,
 ): readonly BuiltInGenerationProvider[] {
   return BUILT_IN_GENERATION_PROVIDERS[generationType] ?? [];
+}
+
+function getBuiltInCommand(
+  generationType: DoctorGenerationType,
+): BuiltInGenerationCommand | null {
+  return BUILT_IN_GENERATION_COMMANDS[generationType] ?? null;
 }
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
@@ -379,6 +411,15 @@ function renderActions(candidates: GenerationCandidate[]): void {
 }
 
 function renderBuiltInProvider(generationType: DoctorGenerationType): void {
+  const command = getBuiltInCommand(generationType);
+  if (command) {
+    console.log("");
+    console.log("Built-in command:");
+    console.log(`  vm0  ${command.label}`);
+    console.log(`  Use: ${command.command}`);
+    return;
+  }
+
   const providers = getBuiltInProviders(generationType);
   if (providers.length === 0) return;
 

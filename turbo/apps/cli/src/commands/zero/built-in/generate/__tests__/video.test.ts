@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
 import { zeroBuiltInCommand } from "../../index";
+import { videoCommand } from "../video";
 
 const VIDEO_URL = "http://localhost:3000/api/zero/video-io/generate";
 const VIDEO_RESULT = {
@@ -137,6 +138,28 @@ describe("zero built-in generate video command", () => {
       aspectRatio: "9:16",
       generateAudio: false,
     });
+  });
+
+  it("should describe video generation models in help", () => {
+    let helpOutput = "";
+    videoCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    videoCommand.outputHelp();
+
+    expect(helpOutput).toContain("Models:");
+    expect(helpOutput).toContain("veo3.1-fast");
+    expect(helpOutput).toContain("veo3.1");
+    expect(helpOutput).toContain("kling-o3-standard");
+    expect(helpOutput).toContain("kling-v3-4k");
+    expect(helpOutput).toContain("seedance2.0");
+    expect(helpOutput).toContain("seedance2.0-fast");
+    expect(helpOutput).toContain("4s/6s/8s");
+    expect(helpOutput).toContain("3s-15s");
+    expect(helpOutput).toContain("21:9");
   });
 
   it("should surface API errors", async () => {

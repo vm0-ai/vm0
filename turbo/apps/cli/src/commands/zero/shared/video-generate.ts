@@ -90,7 +90,18 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
-  - Uses fal video models with configured usage pricing`,
+  - Uses fal video models with configured usage pricing
+
+Models:
+  - Veo: veo3.1-fast (default), veo3.1. Supports 4s/6s/8s,
+    16:9 or 9:16, 720p/1080p/4k, negative prompts, seed,
+    auto-fix, safety tolerance, and optional audio.
+  - Kling: kling-o3-standard, kling-v3-4k. Supports 3s-15s and
+    16:9 or 9:16. kling-v3-4k uses 4k output; kling-o3-standard
+    uses 1080p output.
+  - Seedance: seedance2.0, seedance2.0-fast. Supports 4s-15s,
+    480p/720p, seed, and aspect ratios 21:9, 16:9, 4:3, 1:1,
+    3:4, or 9:16.`,
     )
     .action(
       withErrorHandler(async (options: VideoOptions) => {
