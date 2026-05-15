@@ -17,7 +17,7 @@ test("create a new schedule and verify it appears in the list", async ({
     page.getByText(
       /Warming up the neurons|Brewing some ideas|Getting things ready|Almost there|Loading your workspace|Tuning the instruments|Connecting the dots|Spinning up the team/,
     ),
-  ).toBeHidden({ timeout: 60_000 });
+  ).toHaveCount(0, { timeout: 60_000 });
 
   // Click "Add schedule" in the page header (the list empty-state may show a second button)
   await page
