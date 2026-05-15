@@ -113,7 +113,7 @@ async function seedFalImagePricing() {
     kind: "image",
     provider: "fal-ai/qwen-image",
     category: "output_megapixel",
-    unitPrice: 20,
+    unitPrice: 24,
     unitSize: 1,
   });
 }

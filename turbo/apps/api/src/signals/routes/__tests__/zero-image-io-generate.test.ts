@@ -200,13 +200,13 @@ async function upsertFalImagePricing(): Promise<void> {
       kind: "image",
       provider: "fal-ai/qwen-image",
       category: "output_megapixel",
-      unitPrice: 20,
+      unitPrice: 24,
       unitSize: 1,
     })
     .onConflictDoUpdate({
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
       set: {
-        unitPrice: 20,
+        unitPrice: 24,
         unitSize: 1,
         updatedAt: sql`now()`,
       },
