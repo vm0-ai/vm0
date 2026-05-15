@@ -4,13 +4,6 @@ export const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 export const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
 export const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
 
-export const MODEL_TOKEN_CATEGORIES = [
-  TOKEN_CATEGORY_INPUT,
-  TOKEN_CATEGORY_OUTPUT,
-  TOKEN_CATEGORY_CACHE_READ,
-  TOKEN_CATEGORY_CACHE_CREATION,
-] as const;
-
 // Realtime Talker (OpenAI gpt-realtime-2) and input transcription
 // (gpt-4o-mini-transcribe) provider/category constants. The Realtime relay
 // emits per-modality token counts (text/audio/cached_*) instead of the four

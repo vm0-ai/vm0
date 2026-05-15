@@ -154,6 +154,13 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(false);
   });
 
+  it("matches the usage insight rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/usage/insight")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/usage/insight/extra")).toBe(
+      false,
+    );
+  });
+
   it("forwards method, query, cookies, and request body", async () => {
     await withRewriteProxy(
       async (request) => {

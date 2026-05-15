@@ -204,6 +204,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/remote-agent/:path*",
         },
         {
+          source: "/api/zero/usage/insight",
+          destination: "https://api.example.test/api/zero/usage/insight",
+        },
+        {
           source: "/api/zero/video-io/generate",
           destination: "https://api.example.test/api/zero/video-io/generate",
         },
