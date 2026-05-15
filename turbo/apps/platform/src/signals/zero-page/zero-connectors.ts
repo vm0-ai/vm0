@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { currentChatAgentId$ } from "../agent-chat.ts";
+import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
 import {
   agentConnectorAuthorizationsReload$,
@@ -19,7 +19,7 @@ import {
 /** Connectors the current user has authorized for the current agent. */
 const authorizedConnectors$ = computed(async (get) => {
   get(agentConnectorAuthorizationsReload$);
-  const agentId = await get(currentChatAgentId$);
+  const agentId = await get(currentChatAgentRecordId$);
   if (!agentId) {
     return [];
   }
@@ -62,7 +62,7 @@ export const deauthorizeConnector$ = command(
 /** Persist the authorized connectors list to the server. */
 const syncAuthorizedConnectors$ = command(
   async ({ get, set }, connectorValues: string[], signal: AbortSignal) => {
-    const agentId = await get(currentChatAgentId$);
+    const agentId = await get(currentChatAgentRecordId$);
     signal.throwIfAborted();
     if (!agentId) {
       throw new Error("No agent available");

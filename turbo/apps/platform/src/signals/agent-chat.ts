@@ -5,7 +5,7 @@ import {
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
-import { agentById, defaultAgentId$ } from "./agent.ts";
+import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
@@ -56,8 +56,27 @@ export const currentChatAgentId$ = computed(
     return (
       (await get(currentChatThreadAgentId$)) ??
       get(internalChatAgentId$) ??
+      get(currentAgentId$) ??
       (await get(defaultAgentId$))
     );
+  },
+);
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const currentChatAgentRecordId$ = computed(
+  async (get): Promise<string | null> => {
+    const agentId = await get(currentChatAgentId$);
+    if (!agentId) {
+      return null;
+    }
+
+    if (uuidPattern.test(agentId)) {
+      return agentId;
+    }
+
+    return (await get(agentById(agentId))).agentId;
   },
 );
 
