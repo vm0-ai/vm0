@@ -67,6 +67,10 @@ include!(concat!(env!("OUT_DIR"), "/addon_files.rs"));
 
 /// Timeout for waiting for mitmdump to become ready after spawn.
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
+/// Short bounded retry for Linux `execve` returning ETXTBSY while a freshly
+/// installed/replaced mitmdump binary is still observed as writable.
+const TEXT_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
+const TEXT_BUSY_SPAWN_MAX_RETRIES: usize = 5;
 
 /// Timeout for graceful shutdown before SIGKILL.
 ///
@@ -599,9 +603,7 @@ pub(crate) async fn spawn_mitmdump(
 
     info!(port, bin = %config.mitmdump_bin.display(), "starting mitmdump");
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| RunnerError::Internal(format!("spawn mitmdump: {e}")))?;
+    let mut child = spawn_mitmdump_child(&mut cmd, &config.mitmdump_bin).await?;
 
     // Stream stdout to tracing; when the pipe closes (process exited),
     // send a crash notification unless we're in a graceful stop.
@@ -640,6 +642,50 @@ pub(crate) async fn spawn_mitmdump(
     }
 
     Ok(child)
+}
+
+fn is_text_file_busy(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(nix::libc::ETXTBSY)
+}
+
+async fn spawn_mitmdump_child(
+    cmd: &mut tokio::process::Command,
+    bin: &Path,
+) -> RunnerResult<tokio::process::Child> {
+    spawn_mitmdump_child_with_retry(cmd, bin, TEXT_BUSY_SPAWN_RETRY_DELAY, |attempt, error| {
+        warn!(
+            attempt,
+            bin = %bin.display(),
+            error = %error,
+            "mitmdump binary is text-busy, retrying spawn"
+        );
+    })
+    .await
+}
+
+async fn spawn_mitmdump_child_with_retry(
+    cmd: &mut tokio::process::Command,
+    bin: &Path,
+    retry_delay: Duration,
+    mut on_text_busy: impl FnMut(usize, &std::io::Error),
+) -> RunnerResult<tokio::process::Child> {
+    let mut attempt = 0usize;
+    loop {
+        match cmd.spawn() {
+            Ok(child) => return Ok(child),
+            Err(error) if is_text_file_busy(&error) && attempt < TEXT_BUSY_SPAWN_MAX_RETRIES => {
+                attempt += 1;
+                on_text_busy(attempt, &error);
+                tokio::time::sleep(retry_delay).await;
+            }
+            Err(error) => {
+                return Err(RunnerError::Internal(format!(
+                    "spawn mitmdump {}: {error}",
+                    bin.display()
+                )));
+            }
+        }
+    }
 }
 
 /// Wait for mitmdump to start listening on `port` (TCP connect probe).
@@ -854,6 +900,59 @@ PY
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn spawn_mitmdump_child_retries_text_busy_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_mitmdump = dir.path().join("fake-mitmdump");
+        std::fs::write(
+            &fake_mitmdump,
+            r#"#!/usr/bin/env bash
+exit 0
+"#,
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&fake_mitmdump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_mitmdump, perms).unwrap();
+
+        let busy_handle = Arc::new(std::sync::Mutex::new(Some(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&fake_mitmdump)
+                .unwrap(),
+        )));
+        let retry_count = Arc::new(std::sync::Mutex::new(0usize));
+
+        let mut cmd = tokio::process::Command::new(&fake_mitmdump);
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+
+        let retry_busy_handle = Arc::clone(&busy_handle);
+        let retry_count_for_hook = Arc::clone(&retry_count);
+        let mut child = spawn_mitmdump_child_with_retry(
+            &mut cmd,
+            &fake_mitmdump,
+            Duration::ZERO,
+            move |_attempt, error| {
+                assert!(is_text_file_busy(error), "unexpected retry error: {error}");
+                *retry_count_for_hook.lock().unwrap() += 1;
+                retry_busy_handle.lock().unwrap().take();
+            },
+        )
+        .await
+        .unwrap();
+
+        let status = child.wait().await.unwrap();
+        assert!(status.success(), "fake mitmdump exited with {status}");
+        assert!(
+            *retry_count.lock().unwrap() >= 1,
+            "test did not exercise text-busy retry path",
+        );
     }
 
     async fn wait_for_reaped_pid(pid: nix::unistd::Pid) -> bool {
