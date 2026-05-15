@@ -34,7 +34,6 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   LocalBrowserUse = "localBrowserUse",
-  RemoteAgent = "remoteAgent",
   Lab = "lab",
   AuditLink = "auditLink",
   AudioOutput = "audioOutput",
@@ -57,6 +56,5 @@ export enum FeatureSwitchKey {
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
-  PrivateAgents = "privateAgents",
   HostedSites = "hostedSites",
 }

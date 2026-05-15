@@ -82,16 +82,6 @@ const connectorWriteAuth = {
   missingOrganizationStatus: 401,
 } as const;
 
-const remoteAgentDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Remote agent is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
 const localBrowserDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
@@ -101,18 +91,6 @@ const localBrowserDisabled = Object.freeze({
     }),
   }),
 });
-
-function isRemoteAgentEnabled(params: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: params.overrides,
-  });
-}
 
 function isLocalBrowserEnabled(params: {
   readonly orgId: string;
@@ -478,20 +456,6 @@ const searchConnectorsInner$ = computed(async (get) => {
 const connectRemoteAgentConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isRemoteAgentEnabled({
-        orgId: auth.orgId,
-        userId: auth.userId,
-        overrides,
-      })
-    ) {
-      return remoteAgentDisabled;
-    }
-
     const result = await set(
       connectRemoteAgentConnector$,
       { orgId: auth.orgId, userId: auth.userId },

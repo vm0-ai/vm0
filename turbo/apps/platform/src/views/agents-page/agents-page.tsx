@@ -9,7 +9,6 @@ import {
   IconPlus,
   IconWand,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Card,
   CardContent,
@@ -60,7 +59,6 @@ import {
 } from "../../signals/zero-page/zero-jobs-page.ts";
 import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
 import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
@@ -78,9 +76,6 @@ export function AgentsPage() {
   const defaultAgentName = useLastResolved(defaultAgentName$);
 
   const agentsLoadable = useLoadable(sortedAgents$);
-  const features = useLastResolved(featureSwitch$);
-  const privateAgentsEnabled =
-    features?.[FeatureSwitchKey.PrivateAgents] ?? false;
   const publicAgentCount =
     agentsLoadable.state === "hasData"
       ? agentsLoadable.data.filter((agent) => {
@@ -88,15 +83,13 @@ export function AgentsPage() {
         }).length
       : 0;
   const atPublicLimit = publicAgentCount >= 7;
-  const createDisabled = atPublicLimit && !privateAgentsEnabled;
 
   const handleCreateTeammate = onDomEventFn(async (avatarUrl: string) => {
     const trimmed = newName.trim();
     if (!trimmed || creating) {
       return;
     }
-    const createVisibility = privateAgentsEnabled ? visibility : "public";
-    await createSubagentFn(trimmed, avatarUrl, createVisibility, pageSignal);
+    await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
     setDialogOpen(false);
     resetDialog();
     toast.success(`${trimmed} created successfully`);
@@ -116,35 +109,18 @@ export function AgentsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip open={createDisabled ? undefined : false}>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                      disabled={createDisabled}
-                      onClick={() => {
-                        setVisibility(
-                          privateAgentsEnabled ? "private" : "public",
-                        );
-                        return setDialogOpen(true);
-                      }}
-                    >
-                      <IconPlus size={14} stroke={2} />
-                      New agent
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">
-                    Agent limit reached (7). Delete an agent to create a new
-                    one.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Button
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              onClick={() => {
+                setVisibility("private");
+                return setDialogOpen(true);
+              }}
+            >
+              <IconPlus size={14} stroke={2} />
+              New agent
+            </Button>
 
             <Tabs
               value={viewMode}
@@ -189,7 +165,6 @@ export function AgentsPage() {
         creating={creating}
         visibility={visibility}
         onVisibilityChange={setVisibility}
-        showVisibility={privateAgentsEnabled}
         publicDisabled={atPublicLimit}
       />
     </div>
@@ -289,7 +264,6 @@ function CreateTeammateDialog({
   creating,
   visibility,
   onVisibilityChange,
-  showVisibility,
   publicDisabled,
 }: {
   open: boolean;
@@ -300,7 +274,6 @@ function CreateTeammateDialog({
   creating: boolean;
   visibility: "public" | "private";
   onVisibilityChange: (visibility: "public" | "private") => void;
-  showVisibility: boolean;
   publicDisabled: boolean;
 }) {
   return (
@@ -317,7 +290,6 @@ function CreateTeammateDialog({
           creating={creating}
           visibility={visibility}
           onVisibilityChange={onVisibilityChange}
-          showVisibility={showVisibility}
           publicDisabled={publicDisabled}
         />
       )}
@@ -333,7 +305,6 @@ function CreateTeammateDialogContent({
   creating,
   visibility,
   onVisibilityChange,
-  showVisibility,
   publicDisabled,
 }: {
   newName: string;
@@ -343,7 +314,6 @@ function CreateTeammateDialogContent({
   creating: boolean;
   visibility: "public" | "private";
   onVisibilityChange: (visibility: "public" | "private") => void;
-  showVisibility: boolean;
   publicDisabled: boolean;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
@@ -415,13 +385,11 @@ function CreateTeammateDialogContent({
           autoFocus
           disabled={creating}
         />
-        {showVisibility && (
-          <CreateAgentVisibilitySelect
-            visibility={visibility}
-            onVisibilityChange={onVisibilityChange}
-            publicDisabled={publicDisabled}
-          />
-        )}
+        <CreateAgentVisibilitySelect
+          visibility={visibility}
+          onVisibilityChange={onVisibilityChange}
+          publicDisabled={publicDisabled}
+        />
       </div>
 
       {/* Footer */}

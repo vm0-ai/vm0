@@ -16,7 +16,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -128,7 +127,7 @@ describe("zero jobs page - create agent dialog", () => {
     });
   });
 
-  it("creates private agents by default when private agents are enabled", async () => {
+  it("creates private agents by default", async () => {
     let capturedPayload: ZeroAgentRequest | null = null;
     server.use(
       mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
@@ -161,7 +160,6 @@ describe("zero jobs page - create agent dialog", () => {
     detachedSetupPage({
       context,
       path: "/agents",
-      featureSwitches: { [FeatureSwitchKey.PrivateAgents]: true },
     });
     await openDialog();
 

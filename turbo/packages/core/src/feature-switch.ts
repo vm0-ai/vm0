@@ -188,12 +188,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.RemoteAgent]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable remote-agent device pairing and local Codex/Claude host heartbeat endpoints.",
-    enabled: true,
-  },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Lab page for toggling experimental features",
@@ -328,14 +322,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "overrides API.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PrivateAgents]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable private agents. Private agents are visible only to their owner, " +
-      "are excluded from the workspace public-agent limit, and can only be " +
-      "managed or run by their owner.",
-    enabled: true,
   },
   [FeatureSwitchKey.HostedSites]: {
     maintainer: "lancy@vm0.ai",

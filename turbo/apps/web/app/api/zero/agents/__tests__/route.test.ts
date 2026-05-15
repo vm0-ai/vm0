@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { POST, GET as listAgents } from "../route";
 import { GET, PUT, PATCH, DELETE } from "../[id]/route";
 import {
@@ -28,7 +27,6 @@ import {
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
   insertOrgModelPolicy,
-  seedUserFeatureSwitches,
   createTestTarFile,
   createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -152,18 +150,6 @@ function deleteAgent(name: string, token: string) {
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
-}
-
-async function enablePrivateAgentsFor(userContext: UserContext) {
-  await seedUserFeatureSwitches(userContext.orgId, userContext.userId, {
-    [FeatureSwitchKey.PrivateAgents]: true,
-  });
-}
-
-async function disablePrivateAgentsFor(userContext: UserContext) {
-  await seedUserFeatureSwitches(userContext.orgId, userContext.userId, {
-    [FeatureSwitchKey.PrivateAgents]: false,
-  });
 }
 
 function getAgentInstructions(name: string, token: string) {
@@ -329,22 +315,7 @@ describe("Zero Agents API", () => {
       expect(data.error.message).toContain("maximum number of agents");
     });
 
-    it("should reject private agent creation when the feature is disabled", async () => {
-      await disablePrivateAgentsFor(user);
-
-      const response = await postAgent(
-        { displayName: "Private Agent", visibility: "private" },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(403);
-      const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
-    });
-
     it("should exclude private agents from the public agent limit", async () => {
-      await enablePrivateAgentsFor(user);
-
       for (let i = 0; i < 7; i++) {
         const response = await postAgent(
           { displayName: `Public ${i + 1}` },
@@ -488,7 +459,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should only return private agents to their owner", async () => {
-      await enablePrivateAgentsFor(user);
       const created = await (
         await postAgent(
           { displayName: "Owner Only", visibility: "private" },
@@ -1121,7 +1091,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should enforce the public limit when switching private to public", async () => {
-      await enablePrivateAgentsFor(user);
       const privateAgent = await (
         await postAgent(
           { displayName: "Private", visibility: "private" },
@@ -1860,7 +1829,6 @@ describe("Zero Agents API", () => {
     });
 
     it("should reject admin updates to private agents owned by another user", async () => {
-      await enablePrivateAgentsFor(user);
       const created = await (
         await postAgent(
           { displayName: "Owner Private", visibility: "private" },

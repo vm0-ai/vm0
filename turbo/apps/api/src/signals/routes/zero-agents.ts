@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { command, computed, type Computed } from "ccstate";
+import { command, computed } from "ccstate";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -10,8 +10,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -35,7 +33,6 @@ import {
   serverSideZeroAgentCompose$,
 } from "../services/agent-compose.service";
 import { deleteComposeById$ } from "../services/zero-compose-data.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   agentResponse,
   defaultAgentResponse,
@@ -74,11 +71,6 @@ interface AgentMember {
   readonly userId: string;
   readonly role: string;
 }
-
-type SignalGetter = {
-  <T>(source: Computed<T>): T;
-  <T>(source: Computed<Promise<T>>): Promise<T>;
-};
 
 function agentNotFound(agentId: string) {
   return notFound(`Agent not found: ${agentId}`);
@@ -259,32 +251,6 @@ function visibilityOwnerError(
   return forbidden("Only the agent owner can update agent visibility");
 }
 
-async function privateVisibilityError(args: {
-  readonly get: SignalGetter;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly nextVisibility: ZeroAgentVisibility;
-  readonly signal: AbortSignal;
-}) {
-  if (args.nextVisibility !== "private") {
-    return null;
-  }
-
-  const overrides = await args.get(
-    userFeatureSwitchOverrides(args.orgId, args.userId),
-  );
-  args.signal.throwIfAborted();
-  const enabled = isFeatureEnabled(FeatureSwitchKey.PrivateAgents, {
-    orgId: args.orgId,
-    userId: args.userId,
-    overrides,
-  });
-
-  return enabled
-    ? null
-    : forbidden("Private agents are not available for this account");
-}
-
 async function publicVisibilitySlotError(args: {
   readonly writeDb: Db;
   readonly orgId: string;
@@ -313,7 +279,6 @@ async function publicVisibilitySlotError(args: {
 }
 
 async function validateAgentVisibilityUpdate(args: {
-  readonly get: SignalGetter;
   readonly writeDb: Db;
   readonly orgId: string;
   readonly member: AgentMember;
@@ -331,22 +296,13 @@ async function validateAgentVisibilityUpdate(args: {
     return ownerError;
   }
 
-  return (
-    (await privateVisibilityError({
-      get: args.get,
-      orgId: args.orgId,
-      userId: args.member.userId,
-      nextVisibility: args.nextVisibility,
-      signal: args.signal,
-    })) ??
-    (await publicVisibilitySlotError({
-      writeDb: args.writeDb,
-      orgId: args.orgId,
-      currentVisibility: args.existing.visibility,
-      nextVisibility: args.nextVisibility,
-      signal: args.signal,
-    }))
-  );
+  return publicVisibilitySlotError({
+    writeDb: args.writeDb,
+    orgId: args.orgId,
+    currentVisibility: args.existing.visibility,
+    nextVisibility: args.nextVisibility,
+    signal: args.signal,
+  });
 }
 
 async function validateCustomSkillsForUpdate(args: {
@@ -442,16 +398,6 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const writeDb = set(writeDb$);
   const customSkills = body.data.customSkills ?? [];
   const visibility = body.data.visibility ?? "public";
-  const visibilityError = await privateVisibilityError({
-    get,
-    orgId: auth.orgId,
-    userId: auth.userId,
-    nextVisibility: visibility,
-    signal,
-  });
-  if (visibilityError) {
-    return visibilityError;
-  }
 
   const customSkillsError = await validateCustomSkills(
     writeDb,
@@ -675,7 +621,6 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const nextVisibility =
     body.data.visibility ?? existing.visibility ?? "public";
   const visibilityError = await validateAgentVisibilityUpdate({
-    get,
     writeDb,
     orgId: auth.orgId,
     member,
@@ -772,7 +717,6 @@ const updateAgentMetadataInner$ = command(
 
     if (body.data.visibility !== undefined) {
       const visibilityError = await validateAgentVisibilityUpdate({
-        get,
         writeDb,
         orgId: auth.orgId,
         member,

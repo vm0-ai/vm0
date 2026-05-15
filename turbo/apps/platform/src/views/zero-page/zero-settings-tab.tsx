@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -19,7 +19,6 @@ import {
   Switch,
   cn,
 } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IconTrash } from "@tabler/icons-react";
 import {
   type Tone,
@@ -54,7 +53,6 @@ import {
   settingsVisibility$,
   setSettingsVisibility$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 interface ZeroSettingsTabProps {
   displayName: string;
@@ -83,20 +81,6 @@ interface ZeroSettingsTabProps {
   onDelete?: () => Promise<void>;
 }
 
-function visibilityForSave(
-  privateAgentsEnabled: boolean,
-  visibility: "public" | "private",
-) {
-  return privateAgentsEnabled ? { visibility } : {};
-}
-
-function canShowVisibilitySwitch(
-  privateAgentsEnabled: boolean,
-  canEditVisibility: boolean,
-) {
-  return privateAgentsEnabled && canEditVisibility;
-}
-
 export function ZeroSettingsTab({
   displayName: resolvedAgentName,
   description: initialDescription,
@@ -109,10 +93,6 @@ export function ZeroSettingsTab({
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
-  const features = useLastResolved(featureSwitch$);
-  const privateAgentsEnabled =
-    features?.[FeatureSwitchKey.PrivateAgents] ?? false;
-
   useSet(initSettingsForm$)({
     name: resolvedAgentName,
     description: initialDescription,
@@ -157,7 +137,7 @@ export function ZeroSettingsTab({
             description: desc,
             sound: tone,
             avatarUrl,
-            ...visibilityForSave(privateAgentsEnabled, visibility),
+            visibility,
           },
           pageSignal,
         );
@@ -211,10 +191,7 @@ export function ZeroSettingsTab({
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          ...visibilityForSave(
-                            privateAgentsEnabled,
-                            visibility,
-                          ),
+                          visibility,
                         },
                         pageSignal,
                       ).then(() => {
@@ -324,10 +301,7 @@ export function ZeroSettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {canShowVisibilitySwitch(
-              privateAgentsEnabled,
-              canEditVisibility,
-            ) && (
+            {canEditVisibility && (
               <InlineSettingsRow
                 label="Make public"
                 description="Visible to everyone in this workspace."

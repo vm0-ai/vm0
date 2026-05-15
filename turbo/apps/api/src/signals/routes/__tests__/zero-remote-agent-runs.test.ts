@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RemoteAgentRunListResponse } from "@vm0/api-contracts/contracts/zero-remote-agent";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { remoteAgentHosts, remoteAgentJobs } from "@vm0/db/schema/remote-agent";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
@@ -23,15 +21,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-
-async function enableRemoteAgent(orgId: string, userId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches: { [FeatureSwitchKey.RemoteAgent]: true },
-  });
-}
 
 async function seedRemoteAgentHost(args: {
   readonly orgId: string;
@@ -104,9 +93,6 @@ async function cleanupFixture(fixture: OrgMembershipFixture): Promise<void> {
   await writeDb
     .delete(remoteAgentHosts)
     .where(eq(remoteAgentHosts.orgId, fixture.orgId));
-  await writeDb
-    .delete(userFeatureSwitches)
-    .where(eq(userFeatureSwitches.orgId, fixture.orgId));
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
@@ -142,7 +128,6 @@ describe("GET /api/zero/remote-agent/runs", () => {
       context.signal,
     );
     fixtures.push(fixture);
-    await enableRemoteAgent(fixture.orgId, fixture.userId);
     const hostId = await seedRemoteAgentHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -180,7 +165,6 @@ describe("GET /api/zero/remote-agent/runs", () => {
       context.signal,
     );
     fixtures.push(fixture);
-    await enableRemoteAgent(fixture.orgId, fixture.userId);
     const failedJobId = await seedRemoteAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
@@ -218,7 +202,6 @@ describe("GET /api/zero/remote-agent/runs", () => {
       context.signal,
     );
     fixtures.push(fixture);
-    await enableRemoteAgent(fixture.orgId, fixture.userId);
     const laptopId = await seedRemoteAgentHost({
       orgId: fixture.orgId,
       userId: fixture.userId,

@@ -17,7 +17,6 @@ import { buildComposeContent } from "../../../../src/lib/zero/build-compose-cont
 import { validateCustomSkills } from "../../../../src/lib/zero/validate-custom-skills";
 import {
   PUBLIC_AGENT_LIMIT,
-  assertPrivateAgentsFeatureEnabled,
   countPublicAgents,
   visibleZeroAgentCondition,
 } from "../../../../src/lib/zero/agent-visibility";
@@ -58,13 +57,6 @@ const router = tsr.router(zeroAgentsMainContract, {
 
     const customSkills = body.customSkills ?? [];
     const visibility = body.visibility ?? "public";
-    if (visibility === "private") {
-      const unavailable = await assertPrivateAgentsFeatureEnabled(
-        authCtx,
-        org.orgId,
-      );
-      if (unavailable) return unavailable;
-    }
 
     // Validate custom skill names exist in the org
     const validation = await validateCustomSkills(customSkills, org.orgId);

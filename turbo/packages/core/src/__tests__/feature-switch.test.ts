@@ -9,7 +9,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.PrivateAgents, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -69,10 +68,6 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should enable remote agent globally", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {})).toBe(true);
-  });
-
   it("should keep Stripe CLI auth disabled by default", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);
 
@@ -95,7 +90,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.PrivateAgents]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {

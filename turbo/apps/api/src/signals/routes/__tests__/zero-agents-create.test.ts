@@ -2,13 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { storages } from "@vm0/db/schema/storage";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
@@ -41,18 +39,6 @@ function authHeaders() {
 
 function agentsClient() {
   return setupApp({ context })(zeroAgentsMainContract);
-}
-
-async function setPrivateAgentsEnabled(
-  fixture: SkillsFixture,
-  enabled: boolean,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.PrivateAgents]: enabled },
-  });
 }
 
 function currentSecond(): number {
@@ -267,29 +253,6 @@ describe("POST /api/zero/agents", () => {
         message:
           "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
         code: "VALIDATION_ERROR",
-      },
-    });
-  });
-
-  it("returns 403 when private visibility is requested while the feature is disabled", async () => {
-    const fixture = await track(
-      store.set(seedSkillsFixture$, undefined, context.signal),
-    );
-    await setPrivateAgentsEnabled(fixture, false);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().create({
-        headers: authHeaders(),
-        body: { visibility: "private" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Private agents are not available for this account",
-        code: "FORBIDDEN",
       },
     });
   });

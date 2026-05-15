@@ -19,7 +19,6 @@ import {
 } from "../../../../../src/lib/zero/require-agent-permission";
 import {
   PUBLIC_AGENT_LIMIT,
-  assertPrivateAgentsFeatureEnabled,
   countPublicAgents,
   visibleZeroAgentCondition,
 } from "../../../../../src/lib/zero/agent-visibility";
@@ -55,16 +54,7 @@ type AgentUpdateBody = {
   visibility?: "public" | "private";
 };
 
-async function requirePrivateAgentFeatureForVisibility(
-  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
-  orgId: string,
-  visibility: AgentUpdateBody["visibility"] | null | undefined,
-) {
-  if (visibility !== "private") return null;
-  return assertPrivateAgentsFeatureEnabled(authCtx, orgId);
-}
-
-async function requirePublicAgentSlotForVisibility(
+async function requireVisibilityChangeAllowed(
   orgId: string,
   currentVisibility: AgentUpdateBody["visibility"] | null | undefined,
   nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
@@ -74,25 +64,6 @@ async function requirePublicAgentSlotForVisibility(
   }
   if ((await countPublicAgents(orgId)) < PUBLIC_AGENT_LIMIT) return null;
   return createPublicAgentLimitResponse();
-}
-
-async function requireVisibilityChangeAllowed(
-  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
-  orgId: string,
-  currentVisibility: AgentUpdateBody["visibility"] | null | undefined,
-  nextVisibility: AgentUpdateBody["visibility"] | null | undefined,
-) {
-  const unavailable = await requirePrivateAgentFeatureForVisibility(
-    authCtx,
-    orgId,
-    nextVisibility,
-  );
-  if (unavailable) return unavailable;
-  return requirePublicAgentSlotForVisibility(
-    orgId,
-    currentVisibility,
-    nextVisibility,
-  );
 }
 
 function requireAgentConfigurationPermission(
@@ -137,7 +108,6 @@ function requireVisibilityOwnerPermission(
 }
 
 async function requireVisibilityUpdateAllowed(
-  authCtx: Parameters<typeof assertPrivateAgentsFeatureEnabled>[0],
   orgId: string,
   agentOwner: string | null,
   member: { userId: string; role: string },
@@ -152,7 +122,6 @@ async function requireVisibilityUpdateAllowed(
   );
   if (visibilityForbidden) return visibilityForbidden;
   return requireVisibilityChangeAllowed(
-    authCtx,
     orgId,
     currentVisibility,
     nextVisibility,
@@ -323,7 +292,6 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     const nextVisibility = body.visibility ?? existing.visibility ?? "public";
     const visibilityError = await requireVisibilityUpdateAllowed(
-      authCtx,
       org.orgId,
       existing.owner,
       member,
@@ -445,7 +413,6 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (forbidden) return forbidden;
 
     const visibilityError = await requireVisibilityUpdateAllowed(
-      authCtx,
       org.orgId,
       existing.owner,
       member,

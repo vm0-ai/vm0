@@ -9,14 +9,11 @@ import {
   zeroRemoteAgentHostsContract,
   zeroRemoteAgentRunContract,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   claimRemoteAgentDeviceCode$,
   claimNextRemoteAgentHostJob$,
@@ -34,16 +31,6 @@ import {
 } from "../services/zero-remote-agent.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
-
-const remoteAgentDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Remote agent is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
 
 const unauthorizedRemoteAgent = Object.freeze({
   status: 401 as const,
@@ -64,18 +51,6 @@ const invalidRemoteAgentToken = Object.freeze({
     }),
   }),
 });
-
-function isRemoteAgentEnabled(params: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly overrides: Record<string, boolean>;
-}): boolean {
-  return isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {
-    orgId: params.orgId,
-    userId: params.userId,
-    overrides: params.overrides,
-  });
-}
 
 function parseBearerToken(authorization: string | undefined): string | null {
   if (!authorization?.startsWith("Bearer ")) {
@@ -134,19 +109,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const claimBody$ = bodyResultOf(zeroRemoteAgentDeviceClaimContract.claim);
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const bodyResult = await get(claimBody$);
   signal.throwIfAborted();
@@ -233,19 +195,6 @@ const hostRealtimeInner$ = command(
 
 const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const result = await set(
     listRemoteAgentHosts$,
@@ -260,19 +209,6 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const hostsStartBody$ = bodyResultOf(zeroRemoteAgentHostsContract.start);
 const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const bodyResult = await get(hostsStartBody$);
   signal.throwIfAborted();
@@ -306,19 +242,6 @@ const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const hostsDeleteParams$ = pathParamsOf(zeroRemoteAgentHostsContract.delete);
 const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const params = get(hostsDeleteParams$);
   const result = await set(
@@ -342,19 +265,6 @@ const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const runListQuery$ = queryOf(zeroRemoteAgentRunContract.list);
 const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const query = get(runListQuery$);
   const result = await set(
@@ -377,19 +287,6 @@ const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const runCreateBody$ = bodyResultOf(zeroRemoteAgentRunContract.create);
 const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const bodyResult = await get(runCreateBody$);
   signal.throwIfAborted();
@@ -435,19 +332,6 @@ const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 const runGetParams$ = pathParamsOf(zeroRemoteAgentRunContract.get);
 const runGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  if (
-    !isRemoteAgentEnabled({
-      orgId: auth.orgId,
-      userId: auth.userId,
-      overrides,
-    })
-  ) {
-    return remoteAgentDisabled;
-  }
 
   const params = get(runGetParams$);
   const result = await set(

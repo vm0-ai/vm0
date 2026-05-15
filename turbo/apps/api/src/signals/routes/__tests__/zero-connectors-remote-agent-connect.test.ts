@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroRemoteAgentConnectorContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { remoteAgentHosts } from "@vm0/db/schema/remote-agent";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -22,15 +20,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-
-async function enableRemoteAgent(orgId: string, userId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches: { [FeatureSwitchKey.RemoteAgent]: true },
-  });
-}
 
 async function seedRemoteAgentHost(args: {
   readonly orgId: string;
@@ -62,14 +51,6 @@ async function deleteRemoteAgentConnectorFixture(
     writeDb
       .delete(remoteAgentHosts)
       .where(eq(remoteAgentHosts.orgId, fixture.orgId)),
-    writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      ),
   ]);
 }
 
@@ -92,7 +73,6 @@ describe("POST /api/zero/connectors/remote-agent", () => {
     seededFixtures.push(
       await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
     );
-    await enableRemoteAgent(orgId, userId);
     await seedRemoteAgentHost({ orgId, userId, status: "online" });
     mocks.clerk.session(userId, orgId);
 
@@ -118,7 +98,6 @@ describe("POST /api/zero/connectors/remote-agent", () => {
     seededFixtures.push(
       await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
     );
-    await enableRemoteAgent(orgId, userId);
     await seedRemoteAgentHost({ orgId, userId, status: "offline" });
     mocks.clerk.session(userId, orgId);
 

@@ -118,10 +118,6 @@ export function getRemoteAgentOnlineHosts(
 export const remoteAgentHosts$ = computed(
   async (get): Promise<RemoteAgentHostListResponse> => {
     get(internalReloadRemoteAgentHosts$);
-    const features = await get(featureSwitch$);
-    if (!features?.[FeatureSwitchKey.RemoteAgent]) {
-      return { hosts: [] };
-    }
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroRemoteAgentHostsContract);
@@ -315,9 +311,7 @@ export const allConnectorTypes$ = computed(async (get) => {
     }),
   );
   const features = await get(featureSwitch$);
-  const remoteAgentHostList = features?.[FeatureSwitchKey.RemoteAgent]
-    ? await get(remoteAgentHosts$)
-    : { hosts: [] };
+  const remoteAgentHostList = await get(remoteAgentHosts$);
   const localBrowserHostList = features?.[FeatureSwitchKey.LocalBrowserUse]
     ? await get(localBrowserHosts$)
     : { hosts: [] };
