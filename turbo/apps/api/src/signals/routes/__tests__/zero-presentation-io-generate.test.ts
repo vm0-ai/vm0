@@ -803,6 +803,8 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(html).toContain("<img");
     expect(html).toContain(imageUrl);
     expect(html).toContain("Presentation controls");
+    expect(html).toContain("overflow-x: hidden;");
+    expect(html).toContain("overflow-y: auto;");
     expect(Number(body.size)).toBe(putBody.byteLength);
 
     const uploadRows = await store
@@ -835,6 +837,13 @@ describe("POST /api/zero/presentation-io/generate", () => {
       responseId: "resp_presentation_test",
       s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
     });
+    const runUploadRows = await store
+      .set(writeDb$)
+      .select()
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.runId, runId));
+    expect(runUploadRows).toHaveLength(1);
+    expect(runUploadRows[0]?.externalId).toBe(fileId);
 
     const usageRows = await store
       .set(writeDb$)
@@ -914,5 +923,84 @@ describe("POST /api/zero/presentation-io/generate", () => {
       return total + (row.creditsCharged ?? 0);
     }, 0);
     expect(totalImageCredits).toBe(imageCreditsCharged);
+  });
+
+  it("returns the presentation when visual image generation fails", async () => {
+    const fixture = await track(seedPresentationFixture({ withPricing: true }));
+    const { pricing } = await ensurePresentationPricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const usage: PresentationUsage = {
+      inputTokens: 1200,
+      outputTokens: 420,
+      totalTokens: 1620,
+    };
+    const textCreditsCharged = expectedCredits(usage, pricing);
+    let calledImageGeneration = false;
+    server.use(
+      http.post(OPENAI_PRESENTATION_GENERATION_URL, () => {
+        return HttpResponse.json({
+          id: "resp_presentation_no_visuals",
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: presentationDeckJson(),
+                },
+              ],
+            },
+          ],
+          usage: {
+            input_tokens: usage.inputTokens,
+            output_tokens: usage.outputTokens,
+            total_tokens: usage.totalTokens,
+          },
+        });
+      }),
+      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+        calledImageGeneration = true;
+        return new HttpResponse("image generation timed out", { status: 504 });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/presentation-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "API migration plan",
+        style: "swiss",
+        slideCount: 4,
+        imageCount: 1,
+        theme: "ikb",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({
+      imageCount: 0,
+      imageUrls: [],
+      creditsCharged: textCreditsCharged,
+      textCreditsCharged,
+      imageCreditsCharged: 0,
+      responseId: "resp_presentation_no_visuals",
+    });
+    expect(calledImageGeneration).toBeTruthy();
+
+    const putInputs = context.mocks.s3.send.mock.calls.map((call) => {
+      return commandInput(call[0]);
+    });
+    expect(
+      putInputs.some((input) => {
+        return input.ContentType === "image/webp";
+      }),
+    ).toBeFalsy();
+    expect(
+      putInputs.some((input) => {
+        return input.ContentType === "text/html";
+      }),
+    ).toBeTruthy();
   });
 });

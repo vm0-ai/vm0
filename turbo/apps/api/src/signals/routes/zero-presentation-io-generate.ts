@@ -13,6 +13,7 @@ import {
   createOpenAiPresentationRequest,
   generatePresentationVisuals$,
   OPENAI_PRESENTATION_GENERATION_URL,
+  PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS,
   parsePresentationGenerationResult,
   parsePresentationOptions,
   presentationInsufficientCredits,
@@ -27,6 +28,7 @@ const presentationBody$ = bodyResultOf(zeroPresentationIoGenerateContract.post);
 
 const postPresentationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const deadlineAtMs = Date.now() + PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS;
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(presentationBody$);
     signal.throwIfAborted();
@@ -115,6 +117,7 @@ const postPresentationInner$ = command(
               imagePricing,
               generation,
               options,
+              deadlineAtMs,
             },
             signal,
           )

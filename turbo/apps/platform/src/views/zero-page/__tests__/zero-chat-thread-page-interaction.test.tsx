@@ -193,6 +193,9 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
   it("clicking html platform file url preview opens the shared attachment lightbox", async () => {
     const htmlUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
+    const writeTextSpy = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
     server.use(
       http.get(htmlUrl, () => {
         return HttpResponse.html("<html><body>report preview</body></html>");
@@ -218,8 +221,31 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
 
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
-      expect(screen.getByTitle("report.html preview")).toBeInTheDocument();
+      expect(previewButton).toBeDisabled();
+      const iframe = screen.getByTitle("report.html preview");
+      expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+      expect(iframe).toHaveAttribute("scrolling", "yes");
+      expect(iframe).toHaveClass(
+        "relative",
+        "z-10",
+        "h-[min(78vh,900px)]",
+        "max-w-full",
+        "overflow-x-hidden",
+        "overscroll-contain",
+      );
+      expect(iframe.parentElement).toHaveClass(
+        "max-w-full",
+        "overflow-hidden",
+        "overscroll-contain",
+      );
+      expect(iframe.parentElement).not.toHaveClass(
+        "h-[min(78vh,900px)]",
+        "overflow-y-auto",
+      );
     });
+
+    await userEvent.click(screen.getByLabelText("Copy link"));
+    expect(writeTextSpy).toHaveBeenCalledWith(htmlUrl);
   });
 });
 

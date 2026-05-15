@@ -14,7 +14,10 @@ import {
   textPreviewCollapsedByKey$,
   toggleTextPreviewCollapsed$,
 } from "../../signals/view-component-state.ts";
-import { openDocumentLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  lightboxUrl$,
+  openDocumentLightbox$,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   classifyChatAttachment,
   EMPTY_TEXT$,
@@ -181,6 +184,7 @@ function DocumentThumbnailPreview({
   kind: "markdown" | "csv" | "pdf" | "html";
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
+  const lightboxOpen = useGet(lightboxUrl$) !== null;
   const accentClass =
     kind === "markdown"
       ? "from-emerald-500/15 via-lime-500/10 to-background"
@@ -194,10 +198,12 @@ function DocumentThumbnailPreview({
     <button
       type="button"
       data-testid={`attachment-preview-${kind}`}
-      onClick={() => {
+      onClick={(event) => {
+        event.currentTarget.blur();
         openDocumentLightbox({ kind, url, filename });
       }}
-      className="group/doc-preview inline-flex w-fit self-start align-top text-left"
+      disabled={lightboxOpen}
+      className={`${lightboxOpen ? "" : "group/doc-preview"} inline-flex w-fit self-start align-top text-left disabled:pointer-events-none`}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
     >

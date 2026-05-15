@@ -1,9 +1,10 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useEffect, type MouseEvent, type ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconDownload,
   IconFileMusic,
+  IconLink,
   IconPhoto,
   IconVideo,
   IconLoader2,
@@ -12,10 +13,12 @@ import {
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import { logger } from "../../signals/log.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
   IMAGE_LIGHTBOX_MAX_ZOOM,
   IMAGE_LIGHTBOX_MIN_ZOOM,
@@ -275,12 +278,45 @@ export async function downloadAttachmentUrl(
   }
 }
 
+async function copyAttachmentLinkToClipboard(url: string): Promise<void> {
+  const copied = await writeToClipboard(url);
+  if (copied) {
+    toast.success("Link copied");
+    return;
+  }
+  toast.error("Failed to copy link");
+}
+
+function useLightboxBodyScrollLock(): void {
+  useEffect(() => {
+    const bodyOverflow = document.body.style.overflow;
+    const bodyOverscrollBehavior = document.body.style.overscrollBehavior;
+    const rootOverflow = document.documentElement.style.overflow;
+    const rootOverscrollBehavior =
+      document.documentElement.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+    document.documentElement.style.overflow = "hidden";
+    document.documentElement.style.overscrollBehavior = "contain";
+
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      document.body.style.overscrollBehavior = bodyOverscrollBehavior;
+      document.documentElement.style.overflow = rootOverflow;
+      document.documentElement.style.overscrollBehavior =
+        rootOverscrollBehavior;
+    };
+  }, []);
+}
+
 function isImageLightboxZoomAtReset(zoom: number): boolean {
   return Math.abs(zoom - 1) < 0.001;
 }
 
 function ImageLightboxControls({
   closeLightbox,
+  copyLink,
   download,
   resetZoom,
   zoom,
@@ -288,6 +324,7 @@ function ImageLightboxControls({
   zoomOut,
 }: {
   closeLightbox: () => void;
+  copyLink: () => void;
   download: () => void;
   resetZoom: () => void;
   zoom: number;
@@ -331,6 +368,14 @@ function ImageLightboxControls({
           <IconZoomReset size={18} stroke={2} />
         </button>
       </div>
+      <button
+        type="button"
+        onClick={copyLink}
+        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+        aria-label="Copy link"
+      >
+        <IconLink size={20} stroke={2} />
+      </button>
       <button
         type="button"
         onClick={download}
@@ -380,6 +425,13 @@ function ImageLightboxContent({
       "attachment download",
     );
   };
+  const copyLink = () => {
+    detach(
+      copyAttachmentLinkToClipboard(url),
+      Reason.DomCallback,
+      "attachment copy link",
+    );
+  };
 
   const { imageStatus, zoom } = imageState;
 
@@ -388,6 +440,7 @@ function ImageLightboxContent({
       <ImageLightboxKeyboardShortcuts />
       <ImageLightboxControls
         closeLightbox={closeLightbox}
+        copyLink={copyLink}
         download={download}
         resetZoom={resetZoom}
         zoom={zoom}
@@ -468,6 +521,7 @@ export function AttachmentLightbox() {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
   const pageSignal = useGet(pageSignal$);
+  useLightboxBodyScrollLock();
 
   if (!preview) {
     return null;
@@ -494,7 +548,21 @@ export function AttachmentLightbox() {
       aria-modal="true"
       data-testid="attachment-lightbox"
     >
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            detach(
+              copyAttachmentLinkToClipboard(preview.url),
+              Reason.DomCallback,
+              "attachment copy link",
+            );
+          }}
+          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+          aria-label="Copy link"
+        >
+          <IconLink size={20} stroke={2} />
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -520,7 +588,7 @@ export function AttachmentLightbox() {
           <IconX size={20} stroke={2} />
         </button>
       </div>
-      <div className="w-[min(92vw,1100px)] rounded-2xl bg-background shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="relative z-10 w-[min(92vw,1100px)] min-w-0 rounded-2xl bg-background shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center gap-3 border-b border-foreground/10 px-4 py-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
             <FilePreviewIcon
@@ -551,12 +619,15 @@ export function AttachmentLightbox() {
         ) : preview.kind === "csv" ? (
           <CsvLightboxBody url={preview.url} signal={pageSignal} />
         ) : (
-          <iframe
-            src={preview.url}
-            title={`${preview.filename} preview`}
-            sandbox={preview.kind === "html" ? "" : undefined}
-            className="h-[min(78vh,900px)] w-full bg-background"
-          />
+          <div className="max-w-full overflow-hidden overscroll-contain bg-background">
+            <iframe
+              src={preview.url}
+              title={`${preview.filename} preview`}
+              sandbox={preview.kind === "html" ? "allow-scripts" : undefined}
+              scrolling="yes"
+              className="relative z-10 block h-[min(78vh,900px)] w-full max-w-full overflow-x-hidden overscroll-contain bg-background"
+            />
+          </div>
         )}
       </div>
     </div>,
