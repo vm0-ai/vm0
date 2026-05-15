@@ -278,7 +278,7 @@ async function publicVisibilitySlotError(args: {
     : null;
 }
 
-async function validateAgentVisibilityUpdate(args: {
+function validateAgentVisibilityUpdate(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly member: AgentMember;

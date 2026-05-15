@@ -183,9 +183,11 @@ describe("GET /api/zero/connectors/search", () => {
     const unflaggedTypes = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).filter((type) => {
-      return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
-        return !method.featureFlag;
-      });
+      return Object.entries(CONNECTOR_TYPES[type].authMethods).some(
+        ([key, method]) => {
+          return key !== "api" && !method.featureFlag;
+        },
+      );
     });
     expect(unflaggedTypes.length).toBeGreaterThan(0);
 
