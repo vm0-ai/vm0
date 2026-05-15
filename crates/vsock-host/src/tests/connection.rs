@@ -10,9 +10,10 @@ use vsock_proto::{
 };
 
 use super::support::{
-    host_from_stream, make_pair, mock_handshake, read_guest_message, send_exec_result,
+    host_from_stream, make_pair, mock_handshake, normal_operation_readiness, poison_connection,
+    read_guest_message, send_exec_result,
 };
-use crate::VsockHost;
+use crate::{operation_tracker::NormalOperationReadiness, VsockHost};
 
 #[tokio::test]
 async fn wait_for_connection_removes_listener_socket_on_abort() {
@@ -291,6 +292,47 @@ async fn test_request_after_close_returns_immediately() {
         ),
         "expected ConnectionReset or BrokenPipe, got {:?}",
         err.kind()
+    );
+}
+
+#[tokio::test]
+async fn connection_close_marks_normal_operations_closed() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+}
+
+#[tokio::test]
+async fn connection_poison_marks_normal_operations_not_parkable() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        let mut buf = [0u8; 1];
+        let _ = guest.read(&mut buf).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    poison_connection(&host);
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
     );
 }
 

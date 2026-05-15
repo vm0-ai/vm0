@@ -20,6 +20,7 @@
 
 mod exec_operation;
 mod file;
+mod operation_tracker;
 mod process;
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,7 @@ use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
+use operation_tracker::NormalOperationTracker;
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
@@ -101,6 +103,11 @@ struct Shared {
     /// Single source of truth for connection liveness plus all per-connection
     /// registration tables. See [`ConnectionState`].
     state: std::sync::Mutex<ConnectionState>,
+    /// Authoritative lifecycle tracker for logical normal guest operations.
+    ///
+    /// Routing maps stay inside [`ConnectionState`]; this tracker records the
+    /// neutral operation-readiness facts that sandbox policy can consume later.
+    normal_operations: NormalOperationTracker,
     /// Notified when the connection closes. Pure signalling — all state is in
     /// `state`.
     close_notify: Notify,
@@ -163,10 +170,14 @@ impl Shared {
     /// binding to write the whole variant back unchanged, so double-close is a
     /// structural no-op rather than a convention.
     fn close(&self) {
-        self.close_with_reason("connection closed");
+        self.close_with_reason("connection closed", ConnectionCloseKind::Closed);
     }
 
-    fn close_with_reason(&self, reason: &'static str) {
+    fn close_with_reason(&self, reason: &'static str, kind: ConnectionCloseKind) {
+        match kind {
+            ConnectionCloseKind::Closed => self.normal_operations.mark_closed(),
+            ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
+        }
         let maps_to_drop = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             match std::mem::replace(
@@ -204,7 +215,7 @@ impl Shared {
     }
 
     fn poison_connection(&self) {
-        self.close_with_reason("connection poisoned");
+        self.close_with_reason("connection poisoned", ConnectionCloseKind::Poisoned);
         let _ = nix::sys::socket::shutdown(self.fd, nix::sys::socket::Shutdown::Both);
     }
 
@@ -221,6 +232,12 @@ impl Shared {
             operations.remove(seq);
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionCloseKind {
+    Closed,
+    Poisoned,
 }
 
 /// Host-side vsock endpoint.
@@ -491,6 +508,7 @@ impl VsockHost {
                 operations: exec_operation::Operations::new(),
                 process: process::ConnectedProcessState::new(),
             }),
+            normal_operations: NormalOperationTracker::new(),
             close_notify: Notify::new(),
         });
 

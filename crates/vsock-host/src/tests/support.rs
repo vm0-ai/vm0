@@ -10,7 +10,7 @@ use vsock_proto::{
     MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
 };
 
-use crate::{ConnectionState, VsockHost};
+use crate::{ConnectionState, VsockHost, operation_tracker::NormalOperationReadiness};
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
@@ -46,6 +46,14 @@ pub(crate) fn operation_count(host: &VsockHost) -> usize {
 pub(crate) fn is_connected(host: &VsockHost) -> bool {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     matches!(&*guard, ConnectionState::Connected { .. })
+}
+
+pub(crate) fn normal_operation_readiness(host: &VsockHost) -> NormalOperationReadiness {
+    host.shared.normal_operations.readiness()
+}
+
+pub(crate) fn poison_connection(host: &VsockHost) {
+    host.shared.poison_connection();
 }
 
 pub(crate) async fn read_guest_message(
