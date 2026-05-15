@@ -423,7 +423,14 @@ async function terminalizeCliAuthStripeSessions(args: {
         message: args.message,
       }),
     )
-    .where(inArray(connectorCliAuthSessions.id, [...args.sessionIds]))
+    .where(
+      and(
+        inArray(connectorCliAuthSessions.id, [...args.sessionIds]),
+        inArray(connectorCliAuthSessions.status, [
+          ...CLI_AUTH_STRIPE_ACTIVE_STATUSES,
+        ]),
+      ),
+    )
     .returning({ sandboxId: connectorCliAuthSessions.sandboxId });
   return sandboxHandlesFromIds(
     rows.map((row) => {
@@ -1136,6 +1143,12 @@ async function importCliAuthStripeConnector(args: {
   const writeDb = args.set(writeDb$);
   const description = `Stripe CLI ${args.mode} mode API key`;
   await writeDb.transaction(async (tx) => {
+    await lockCliAuthStripeOwner({
+      db: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+
     await tx
       .delete(connectors)
       .where(

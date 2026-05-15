@@ -952,6 +952,45 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(calls.stop).toHaveLength(1);
   });
 
+  it("does not cancel pending CLI auth when deleting a missing connector", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_imported" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await accept(
+      zeroConnectorsByTypeClient().delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "stripe" },
+      }),
+      [404],
+    );
+
+    expect(calls.stop).toHaveLength(0);
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("awaiting_user_approval");
+
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(complete.body.status).toBe("complete");
+    expect(calls.run).toHaveLength(2);
+    expect(calls.read).toHaveLength(1);
+    expect(calls.stop).toHaveLength(1);
+    const secret = await stripeTokenSecret(userId, orgId);
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_imported");
+  });
+
   it("keeps a stale CLI auth completion from replacing a Stripe OAuth reconnect", async () => {
     const { userId, orgId } = await setupUser();
     const calls = mockStripeCliSandbox({ configApiKey: "rk_test_stale" });

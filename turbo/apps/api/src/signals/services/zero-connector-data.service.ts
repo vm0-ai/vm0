@@ -24,7 +24,7 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -516,6 +516,60 @@ async function revokeExistingConnectorToken(args: {
   args.signal.throwIfAborted();
 }
 
+async function hasApiTokenConnectorLocalState(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly fields: {
+    readonly secrets: readonly string[];
+    readonly variables: readonly string[];
+  } | null;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (!args.fields) {
+    return false;
+  }
+
+  if (args.fields.secrets.length > 0) {
+    const [secret] = await args.db
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.type, "user"),
+          inArray(secrets.name, [...args.fields.secrets]),
+        ),
+      )
+      .limit(1);
+    args.signal.throwIfAborted();
+    if (secret) {
+      return true;
+    }
+  }
+
+  if (args.fields.variables.length > 0) {
+    const [variable] = await args.db
+      .select({ id: variables.id })
+      .from(variables)
+      .where(
+        and(
+          eq(variables.orgId, args.orgId),
+          eq(variables.userId, args.userId),
+          inArray(variables.name, [...args.fields.variables]),
+        ),
+      )
+      .limit(1);
+    args.signal.throwIfAborted();
+    if (variable) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export const deleteZeroConnectorLocalState$ = command(
   async (
     { set },
@@ -529,15 +583,6 @@ export const deleteZeroConnectorLocalState$ = command(
     const writeDb = set(writeDb$);
     let deleted = false;
 
-    await invalidateActiveCliAuthSessionsForConnectorType({
-      writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorType: args.type,
-      signal,
-    });
-    signal.throwIfAborted();
-
     const [existing] = await writeDb
       .select({ id: connectors.id, authMethod: connectors.authMethod })
       .from(connectors)
@@ -549,6 +594,29 @@ export const deleteZeroConnectorLocalState$ = command(
         ),
       )
       .limit(1);
+    signal.throwIfAborted();
+
+    const fields = getApiTokenFieldsByType(args.type);
+    const hasApiTokenState = existing
+      ? false
+      : await hasApiTokenConnectorLocalState({
+          db: writeDb,
+          orgId: args.orgId,
+          userId: args.userId,
+          fields,
+          signal,
+        });
+    if (!existing && !hasApiTokenState) {
+      return false;
+    }
+
+    await invalidateActiveCliAuthSessionsForConnectorType({
+      writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorType: args.type,
+      signal,
+    });
     signal.throwIfAborted();
 
     if (existing) {
@@ -588,7 +656,6 @@ export const deleteZeroConnectorLocalState$ = command(
       }
     }
 
-    const fields = getApiTokenFieldsByType(args.type);
     if (fields) {
       for (const name of fields.secrets) {
         const result = await writeDb
