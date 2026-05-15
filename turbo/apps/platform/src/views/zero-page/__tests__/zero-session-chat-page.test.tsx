@@ -152,19 +152,3 @@ describe("provider incompatibility error", () => {
     });
   });
 });
-
-describe("agent avatar link", () => {
-  it("should link to team detail page", async () => {
-    makeThreadMocks("thread-avatar-test", []);
-
-    detachedSetupPage({ context, path: "/chats/thread-avatar-test" });
-
-    const link = await waitFor(() => {
-      return screen.getByLabelText("View agent profile");
-    });
-    expect(link).toHaveAttribute(
-      "href",
-      "/agents/c0000000-0000-4000-a000-000000000001",
-    );
-  });
-});

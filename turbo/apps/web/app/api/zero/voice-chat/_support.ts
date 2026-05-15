@@ -2,59 +2,13 @@ import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
-import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
-
-export const createVoiceChatTaskBodySchema = z.object({
-  prompt: z.string().min(1),
-  callId: z.string().min(1),
-});
 
 export const voiceChatTokenBodySchema = z.object({
   sessionId: z.uuid(),
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
-
-type TaskRow = typeof voiceChatTasks.$inferSelect;
-
-export function serializeVoiceChatTask(task: TaskRow) {
-  return {
-    id: task.id,
-    sessionId: task.sessionId,
-    runId: task.runId,
-    callId: task.callId,
-    prompt: task.prompt,
-    status: task.status,
-    result: task.result,
-    resultUpdatedAt: task.resultUpdatedAt
-      ? task.resultUpdatedAt.toISOString()
-      : null,
-    assistantMessages: task.assistantMessages,
-    error: task.error,
-    createdAt: task.createdAt.toISOString(),
-    startedAt: task.startedAt ? task.startedAt.toISOString() : null,
-    finishedAt: task.finishedAt ? task.finishedAt.toISOString() : null,
-  };
-}
-
-// Gate on Trinity — the voice-chat surface's dedicated flag introduced in
-// #10618. Trinity is the only UI entry point into these endpoints (the
-// standalone /voice-chat page was removed in #10627), so the
-// backend follows the same switch.
-export async function isVoiceChatEnabled(
-  authCtx: AuthContext,
-): Promise<boolean> {
-  const overrides = await loadFeatureSwitchOverrides(
-    authCtx.orgId,
-    authCtx.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.Trinity, {
-    orgId: authCtx.orgId,
-    userId: authCtx.userId,
-    overrides,
-  });
-}
 
 interface VoiceChatGates {
   /** FeatureSwitchKey.Trinity — top-level voice-chat gate (#10618). */
@@ -71,9 +25,6 @@ interface VoiceChatGates {
 
 /**
  * Resolve both voice-chat feature gates with a single overrides load.
- * Use this in routes that need to make per-branch decisions; the older
- * `isVoiceChatEnabled` is kept for callers that only need the Trinity
- * gate.
  */
 export async function loadVoiceChatGates(
   authCtx: AuthContext,

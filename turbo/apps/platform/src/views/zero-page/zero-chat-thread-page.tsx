@@ -22,7 +22,6 @@ import {
   IconCopy,
   IconCheck,
   IconDots,
-  IconPin,
   IconVolume2,
   IconArrowBarToUp,
   IconBrandGoogleDrive,
@@ -95,10 +94,6 @@ import {
   openDocumentLightbox$ as openAttachmentDocumentLightbox$,
   openImageLightbox$ as openAttachmentImageLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
-} from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   writeToClipboard,
   type ChatClipboardAttachment,
@@ -191,83 +186,6 @@ const CHAT_SHORTCUT_SECTIONS = [
   },
 ] as const;
 
-function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useLastResolved(thread.agentId$);
-
-  if (!agentId) {
-    return <Skeleton className="h-8 w-8 rounded-xl" />;
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link
-            pathname="/agents/:agentId"
-            options={{ pathParams: { agentId } }}
-            className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="View agent profile"
-          >
-            <AgentAvatarImg
-              name={agentId}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">View agent profile</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
-  const pageSignal = useGet(pageSignal$);
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinnedStatus = useLastResolved(thread.agentPinned$);
-  const showPinPill = pinnedStatus === false;
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const pinSaving = pinLoadable.state === "loading";
-  const agentId = useLastResolved(thread.agentId$) ?? null;
-
-  if (!showPinPill) {
-    return null;
-  }
-
-  const handlePin = () => {
-    if (!agentId) {
-      return;
-    }
-    detach(
-      savePinnedIds([...pinnedIds, agentId], pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handlePin}
-            disabled={pinSaving}
-            className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Pin to sidebar"
-          >
-            <IconPin size={10} stroke={2} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs">Pin to sidebar</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
 }
@@ -304,37 +222,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const displayName = useLastResolved(thread.agentDisplayName$);
-  const threadData = useLastResolved(thread.threadData$);
-  const rightThread = useGet(currentRightThread$);
+  const threadDataLoadable = useLastLoadable(thread.threadData$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
-  const threadTitle = threadData?.title?.trim() ?? "";
-  const showThreadTitle = rightThread !== null && threadTitle.length > 0;
+  const threadTitle =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.title?.trim() ?? "")
+      : "";
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="relative shrink-0">
-          <HeaderAgentAvatar thread={thread} />
-          <PinPillButton thread={thread} />
-        </div>
-        <span className="flex min-w-0 items-baseline gap-2">
-          {displayName ? (
-            <span className="shrink-0 font-semibold text-foreground">
-              {displayName}
-            </span>
-          ) : (
-            <Skeleton className="h-5 w-32 shrink-0 rounded" />
-          )}
-          {showThreadTitle && (
-            <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">
-              {threadTitle}
-            </span>
-          )}
-        </span>
+        {threadDataLoadable.state === "loading" ? (
+          <Skeleton className="h-5 w-48 rounded" />
+        ) : (
+          <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            {threadTitle}
+          </span>
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         <ArtifactsButton thread={thread} />

@@ -5,19 +5,13 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import {
-  mockChatLifecycle,
-  mockSubagentThread,
-  PLACEHOLDER,
-  SUB_AGENT_ID,
-} from "./chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -29,33 +23,6 @@ beforeEach(() => {
       });
     }),
   );
-});
-
-// CHAT-D-033: Pin pill renders conditionally in ChatThreadHeader
-describe("zero chat thread page display - pin pill conditional rendering", () => {
-  it("shows pin pill when agent is not pinned", async () => {
-    setMockUserPreferences({ pinnedAgentIds: [] });
-    mockSubagentThread("thread-header-test");
-
-    detachedSetupPage({ context, path: "/chats/thread-header-test" });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Pin to sidebar")).toBeInTheDocument();
-    });
-  });
-
-  it("does not show pin pill when agent is already pinned", async () => {
-    setMockUserPreferences({ pinnedAgentIds: [SUB_AGENT_ID] });
-    mockSubagentThread("thread-header-test");
-
-    detachedSetupPage({ context, path: "/chats/thread-header-test" });
-
-    await waitFor(() => {
-      const spans = screen.getAllByText("Assistant");
-      expect(spans.length).toBeGreaterThan(0);
-    });
-    expect(screen.queryByLabelText("Pin to sidebar")).not.toBeInTheDocument();
-  });
 });
 
 // CHAT-D-036: Attachment image previews render in ChatMessageRow
@@ -998,30 +965,6 @@ describe("zero chat thread page display - attachment pdf preview", () => {
     await waitFor(() => {
       expect(screen.getByTitle("document.pdf preview")).toBeInTheDocument();
     });
-  });
-});
-
-// CHAT-D-066: HeaderAgentAvatar renders null until agentId resolves — no default-avatar flicker
-describe("zero chat thread page display - header agent avatar flicker fix", () => {
-  it("renders the agent avatar link once agentId resolves and never renders a placeholder avatar beforehand", async () => {
-    mockSubagentThread("thread-avatar-test");
-
-    detachedSetupPage({ context, path: "/chats/thread-avatar-test" });
-
-    // The avatar link must appear once the agent id resolves.
-    await waitFor(() => {
-      expect(
-        document.querySelector('a[aria-label="View agent profile"]'),
-      ).toBeInTheDocument();
-    });
-
-    // No blank-name placeholder SVG should have been rendered: the component
-    // returns null before agentId is known, so there is never a second avatar
-    // element without the accessible link wrapper.
-    const avatarLinks = document.querySelectorAll(
-      'a[aria-label="View agent profile"]',
-    );
-    expect(avatarLinks).toHaveLength(1);
   });
 });
 

@@ -197,8 +197,9 @@ describe("sidebar chat delete", () => {
       expect(screen.queryByText("First chat")).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText("Second chat")).toBeInTheDocument();
-    expect(screen.getByText("Third chat")).toBeInTheDocument();
+    const sidebar = screen.getByLabelText("Sidebar");
+    expect(within(sidebar).getByText("Second chat")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Third chat")).toBeInTheDocument();
   });
 
   it("should not resurrect a deleted optimistic-created thread", async () => {

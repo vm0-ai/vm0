@@ -1,6 +1,4 @@
-import { NextRequest } from "next/server";
 import { uniqueId } from "../../../../../src/__tests__/test-helpers";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTestOrg,
   insertOrgModelPolicy,
@@ -13,8 +11,6 @@ import {
 import { seedTestVoiceChatSession } from "../../../../../src/__tests__/db-test-seeders/voice-chat";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
-const BASE_URL = "http://localhost:3000/api/zero/voice-chat";
-
 export async function setupVoiceChatOrg(userId: string): Promise<{
   orgId: string;
   slug: string;
@@ -23,8 +19,8 @@ export async function setupVoiceChatOrg(userId: string): Promise<{
   const orgId = `org_mock_${userId}`;
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
-  // POST /:id/tasks tests spawn zero runs; createZeroRun asserts an org-default
-  // model provider exists. Seeding here keeps per-test setup lean.
+  // Trigger-reasoning tests spawn zero runs; createZeroRun asserts an
+  // org-default model provider exists. Seeding here keeps per-test setup lean.
   const modelProviderId = await insertOrgDefaultModelProvider(
     orgId,
     "anthropic-api-key",
@@ -50,8 +46,8 @@ export async function seedVoiceChatAgent(
     orgId,
     name: uniqueId("vcc-agent"),
   });
-  // createZeroRun requires a head version; tests that spawn runs (POST tasks)
-  // need this, and other tests don't care either way.
+  // createZeroRun requires a head version; trigger-reasoning tests need this,
+  // and other tests don't care either way.
   await createTestComposeVersion(composeId, userId);
   return { agentId: composeId };
 }
@@ -63,20 +59,4 @@ export async function seedVoiceChatSession(opts: {
 }): Promise<{ id: string }> {
   const id = await seedTestVoiceChatSession(opts);
   return { id };
-}
-
-export function postRequest(path: string, body?: unknown): NextRequest {
-  return createTestRequest(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-}
-
-export function getRequest(path: string): NextRequest {
-  return createTestRequest(`${BASE_URL}${path}`);
-}
-
-export function paramsFor(id: string): { params: Promise<{ id: string }> } {
-  return { params: Promise.resolve({ id }) };
 }

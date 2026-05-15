@@ -145,8 +145,10 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       [200],
     );
 
-    expect(response.body.publicSlug).toBe("demo-site");
-    expect(response.body.url).toBe("https://demo-site.sites.example.com");
+    expect(response.body.publicSlug).toMatch(/^demo-site-[a-f0-9]{8}$/);
+    expect(response.body.url).toMatch(
+      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+    );
     expect(response.body.uploads).toHaveLength(2);
     expect(
       response.body.uploads.map((upload) => {
@@ -210,7 +212,7 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       [200],
     );
 
-    const prefix = `sites/demo-site/deployments/${prepared.body.deploymentId}`;
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
     const puts = mockUploadedKeys([
       `${prefix}/index.html`,
       `${prefix}/assets/index-a1b2c3d4.js`,
@@ -228,11 +230,13 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
     expect(completed.body).toMatchObject({
       deploymentId: prepared.body.deploymentId,
       status: "ready",
-      url: "https://demo-site.sites.example.com",
     });
+    expect(completed.body.url).toMatch(
+      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+    );
     expect(puts).toStrictEqual([
       `${prefix}/manifest.json`,
-      "sites/demo-site/active.json",
+      `sites/${prepared.body.publicSlug}/active.json`,
     ]);
 
     const writeDb = store.set(writeDb$);

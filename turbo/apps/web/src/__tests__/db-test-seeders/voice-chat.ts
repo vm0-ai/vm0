@@ -31,9 +31,12 @@ export async function appendTestVoiceChatItem(params: {
 export async function insertTestVoiceChatTask(
   sessionId: string,
   overrides: {
+    callId?: string;
+    prompt?: string;
     result?: string;
     resultUpdatedAt?: Date;
     finishedAt?: Date;
+    runId?: string | null;
     status?: "pending" | "queued" | "running" | "done" | "failed";
   } = {},
 ): Promise<string> {
@@ -45,9 +48,10 @@ export async function insertTestVoiceChatTask(
     .insert(voiceChatTasks)
     .values({
       sessionId,
-      callId: uniqueId("call"),
-      prompt: "Summarize the situation",
+      callId: overrides.callId ?? uniqueId("call"),
+      prompt: overrides.prompt ?? "Summarize the situation",
       status,
+      ...(overrides.runId !== undefined ? { runId: overrides.runId } : {}),
       result: overrides.result ?? "A".repeat(500) + " important data",
       resultUpdatedAt: overrides.resultUpdatedAt ?? twoMinutesAgo,
       finishedAt: isFinished ? (overrides.finishedAt ?? twoMinutesAgo) : null,

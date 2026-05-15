@@ -15,8 +15,10 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import {
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import type { ReactElement } from "react";
 import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
 import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import {
@@ -168,6 +170,26 @@ type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
+};
+
+type ConnectMethodContentProps = ConnectModalContentProps & {
+  connectAndSettle: ConnectAndSettleFn;
+  submitApiToken: SubmitApiTokenFn;
+  credentialSubmitting: boolean;
+  signal: AbortSignal;
+};
+
+type ApiConnectContentComponent = (
+  props: ConnectModalContentProps,
+) => ReactElement;
+
+type ConnectMethodContentComponent = (
+  props: ConnectMethodContentProps,
+) => ReactElement;
+
+type ConnectMethodContentEntry = {
+  authMethod: ConnectorAuthMethodType;
+  Content: ConnectMethodContentComponent;
 };
 
 // ---------------------------------------------------------------------------
@@ -591,36 +613,18 @@ function LocalBrowserConnectContent({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Connect modal content (OAuth button + token form, or just token form)
-// ---------------------------------------------------------------------------
-
-function getConnectorSpecificConnectContent({
-  item,
-  onSuccess,
-  showPermissionDialogOnConnect,
-}: ConnectModalContentProps) {
-  if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
-    return (
-      <RemoteAgentConnectContent
-        item={item}
-        onSuccess={onSuccess}
-        showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-      />
-    );
-  }
-
-  if (item.type === LOCAL_BROWSER_CONNECTOR_TYPE) {
-    return (
-      <LocalBrowserConnectContent
-        item={item}
-        onSuccess={onSuccess}
-        showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-      />
-    );
-  }
-
-  return null;
+function UnavailableConnectMethodsContent() {
+  return (
+    <div className="rounded-md border border-dashed border-border bg-muted/30 p-3">
+      <p className="text-sm font-medium text-foreground">
+        Connection methods unavailable
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        This connector has available connection methods, but none of them can be
+        configured from this dialog yet.
+      </p>
+    </div>
+  );
 }
 
 function getOAuthProgressContent({
@@ -697,6 +701,108 @@ function AuthMethodDivider() {
   );
 }
 
+function OAuthConnectMethodContent(props: ConnectMethodContentProps) {
+  return (
+    <OAuthConnectButton
+      item={props.item}
+      label={CONNECTOR_TYPES[props.item.type].label}
+      onSuccess={props.onSuccess}
+      showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
+      connectAndSettle={props.connectAndSettle}
+      signal={props.signal}
+    />
+  );
+}
+
+function ApiTokenConnectMethodContent(props: ConnectMethodContentProps) {
+  return (
+    <ApiTokenForm
+      type={props.item.type}
+      item={props.item}
+      onSuccess={props.onSuccess}
+      showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
+      submit={props.submitApiToken}
+      submitting={props.credentialSubmitting}
+    />
+  );
+}
+
+function getApiConnectContentComponent(
+  type: ConnectorType,
+): ApiConnectContentComponent | null {
+  switch (type) {
+    case REMOTE_AGENT_CONNECTOR_TYPE: {
+      return RemoteAgentConnectContent;
+    }
+    case LOCAL_BROWSER_CONNECTOR_TYPE: {
+      return LocalBrowserConnectContent;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function getConnectMethodContentComponent(
+  item: ConnectorTypeWithStatus,
+  authMethod: ConnectorAuthMethodType,
+): ConnectMethodContentComponent | null {
+  switch (authMethod) {
+    case "oauth": {
+      return OAuthConnectMethodContent;
+    }
+    case "api-token": {
+      return ApiTokenConnectMethodContent;
+    }
+    case "cli-auth": {
+      return null;
+    }
+    case "api": {
+      return getApiConnectContentComponent(item.type);
+    }
+  }
+}
+
+function getConnectMethodContentEntries(
+  item: ConnectorTypeWithStatus,
+): ConnectMethodContentEntry[] {
+  return item.availableAuthMethods.flatMap((authMethod) => {
+    const Content = getConnectMethodContentComponent(item, authMethod);
+    return Content ? [{ authMethod, Content }] : [];
+  });
+}
+
+function ConnectMethodsContent({
+  entries,
+  availableAuthMethodCount,
+  props,
+}: {
+  entries: readonly ConnectMethodContentEntry[];
+  availableAuthMethodCount: number;
+  props: ConnectMethodContentProps;
+}) {
+  if (availableAuthMethodCount === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No connection method is available.
+      </p>
+    );
+  }
+
+  if (entries.length === 0) {
+    return <UnavailableConnectMethodsContent />;
+  }
+
+  return entries.map(({ authMethod, Content }, index) => {
+    return (
+      <div key={authMethod} className="contents">
+        {index > 0 && <AuthMethodDivider />}
+        <Content {...props} />
+      </div>
+    );
+  });
+}
+
 function StandardConnectMethodsContent({
   item,
   onSuccess,
@@ -711,38 +817,29 @@ function StandardConnectMethodsContent({
   credentialSubmitting: boolean;
   signal: AbortSignal;
 }) {
-  const config = CONNECTOR_TYPES[item.type];
-  const hasOAuth = item.availableAuthMethods.includes("oauth");
-  const hasApiToken = item.availableAuthMethods.includes("api-token");
-  const isGoogleOAuth = hasOAuth && isGoogleOAuthConnector(item.type);
+  const entries = getConnectMethodContentEntries(item);
+  const isGoogleOAuth =
+    entries.some((entry) => {
+      return entry.authMethod === "oauth";
+    }) && isGoogleOAuthConnector(item.type);
 
   return (
     <div className="flex flex-col gap-4">
       {isGoogleOAuth && <GoogleOAuthNotice />}
 
-      {hasOAuth && (
-        <OAuthConnectButton
-          item={item}
-          label={config.label}
-          onSuccess={onSuccess}
-          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-          connectAndSettle={connectAndSettle}
-          signal={signal}
-        />
-      )}
-
-      {hasOAuth && hasApiToken && <AuthMethodDivider />}
-
-      {hasApiToken && (
-        <ApiTokenForm
-          type={item.type}
-          item={item}
-          onSuccess={onSuccess}
-          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
-          submit={submitApiToken}
-          submitting={credentialSubmitting}
-        />
-      )}
+      <ConnectMethodsContent
+        entries={entries}
+        availableAuthMethodCount={item.availableAuthMethods.length}
+        props={{
+          item,
+          onSuccess,
+          showPermissionDialogOnConnect,
+          connectAndSettle,
+          submitApiToken,
+          credentialSubmitting,
+          signal,
+        }}
+      />
     </div>
   );
 }
@@ -760,16 +857,12 @@ function ConnectModalContent({
   const credentialSubmitting = apiTokenLoadable.state === "loading";
   const isPolling = pollingType === item.type;
 
-  const connectorSpecificContent = getConnectorSpecificConnectContent({
-    item,
-    onSuccess,
-    showPermissionDialogOnConnect,
-  });
-  if (connectorSpecificContent) {
-    return connectorSpecificContent;
-  }
-
-  const progressContent = getOAuthProgressContent({ isPolling, settling });
+  const progressContent = item.availableAuthMethods.includes("oauth")
+    ? getOAuthProgressContent({
+        isPolling,
+        settling,
+      })
+    : null;
   if (progressContent) {
     return progressContent;
   }
@@ -788,7 +881,7 @@ function ConnectModalContent({
 }
 
 // ---------------------------------------------------------------------------
-// Connect modal (opened when clicking Connect on a connector with api-token)
+// Connect modal opened when configuring a connector.
 // ---------------------------------------------------------------------------
 
 export function ConnectModal({

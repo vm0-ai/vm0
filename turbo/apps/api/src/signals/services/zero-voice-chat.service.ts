@@ -415,9 +415,6 @@ export const createVoiceChatSession$ = command(
 
 /**
  * Map a `voice_chat_tasks` row to the contract-shaped `VoiceChatTask` DTO.
- * Mirrors web's `serializeVoiceChatTask` in
- * `apps/web/app/api/zero/voice-chat/_support.ts` so the contract -> row
- * mapping has a single source of truth across the api migration.
  */
 export function serializeVoiceChatTask(
   task: typeof voiceChatTasks.$inferSelect,
