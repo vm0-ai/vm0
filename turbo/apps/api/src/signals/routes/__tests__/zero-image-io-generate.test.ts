@@ -47,6 +47,7 @@ const TEST_BUCKET = "test-user-storages";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const FAL_QWEN_IMAGE_URL = "https://fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
+const MISSING_PRICING_IMAGE_MODEL = "gpt-image-1-mini";
 const IMAGE_PRICING_CATEGORIES = [
   "tokens.input.text",
   "tokens.input.image",
@@ -74,6 +75,11 @@ interface PricingSnapshot {
   readonly category: ImagePricingCategory;
   readonly unitPrice: number;
   readonly unitSize: number;
+}
+
+interface DeletedPricingSnapshot {
+  readonly provider: string;
+  readonly rows: readonly PricingSnapshot[];
 }
 
 function authHeaders() {
@@ -265,7 +271,9 @@ function isImagePricingCategory(value: string): value is ImagePricingCategory {
   });
 }
 
-async function deleteImagePricingRows(): Promise<readonly PricingSnapshot[]> {
+async function deleteImagePricingRows(
+  provider: string,
+): Promise<DeletedPricingSnapshot> {
   const writeDb = store.set(writeDb$);
   const rows = await writeDb
     .select({
@@ -277,7 +285,7 @@ async function deleteImagePricingRows(): Promise<readonly PricingSnapshot[]> {
     .where(
       and(
         eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, IMAGE_IO_MODEL),
+        eq(usagePricing.provider, provider),
         inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
       ),
     );
@@ -287,36 +295,47 @@ async function deleteImagePricingRows(): Promise<readonly PricingSnapshot[]> {
     .where(
       and(
         eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, IMAGE_IO_MODEL),
+        eq(usagePricing.provider, provider),
         inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
       ),
     );
 
-  return rows.filter((row): row is PricingSnapshot => {
-    return isImagePricingCategory(row.category);
-  });
+  return {
+    provider,
+    rows: rows.filter((row): row is PricingSnapshot => {
+      return isImagePricingCategory(row.category);
+    }),
+  };
 }
 
 async function restoreImagePricingRows(
-  rows: readonly PricingSnapshot[],
+  snapshot: DeletedPricingSnapshot,
 ): Promise<void> {
-  if (rows.length === 0) {
+  if (snapshot.rows.length === 0) {
     return;
   }
   await store
     .set(writeDb$)
     .insert(usagePricing)
     .values(
-      rows.map((row) => {
+      snapshot.rows.map((row) => {
         return {
           kind: "image",
-          provider: IMAGE_IO_MODEL,
+          provider: snapshot.provider,
           category: row.category,
           unitPrice: row.unitPrice,
           unitSize: row.unitSize,
         };
       }),
-    );
+    )
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: sql`excluded.unit_price`,
+        unitSize: sql`excluded.unit_size`,
+        updatedAt: sql`now()`,
+      },
+    });
 }
 
 async function seedImageFixture(options: {
@@ -395,7 +414,7 @@ async function deleteImageFixture(fixture: ImageFixture): Promise<void> {
 
 describe("POST /api/zero/image-io/generate", () => {
   const track = createFixtureTracker<ImageFixture>(deleteImageFixture);
-  const trackPricing = createFixtureTracker<readonly PricingSnapshot[]>(
+  const trackPricing = createFixtureTracker<DeletedPricingSnapshot>(
     restoreImagePricingRows,
   );
   let releasePendingOpenAiResponse: (() => void) | null = null;
@@ -536,7 +555,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("returns 503 when image pricing is not configured", async () => {
     const fixture = await track(seedImageFixture({ credits: 1000 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    await trackPricing(deleteImagePricingRows());
+    await trackPricing(deleteImagePricingRows(MISSING_PRICING_IMAGE_MODEL));
     let calledOpenAi = false;
     server.use(
       http.post(OPENAI_IMAGE_GENERATION_URL, () => {
@@ -549,7 +568,10 @@ describe("POST /api/zero/image-io/generate", () => {
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ prompt: "a cat" }),
+      body: JSON.stringify({
+        prompt: "a cat",
+        model: MISSING_PRICING_IMAGE_MODEL,
+      }),
     });
 
     expect(response.status).toBe(503);
