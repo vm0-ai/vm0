@@ -1040,6 +1040,39 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(errorMsg?.content).toBe(actionableError);
     });
 
+    it("should preserve usage limit failed run errors", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      const usageLimitError =
+        "Usage limit reached. Upgrade your plan or try again later.";
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: usageLimitError,
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const errorMsg = chatMessages.find((message) => {
+        return message.role === "assistant" && message.error !== null;
+      });
+      expect(errorMsg?.error).toBe(usageLimitError);
+      expect(errorMsg?.content).toBe(usageLimitError);
+      expect(errorMsg?.error).not.toBe(
+        "Oops, something went wrong. Please try again later.",
+      );
+    });
+
     it("should preserve user-cancelled run errors", async () => {
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
