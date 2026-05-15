@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="./popup.css" />
+    <title>VM0 Local Browser</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <h1>VM0 Local Browser</h1>
+          <p id="subtitle">Checking status...</p>
+        </div>
+        <span id="status-dot" class="dot"></span>
+      </header>
+
+      <section class="details">
+        <div>
+          <span class="label">Host</span>
+          <strong id="host-name">Not paired</strong>
+        </div>
+        <div>
+          <span class="label">API</span>
+          <strong id="api-base">-</strong>
+        </div>
+        <div>
+          <span class="label">Last heartbeat</span>
+          <strong id="heartbeat">-</strong>
+        </div>
+        <div id="error-row" class="error-row" hidden>
+          <span class="label">Error</span>
+          <strong id="last-error">-</strong>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="open-connectors" type="button">Open connector</button>
+        <button id="revoke" class="secondary" type="button">Revoke</button>
+      </div>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+</html>

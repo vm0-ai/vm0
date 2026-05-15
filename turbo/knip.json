@@ -82,6 +82,17 @@
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
     },
+    "apps/local-browser-extension": {
+      "entry": [
+        "scripts/build.mjs",
+        "src/background/index.ts",
+        "src/content/index.ts",
+        "src/popup/index.ts",
+        "src/popup/popup.css",
+        "src/popup/popup.html"
+      ],
+      "project": ["scripts/**/*.mjs", "src/**/*.{ts,css,html}"]
+    },
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
