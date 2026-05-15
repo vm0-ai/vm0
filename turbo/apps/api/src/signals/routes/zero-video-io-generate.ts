@@ -33,6 +33,7 @@ import {
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
+  refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
 
 const L = logger("ZeroVideoIoGenerate");
@@ -151,6 +152,15 @@ const runVideoGenerationJob$ = command(
         { generationId: args.generationId, error: generation.body.error },
         signal,
       );
+      return;
+    }
+
+    const active = await set(
+      refreshActiveBuiltInGenerationJob$,
+      { generationId: args.generationId, type: "video" },
+      signal,
+    );
+    if (!active) {
       return;
     }
 

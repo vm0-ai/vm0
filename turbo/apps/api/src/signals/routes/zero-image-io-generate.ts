@@ -33,6 +33,7 @@ import {
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
+  refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
 
 const L = logger("ZeroImageIoGenerate");
@@ -100,10 +101,7 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
   };
 }
 
-async function generateOpenAiImage(
-  options: ImageOptions,
-  signal: AbortSignal,
-) {
+async function generateOpenAiImage(options: ImageOptions, signal: AbortSignal) {
   const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
     method: "POST",
     headers: {
@@ -194,6 +192,15 @@ const runImageGenerationJob$ = command(
         { generationId: args.generationId, error: generation.body.error },
         signal,
       );
+      return;
+    }
+
+    const active = await set(
+      refreshActiveBuiltInGenerationJob$,
+      { generationId: args.generationId, type: "image" },
+      signal,
+    );
+    if (!active) {
       return;
     }
 

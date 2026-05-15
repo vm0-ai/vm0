@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, inArray, lte } from "drizzle-orm";
 import {
   builtInGenerationJobs,
   type BuiltInGenerationError,
@@ -253,8 +253,44 @@ export const markBuiltInGenerationRunning$ = command(
         startedAt: nowDate(),
         updatedAt: nowDate(),
       })
-      .where(eq(builtInGenerationJobs.id, generationId));
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, generationId),
+          eq(builtInGenerationJobs.status, "queued"),
+        ),
+      );
     signal.throwIfAborted();
+  },
+);
+
+export const refreshActiveBuiltInGenerationJob$ = command(
+  async (
+    { set },
+    args: {
+      readonly generationId: string;
+      readonly type: BuiltInGenerationType;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const writeDb = set(writeDb$);
+    const currentTime = nowDate();
+    const cutoff = builtInGenerationTimeoutCutoff(args.type, currentTime);
+    const [job] = await writeDb
+      .update(builtInGenerationJobs)
+      .set({ updatedAt: currentTime })
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, args.generationId),
+          eq(builtInGenerationJobs.type, args.type),
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+          gt(builtInGenerationJobs.updatedAt, cutoff),
+        ),
+      )
+      .returning({ id: builtInGenerationJobs.id });
+    signal.throwIfAborted();
+    return Boolean(job);
   },
 );
 
@@ -277,7 +313,14 @@ export const completeBuiltInGenerationJob$ = command(
         completedAt: nowDate(),
         updatedAt: nowDate(),
       })
-      .where(eq(builtInGenerationJobs.id, args.generationId))
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, args.generationId),
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+        ),
+      )
       .returning({
         id: builtInGenerationJobs.id,
         type: builtInGenerationJobs.type,
@@ -314,7 +357,14 @@ export const failBuiltInGenerationJob$ = command(
         completedAt: nowDate(),
         updatedAt: nowDate(),
       })
-      .where(eq(builtInGenerationJobs.id, args.generationId))
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, args.generationId),
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+        ),
+      )
       .returning({
         id: builtInGenerationJobs.id,
         type: builtInGenerationJobs.type,

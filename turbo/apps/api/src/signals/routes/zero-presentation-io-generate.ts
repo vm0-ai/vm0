@@ -36,6 +36,7 @@ import {
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
+  refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
 
 const L = logger("ZeroPresentationIoGenerate");
@@ -159,6 +160,15 @@ const runPresentationGenerationJob$ = command(
       return;
     }
 
+    const activeBeforeVisuals = await set(
+      refreshActiveBuiltInGenerationJob$,
+      { generationId: args.generationId, type: "presentation" },
+      signal,
+    );
+    if (!activeBeforeVisuals) {
+      return;
+    }
+
     const visuals =
       args.options.imageCount > 0 && args.imagePricing
         ? await set(
@@ -181,6 +191,15 @@ const runPresentationGenerationJob$ = command(
         { generationId: args.generationId, error: visuals.body.error },
         signal,
       );
+      return;
+    }
+
+    const activeBeforeRecord = await set(
+      refreshActiveBuiltInGenerationJob$,
+      { generationId: args.generationId, type: "presentation" },
+      signal,
+    );
+    if (!activeBeforeRecord) {
       return;
     }
 
