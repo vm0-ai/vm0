@@ -19,7 +19,11 @@ import {
   DialogTitle,
   Button,
   Input,
-  Switch,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -91,7 +95,8 @@ export function AgentsPage() {
     if (!trimmed || creating) {
       return;
     }
-    await createSubagentFn(trimmed, avatarUrl, visibility, pageSignal);
+    const createVisibility = privateAgentsEnabled ? visibility : "public";
+    await createSubagentFn(trimmed, avatarUrl, createVisibility, pageSignal);
     setDialogOpen(false);
     resetDialog();
     toast.success(`${trimmed} created successfully`);
@@ -411,7 +416,7 @@ function CreateTeammateDialogContent({
           disabled={creating}
         />
         {showVisibility && (
-          <CreateAgentPublicToggle
+          <CreateAgentVisibilitySelect
             visibility={visibility}
             onVisibilityChange={onVisibilityChange}
             publicDisabled={publicDisabled}
@@ -444,7 +449,7 @@ function CreateTeammateDialogContent({
   );
 }
 
-function CreateAgentPublicToggle({
+function CreateAgentVisibilitySelect({
   visibility,
   onVisibilityChange,
   publicDisabled,
@@ -454,23 +459,33 @@ function CreateAgentPublicToggle({
   publicDisabled: boolean;
 }) {
   return (
-    <div className="flex w-full items-center justify-between gap-4 rounded-lg bg-muted/40 px-3 py-2.5">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground">Make public</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {publicDisabled
-            ? "Public agent limit reached."
-            : "Visible to everyone in this workspace."}
-        </p>
-      </div>
-      <Switch
-        checked={visibility === "public"}
-        disabled={publicDisabled}
-        onCheckedChange={(checked) => {
-          return onVisibilityChange(checked ? "public" : "private");
+    <div className="flex w-full flex-col gap-1.5">
+      <label className="text-sm font-medium text-foreground">Create as</label>
+      <Select
+        value={visibility}
+        onValueChange={(value) => {
+          onVisibilityChange(value as "public" | "private");
         }}
-        aria-label="Make public"
-      />
+      >
+        <TooltipProvider delayDuration={200}>
+          <Tooltip open={publicDisabled ? undefined : false}>
+            <TooltipTrigger asChild>
+              <SelectTrigger aria-label="Create as" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p className="text-xs">Public agent limit reached.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <SelectContent>
+          <SelectItem value="private">Private</SelectItem>
+          <SelectItem value="public" disabled={publicDisabled}>
+            {publicDisabled ? "Public (limit reached)" : "Public"}
+          </SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }
