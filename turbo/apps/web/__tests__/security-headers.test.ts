@@ -149,6 +149,14 @@ describe("API backend rewrites", () => {
     expect(rewrites).toEqual(
       expect.arrayContaining([
         {
+          source: "/api/device-token",
+          destination: "https://api.example.test/api/device-token",
+        },
+        {
+          source: "/api/device-token/poll",
+          destination: "https://api.example.test/api/device-token/poll",
+        },
+        {
           source: "/api/agentphone/:path*",
           destination: "https://api.example.test/api/agentphone/:path*",
         },
@@ -163,8 +171,37 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/internal/event-consumers/agentphone-typing",
         },
         {
+          source: "/api/user/export",
+          destination: "https://api.example.test/api/user/export",
+        },
+        {
+          source: "/api/zero/devices/bb0/confirm",
+          destination: "https://api.example.test/api/zero/devices/bb0/confirm",
+        },
+        {
+          source:
+            "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+          destination:
+            "https://api.example.test/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+        },
+        {
+          source:
+            "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
+          destination:
+            "https://api.example.test/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
+        },
+        {
+          source: "/api/zero/presentation-io/generate",
+          destination:
+            "https://api.example.test/api/zero/presentation-io/generate",
+        },
+        {
           source: "/api/zero/remote-agent/:path*",
           destination: "https://api.example.test/api/zero/remote-agent/:path*",
+        },
+        {
+          source: "/api/zero/video-io/generate",
+          destination: "https://api.example.test/api/zero/video-io/generate",
         },
         {
           source: "/api/zero/integrations/phone/:path*",

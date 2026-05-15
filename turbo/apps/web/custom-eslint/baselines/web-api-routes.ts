@@ -11,10 +11,6 @@ import { createHash } from "node:crypto";
  * apps/web while the rest of Zero's bearer-token web API still authenticates
  * through requireAuth/resolveOrg in the Next.js runtime.
  *
- * Intentional exception: built-in generation routes are implemented in
- * apps/api, but CLI callers use VM0_API_URL and therefore need thin web
- * proxies in local and production environments.
- *
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/checkpoints/[id]/route.ts",
@@ -56,8 +52,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/cron/sync-skills/route.ts",
   "app/api/cron/telegram-cleanup/route.ts",
   "app/api/cron/voice-chat-cleanup/route.ts",
-  "app/api/device-token/poll/route.ts",
-  "app/api/device-token/route.ts",
   "app/api/email/unsubscribe/route.ts",
   "app/api/generate-image/route.ts",
   "app/api/github/oauth/callback/route.ts",
@@ -111,7 +105,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/test/telegram-mock/[botToken]/[method]/route.ts",
   "app/api/test/telegram-state/route.ts",
   "app/api/usage/route.ts",
-  "app/api/user/export/route.ts",
   "app/api/v1/chat-threads/[threadId]/messages/route.ts",
   "app/api/v1/chat-threads/[threadId]/route.ts",
   "app/api/v1/chat-threads/messages/route.ts",
@@ -172,7 +165,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/custom-connectors/route.ts",
   "app/api/zero/default-agent/route.ts",
   "app/api/zero/developer-support/route.ts",
-  "app/api/zero/devices/bb0/confirm/route.ts",
   "app/api/zero/email/callbacks/reply/route.ts",
   "app/api/zero/email/callbacks/trigger/route.ts",
   "app/api/zero/email/inbound/route.ts",
@@ -192,14 +184,10 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
   "app/api/zero/image-io/generate/route.ts",
-  "app/api/zero/presentation-io/generate/route.ts",
-  "app/api/zero/video-io/generate/route.ts",
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",
   "app/api/zero/me/model-providers/[type]/route.ts",
-  "app/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/route.ts",
-  "app/api/zero/me/model-providers/codex-oauth-token/oauth/callback/route.ts",
   "app/api/zero/me/model-providers/route.ts",
   "app/api/zero/model-policies/route.ts",
   "app/api/zero/user-model-preference/route.ts",
@@ -271,7 +259,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "07bb5f3af42fb0fbb0b1bb5b460c19869103a6969395d9f16ed379f9233843f8";
+  "5f0d26fadb0225a862ef99e505b2888789987979f77b5044caebd8a03ea75503";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,
