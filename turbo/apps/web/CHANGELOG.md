@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.369.4](https://github.com/vm0-ai/vm0/compare/web-v12.369.3...web-v12.369.4) (2026-05-15)
+
+
+### Bug Fixes
+
+* sync web gpt-tokenizer lockfile ([#13503](https://github.com/vm0-ai/vm0/issues/13503)) ([82d4a7d](https://github.com/vm0-ai/vm0/commit/82d4a7d3f9831b18b54a55be9603829c8c11712c))
+
+
+### Refactoring
+
+* proxy voice-io stt route to api backend ([#13501](https://github.com/vm0-ai/vm0/issues/13501)) ([f16cc64](https://github.com/vm0-ai/vm0/commit/f16cc64bc9b86c797ad39b6502ed19b78b1bfdc7))
+
 ## [12.369.3](https://github.com/vm0-ai/vm0/compare/web-v12.369.2...web-v12.369.3) (2026-05-15)
 
 

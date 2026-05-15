@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.2](https://github.com/vm0-ai/vm0/compare/api-v1.52.1...api-v1.52.2) (2026-05-15)
+
+
+### Refactoring
+
+* proxy voice-io stt route to api backend ([#13501](https://github.com/vm0-ai/vm0/issues/13501)) ([f16cc64](https://github.com/vm0-ai/vm0/commit/f16cc64bc9b86c797ad39b6502ed19b78b1bfdc7))
+
 ## [1.52.1](https://github.com/vm0-ai/vm0/compare/api-v1.52.0...api-v1.52.1) (2026-05-15)
 
 
