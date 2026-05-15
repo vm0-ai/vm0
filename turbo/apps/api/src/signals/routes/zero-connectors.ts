@@ -610,13 +610,6 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    await set(
-      deleteZeroConnectorLocalState$,
-      { orgId: auth.orgId, userId: auth.userId, type },
-      signal,
-    );
-    signal.throwIfAborted();
-
     const state = generateState();
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
     const envKeys = getConnectorOAuthEnvKeys(type);
@@ -635,6 +628,13 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     if (!authResult) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
+
+    await set(
+      deleteZeroConnectorLocalState$,
+      { orgId: auth.orgId, userId: auth.userId, type },
+      signal,
+    );
+    signal.throwIfAborted();
 
     const response = redirectResponse(authResult.url);
     response.headers.append(

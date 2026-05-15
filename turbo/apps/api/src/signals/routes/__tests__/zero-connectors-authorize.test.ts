@@ -350,6 +350,34 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     );
   });
 
+  it("keeps existing local connector state when OAuth is not configured", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "github", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("github"), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(500);
+    const survivors = await db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connector!.id));
+    expect(survivors).toHaveLength(1);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
   it("best-effort revokes GitHub grants before local cleanup", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
