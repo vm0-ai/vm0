@@ -2,13 +2,17 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::support::{host_from_stream, make_pair, mock_handshake, send_exec_result};
+use super::support::{
+    host_from_stream, make_pair, mock_handshake, read_guest_message, read_guest_messages,
+    send_exec_result,
+};
 use crate::{ConnectionState, GuestProcessHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
 use vsock_proto::{
-    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS,
-    MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK,
+    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_PROCESS_CONTROL,
+    MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT,
+    MSG_STDOUT_CHUNK, ProcessControlStatus,
 };
 
 fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
@@ -28,6 +32,35 @@ async fn wait_spawn(handle: GuestProcessHandle) -> io::Result<crate::ProcessExit
     tokio::time::timeout(Duration::from_secs(5), handle.wait())
         .await
         .expect("spawn_process exit should arrive before timeout")
+}
+
+async fn send_process_control_result(
+    guest: &mut tokio::net::UnixStream,
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: vsock_proto::ProcessControlNonce,
+    message_id: &str,
+    status: ProcessControlStatus,
+    diagnostic: &str,
+) {
+    let payload = vsock_proto::encode_process_control_result(
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
+    )
+    .unwrap();
+    let response = vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request_seq, &payload).unwrap();
+    guest.write_all(&response).await.unwrap();
+}
+
+struct SeenProcessControl {
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: vsock_proto::ProcessControlNonce,
+    message_id: String,
+    payload: Vec<u8>,
 }
 
 #[tokio::test]
@@ -71,6 +104,515 @@ async fn test_spawn_process_and_wait() {
     assert_eq!(event.pid, 42);
     assert_eq!(event.exit_code, 0);
     assert_eq!(event.stdout, b"done");
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn
+            .control_nonce
+            .expect("host spawn_process should include control nonce");
+
+        let payload = vsock_proto::encode_spawn_process_result(42);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        assert_eq!(decoded_control.target_seq, spawn.seq);
+        assert_eq!(decoded_control.control_nonce, control_nonce);
+        assert_eq!(decoded_control.message_id, "message-1");
+        assert_eq!(decoded_control.payload, b"payload");
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            decoded_control.control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+        guest.write_all(&exit_msg).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let ack = handle
+        .control("message-1", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(ack.message_id, "message-1");
+
+    let event = wait_spawn(handle).await.unwrap();
+    assert_eq!(event.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_spawn_process_concurrent_controls_route_by_request_seq() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(52);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let controls = read_guest_messages(&mut guest, &mut decoder, 2).await;
+        let mut seen = Vec::new();
+        for control in controls {
+            assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+            let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+            assert_eq!(decoded_control.target_seq, spawn.seq);
+            assert_eq!(decoded_control.control_nonce, control_nonce);
+            seen.push(SeenProcessControl {
+                request_seq: control.seq,
+                target_seq: decoded_control.target_seq,
+                control_nonce: decoded_control.control_nonce,
+                message_id: decoded_control.message_id.to_owned(),
+                payload: decoded_control.payload.to_vec(),
+            });
+        }
+
+        let first_index = seen
+            .iter()
+            .position(|control| control.message_id == "message-a")
+            .unwrap();
+        let second_index = seen
+            .iter()
+            .position(|control| control.message_id == "message-b")
+            .unwrap();
+        assert_eq!(seen[first_index].payload, b"payload-a");
+        assert_eq!(seen[second_index].payload, b"payload-b");
+
+        for control in [&seen[second_index], &seen[first_index]] {
+            send_process_control_result(
+                &mut guest,
+                control.request_seq,
+                control.target_seq,
+                control.control_nonce,
+                &control.message_id,
+                ProcessControlStatus::Delivered,
+                "",
+            )
+            .await;
+        }
+
+        let exit_payload = vsock_proto::encode_process_exit(52, 0, b"done", b"");
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+        guest.write_all(&exit_msg).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+
+    let first = handle.control("message-a", b"payload-a", Duration::from_secs(5));
+    let second = handle.control("message-b", b"payload-b", Duration::from_secs(5));
+    let (first_ack, second_ack) = tokio::join!(first, second);
+
+    assert_eq!(first_ack.unwrap().message_id, "message-a");
+    assert_eq!(second_ack.unwrap().message_id, "message-b");
+
+    let event = wait_spawn(handle).await.unwrap();
+    assert_eq!(event.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_inactive_status_returns_not_found() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(43);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        assert_eq!(decoded_control.target_seq, spawn.seq);
+        assert_eq!(decoded_control.control_nonce, control_nonce);
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            decoded_control.control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Inactive,
+            "process operation is not active",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-2", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    assert_eq!(err.to_string(), "process operation is not active");
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_nonce_mismatch_status_returns_permission_denied() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(46);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        assert_eq!(decoded_control.control_nonce, control_nonce);
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            decoded_control.control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::NonceMismatch,
+            "process operation nonce mismatch",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-5", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "process operation nonce mismatch");
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_unsupported_status_returns_unsupported() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(48);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Unsupported,
+            "process control sink is not configured",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-7", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+    assert_eq!(err.to_string(), "process control sink is not configured");
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_malformed_result_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(44);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq + 1,
+            control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-3", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("process_control_result target seq mismatch"),
+        "unexpected error: {err}",
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_result_nonce_mismatch_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let mut wrong_nonce = decoded_spawn.control_nonce.unwrap();
+        wrong_nonce[0] ^= 0xFF;
+
+        let payload = vsock_proto::encode_spawn_process_result(47);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            wrong_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-6", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("process_control_result nonce mismatch"),
+        "unexpected error: {err}",
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_result_message_id_mismatch_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(49);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            control_nonce,
+            "wrong-message",
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-8", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("process_control_result message_id mismatch"),
+        "unexpected error: {err}",
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let payload = vsock_proto::encode_spawn_process_result(45);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+
+        let exec = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(exec.msg_type, MSG_EXEC_START);
+        send_exec_result(
+            &mut guest,
+            exec.seq,
+            ExecTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-4", b"payload", Duration::ZERO)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(registration_counts(&host), (0, 1, 0));
+
+    let exec_result = host.exec("echo ok", 5000, &[], false).await.unwrap();
+    assert_eq!(exec_result.stdout, b"ok");
+    drop(handle);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
 }
 
 #[tokio::test]

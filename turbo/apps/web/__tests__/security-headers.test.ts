@@ -313,6 +313,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/user-preferences",
         },
         {
+          source: "/api/zero/voice-io/speech",
+          destination: "https://api.example.test/api/zero/voice-io/speech",
+        },
+        {
           source: "/api/zero/voice-chat",
           destination: "https://api.example.test/api/zero/voice-chat",
         },

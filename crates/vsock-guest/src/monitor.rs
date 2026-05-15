@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::process::{Child, ChildStdout};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK};
@@ -10,6 +10,7 @@ use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
+use crate::process_control::ProcessControlGuard;
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     EnvScriptGuard, SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -38,6 +39,7 @@ struct StreamingMonitorRequest {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
 }
 
 struct BufferedMonitorRequest {
@@ -49,6 +51,7 @@ struct BufferedMonitorRequest {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
 }
 
 struct StreamingSetupFailure {
@@ -62,6 +65,7 @@ struct StreamingSetupFailure {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
     error: String,
 }
 
@@ -72,6 +76,23 @@ pub(crate) struct SpawnProcessRequest<'a> {
     pub(crate) sudo: bool,
     pub(crate) stream_stdout: bool,
     pub(crate) stdout_log_path: Option<&'a str>,
+    pub(crate) process_control_guard: Option<ProcessControlGuard>,
+}
+
+type ProcessControlGuardSlot = Arc<Mutex<Option<ProcessControlGuard>>>;
+
+fn new_process_control_guard_slot(guard: Option<ProcessControlGuard>) -> ProcessControlGuardSlot {
+    Arc::new(Mutex::new(guard))
+}
+
+fn take_process_control_guard(slot: &ProcessControlGuardSlot) -> Option<ProcessControlGuard> {
+    slot.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+fn release_process_control_guard(guard: Option<ProcessControlGuard>) {
+    if let Some(guard) = guard {
+        guard.release();
+    }
 }
 
 /// Handle spawn_process: spawn the child, write `MSG_SPAWN_PROCESS_RESULT` over
@@ -113,27 +134,38 @@ fn handle_spawn_process_with_spawner<S>(
 where
     S: ThreadSpawner,
 {
+    let SpawnProcessRequest {
+        timeout_ms,
+        command,
+        env,
+        sudo,
+        stream_stdout,
+        stdout_log_path,
+        process_control_guard,
+    } = request;
+
     log(
         "INFO",
         &format!(
             "spawn_process: {} (timeout={}ms, sudo={}, stream={}, {})",
-            truncate_command_preview(request.command),
-            request.timeout_ms,
-            request.sudo,
-            request.stream_stdout,
-            format_env_diagnostics(request.command, request.env),
+            truncate_command_preview(command),
+            timeout_ms,
+            sudo,
+            stream_stdout,
+            format_env_diagnostics(command, env),
         ),
     );
 
-    let spawned = match spawn_shell_command_with_pipes(request.command, request.env, request.sudo) {
+    let spawned = match spawn_shell_command_with_pipes(command, env, sudo) {
         Ok(c) => c,
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!(
                 "Failed to spawn: {e} ({})",
-                format_env_diagnostics(request.command, request.env)
+                format_env_diagnostics(command, env)
             ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
             let result = writer.write_frame_after_lock(&response, || {
+                release_process_control_guard(process_control_guard);
                 operation_guard.release();
             });
             result?;
@@ -162,17 +194,19 @@ where
         Ok(r) => r,
         Err(e) => {
             kill_and_reap_child(child);
+            release_process_control_guard(process_control_guard);
             operation_guard.release();
             return Err(to_io_error(e));
         }
     };
     if let Err(e) = writer.write_frame(&response) {
         kill_and_reap_child(child);
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
         return Err(e);
     }
 
-    if request.stream_stdout {
+    if stream_stdout {
         // Streaming mode: stream stdout to vsock chunks, optionally teeing to a guest file.
         // Take stdout from child so we can read it in a separate thread.
         let stdout_pipe = child.stdout.take();
@@ -181,13 +215,14 @@ where
                 seq,
                 pid,
                 child,
-                timeout_ms: request.timeout_ms,
+                timeout_ms,
                 stdout_pipe,
-                log_path: request.stdout_log_path.map(str::to_owned),
+                log_path: stdout_log_path.map(str::to_owned),
                 env_script,
                 writer,
                 connection_cancel,
                 operation_guard: operation_guard.clone(),
+                process_control_guard,
             },
             spawner,
         ) {
@@ -204,11 +239,12 @@ where
                 seq,
                 pid,
                 child,
-                timeout_ms: request.timeout_ms,
+                timeout_ms,
                 env_script,
                 writer,
                 connection_cancel,
                 operation_guard: operation_guard.clone(),
+                process_control_guard,
             },
             spawner,
         ) {
@@ -253,19 +289,26 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let monitor_spawner = spawner.clone();
     let exit_writer = writer.clone();
     let monitor_operation_guard = operation_guard.clone();
+    let process_control_guard_slot = new_process_control_guard_slot(process_control_guard);
+    let monitor_process_control_guard_slot = process_control_guard_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_STREAM_MONITOR,
         Box::new(move || {
+            let process_control_guard =
+                take_process_control_guard(&monitor_process_control_guard_slot);
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
                     "spawn_process: streaming monitor child guard was empty",
                 );
+                release_process_control_guard(process_control_guard);
+                monitor_operation_guard.release();
                 return;
             };
             run_streaming_monitor(
@@ -280,12 +323,14 @@ where
                     writer,
                     connection_cancel,
                     operation_guard: monitor_operation_guard,
+                    process_control_guard,
                 },
                 monitor_spawner,
             );
         }),
     );
     if let Err(e) = &result {
+        let process_control_guard = take_process_control_guard(&process_control_guard_slot);
         send_process_exit_after_lock(
             seq,
             pid,
@@ -293,7 +338,10 @@ where
             &[],
             format!("Failed to spawn streaming monitor thread: {e}").as_bytes(),
             &exit_writer,
-            || operation_guard.release(),
+            || {
+                release_process_control_guard(process_control_guard);
+                operation_guard.release();
+            },
         );
     }
     result.map(|_| ())
@@ -314,6 +362,7 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let _env_script = env_script;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -350,6 +399,7 @@ where
                     env_script: _env_script,
                     writer,
                     operation_guard: operation_guard.clone(),
+                    process_control_guard,
                     error: format!("Failed to spawn stderr drain thread: {e}"),
                 });
                 return;
@@ -432,6 +482,7 @@ where
                     env_script: _env_script,
                     writer,
                     operation_guard: operation_guard.clone(),
+                    process_control_guard,
                     error: format!("Failed to spawn stdout drain thread: {e}"),
                 });
                 return;
@@ -487,6 +538,7 @@ where
     );
 
     send_process_exit_after_lock(seq, pid, exit_code, &[], &stderr, &writer, || {
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
     });
 }
@@ -503,6 +555,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         env_script,
         writer,
         operation_guard,
+        process_control_guard,
         error,
     } = failure;
     let _env_script = env_script;
@@ -516,6 +569,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         let _ = handle.join();
     }
     send_process_exit_after_lock(seq, pid, 1, &[], error.as_bytes(), &writer, || {
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
     });
 }
@@ -535,19 +589,26 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let exit_writer = writer.clone();
     let monitor_spawner = spawner.clone();
     let monitor_operation_guard = operation_guard.clone();
+    let process_control_guard_slot = new_process_control_guard_slot(process_control_guard);
+    let monitor_process_control_guard_slot = process_control_guard_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_BUFFERED_MONITOR,
         Box::new(move || {
+            let process_control_guard =
+                take_process_control_guard(&monitor_process_control_guard_slot);
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
                     "spawn_process: buffered monitor child guard was empty",
                 );
+                release_process_control_guard(process_control_guard);
+                monitor_operation_guard.release();
                 return;
             };
             let (outcome, stdout, stderr_buf) =
@@ -571,12 +632,14 @@ where
             );
 
             send_process_exit_after_lock(seq, pid, exit_code, &stdout, &stderr, &writer, || {
+                release_process_control_guard(process_control_guard);
                 monitor_operation_guard.release();
             });
             drop(env_script);
         }),
     );
     if let Err(e) = &result {
+        let process_control_guard = take_process_control_guard(&process_control_guard_slot);
         send_process_exit_after_lock(
             seq,
             pid,
@@ -584,7 +647,10 @@ where
             &[],
             format!("Failed to spawn buffered monitor thread: {e}").as_bytes(),
             &exit_writer,
-            || operation_guard.release(),
+            || {
+                release_process_control_guard(process_control_guard);
+                operation_guard.release();
+            },
         );
     }
     result.map(|_| ())
@@ -605,8 +671,24 @@ fn send_process_exit_after_lock<F>(
     let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &payload) {
         Ok(msg) => msg,
         Err(e) => {
-            log("ERROR", &format!("Failed to encode process_exit: {}", e));
-            return;
+            log(
+                "ERROR",
+                &format!("Failed to encode process_exit, sending fallback: {}", e),
+            );
+            let diagnostic = format!("process_exit output exceeded protocol limit: {e}");
+            let fallback_payload =
+                vsock_proto::encode_process_exit(pid, 1, &[], diagnostic.as_bytes());
+            match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &fallback_payload) {
+                Ok(msg) => msg,
+                Err(fallback_error) => {
+                    log(
+                        "ERROR",
+                        &format!("Failed to encode fallback process_exit: {fallback_error}"),
+                    );
+                    after_lock();
+                    return;
+                }
+            }
         }
     };
     if let Err(e) = writer.write_frame_after_lock(&exit_msg, after_lock) {
@@ -617,6 +699,7 @@ fn send_process_exit_after_lock<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::process_control::ProcessControlRegistry;
     use crate::threading::test_support::FailingThreadSpawner;
     use crate::wait::THREAD_DRAIN_STDOUT;
     use std::io::Read;
@@ -649,6 +732,62 @@ mod tests {
     }
 
     #[test]
+    fn process_control_guard_slot_survives_dropped_monitor_task() {
+        const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+        let registry = ProcessControlRegistry::default();
+        let guard_slot =
+            new_process_control_guard_slot(Some(registry.register(7, Some(NONCE)).unwrap()));
+        let task_guard_slot = guard_slot.clone();
+
+        let result = FailingThreadSpawner::fail_once("test-monitor").spawn_unit(
+            "test-monitor",
+            Box::new(move || {
+                release_process_control_guard(take_process_control_guard(&task_guard_slot));
+            }),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            registry.contains(7),
+            "dropping an unstarted monitor task must not release process control early",
+        );
+
+        release_process_control_guard(take_process_control_guard(&guard_slot));
+        assert!(!registry.contains(7));
+    }
+
+    #[test]
+    fn oversized_process_exit_sends_fallback_and_releases_operation() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let operation_state = crate::quiesce::OperationState::default();
+        let operation_guard = operation_state.acquire().unwrap();
+        let stdout = vec![0u8; vsock_proto::MAX_MESSAGE_SIZE];
+
+        send_process_exit_after_lock(7, 123, 0, &stdout, &[], &writer, || {
+            operation_guard.release();
+        });
+
+        assert_eq!(operation_state.pending(), 0);
+
+        let exit = read_message(&mut host);
+        assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 7);
+        let (pid, code, fallback_stdout, fallback_stderr) =
+            vsock_proto::decode_process_exit(&exit.payload).unwrap();
+        assert_eq!(pid, 123);
+        assert_eq!(code, 1);
+        assert!(fallback_stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(fallback_stderr).contains("protocol limit"),
+            "unexpected stderr: {:?}",
+            String::from_utf8_lossy(fallback_stderr),
+        );
+    }
+
+    #[test]
     fn spawn_process_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -663,6 +802,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             7,
             operation_guard(),
@@ -708,6 +848,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             8,
             operation_guard(),
@@ -753,6 +894,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             10,
             operation_guard(),
@@ -798,6 +940,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: false,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             9,
             operation_guard(),
@@ -843,6 +986,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: false,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             11,
             operation_guard(),

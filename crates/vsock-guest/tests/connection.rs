@@ -13,9 +13,10 @@ use vsock_guest::{handle_connection, run};
 use vsock_proto::{
     self, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR,
     MSG_EXEC_CANCEL, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK,
-    MSG_WRITE_FILE,
+    MSG_OPERATIONS_RESUMED, MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT,
+    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE,
+    ProcessControlStatus,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -1096,6 +1097,35 @@ fn exec_operation_seq_zero_start_and_cancel_return_error() {
 }
 
 #[test]
+fn process_messages_seq_zero_return_error() {
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 0, "printf should-not-run", NONCE);
+    let spawn_error = read_message(&mut host_stream);
+    assert_eq!(spawn_error.msg_type, MSG_ERROR);
+    assert_eq!(spawn_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&spawn_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    send_process_control(&mut host_stream, 0, 1, NONCE, "message-zero");
+    let control_error = read_message(&mut host_stream);
+    assert_eq!(control_error.msg_type, MSG_ERROR);
+    assert_eq!(control_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&control_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -1453,6 +1483,60 @@ fn send_spawn_process_with_env(
     stream.write_all(&msg).unwrap();
 }
 
+fn send_spawn_process_with_control_nonce(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    control_nonce: vsock_proto::ProcessControlNonce,
+) {
+    let payload = vsock_proto::encode_spawn_process_with_control_nonce(
+        5000,
+        command,
+        &[],
+        false,
+        true,
+        control_nonce,
+        None,
+    )
+    .unwrap();
+    let msg = vsock_proto::encode(MSG_SPAWN_PROCESS, seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn send_process_control(
+    stream: &mut impl std::io::Write,
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: vsock_proto::ProcessControlNonce,
+    message_id: &str,
+) {
+    let payload =
+        vsock_proto::encode_process_control(target_seq, control_nonce, message_id, b"payload")
+            .unwrap();
+    let msg = vsock_proto::encode(MSG_PROCESS_CONTROL, request_seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn assert_process_control_result(
+    stream: &mut impl std::io::Read,
+    request_seq: u32,
+    expected_target_seq: u32,
+    expected_nonce: vsock_proto::ProcessControlNonce,
+    expected_message_id: &str,
+    expected_status: ProcessControlStatus,
+    expected_diagnostic: &str,
+) {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_PROCESS_CONTROL_RESULT);
+    assert_eq!(msg.seq, request_seq);
+    let decoded = vsock_proto::decode_process_control_result(&msg.payload).unwrap();
+    assert_eq!(decoded.target_seq, expected_target_seq);
+    assert_eq!(decoded.control_nonce, expected_nonce);
+    assert_eq!(decoded.message_id, expected_message_id);
+    assert_eq!(decoded.status, expected_status);
+    assert_eq!(decoded.diagnostic, expected_diagnostic);
+}
+
 /// Read all streaming messages for a spawn_process command in a single loop.
 /// Uses one decoder to avoid losing messages when the OS batches multiple
 /// protocol frames into a single read buffer.
@@ -1530,6 +1614,208 @@ fn streaming_monitor_normal_exit() {
     assert!(pid > 0);
     assert_eq!(exit_code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn process_control_validates_nonce_before_sink_dispatch() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 31, "sleep 60", NONCE);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 31);
+
+    send_process_control(&mut host_stream, 32, 31, NONCE, "message-1");
+    assert_process_control_result(
+        &mut host_stream,
+        32,
+        31,
+        NONCE,
+        "message-1",
+        ProcessControlStatus::Unsupported,
+        "process control sink is not configured",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn process_control_rejects_nonce_mismatch() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+    const WRONG_NONCE: vsock_proto::ProcessControlNonce = *b"fedcba9876543210";
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 33, "sleep 60", NONCE);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 33);
+
+    send_process_control(&mut host_stream, 34, 33, WRONG_NONCE, "message-2");
+    assert_process_control_result(
+        &mut host_stream,
+        34,
+        33,
+        WRONG_NONCE,
+        "message-2",
+        ProcessControlStatus::NonceMismatch,
+        "process operation nonce mismatch",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn process_control_duplicate_spawn_seq_returns_error_without_replacing_active_nonce() {
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+    const DUPLICATE_NONCE: vsock_proto::ProcessControlNonce = *b"fedcba9876543210";
+
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 39, "sleep 60", NONCE);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 39);
+
+    send_spawn_process_with_control_nonce(
+        &mut host_stream,
+        39,
+        "printf duplicate",
+        DUPLICATE_NONCE,
+    );
+    let duplicate = read_message(&mut host_stream);
+    assert_eq!(duplicate.msg_type, MSG_ERROR);
+    assert_eq!(duplicate.seq, 39);
+    let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
+    assert!(error.contains("already active"));
+
+    send_process_control(&mut host_stream, 40, 39, NONCE, "message-duplicate");
+    assert_process_control_result(
+        &mut host_stream,
+        40,
+        39,
+        NONCE,
+        "message-duplicate",
+        ProcessControlStatus::Unsupported,
+        "process control sink is not configured",
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn duplicate_spawn_seq_without_control_nonce_returns_error() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process(&mut host_stream, 41, "sleep 60", None, 5000);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 41);
+
+    send_spawn_process(&mut host_stream, 41, "printf duplicate", None, 5000);
+    let duplicate = read_message(&mut host_stream);
+    assert_eq!(duplicate.msg_type, MSG_ERROR);
+    assert_eq!(duplicate.seq, 41);
+    let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
+    assert!(error.contains("already active"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn process_control_without_registered_nonce_returns_inactive() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_process(&mut host_stream, 37, "sleep 60", None, 5000);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 37);
+
+    send_process_control(&mut host_stream, 38, 37, NONCE, "message-4");
+    assert_process_control_result(
+        &mut host_stream,
+        38,
+        37,
+        NONCE,
+        "message-4",
+        ProcessControlStatus::Inactive,
+        "process operation is not active",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
+fn process_control_after_exit_returns_inactive() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 35, "printf done", NONCE);
+    let (_pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 35);
+    assert_eq!(stdout_data, b"done");
+    assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
+
+    send_process_control(&mut host_stream, 36, 35, NONCE, "message-3");
+    assert_process_control_result(
+        &mut host_stream,
+        36,
+        35,
+        NONCE,
+        "message-3",
+        ProcessControlStatus::Inactive,
+        "process operation is not active",
+    );
 
     drop(host_stream);
     let _ = handle.join();

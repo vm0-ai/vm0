@@ -5,9 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
-use vsock_proto::{MSG_ERROR, MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, RawMessage};
+use vsock_proto::{
+    MSG_ERROR, MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_SPAWN_PROCESS,
+    MSG_SPAWN_PROCESS_RESULT, ProcessControlNonce, ProcessControlStatus, RawMessage,
+};
 
-use crate::{ConnectionState, Shared, request_raw_on_shared};
+use crate::{ConnectionState, Shared, request_on_shared, request_raw_on_shared};
 
 /// Event emitted when a spawned process exits.
 #[derive(Debug, Clone)]
@@ -16,6 +19,13 @@ pub struct ProcessExitEvent {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+/// Host-side result of a process-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessControlAck {
+    pub target_seq: u32,
+    pub message_id: String,
 }
 
 struct ProcessOperation {
@@ -162,8 +172,17 @@ pub struct GuestProcessHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
     pid: u32,
+    control: GuestProcessControlHandle,
     stdout_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
     exit_rx: Option<oneshot::Receiver<ProcessExitEvent>>,
+}
+
+/// Cloneable handle for sending control messages to a live process operation.
+#[derive(Clone)]
+pub struct GuestProcessControlHandle {
+    shared: Arc<Shared>,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
 }
 
 impl fmt::Debug for GuestProcessHandle {
@@ -180,6 +199,19 @@ impl fmt::Debug for GuestProcessHandle {
 impl GuestProcessHandle {
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    pub fn control_handle(&self) -> GuestProcessControlHandle {
+        self.control.clone()
+    }
+
+    pub async fn control(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> io::Result<ProcessControlAck> {
+        self.control.control(message_id, payload, timeout).await
     }
 
     pub fn take_stdout_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<Vec<u8>>> {
@@ -204,6 +236,104 @@ impl GuestProcessHandle {
             .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?;
         self.seq = None;
         Ok(event)
+    }
+}
+
+impl fmt::Debug for GuestProcessControlHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GuestProcessControlHandle")
+            .field("target_seq", &self.target_seq)
+            .finish_non_exhaustive()
+    }
+}
+
+impl GuestProcessControlHandle {
+    fn protocol_error(&self, message: impl ToString) -> io::Error {
+        self.shared.poison_connection();
+        io::Error::new(io::ErrorKind::InvalidData, message.to_string())
+    }
+
+    pub async fn control(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> io::Result<ProcessControlAck> {
+        let request = vsock_proto::encode_process_control(
+            self.target_seq,
+            self.control_nonce,
+            message_id,
+            payload,
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        let response =
+            request_on_shared(&self.shared, MSG_PROCESS_CONTROL, &request, timeout).await?;
+        self.decode_control_response(message_id, response)
+    }
+
+    fn decode_control_response(
+        &self,
+        message_id: &str,
+        response: RawMessage,
+    ) -> io::Result<ProcessControlAck> {
+        if response.msg_type == MSG_ERROR {
+            let msg =
+                vsock_proto::decode_error(&response.payload).map_err(|e| self.protocol_error(e))?;
+            return Err(io::Error::other(msg.to_owned()));
+        }
+        if response.msg_type != MSG_PROCESS_CONTROL_RESULT {
+            return Err(self.protocol_error(format!(
+                "unexpected response type: 0x{:02X}",
+                response.msg_type
+            )));
+        }
+        let result = vsock_proto::decode_process_control_result(&response.payload)
+            .map_err(|e| self.protocol_error(e))?;
+        if result.target_seq != self.target_seq {
+            return Err(self.protocol_error(format!(
+                "process_control_result target seq mismatch: expected {}, got {}",
+                self.target_seq, result.target_seq
+            )));
+        }
+        if result.control_nonce != self.control_nonce {
+            return Err(self.protocol_error("process_control_result nonce mismatch"));
+        }
+        if result.message_id != message_id {
+            return Err(self.protocol_error(format!(
+                "process_control_result message_id mismatch: expected {message_id}, got {}",
+                result.message_id
+            )));
+        }
+        match result.status {
+            ProcessControlStatus::Delivered => Ok(ProcessControlAck {
+                target_seq: result.target_seq,
+                message_id: result.message_id.to_owned(),
+            }),
+            ProcessControlStatus::Inactive => Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                if result.diagnostic.is_empty() {
+                    "process operation is not active".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::NonceMismatch => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                if result.diagnostic.is_empty() {
+                    "process operation nonce mismatch".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::Unsupported => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                if result.diagnostic.is_empty() {
+                    "process control is not supported by this operation".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+        }
     }
 }
 
@@ -326,12 +456,14 @@ pub(crate) async fn spawn_process_on_shared(
     stream_stdout: bool,
     stdout_log_path: Option<&str>,
 ) -> io::Result<GuestProcessHandle> {
-    let payload = vsock_proto::encode_spawn_process(
+    let control_nonce = *uuid::Uuid::new_v4().as_bytes();
+    let payload = vsock_proto::encode_spawn_process_with_control_nonce(
         timeout_ms,
         command,
         env,
         sudo,
         stream_stdout,
+        control_nonce,
         stdout_log_path,
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -399,6 +531,11 @@ pub(crate) async fn spawn_process_on_shared(
         shared: Arc::clone(shared),
         seq: Some(seq),
         pid,
+        control: GuestProcessControlHandle {
+            shared: Arc::clone(shared),
+            target_seq: seq,
+            control_nonce,
+        },
         stdout_rx,
         exit_rx: Some(exit_rx),
     })

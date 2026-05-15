@@ -14,6 +14,7 @@ mod handlers;
 mod log;
 mod monitor;
 mod process;
+mod process_control;
 mod quiesce;
 mod shell_command;
 mod shutdown;

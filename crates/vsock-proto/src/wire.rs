@@ -27,6 +27,8 @@ pub const MSG_QUIESCE_OPERATIONS: u8 = 0x0F;
 pub const MSG_OPERATIONS_QUIESCED: u8 = 0x10;
 pub const MSG_RESUME_OPERATIONS: u8 = 0x11;
 pub const MSG_OPERATIONS_RESUMED: u8 = 0x12;
+pub const MSG_PROCESS_CONTROL: u8 = 0x13;
+pub const MSG_PROCESS_CONTROL_RESULT: u8 = 0x14;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
@@ -35,6 +37,7 @@ pub const VSOCK_PORT: u32 = 1000;
 // Spawn-process payload flags.
 pub const SPAWN_PROCESS_FLAG_SUDO: u8 = 0x01;
 pub const SPAWN_PROCESS_FLAG_STREAM_STDOUT: u8 = 0x02;
+pub const SPAWN_PROCESS_FLAG_CONTROL_NONCE: u8 = 0x04;
 
 // Exec operation payload flags.
 pub const EXEC_FLAG_SUDO: u8 = 0x01;
@@ -55,6 +58,12 @@ mod tests {
     fn spawn_process_keeps_existing_wire_values() {
         assert_eq!(MSG_SPAWN_PROCESS, 0x05);
         assert_eq!(MSG_SPAWN_PROCESS_RESULT, 0x06);
+    }
+
+    #[test]
+    fn process_control_keeps_wire_values() {
+        assert_eq!(MSG_PROCESS_CONTROL, 0x13);
+        assert_eq!(MSG_PROCESS_CONTROL_RESULT, 0x14);
     }
 
     #[test]

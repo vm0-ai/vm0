@@ -69,6 +69,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
   ["/api/zero/host/deployments/:path*", "/api/zero/host/deployments/:path*"],
   ["/api/zero/voice-io/quota", "/api/zero/voice-io/quota"],
+  ["/api/zero/voice-io/speech", "/api/zero/voice-io/speech"],
   [
     "/api/zero/voice-chat/:id/session-ended",
     "/api/zero/voice-chat/:id/session-ended",
