@@ -9,7 +9,9 @@ use vsock_proto::{
     MSG_SHUTDOWN_ACK,
 };
 
-use super::support::{host_from_stream, make_pair, mock_handshake, send_exec_result};
+use super::support::{
+    host_from_stream, make_pair, mock_handshake, read_guest_message, send_exec_result,
+};
 use crate::VsockHost;
 
 #[tokio::test]
@@ -198,25 +200,24 @@ async fn quiesce_operations_rejects_non_empty_ack_payload() {
 #[tokio::test]
 async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     let (host_stream, mut guest) = make_pair();
+    let (quiesce_seen_tx, quiesce_seen_rx) = tokio::sync::oneshot::channel();
     let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_QUIESCE_OPERATIONS);
+        let quiesce = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(quiesce.msg_type, MSG_QUIESCE_OPERATIONS);
+        quiesce_seen_tx.send(()).unwrap();
 
         receive_late_ack.await.unwrap();
-        let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msgs[0].seq, &[]).unwrap();
+        let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, quiesce.seq, &[]).unwrap();
         guest.write_all(&late).await.unwrap();
 
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_RESUME_OPERATIONS);
-        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, msgs[0].seq, &[]).unwrap();
+        let resume = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(resume.msg_type, MSG_RESUME_OPERATIONS);
+        let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, resume.seq, &[]).unwrap();
         guest.write_all(&resp).await.unwrap();
     });
 
@@ -224,6 +225,10 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
     let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
 
+    tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx)
+        .await
+        .unwrap()
+        .unwrap();
     send_late_ack.send(()).unwrap();
     host.resume_operations(Duration::from_secs(2))
         .await
