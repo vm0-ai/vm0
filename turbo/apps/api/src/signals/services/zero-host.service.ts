@@ -339,7 +339,11 @@ export const prepareHostedSiteDeployment$ = command(
 
     const writeDb = set(writeDb$);
     const now = nowDate();
-    const publicSlug = args.body.site;
+    const orgHash = createHash("sha256")
+      .update(args.orgId)
+      .digest("hex")
+      .substring(0, 8);
+    const publicSlug = `${args.body.site}-${orgHash}`;
     const url = publicUrl(publicSlug);
 
     const siteAndDeployment = await createHostedSiteDeployment(
