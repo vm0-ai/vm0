@@ -161,6 +161,39 @@ const seedConversationForSession$ = command(
   },
 );
 
+const seedHashConversationForSession$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly sessionId: string;
+      readonly hash: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const db = set(writeDb$);
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        runId: args.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `session-${args.runId}`,
+        cliAgentSessionHistoryHash: args.hash,
+      })
+      .returning({ id: conversations.id });
+    signal.throwIfAborted();
+    if (!conversation) {
+      throw new Error("conversation insert returned no row");
+    }
+    await db
+      .update(agentSessions)
+      .set({ conversationId: conversation.id })
+      .where(eq(agentSessions.id, args.sessionId));
+    signal.throwIfAborted();
+    return conversation.id;
+  },
+);
+
 const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
@@ -914,6 +947,86 @@ describe("POST /api/agent/runs", () => {
       sessionId: `session-${first.body.runId}`,
     });
     expect(conversationId).toBeDefined();
+  });
+
+  it("continues a session whose history is stored only in R2 (hash-only conversation)", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+
+    const hash = "a".repeat(64);
+    const sessionHistoryContent =
+      '{"type":"init"}\n{"type":"human","text":"hi"}\n';
+
+    await store.set(
+      seedHashConversationForSession$,
+      {
+        runId: first.body.runId,
+        sessionId: first.body.sessionId,
+        hash,
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+
+    context.mocks.s3.send.mockImplementation((cmd: unknown) => {
+      const input = (cmd as { readonly input?: { readonly Key?: string } })
+        .input;
+      if (input?.Key === `blobs/${hash}.blob`) {
+        return Promise.resolve({
+          Body: {
+            async *[Symbol.asyncIterator]() {
+              yield Buffer.from(sessionHistoryContent, "utf8");
+            },
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionId: first.body.sessionId, prompt: "continue" },
+      }),
+      [201],
+    );
+
+    expect(continued.body.sessionId).toBe(first.body.sessionId);
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, continued.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly resumeSession: {
+        readonly sessionId: string;
+        readonly sessionHistory: string;
+      };
+    };
+    expect(executionContext.resumeSession.sessionId).toBe(
+      `session-${first.body.runId}`,
+    );
+    expect(executionContext.resumeSession.sessionHistory).toBe(
+      sessionHistoryContent,
+    );
+    expect(runContextSnapshot(continued.body.runId)).toMatchObject({
+      runId: continued.body.runId,
+      userId: fx.userId,
+      prompt: "continue",
+      sessionId: `session-${first.body.runId}`,
+    });
   });
 
   it("resumes from a checkpoint and stores resumedFromCheckpointId", async () => {

@@ -94,6 +94,7 @@ import {
   providerUnavailable,
 } from "../../lib/error";
 import { writeDb$, type Db } from "../external/db";
+import { downloadS3Buffer } from "../external/s3";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   publishOrgSignal,
@@ -1875,6 +1876,7 @@ async function resolveByComposeId(
 }
 
 async function resolveBySessionId(
+  get: ComputedGetter,
   db: Db,
   sessionId: string,
   userId: string,
@@ -1909,7 +1911,7 @@ async function resolveBySessionId(
   const resumeSession =
     session.conversationId === null
       ? undefined
-      : await loadResumeSession(db, session.conversationId);
+      : await loadResumeSession(get, db, session.conversationId);
 
   return {
     ...resolved,
@@ -1921,6 +1923,7 @@ async function resolveBySessionId(
 }
 
 async function resolveByCheckpointId(
+  get: ComputedGetter,
   db: Db,
   checkpointId: string,
   userId: string,
@@ -1967,11 +1970,12 @@ async function resolveByCheckpointId(
       row.volumeVersionsSnapshot,
     ),
     resumedFromCheckpointId: checkpointId,
-    resumeSession: await loadResumeSession(db, row.conversationId),
+    resumeSession: await loadResumeSession(get, db, row.conversationId),
   };
 }
 
 async function loadResumeSession(
+  get: ComputedGetter,
   db: Db,
   conversationId: string,
 ): Promise<StoredExecutionContext["resumeSession"] | undefined> {
@@ -1979,22 +1983,64 @@ async function loadResumeSession(
     .select({
       cliAgentSessionId: conversations.cliAgentSessionId,
       cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
     })
     .from(conversations)
     .where(eq(conversations.id, conversationId))
     .limit(1);
 
-  if (!conversation?.cliAgentSessionHistory) {
+  if (!conversation) {
+    return undefined;
+  }
+
+  const sessionHistory = await resolveConversationSessionHistory(get, {
+    hash: conversation.cliAgentSessionHistoryHash,
+    legacyText: conversation.cliAgentSessionHistory,
+  });
+
+  if (sessionHistory === null) {
     return undefined;
   }
 
   return {
     sessionId: conversation.cliAgentSessionId,
-    sessionHistory: conversation.cliAgentSessionHistory,
+    sessionHistory,
   };
 }
 
+async function resolveConversationSessionHistory(
+  get: ComputedGetter,
+  args: {
+    readonly hash: string | null;
+    readonly legacyText: string | null;
+  },
+): Promise<string | null> {
+  const { hash, legacyText } = args;
+  if (hash) {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const result = await safeAsync(() => {
+      return get(downloadS3Buffer(bucket, `blobs/${hash}.blob`));
+    });
+    if ("ok" in result) {
+      return result.ok.toString("utf8");
+    }
+    if (legacyText) {
+      L.warn(
+        "session history R2 retrieval failed; falling back to legacy TEXT",
+        { hash, error: result.error },
+      );
+      return legacyText;
+    }
+    throw result.error;
+  }
+  if (legacyText) {
+    return legacyText;
+  }
+  return null;
+}
+
 async function resolveCompose(
+  get: ComputedGetter,
   db: Db,
   body: CreateRunBody,
   userId: string,
@@ -2007,10 +2053,16 @@ async function resolveCompose(
   }
 
   if (body.checkpointId) {
-    return await resolveByCheckpointId(db, body.checkpointId, userId, orgId);
+    return await resolveByCheckpointId(
+      get,
+      db,
+      body.checkpointId,
+      userId,
+      orgId,
+    );
   }
   if (body.sessionId) {
-    return await resolveBySessionId(db, body.sessionId, userId, orgId);
+    return await resolveBySessionId(get, db, body.sessionId, userId, orgId);
   }
   if (body.agentComposeVersionId) {
     return await lookupComposeByVersion(db, body.agentComposeVersionId);
@@ -2783,6 +2835,7 @@ async function resolveRunModelProvider(
 }
 
 async function prepareRunContext(
+  get: ComputedGetter,
   db: Db,
   args: CreateAgentRunArgs,
   signal: AbortSignal,
@@ -2809,7 +2862,7 @@ async function prepareRunContext(
   signal.throwIfAborted();
   let body: CreateRunBody = { ...initialBody, vars: mergedVars };
 
-  const resolved = await resolveCompose(db, body, args.userId, args.orgId);
+  const resolved = await resolveCompose(get, db, body, args.userId, args.orgId);
   signal.throwIfAborted();
   if (isRouteError(resolved)) {
     return resolved;
@@ -3055,7 +3108,7 @@ export const createAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<CreateRunRouteResult> => {
     const db = set(writeDb$);
-    const context = await prepareRunContext(db, args, signal);
+    const context = await prepareRunContext(get, db, args, signal);
     if (isRouteError(context)) {
       return context;
     }
