@@ -250,9 +250,9 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled_with_spawner<S>(
 where
     S: ThreadSpawner,
 {
-    // Defensive: if either pipe is missing the caller broke the
-    // `spawn_shell_command_with_pipes` invariant. Reap the child before returning so we
-    // don't leave a zombie — `Child`'s `Drop` doesn't wait.
+    // Defensive: callers must pass a child with stdout/stderr piped, such as
+    // one returned by `spawn_shell_command_with_pipes`. Reap the child before
+    // returning so we don't leave a zombie — `Child`'s `Drop` doesn't wait.
     let stdout = match child.stdout.take() {
         Some(s) => s,
         None => {
