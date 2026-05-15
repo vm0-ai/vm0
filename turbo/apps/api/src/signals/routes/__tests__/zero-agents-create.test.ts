@@ -9,7 +9,7 @@ import {
 import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -313,5 +313,19 @@ describe("POST /api/zero/agents", () => {
         code: "CONFLICT",
       },
     });
+
+    const db = store.set(writeDb$);
+    const [composeCount] = await db
+      .select({ value: count() })
+      .from(agentComposes)
+      .where(eq(agentComposes.orgId, fixture.orgId));
+    const [zeroAgentCount] = await db
+      .select({ value: count() })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.orgId, fixture.orgId));
+
+    expect(composeCount?.value).toBe(7);
+    expect(zeroAgentCount?.value).toBe(7);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 });

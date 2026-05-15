@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.49.0](https://github.com/vm0-ai/vm0/compare/api-v1.48.0...api-v1.49.0) (2026-05-15)
+
+
+### Features
+
+* add local-browser write approvals ([#13368](https://github.com/vm0-ai/vm0/issues/13368)) ([6b226ba](https://github.com/vm0-ai/vm0/commit/6b226baae25cf08f80b96902d3cfa1673c2c756d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.26.0
+    * @vm0/core bumped to 8.277.1
+    * @vm0/db bumped to 1.13.0
+
 ## [1.48.0](https://github.com/vm0-ai/vm0/compare/api-v1.47.2...api-v1.48.0) (2026-05-15)
 
 

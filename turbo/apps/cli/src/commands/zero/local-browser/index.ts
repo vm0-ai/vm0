@@ -1,13 +1,19 @@
 import { Command } from "commander";
+import chalk from "chalk";
 import type {
+  LocalBrowserAuditEvent,
   LocalBrowserCommandResponse,
+  LocalBrowserHost,
   LocalBrowserReadCommandKind,
   LocalBrowserWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   createLocalBrowserReadCommand,
   createLocalBrowserWriteCommand,
+  deleteLocalBrowserHost,
   getLocalBrowserReadCommand,
+  listLocalBrowserAuditEvents,
+  listLocalBrowserHosts,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
@@ -36,6 +42,17 @@ interface BrowserScrollOptions extends BrowserCommandOptions {
 
 interface BrowserUrlOptions extends BrowserCommandOptions {
   url: string;
+}
+
+interface JsonOutputOptions {
+  json?: boolean;
+}
+
+interface AuditListOptions extends JsonOutputOptions {
+  limit?: string;
+  commandId?: string;
+  hostId?: string;
+  runId?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -75,6 +92,17 @@ function parsePositiveInteger(
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parseLimit(value: string | undefined): number {
+  if (value === undefined) {
+    return 50;
+  }
+  const parsed = parsePositiveInteger(value, "limit");
+  if (parsed > 200) {
+    throw new Error("limit must be 200 or less");
   }
   return parsed;
 }
@@ -234,6 +262,126 @@ function readCommand(name: string, kind: LocalBrowserReadCommandKind): Command {
   );
 }
 
+function formatCapabilities(capabilities: readonly string[]): string {
+  return capabilities.length > 0 ? capabilities.join(", ") : "none";
+}
+
+function formatHost(host: LocalBrowserHost): string {
+  const status =
+    host.status === "online" ? chalk.green("online") : chalk.dim("offline");
+  return [
+    `${status}  ${host.displayName}`,
+    `  id: ${host.id}`,
+    `  browser: ${host.browser}`,
+    `  extension: ${host.extensionVersion}`,
+    `  last seen: ${host.lastSeenAt}`,
+    `  capabilities: ${formatCapabilities(host.supportedCapabilities)}`,
+  ].join("\n");
+}
+
+function formatAuditEvent(event: LocalBrowserAuditEvent): string {
+  const parts = [
+    event.createdAt,
+    event.event,
+    event.kind,
+    `command=${event.commandId}`,
+  ];
+  if (event.hostId) {
+    parts.push(`host=${event.hostId}`);
+  }
+  if (event.runId) {
+    parts.push(`run=${event.runId}`);
+  }
+  if (event.tabId) {
+    parts.push(`tab=${event.tabId}`);
+  }
+  if (event.targetUrl) {
+    parts.push(`url=${event.targetUrl}`);
+  }
+  if (event.approvalOutcome) {
+    parts.push(`approval=${event.approvalOutcome}`);
+  }
+  if (event.error) {
+    parts.push(`error=${JSON.stringify(event.error)}`);
+  }
+  return parts.join("  ");
+}
+
+const hostsCommand = new Command()
+  .name("hosts")
+  .description("List and revoke linked local-browser hosts")
+  .addCommand(
+    new Command()
+      .name("list")
+      .description("List linked local-browser hosts")
+      .option("--json", "Output hosts as JSON")
+      .action(
+        withErrorHandler(async (options: JsonOutputOptions) => {
+          const result = await listLocalBrowserHosts();
+          if (options.json) {
+            console.log(JSON.stringify(result));
+            return;
+          }
+          if (result.hosts.length === 0) {
+            console.log(chalk.dim("No linked local-browser hosts."));
+            return;
+          }
+          console.log(result.hosts.map(formatHost).join("\n\n"));
+        }),
+      ),
+  )
+  .addCommand(
+    new Command()
+      .name("revoke")
+      .description("Revoke a linked local-browser host")
+      .argument("<host-id>", "Local-browser host id")
+      .option("--json", "Output the revoke result as JSON")
+      .action(
+        withErrorHandler(async (hostId: string, options: JsonOutputOptions) => {
+          const result = await deleteLocalBrowserHost(hostId);
+          if (options.json) {
+            console.log(JSON.stringify(result));
+            return;
+          }
+          console.log(chalk.green("Local-browser host revoked"));
+          console.log(chalk.dim(`  Host: ${hostId}`));
+        }),
+      ),
+  );
+
+const auditCommand = new Command()
+  .name("audit")
+  .description("Inspect local-browser write command audit events")
+  .addCommand(
+    new Command()
+      .name("list")
+      .description("List local-browser write command audit events")
+      .option("--limit <count>", "Maximum events to show", "50")
+      .option("--command-id <id>", "Filter by command id")
+      .option("--host-id <id>", "Filter by host id")
+      .option("--run-id <id>", "Filter by run id")
+      .option("--json", "Output audit events as JSON")
+      .action(
+        withErrorHandler(async (options: AuditListOptions) => {
+          const result = await listLocalBrowserAuditEvents({
+            limit: parseLimit(options.limit),
+            ...(options.commandId ? { commandId: options.commandId } : {}),
+            ...(options.hostId ? { hostId: options.hostId } : {}),
+            ...(options.runId ? { runId: options.runId } : {}),
+          });
+          if (options.json) {
+            console.log(JSON.stringify(result));
+            return;
+          }
+          if (result.auditEvents.length === 0) {
+            console.log(chalk.dim("No local-browser audit events found."));
+            return;
+          }
+          console.log(result.auditEvents.map(formatAuditEvent).join("\n"));
+        }),
+      ),
+  );
+
 const tabsCommand = new Command()
   .name("tabs")
   .description("Read and control browser tabs")
@@ -370,15 +518,20 @@ const pageCommand = new Command()
 
 export const zeroLocalBrowserCommand = new Command()
   .name("local-browser")
-  .description("Read authorized browser context")
+  .description("Read and manage authorized browser context")
   .addHelpText(
     "after",
     `
 Examples:
+  List hosts?      zero local-browser hosts list
+  Revoke host?     zero local-browser hosts revoke <host-id>
   List tabs?       zero local-browser tabs list
   Current tab?     zero local-browser tabs current
   Click page?      zero local-browser page click --selector button
-  Open tab?        zero local-browser tabs open --url https://example.com`,
+  Open tab?        zero local-browser tabs open --url https://example.com
+  Audit actions?   zero local-browser audit list`,
   )
+  .addCommand(hostsCommand)
+  .addCommand(auditCommand)
   .addCommand(tabsCommand)
   .addCommand(pageCommand);

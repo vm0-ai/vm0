@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.367.0](https://github.com/vm0-ai/vm0/compare/web-v12.366.0...web-v12.367.0) (2026-05-15)
+
+
+### Features
+
+* add local-browser write approvals ([#13368](https://github.com/vm0-ai/vm0/issues/13368)) ([6b226ba](https://github.com/vm0-ai/vm0/commit/6b226baae25cf08f80b96902d3cfa1673c2c756d))
+
+
+### Refactoring
+
+* **web:** proxy user preferences to API backend ([#13380](https://github.com/vm0-ai/vm0/issues/13380)) ([2f86d82](https://github.com/vm0-ai/vm0/commit/2f86d82198cf2d1fcdebc13a8ccb3dcecf55ce6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.26.0
+    * @vm0/core bumped to 8.277.1
+    * @vm0/db bumped to 1.13.0
+
 ## [12.366.0](https://github.com/vm0-ai/vm0/compare/web-v12.365.3...web-v12.366.0) (2026-05-15)
 
 

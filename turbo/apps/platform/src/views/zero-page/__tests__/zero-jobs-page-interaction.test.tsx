@@ -10,11 +10,13 @@ import {
 import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
+  type ZeroAgentRequest,
   zeroAgentsMainContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -124,6 +126,58 @@ describe("zero jobs page - create agent dialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
     });
+  });
+
+  it("creates private agents by default when private agents are enabled", async () => {
+    let capturedPayload: ZeroAgentRequest | null = null;
+    server.use(
+      mockApi(zeroAgentsMainContract.create, ({ body, respond }) => {
+        capturedPayload = body;
+        return respond(201, {
+          agentId: "new-agent-id",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Private Bot",
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
+        });
+      }),
+      mockApi(zeroAgentInstructionsContract.update, ({ respond }) => {
+        return respond(200, {
+          agentId: "new-agent-id",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Private Bot",
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: null,
+          customSkills: [],
+        });
+      }),
+    );
+    mockTeamAPI();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.PrivateAgents]: true },
+    });
+    await openDialog();
+
+    expect(screen.getByText("Create as")).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Create as" }),
+    ).toHaveTextContent("Private");
+
+    const input = screen.getByPlaceholderText("e.g. Research Assistant");
+    await fill(input, "Private Bot");
+    click(screen.getByText("Create"));
+
+    await waitFor(() => {
+      expect(capturedPayload).toBeTruthy();
+    });
+    expect(capturedPayload!.visibility).toBe("private");
   });
 
   it("closes the dialog when cancel is clicked (AGENT-D-015)", async () => {

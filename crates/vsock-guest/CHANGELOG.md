@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.16.0...vsock-guest-v0.16.1) (2026-05-15)
+
+
+### Refactoring
+
+* rename spawn watch to spawn process ([#13369](https://github.com/vm0-ai/vm0/issues/13369)) ([e007f30](https://github.com/vm0-ai/vm0/commit/e007f30a2610056a6905e4a38bcc2d894895ffa4))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.15.4...vsock-guest-v0.16.0) (2026-05-14)
 
 

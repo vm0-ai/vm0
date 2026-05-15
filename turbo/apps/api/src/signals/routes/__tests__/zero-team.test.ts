@@ -160,4 +160,34 @@ describe("GET /api/zero/team", () => {
       }),
     ).not.toContain(otherFixture.composeIds[0]);
   });
+
+  it("does not include composes without zero agent metadata", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [{ displayName: "listed-agent" }, { withZeroAgent: false }],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroTeamContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]?.id).toBe(fixture.composeIds[0]);
+    expect(
+      response.body.map((agent) => {
+        return agent.id;
+      }),
+    ).not.toContain(fixture.composeIds[1]);
+  });
 });

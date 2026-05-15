@@ -5,6 +5,7 @@ import {
   zeroLocalBrowserDeviceStartContract,
   zeroLocalBrowserHeartbeatContract,
   zeroLocalBrowserHostRealtimeContract,
+  zeroLocalBrowserAuditEventsContract,
   zeroLocalBrowserCommandContract,
   zeroLocalBrowserCommandApprovalContract,
   zeroLocalBrowserHostCommandsContract,
@@ -18,7 +19,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   approveLocalBrowserWriteCommand$,
@@ -32,6 +33,7 @@ import {
   deleteLocalBrowserHost$,
   getLocalBrowserReadCommand$,
   heartbeatLocalBrowserHost$,
+  listLocalBrowserAuditEvents$,
   listLocalBrowserHosts$,
   pollLocalBrowserDeviceCode$,
   revokeLocalBrowserHostToken$,
@@ -282,6 +284,43 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return { status: 200 as const, body: result };
 });
+
+const auditEventsListQuery$ = queryOf(zeroLocalBrowserAuditEventsContract.list);
+const auditEventsListInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isLocalBrowserEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return localBrowserDisabled;
+    }
+
+    const query = get(auditEventsListQuery$);
+    const result = await set(
+      listLocalBrowserAuditEvents$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        limit: query.limit,
+        ...(query.commandId ? { commandId: query.commandId } : {}),
+        ...(query.hostId ? { hostId: query.hostId } : {}),
+        ...(query.runId ? { runId: query.runId } : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: result };
+  },
+);
 
 const hostsStartBody$ = bodyResultOf(zeroLocalBrowserHostsContract.start);
 const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -809,6 +848,10 @@ export const zeroLocalBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalBrowserHostsContract.list,
     handler: authRoute(localBrowserAuthOptions, hostsListInner$),
+  },
+  {
+    route: zeroLocalBrowserAuditEventsContract.list,
+    handler: authRoute(localBrowserAuthOptions, auditEventsListInner$),
   },
   {
     route: zeroLocalBrowserHostsContract.delete,

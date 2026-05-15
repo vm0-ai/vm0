@@ -212,7 +212,10 @@ export {
 export {
   createLocalBrowserReadCommand,
   createLocalBrowserWriteCommand,
+  deleteLocalBrowserHost,
   getLocalBrowserReadCommand,
+  listLocalBrowserAuditEvents,
+  listLocalBrowserHosts,
 } from "./domains/zero-local-browser";
 
 // Domain modules - Web

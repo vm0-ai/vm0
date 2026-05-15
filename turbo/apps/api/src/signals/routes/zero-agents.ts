@@ -110,6 +110,24 @@ function publicAgentCreateLimitError() {
   );
 }
 
+async function publicAgentCreateSlotError(
+  writeDb: Db,
+  orgId: string,
+  signal: AbortSignal,
+) {
+  const [publicAgentCount] = await writeDb
+    .select({ value: count() })
+    .from(zeroAgents)
+    .where(
+      and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.visibility, "public")),
+    );
+  signal.throwIfAborted();
+
+  return (publicAgentCount?.value ?? 0) >= PUBLIC_AGENT_LIMIT
+    ? publicAgentCreateLimitError()
+    : null;
+}
+
 function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
   return {
     updatedAt,
@@ -445,6 +463,14 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return customSkillsError;
   }
 
+  const limitError =
+    visibility === "public"
+      ? await publicAgentCreateSlotError(writeDb, auth.orgId, signal)
+      : null;
+  if (limitError) {
+    return limitError;
+  }
+
   const agentName = randomUUID();
   const compose = await set(
     createServerSideZeroAgentCompose$,
@@ -518,6 +544,19 @@ const createAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (result.blocked) {
+    const cleanupError = await set(
+      deleteComposeById$,
+      {
+        composeId: compose.composeId,
+        composeName: compose.composeName,
+        orgId: auth.orgId,
+      },
+      signal,
+    );
+    if (cleanupError) {
+      return cleanupError;
+    }
+    signal.throwIfAborted();
     return publicAgentCreateLimitError();
   }
 
