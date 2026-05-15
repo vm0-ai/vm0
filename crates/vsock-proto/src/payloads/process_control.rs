@@ -269,6 +269,10 @@ mod tests {
 
     const NONCE: ProcessControlNonce = *b"0123456789abcdef";
 
+    fn assert_invalid_payload(err: ProtocolError, expected: &'static str) {
+        assert!(matches!(err, ProtocolError::InvalidPayload(msg) if msg == expected));
+    }
+
     #[test]
     fn process_control_roundtrip() {
         let encoded = encode_process_control(7, NONCE, "msg-1", b"hello").unwrap();
@@ -332,10 +336,51 @@ mod tests {
         encoded.push(0);
 
         let err = decode_process_control(&encoded).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::InvalidPayload("process_control trailing bytes")
-        ));
+        assert_invalid_payload(err, "process_control trailing bytes");
+    }
+
+    #[test]
+    fn process_control_rejects_truncated_fields() {
+        let encoded = encode_process_control(7, NONCE, "msg-1", b"hello").unwrap();
+        let message_id_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN;
+        let message_id_offset = message_id_len_offset + 2;
+        let payload_len_offset = message_id_offset + "msg-1".len();
+        let payload_offset = payload_len_offset + 4;
+
+        assert_invalid_payload(
+            decode_process_control(&encoded[..3]).unwrap_err(),
+            "process_control target_seq truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control(&encoded[..4 + PROCESS_CONTROL_NONCE_LEN - 1]).unwrap_err(),
+            "process_control nonce truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control(&encoded[..message_id_len_offset + 1]).unwrap_err(),
+            "process_control message_id_len truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control(&encoded[..message_id_offset + 2]).unwrap_err(),
+            "process_control message_id truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control(&encoded[..payload_len_offset + 3]).unwrap_err(),
+            "process_control payload_len truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control(&encoded[..payload_offset + 2]).unwrap_err(),
+            "process_control payload truncated",
+        );
+    }
+
+    #[test]
+    fn process_control_rejects_invalid_utf8_message_id() {
+        let mut encoded = encode_process_control(7, NONCE, "msg-1", b"hello").unwrap();
+        let message_id_offset = 4 + PROCESS_CONTROL_NONCE_LEN + 2;
+        encoded[message_id_offset] = 0xFF;
+
+        let err = decode_process_control(&encoded).unwrap_err();
+        assert_invalid_payload(err, "invalid UTF-8 in process_control message_id");
     }
 
     #[test]
@@ -425,9 +470,82 @@ mod tests {
         encoded.push(0);
 
         let err = decode_process_control_result(&encoded).unwrap_err();
-        assert!(matches!(
-            err,
-            ProtocolError::InvalidPayload("process_control_result trailing bytes")
-        ));
+        assert_invalid_payload(err, "process_control_result trailing bytes");
+    }
+
+    #[test]
+    fn process_control_result_rejects_truncated_fields() {
+        let encoded = encode_process_control_result(
+            7,
+            NONCE,
+            "msg-1",
+            ProcessControlStatus::Delivered,
+            "diagnostic",
+        )
+        .unwrap();
+        let message_id_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN;
+        let message_id_offset = message_id_len_offset + 2;
+        let status_offset = message_id_offset + "msg-1".len();
+        let diagnostic_len_offset = status_offset + 1;
+        let diagnostic_offset = diagnostic_len_offset + 2;
+
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..3]).unwrap_err(),
+            "process_control_result target_seq truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..4 + PROCESS_CONTROL_NONCE_LEN - 1])
+                .unwrap_err(),
+            "process_control_result nonce truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..message_id_len_offset + 1]).unwrap_err(),
+            "process_control_result message_id_len truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..message_id_offset + 2]).unwrap_err(),
+            "process_control_result message_id truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..status_offset]).unwrap_err(),
+            "process_control_result status truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..diagnostic_len_offset + 1]).unwrap_err(),
+            "process_control_result diagnostic_len truncated",
+        );
+        assert_invalid_payload(
+            decode_process_control_result(&encoded[..diagnostic_offset + 3]).unwrap_err(),
+            "process_control_result diagnostic truncated",
+        );
+    }
+
+    #[test]
+    fn process_control_result_rejects_invalid_utf8_strings() {
+        let mut encoded = encode_process_control_result(
+            7,
+            NONCE,
+            "msg-1",
+            ProcessControlStatus::Delivered,
+            "diagnostic",
+        )
+        .unwrap();
+        let message_id_offset = 4 + PROCESS_CONTROL_NONCE_LEN + 2;
+        encoded[message_id_offset] = 0xFF;
+        let err = decode_process_control_result(&encoded).unwrap_err();
+        assert_invalid_payload(err, "invalid UTF-8 in process_control_result message_id");
+
+        let mut encoded = encode_process_control_result(
+            7,
+            NONCE,
+            "msg-1",
+            ProcessControlStatus::Delivered,
+            "diagnostic",
+        )
+        .unwrap();
+        let diagnostic_offset = 4 + PROCESS_CONTROL_NONCE_LEN + 2 + "msg-1".len() + 1 + 2;
+        encoded[diagnostic_offset] = 0xFF;
+        let err = decode_process_control_result(&encoded).unwrap_err();
+        assert_invalid_payload(err, "invalid UTF-8 in process_control_result diagnostic");
     }
 }
