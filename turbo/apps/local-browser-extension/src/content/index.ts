@@ -58,7 +58,7 @@ async function sendToBackground(
   };
 }
 
-window.addEventListener("message", (event: MessageEvent<unknown>) => {
+function handleWindowMessage(event: MessageEvent<unknown>): void {
   if (event.source !== window) {
     return;
   }
@@ -83,4 +83,6 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
         ok: false,
       });
     });
-});
+}
+
+window.addEventListener("message", handleWindowMessage);
