@@ -492,7 +492,6 @@ export async function invalidateActiveCliAuthStripeSessions(args: {
       message: args.message ?? CLI_AUTH_STRIPE_CREDENTIALS_CHANGED_MESSAGE,
     });
   });
-  args.signal.throwIfAborted();
   await cleanupCliAuthStripeSandboxes({
     client,
     sandboxes,
@@ -973,7 +972,6 @@ export async function startCliAuthStripe(args: {
     mode: args.mode,
     now,
   });
-  args.signal.throwIfAborted();
   await cleanupCliAuthStripeSandboxes({
     client,
     sandboxes: prepared.cleanupSandboxes,
