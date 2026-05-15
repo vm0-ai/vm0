@@ -24,7 +24,7 @@
 //! # Operations
 //! Once running, callers invoke [`exec`](Sandbox::exec) /
 //! [`read_file`](Sandbox::read_file) / [`copy_file`](Sandbox::copy_file) /
-//! [`write_file`](Sandbox::write_file) / [`spawn_watch`](Sandbox::spawn_watch) /
+//! [`write_file`](Sandbox::write_file) / [`spawn_process`](Sandbox::spawn_process) /
 //! [`wait_exit`](Sandbox::wait_exit) via the host-to-guest IPC channel
 //! (vsock, in the Firecracker backend). Operations race against a crash
 //! notifier so that a dying backend process surfaces as a specific
@@ -38,8 +38,8 @@ use async_trait::async_trait;
 
 use crate::error::Result;
 use crate::types::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, ProcessExit, SpawnHandle,
-    SpawnWatchRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
+    SpawnProcessRequest,
 };
 
 /// A process-isolation environment that runs guest workloads for the runner.
@@ -65,7 +65,7 @@ use crate::types::{
 /// # Operations
 /// Once running, callers invoke [`exec`](Self::exec) /
 /// [`read_file`](Self::read_file) / [`copy_file`](Self::copy_file) /
-/// [`write_file`](Self::write_file) / [`spawn_watch`](Self::spawn_watch) /
+/// [`write_file`](Self::write_file) / [`spawn_process`](Self::spawn_process) /
 /// [`wait_exit`](Self::wait_exit) via the host-to-guest IPC channel
 /// (vsock, in the Firecracker backend). Operations race against a crash
 /// notifier so that a dying backend process surfaces as a specific
@@ -163,7 +163,7 @@ pub trait Sandbox: Send + Sync + Any {
     /// Transition the sandbox back to the active state.
     ///
     /// Must be called before any further work is dispatched via `exec` /
-    /// `spawn_watch` on a previously parked sandbox. Implementations
+    /// `spawn_process` on a previously parked sandbox. Implementations
     /// should restore whatever state `park()` altered (resume vCPUs,
     /// balloon deflate, respawn background tickers, etc).
     ///
@@ -190,8 +190,8 @@ pub trait Sandbox: Send + Sync + Any {
     // dying backend process surfaces as a specific error rather than an opaque
     // IPC timeout.
     //
-    // `wait_exit` is the exception: it consumes a `SpawnHandle` returned by
-    // `spawn_watch` and observes that handle's already-started backend exit
+    // `wait_exit` is the exception: it consumes a `GuestProcessHandle` returned by
+    // `spawn_process` and observes that handle's already-started backend exit
     // operation instead of starting new guest work.
 
     /// Run `request.cmd` in the guest, block until it exits or the
@@ -226,11 +226,11 @@ pub trait Sandbox: Send + Sync + Any {
     ///
     /// `request.output` controls whether stdout is buffered into the final
     /// [`ProcessExit`] or streamed in real time through
-    /// [`SpawnHandle::stdout_rx`], optionally
+    /// [`GuestProcessHandle::stdout_rx`], optionally
     /// teeing streamed chunks into a guest-side file.
     /// Callers that take `stdout_rx` are responsible for draining it while the
     /// process runs.
-    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> Result<SpawnHandle>;
+    async fn spawn_process(&self, request: &SpawnProcessRequest<'_>) -> Result<GuestProcessHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///
     /// Consumes the handle. If `stdout_rx` was not taken before waiting, the
@@ -238,5 +238,6 @@ pub trait Sandbox: Send + Sync + Any {
     /// an error if the backend exit operation is no longer available, if the
     /// backing process crashes before an exit result is delivered, or if the
     /// timeout elapses before the guest process exits.
-    async fn wait_exit(&self, handle: SpawnHandle, timeout: Duration) -> Result<ProcessExit>;
+    async fn wait_exit(&self, handle: GuestProcessHandle, timeout: Duration)
+    -> Result<ProcessExit>;
 }

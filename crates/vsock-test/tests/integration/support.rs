@@ -134,7 +134,7 @@ impl Harness {
 
     pub(crate) async fn wait_spawn(
         &self,
-        handle: vsock_host::SpawnWatchHandle,
+        handle: vsock_host::GuestProcessHandle,
         timeout: Duration,
     ) -> io::Result<vsock_host::ProcessExitEvent> {
         tokio::time::timeout(timeout, handle.wait())

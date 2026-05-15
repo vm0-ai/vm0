@@ -86,8 +86,8 @@ pub enum SandboxOperation {
     Exec,
     /// [`Sandbox::write_file`](crate::Sandbox::write_file).
     WriteFile,
-    /// [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
-    SpawnWatch,
+    /// [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
+    SpawnProcess,
     /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit).
     WaitExit,
 }
@@ -97,7 +97,7 @@ impl fmt::Display for SandboxOperation {
         match self {
             Self::Exec => f.write_str("exec"),
             Self::WriteFile => f.write_str("write file"),
-            Self::SpawnWatch => f.write_str("spawn watch"),
+            Self::SpawnProcess => f.write_str("spawn process"),
             Self::WaitExit => f.write_str("wait exit"),
         }
     }

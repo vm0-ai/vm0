@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
-    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SPAWN_WATCH, MSG_WRITE_FILE,
+    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SPAWN_PROCESS, MSG_WRITE_FILE,
 };
 
 use crate::command::{
@@ -19,7 +19,7 @@ use crate::handlers::{
     MessageOutcome, decode_write_file_message, handle_decoded_write_file_message, handle_message,
 };
 use crate::log::log;
-use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
+use crate::monitor::{SpawnProcessRequest, handle_spawn_process};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -261,21 +261,21 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 }
                 vsock_proto::decode_command_cancel(&msg.payload).map_err(to_io_error)?;
                 cancel_command_operation(&command_registry, msg.seq);
-            } else if msg.msg_type == MSG_SPAWN_WATCH {
+            } else if msg.msg_type == MSG_SPAWN_PROCESS {
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
                     continue;
                 }
-                let d = vsock_proto::decode_spawn_watch(&msg.payload).map_err(to_io_error)?;
+                let d = vsock_proto::decode_spawn_process(&msg.payload).map_err(to_io_error)?;
                 let Some(operation_guard) =
                     acquire_operation_guard(&operation_state, msg.seq, &writer)?
                 else {
                     continue;
                 };
-                // handle_spawn_watch writes the response itself (before
+                // handle_spawn_process writes the response itself (before
                 // spawning the streaming thread) to prevent a race where
                 // stdout chunks could arrive at the host before the result.
-                handle_spawn_watch(
-                    SpawnWatchRequest {
+                handle_spawn_process(
+                    SpawnProcessRequest {
                         timeout_ms: d.timeout_ms,
                         command: d.command,
                         env: &d.env,

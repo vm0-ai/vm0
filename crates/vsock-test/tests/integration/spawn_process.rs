@@ -2,16 +2,16 @@ use std::time::Duration;
 
 use crate::support::Harness;
 
-// ── spawn_watch ──────────────────────────────────────────────────────
+// ── spawn_process ──────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_spawn_watch() {
+async fn test_spawn_process() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("echo done", 5000, &[], false, false, None)
+        .spawn_process("echo done", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
     let pid = handle.pid();
     assert!(pid > 0);
 
@@ -27,13 +27,13 @@ async fn test_spawn_watch() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_exit_code() {
+async fn test_spawn_process_exit_code() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("exit 42", 5000, &[], false, false, None)
+        .spawn_process("exit 42", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -45,13 +45,13 @@ async fn test_spawn_watch_exit_code() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_stderr() {
+async fn test_spawn_process_stderr() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("echo error >&2 && exit 1", 5000, &[], false, false, None)
+        .spawn_process("echo error >&2 && exit 1", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -64,11 +64,11 @@ async fn test_spawn_watch_stderr() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_both_stdout_stderr() {
+async fn test_spawn_process_both_stdout_stderr() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "echo out && echo err >&2 && exit 2",
             5000,
             &[],
@@ -77,7 +77,7 @@ async fn test_spawn_watch_both_stdout_stderr() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -91,13 +91,13 @@ async fn test_spawn_watch_both_stdout_stderr() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_no_output() {
+async fn test_spawn_process_no_output() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("true", 5000, &[], false, false, None)
+        .spawn_process("true", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -111,19 +111,19 @@ async fn test_spawn_watch_no_output() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_concurrent() {
+async fn test_spawn_process_concurrent() {
     let h = Harness::new().await;
 
     // Spawn two processes — second finishes first
     let handle1 = h
-        .spawn_watch("sleep 0.1 && echo first", 5000, &[], false, false, None)
+        .spawn_process("sleep 0.1 && echo first", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch 1 failed");
+        .expect("spawn_process 1 failed");
     let pid1 = handle1.pid();
     let handle2 = h
-        .spawn_watch("echo second", 5000, &[], false, false, None)
+        .spawn_process("echo second", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch 2 failed");
+        .expect("spawn_process 2 failed");
     let pid2 = handle2.pid();
 
     assert_ne!(pid1, pid2);
@@ -146,13 +146,13 @@ async fn test_spawn_watch_concurrent() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_timeout() {
+async fn test_spawn_process_timeout() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("sleep 10", 100, &[], false, false, None)
+        .spawn_process("sleep 10", 100, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -165,13 +165,13 @@ async fn test_spawn_watch_timeout() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_exit_before_wait() {
+async fn test_spawn_process_exit_before_wait() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("echo completed", 5000, &[], false, false, None)
+        .spawn_process("echo completed", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     // Use an exec round-trip as a synchronization barrier: by the time exec
     // returns, the exit event from "echo completed" has already been delivered
@@ -192,11 +192,11 @@ async fn test_spawn_watch_exit_before_wait() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_multiline() {
+async fn test_spawn_process_multiline() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "printf 'line1\\nline2\\nline3\\n'",
             5000,
             &[],
@@ -205,7 +205,7 @@ async fn test_spawn_watch_multiline() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -218,11 +218,11 @@ async fn test_spawn_watch_multiline() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_large_output() {
+async fn test_spawn_process_large_output() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "dd if=/dev/zero bs=1024 count=10 2>/dev/null | base64",
             5000,
             &[],
@@ -231,7 +231,7 @@ async fn test_spawn_watch_large_output() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(10))
@@ -244,13 +244,13 @@ async fn test_spawn_watch_large_output() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_delayed_output() {
+async fn test_spawn_process_delayed_output() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("sleep 0.2 && echo delayed", 5000, &[], false, false, None)
+        .spawn_process("sleep 0.2 && echo delayed", 5000, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -263,14 +263,14 @@ async fn test_spawn_watch_delayed_output() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_sigterm() {
+async fn test_spawn_process_sigterm() {
     let h = Harness::new().await;
 
     // Use `exec` to replace shell so the PID we get is the actual sleep process
     let handle = h
-        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
+        .spawn_process("exec sleep 60", 0, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
     let pid = handle.pid();
 
     // Kill process group with SIGTERM
@@ -293,13 +293,13 @@ async fn test_spawn_watch_sigterm() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_sigkill() {
+async fn test_spawn_process_sigkill() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
+        .spawn_process("exec sleep 60", 0, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
     let pid = handle.pid();
 
     h.exec(
@@ -321,22 +321,22 @@ async fn test_spawn_watch_sigkill() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_rapid_multiple() {
+async fn test_spawn_process_rapid_multiple() {
     let h = Harness::new().await;
 
     let mut handles = Vec::new();
     for i in 0..5 {
         let handle = h
-            .spawn_watch(&format!("echo p{i}"), 5000, &[], false, false, None)
+            .spawn_process(&format!("echo p{i}"), 5000, &[], false, false, None)
             .await
-            .expect("spawn_watch failed");
+            .expect("spawn_process failed");
         handles.push(handle);
     }
 
     // All PIDs should be unique
     let unique: std::collections::HashSet<_> = handles
         .iter()
-        .map(vsock_host::SpawnWatchHandle::pid)
+        .map(vsock_host::GuestProcessHandle::pid)
         .collect();
     assert_eq!(unique.len(), 5);
 
@@ -353,11 +353,11 @@ async fn test_spawn_watch_rapid_multiple() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_nonexistent_command() {
+async fn test_spawn_process_nonexistent_command() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "nonexistent_command_12345 2>&1",
             5000,
             &[],
@@ -366,7 +366,7 @@ async fn test_spawn_watch_nonexistent_command() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -385,11 +385,11 @@ async fn test_spawn_watch_nonexistent_command() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_unicode() {
+async fn test_spawn_process_unicode() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "printf '你好世界\\nこんにちは\\n🎉emoji🚀'",
             5000,
             &[],
@@ -398,7 +398,7 @@ async fn test_spawn_watch_unicode() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -414,11 +414,11 @@ async fn test_spawn_watch_unicode() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_interleaved_output() {
+async fn test_spawn_process_interleaved_output() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "echo out1 && echo err1 >&2 && echo out2 && echo err2 >&2",
             5000,
             &[],
@@ -427,7 +427,7 @@ async fn test_spawn_watch_interleaved_output() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))
@@ -443,11 +443,11 @@ async fn test_spawn_watch_interleaved_output() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_with_env() {
+async fn test_spawn_process_with_env() {
     let h = Harness::new().await;
 
     let handle = h
-        .spawn_watch(
+        .spawn_process(
             "echo $GREETING",
             5000,
             &[("GREETING", "hi_from_env")],
@@ -456,7 +456,7 @@ async fn test_spawn_watch_with_env() {
             None,
         )
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
 
     let event = h
         .wait_spawn(handle, Duration::from_secs(5))

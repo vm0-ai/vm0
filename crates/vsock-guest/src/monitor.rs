@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
-use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK};
+use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK};
 
 use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
@@ -62,7 +62,7 @@ struct StreamingSetupFailure {
     error: String,
 }
 
-pub(crate) struct SpawnWatchRequest<'a> {
+pub(crate) struct SpawnProcessRequest<'a> {
     pub(crate) timeout_ms: u32,
     pub(crate) command: &'a str,
     pub(crate) env: &'a [(&'a str, &'a str)],
@@ -71,7 +71,7 @@ pub(crate) struct SpawnWatchRequest<'a> {
     pub(crate) stdout_log_path: Option<&'a str>,
 }
 
-/// Handle spawn_watch: spawn the child, write `MSG_SPAWN_WATCH_RESULT` over
+/// Handle spawn_process: spawn the child, write `MSG_SPAWN_PROCESS_RESULT` over
 /// the wire, THEN start the background monitor. Returns immediately; exit is
 /// later reported via `MSG_PROCESS_EXIT`.
 ///
@@ -81,15 +81,15 @@ pub(crate) struct SpawnWatchRequest<'a> {
 ///
 /// The result-before-monitor ordering is a protocol invariant: lifecycle frames
 /// are routed by the original request sequence number, but the host still
-/// validates their pid against the preceding `MSG_SPAWN_WATCH_RESULT`.
-pub(crate) fn handle_spawn_watch(
-    request: SpawnWatchRequest<'_>,
+/// validates their pid against the preceding `MSG_SPAWN_PROCESS_RESULT`.
+pub(crate) fn handle_spawn_process(
+    request: SpawnProcessRequest<'_>,
     seq: u32,
     operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
 ) -> io::Result<()> {
-    handle_spawn_watch_with_spawner(
+    handle_spawn_process_with_spawner(
         request,
         seq,
         operation_guard,
@@ -99,8 +99,8 @@ pub(crate) fn handle_spawn_watch(
     )
 }
 
-fn handle_spawn_watch_with_spawner<S>(
-    request: SpawnWatchRequest<'_>,
+fn handle_spawn_process_with_spawner<S>(
+    request: SpawnProcessRequest<'_>,
     seq: u32,
     operation_guard: OperationGuard,
     writer: GuestWriter,
@@ -113,7 +113,7 @@ where
     log(
         "INFO",
         &format!(
-            "spawn_watch: {} (timeout={}ms, sudo={}, stream={}, {})",
+            "spawn_process: {} (timeout={}ms, sudo={}, stream={}, {})",
             truncate_preview(request.command),
             request.timeout_ms,
             request.sudo,
@@ -143,19 +143,19 @@ where
     } = spawned;
 
     let pid = child.id();
-    log("INFO", &format!("spawn_watch: started pid={pid}"));
+    log("INFO", &format!("spawn_process: started pid={pid}"));
 
     // Write the response BEFORE spawning the monitor thread.
     // The monitor thread contends for the same writer mutex to send
     // stdout chunks / process_exit. Writing here guarantees the
-    // spawn_watch_result is on the wire first.
+    // spawn_process_result is on the wire first.
     //
     // If encoding or writing fails after spawn but before either monitor
     // takes ownership of `child`, we must reap here — `Child`'s `Drop`
     // does not wait, so a `?`-propagated error would leak the child as an
     // orphan/zombie inside the VM.
-    let payload = vsock_proto::encode_spawn_watch_result(pid);
-    let response = match vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, seq, &payload) {
+    let payload = vsock_proto::encode_spawn_process_result(pid);
+    let response = match vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, seq, &payload) {
         Ok(r) => r,
         Err(e) => {
             kill_and_reap_child(child);
@@ -190,7 +190,7 @@ where
         ) {
             log(
                 "ERROR",
-                &format!("spawn_watch: failed to spawn streaming monitor for pid={pid}: {e}"),
+                &format!("spawn_process: failed to spawn streaming monitor for pid={pid}: {e}"),
             );
         }
     } else {
@@ -211,7 +211,7 @@ where
         ) {
             log(
                 "ERROR",
-                &format!("spawn_watch: failed to spawn buffered monitor for pid={pid}: {e}"),
+                &format!("spawn_process: failed to spawn buffered monitor for pid={pid}: {e}"),
             );
         }
     }
@@ -261,7 +261,7 @@ where
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
-                    "spawn_watch: streaming monitor child guard was empty",
+                    "spawn_process: streaming monitor child guard was empty",
                 );
                 return;
             };
@@ -374,7 +374,7 @@ where
                         Err(e) => {
                             log(
                                 "WARN",
-                                &format!("spawn_watch: failed to open log file {path}: {e}"),
+                                &format!("spawn_process: failed to open log file {path}: {e}"),
                             );
                             None
                         }
@@ -408,7 +408,7 @@ where
                     {
                         log(
                             "WARN",
-                            &format!("spawn_watch: failed to send stdout chunk: {e}"),
+                            &format!("spawn_process: failed to send stdout chunk: {e}"),
                         );
                         drain_cancel.store(true, Ordering::Release);
                     }
@@ -458,7 +458,7 @@ where
         log(
             "WARN",
             &format!(
-                "spawn_watch: pid={pid} drain deadline reached after \
+                "spawn_process: pid={pid} drain deadline reached after \
                      {DRAIN_DEADLINE_SECS}s, possible orphaned child process",
             ),
         );
@@ -476,7 +476,7 @@ where
     log(
         "INFO",
         &format!(
-            "spawn_watch: pid={} exited with code={}, stderr_len={} (streamed)",
+            "spawn_process: pid={} exited with code={}, stderr_len={} (streamed)",
             pid,
             exit_code,
             stderr.len()
@@ -543,7 +543,7 @@ where
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
-                    "spawn_watch: buffered monitor child guard was empty",
+                    "spawn_process: buffered monitor child guard was empty",
                 );
                 return;
             };
@@ -559,7 +559,7 @@ where
             log(
                 "INFO",
                 &format!(
-                    "spawn_watch: pid={} exited with code={}, stdout_len={}, stderr_len={}",
+                    "spawn_process: pid={} exited with code={}, stdout_len={}, stderr_len={}",
                     pid,
                     exit_code,
                     stdout.len(),
@@ -646,14 +646,14 @@ mod tests {
     }
 
     #[test]
-    fn spawn_watch_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
+    fn spawn_process_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let cancel = Arc::new(AtomicBool::new(false));
 
-        handle_spawn_watch_with_spawner(
-            SpawnWatchRequest {
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
                 timeout_ms: 0,
                 command: "sleep 60",
                 env: &[],
@@ -670,9 +670,9 @@ mod tests {
         .unwrap();
 
         let result = read_message(&mut host);
-        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
         assert_eq!(result.seq, 7);
-        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
@@ -697,8 +697,8 @@ mod tests {
         let writer = GuestWriter::new(guest);
         let cancel = Arc::new(AtomicBool::new(false));
 
-        handle_spawn_watch_with_spawner(
-            SpawnWatchRequest {
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
                 timeout_ms: 0,
                 command: "sleep 60",
                 env: &[],
@@ -715,9 +715,9 @@ mod tests {
         .unwrap();
 
         let result = read_message(&mut host);
-        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
         assert_eq!(result.seq, 8);
-        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
@@ -742,8 +742,8 @@ mod tests {
         let writer = GuestWriter::new(guest);
         let cancel = Arc::new(AtomicBool::new(false));
 
-        handle_spawn_watch_with_spawner(
-            SpawnWatchRequest {
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
                 timeout_ms: 0,
                 command: "sleep 60",
                 env: &[],
@@ -760,9 +760,9 @@ mod tests {
         .unwrap();
 
         let result = read_message(&mut host);
-        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
         assert_eq!(result.seq, 10);
-        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
@@ -781,14 +781,14 @@ mod tests {
     }
 
     #[test]
-    fn buffered_spawn_watch_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
+    fn buffered_spawn_process_outer_monitor_spawn_failure_reports_process_exit_and_reaps_child() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let cancel = Arc::new(AtomicBool::new(false));
 
-        handle_spawn_watch_with_spawner(
-            SpawnWatchRequest {
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
                 timeout_ms: 0,
                 command: "sleep 60",
                 env: &[],
@@ -805,9 +805,9 @@ mod tests {
         .unwrap();
 
         let result = read_message(&mut host);
-        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
         assert_eq!(result.seq, 9);
-        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
@@ -832,8 +832,8 @@ mod tests {
         let writer = GuestWriter::new(guest);
         let cancel = Arc::new(AtomicBool::new(false));
 
-        handle_spawn_watch_with_spawner(
-            SpawnWatchRequest {
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
                 timeout_ms: 0,
                 command: "sleep 60",
                 env: &[],
@@ -850,9 +850,9 @@ mod tests {
         .unwrap();
 
         let result = read_message(&mut host);
-        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
         assert_eq!(result.seq, 11);
-        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
 
         let exit = read_message(&mut host);
         assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);

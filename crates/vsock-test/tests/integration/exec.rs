@@ -134,9 +134,9 @@ async fn test_exec_while_waiting_for_exit() {
     // Spawn a long-running process. Use `exec` to replace the shell so the
     // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
     let handle = h
-        .spawn_watch("exec sleep 60", 0, &[], false, false, None)
+        .spawn_process("exec sleep 60", 0, &[], false, false, None)
         .await
-        .expect("spawn_watch failed");
+        .expect("spawn_process failed");
     let pid = handle.pid();
 
     // Run spawn wait and exec concurrently on the same task via join!.

@@ -537,7 +537,7 @@ pub(crate) fn spawn_in_own_process_group(command: &mut Command) -> io::Result<Ch
 }
 
 /// Spawn `command` with stdout/stderr piped — used by both buffered exec and
-/// streaming spawn-watch.
+/// streaming spawned processes.
 pub(crate) fn spawn_with_pipes(
     command: &str,
     env: &[(&str, &str)],

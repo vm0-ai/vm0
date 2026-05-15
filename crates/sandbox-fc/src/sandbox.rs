@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig,
-    SandboxError, SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation,
-    SandboxOperationReason, SpawnHandle, SpawnWatchRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
+    Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition, SandboxInvalidStateContext,
+    SandboxOperation, SandboxOperationReason, SpawnProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -1577,8 +1577,11 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
-    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> sandbox::Result<SpawnHandle> {
-        let operation = SandboxOperation::SpawnWatch;
+    async fn spawn_process(
+        &self,
+        request: &SpawnProcessRequest<'_>,
+    ) -> sandbox::Result<GuestProcessHandle> {
+        let operation = SandboxOperation::SpawnProcess;
         let mut guest = self.begin_guest_operation(operation).await?;
         guest
             .mark_writing()
@@ -1586,7 +1589,7 @@ impl Sandbox for FirecrackerSandbox {
         let vsock = guest.guest();
 
         tokio::select! {
-            result = vsock.spawn_watch(
+            result = vsock.spawn_process(
                 request.cmd,
                 request.timeout_ms(),
                 request.env,
@@ -1630,7 +1633,7 @@ impl Sandbox for FirecrackerSandbox {
                     },
                     lease,
                 );
-                Ok(SpawnHandle::new(pid, stdout_rx, exit))
+                Ok(GuestProcessHandle::new(pid, stdout_rx, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -1640,7 +1643,7 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn wait_exit(
         &self,
-        mut handle: SpawnHandle,
+        mut handle: GuestProcessHandle,
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
         let operation = SandboxOperation::WaitExit;
@@ -1649,7 +1652,7 @@ impl Sandbox for FirecrackerSandbox {
                 operation,
                 std::io::Error::new(
                     std::io::ErrorKind::ConnectionReset,
-                    "spawn_watch handle already consumed",
+                    "spawn_process handle already consumed",
                 ),
                 self.has_backend_crashed(),
             )
@@ -2445,7 +2448,7 @@ mod tests {
         }
     }
 
-    fn active_spawn_watch_lease(coordinator: &ParkCoordinator) -> OperationLease {
+    fn active_spawn_process_lease(coordinator: &ParkCoordinator) -> OperationLease {
         let mut lease = coordinator.reserve_operation().expect("reserve operation");
         lease.mark_writing().expect("mark writing");
         lease.mark_in_guest().expect("mark in guest");
@@ -2540,7 +2543,7 @@ mod tests {
     #[tokio::test]
     async fn ready_for_park_boundary_busy_prevents_quiesce_and_pause() {
         let coordinator = ParkCoordinator::new();
-        let _lease = active_spawn_watch_lease(&coordinator);
+        let _lease = active_spawn_process_lease(&coordinator);
         let events = event_log();
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
@@ -3133,7 +3136,7 @@ mod tests {
         for operation in [
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
-            SandboxOperation::SpawnWatch,
+            SandboxOperation::SpawnProcess,
             SandboxOperation::WaitExit,
         ] {
             let err = FirecrackerSandbox::operation_error(
@@ -3151,7 +3154,7 @@ mod tests {
         for operation in [
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
-            SandboxOperation::SpawnWatch,
+            SandboxOperation::SpawnProcess,
             SandboxOperation::WaitExit,
         ] {
             let err =
@@ -3164,7 +3167,7 @@ mod tests {
     #[tokio::test]
     async fn gated_spawn_exit_future_completes_lease_on_process_exit() {
         let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_watch_lease(&coordinator);
+        let lease = active_spawn_process_lease(&coordinator);
         let exit = gated_spawn_exit_future(
             async {
                 Ok(ProcessExit {
@@ -3187,14 +3190,14 @@ mod tests {
 
         let attempt = coordinator
             .begin_prepare_park()
-            .expect("completed spawn_watch lease should allow prepare");
+            .expect("completed spawn_process lease should allow prepare");
         coordinator.abort_prepare_park(&attempt).unwrap();
     }
 
     #[test]
     fn dropped_gated_spawn_exit_future_marks_dirty() {
         let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_watch_lease(&coordinator);
+        let lease = active_spawn_process_lease(&coordinator);
         let exit =
             gated_spawn_exit_future(std::future::pending::<io::Result<ProcessExit>>(), lease);
 
@@ -3214,7 +3217,7 @@ mod tests {
     #[tokio::test]
     async fn gated_spawn_exit_future_error_marks_dirty() {
         let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_watch_lease(&coordinator);
+        let lease = active_spawn_process_lease(&coordinator);
         let exit = gated_spawn_exit_future(
             async { Err(io::Error::new(io::ErrorKind::ConnectionReset, "closed")) },
             lease,
