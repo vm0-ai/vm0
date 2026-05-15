@@ -359,6 +359,17 @@ mod tests {
     }
 
     #[test]
+    fn second_fence_is_rejected_while_fenced() {
+        let tracker = NormalOperationTracker::new();
+        let _fence = fence(&tracker);
+
+        assert!(matches!(
+            tracker.try_fence(),
+            Err(NormalOperationFenceRejection::AlreadyFenced)
+        ));
+    }
+
+    #[test]
     fn dropping_fence_reopens_tracker() {
         let tracker = NormalOperationTracker::new();
         let fence = fence(&tracker);
@@ -381,6 +392,21 @@ mod tests {
         assert!(matches!(
             tracker.try_fence(),
             Err(NormalOperationFenceRejection::NotParkable)
+        ));
+    }
+
+    #[test]
+    fn close_while_fenced_does_not_reopen_on_fence_drop() {
+        let tracker = NormalOperationTracker::new();
+        let fence = fence(&tracker);
+
+        tracker.mark_closed();
+        drop(fence);
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+        assert!(matches!(
+            tracker.try_fence(),
+            Err(NormalOperationFenceRejection::Closed)
         ));
     }
 
@@ -425,6 +451,20 @@ mod tests {
     }
 
     #[test]
+    fn close_with_mixed_reserved_and_possible_guest_write_is_not_parkable() {
+        let tracker = NormalOperationTracker::new();
+        let _reserved_token = reserve(&tracker);
+        let mut write_token = reserve(&tracker);
+        write_token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        tracker.mark_closed();
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
     fn not_parkable_state_survives_later_close() {
         let tracker = NormalOperationTracker::new();
 
@@ -441,6 +481,45 @@ mod tests {
         tracker.mark_closed();
         tracker.mark_not_parkable();
 
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
+    fn second_possible_guest_write_mark_is_invalid_transition() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        let err = token.mark_possible_guest_write_started().unwrap_err();
+
+        assert!(matches!(
+            err,
+            NormalOperationTransitionError::InvalidTransition {
+                from: OperationPhase::PossibleGuestWrite,
+                to: OperationPhase::PossibleGuestWrite,
+                ..
+            }
+        ));
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Busy);
+    }
+
+    #[test]
+    fn complete_after_not_parkable_returns_unknown_and_preserves_state() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        tracker.mark_not_parkable();
+
+        let err = token.complete().unwrap_err();
+        assert!(matches!(
+            err,
+            NormalOperationTransitionError::UnknownOperation { .. }
+        ));
         assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
     }
 }
