@@ -153,6 +153,14 @@ describe("POST /api/zero/host/deployments/prepare", () => {
         return upload.path;
       }),
     ).toStrictEqual(["/index.html", "/assets/index-a1b2c3d4.js"]);
+    expect(context.mocks.s3.clientConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentials: {
+          accessKeyId: "test-hosted-sites-access-key",
+          secretAccessKey: "test-hosted-sites-secret-key",
+        },
+      }),
+    );
 
     const writeDb = store.set(writeDb$);
     const [deployment] = await writeDb

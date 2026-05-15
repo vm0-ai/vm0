@@ -6,7 +6,9 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "lint": "oxlint && eslint . --max-warnings 0",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy --env=\"\"",
+    "deploy:production": "wrangler deploy --env=\"\"",
+    "deploy:test": "wrangler deploy --env test"
   },
   "devDependencies": {
     "@vm0/eslint-config": "workspace:*",

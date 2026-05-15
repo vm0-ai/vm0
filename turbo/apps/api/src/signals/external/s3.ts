@@ -32,14 +32,19 @@ interface S3StorageManifest {
   readonly files: readonly S3FileEntry[];
 }
 
-function createS3Client(endpoint: string): S3Client {
+interface S3Credentials {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+}
+
+function createS3Client(
+  endpoint: string,
+  credentials: S3Credentials,
+): S3Client {
   return new S3Client({
     region: env("S3_REGION") ?? "auto",
     endpoint,
-    credentials: {
-      accessKeyId: env("R2_ACCESS_KEY_ID"),
-      secretAccessKey: env("R2_SECRET_ACCESS_KEY"),
-    },
+    credentials,
     forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true",
   });
 }
@@ -48,8 +53,29 @@ function defaultS3Endpoint(): string {
   return `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
 }
 
+function defaultS3Credentials(): S3Credentials {
+  return {
+    accessKeyId: env("R2_ACCESS_KEY_ID"),
+    secretAccessKey: env("R2_SECRET_ACCESS_KEY"),
+  };
+}
+
+function hostedSitesS3Credentials(): S3Credentials {
+  const accessKeyId = env("R2_HOSTED_SITES_ACCESS_KEY_ID");
+  const secretAccessKey = env("R2_HOSTED_SITES_SECRET_ACCESS_KEY");
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "R2_HOSTED_SITES_ACCESS_KEY_ID and R2_HOSTED_SITES_SECRET_ACCESS_KEY must be configured",
+    );
+  }
+  return { accessKeyId, secretAccessKey };
+}
+
 const s3Client$ = computed((): S3Client => {
-  return createS3Client(env("S3_ENDPOINT") ?? defaultS3Endpoint());
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    defaultS3Credentials(),
+  );
 });
 
 const publicS3Client$ = computed((get): S3Client => {
@@ -57,7 +83,22 @@ const publicS3Client$ = computed((get): S3Client => {
   if (!publicEndpoint) {
     return get(s3Client$);
   }
-  return createS3Client(publicEndpoint);
+  return createS3Client(publicEndpoint, defaultS3Credentials());
+});
+
+const hostedSitesS3Client$ = computed((): S3Client => {
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    hostedSitesS3Credentials(),
+  );
+});
+
+const hostedSitesPublicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  if (!publicEndpoint) {
+    return get(hostedSitesS3Client$);
+  }
+  return createS3Client(publicEndpoint, hostedSitesS3Credentials());
 });
 
 export function listS3Objects(
@@ -159,8 +200,24 @@ export function generatePresignedPutUrl(
   expiresIn: number,
   usePublicEndpoint = false,
 ): Computed<Promise<string>> {
+  return generatePresignedPutUrlWithClient(
+    usePublicEndpoint ? publicS3Client$ : s3Client$,
+    bucket,
+    key,
+    contentType,
+    expiresIn,
+  );
+}
+
+function generatePresignedPutUrlWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  contentType: string,
+  expiresIn: number,
+): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
-    const client = get(usePublicEndpoint ? publicS3Client$ : s3Client$);
+    const client = get(client$);
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -168,6 +225,22 @@ export function generatePresignedPutUrl(
     });
     return getSignedUrl(client, command, { expiresIn });
   });
+}
+
+export function generateHostedSitesPresignedPutUrl(
+  bucket: string,
+  key: string,
+  contentType: string,
+  expiresIn: number,
+  usePublicEndpoint = false,
+): Computed<Promise<string>> {
+  return generatePresignedPutUrlWithClient(
+    usePublicEndpoint ? hostedSitesPublicS3Client$ : hostedSitesS3Client$,
+    bucket,
+    key,
+    contentType,
+    expiresIn,
+  );
 }
 
 export function generatePresignedGetUrl(
@@ -196,8 +269,18 @@ export function putS3Object(
   body: string | Buffer,
   contentType: string,
 ): Computed<Promise<void>> {
+  return putS3ObjectWithClient(s3Client$, bucket, key, body, contentType);
+}
+
+function putS3ObjectWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
-    const client = get(s3Client$);
+    const client = get(client$);
     await client.send(
       new PutObjectCommand({
         Bucket: bucket,
@@ -207,6 +290,21 @@ export function putS3Object(
       }),
     );
   });
+}
+
+export function putHostedSitesS3Object(
+  bucket: string,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+): Computed<Promise<void>> {
+  return putS3ObjectWithClient(
+    hostedSitesS3Client$,
+    bucket,
+    key,
+    body,
+    contentType,
+  );
 }
 
 export function downloadManifest(
@@ -225,8 +323,16 @@ export function s3ObjectExists(
   bucket: string,
   key: string,
 ): Computed<Promise<boolean>> {
+  return s3ObjectExistsWithClient(s3Client$, bucket, key);
+}
+
+function s3ObjectExistsWithClient(
+  client$: Computed<S3Client>,
+  bucket: string,
+  key: string,
+): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
-    const client = get(s3Client$);
+    const client = get(client$);
     const result = await safeAsync(async () => {
       await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     });
@@ -246,6 +352,13 @@ export function s3ObjectExists(
     }
     throw result.error;
   });
+}
+
+export function hostedSitesS3ObjectExists(
+  bucket: string,
+  key: string,
+): Computed<Promise<boolean>> {
+  return s3ObjectExistsWithClient(hostedSitesS3Client$, bucket, key);
 }
 
 export function verifyS3FilesExist(

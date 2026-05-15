@@ -77,6 +77,7 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      host-worker-changed: ${{ steps.detect-host-worker.outputs.host-worker-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
@@ -134,6 +135,18 @@ jobs:
               echo "${app}-changed=false" >> "$GITHUB_OUTPUT"
             fi
           done
+
+      - name: Detect host worker changes
+        id: detect-host-worker
+        run: |
+          BASE_REF="${{ steps.detect.outputs.base-ref }}"
+          if git diff --name-only "$BASE_REF" HEAD | grep -q "^turbo/apps/host-worker/"; then
+            echo "Host worker changes detected"
+            echo "host-worker-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No host worker changes"
+            echo "host-worker-changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Detect E2B template changes
         id: detect-e2b
@@ -1080,6 +1093,49 @@ jobs:
           preview-domain: ${{ vars.PREVIEW_DOMAIN }}
           deployment-id: ${{ steps.deploy.outputs.deployment-id }}
           deployment-env: ${{ steps.deploy.outputs.deployment-env }}
+
+  # Deploy static hosted-site Worker only when the Worker app or CI wiring changes.
+  # PRs and merge queue runs must not deploy because the route is the shared
+  # production wildcard: *.sites.vm0.io/*.
+  deploy-host-worker:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-host-worker-production
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    needs: [prepare]
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        needs.prepare.outputs.job-ref != '' && (
+          needs.prepare.outputs.host-worker-changed == 'true' ||
+          needs.prepare.outputs.ci-changed == 'true'
+        )
+      }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Deploy Host Worker to Cloudflare
+        working-directory: turbo
+        env:
+          CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN:-}" ]]; then
+            echo "::error::CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN must be configured as a GitHub Actions secret"
+            exit 1
+          fi
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CF_ACCOUNT_ID must be configured as a GitHub Actions variable or secret"
+            exit 1
+          fi
+          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @vm0/host-worker deploy
 
   # Verify device flow authentication works end-to-end
   # This job runs in parallel with E2E tests - it does NOT block them
@@ -2048,6 +2104,7 @@ jobs:
       - build-api
       - deploy-web
       - deploy-app
+      - deploy-host-worker
       - build-cli
       - build-e2b-template
       - cli-e2e-02-browser
@@ -2116,6 +2173,7 @@ jobs:
           check_result "build-api" "${{ needs.build-api.result }}" "true"
           check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
+          check_result "deploy-host-worker" "${{ needs.deploy-host-worker.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"

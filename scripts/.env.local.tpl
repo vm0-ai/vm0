@@ -6,6 +6,9 @@ CF_ACCESS_CLIENT_SECRET=op://Development/vm0/CF_ACCESS_CLIENT_SECRET_METAL
 CF_DNS_AND_TUNNEL_API_TOKEN=op://Development/cloudflare/CF_DNS_AND_TUNNEL_API_TOKEN
 CF_ACCOUNT_ID=op://Development/cloudflare/CF_ACCOUNT_ID
 
+# Cloudflare API token scoped to deploying the zero hosted-sites Worker
+CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN=op://Development/cloudflare/CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN
+
 # Metal host for runner deployment (e.g. dev-1.aws.vm3.ai)
 RUNNER_LOCAL_HOST=op://Development/vm0/RUNNER_LOCAL_HOST
 OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000

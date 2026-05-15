@@ -13,9 +13,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
 import {
-  generatePresignedPutUrl,
-  putS3Object,
-  s3ObjectExists,
+  generateHostedSitesPresignedPutUrl,
+  hostedSitesS3ObjectExists,
+  putHostedSitesS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
 
@@ -91,8 +91,35 @@ type SiteDeploymentCreationResult =
     }
   | { readonly kind: "slug_conflict" };
 
-function hostedBucket(): string | null {
-  return env("R2_HOSTED_SITES_BUCKET_NAME") ?? null;
+interface HostedR2Config {
+  readonly bucket: string;
+}
+
+type HostedR2ConfigResult =
+  | { readonly status: "ok"; readonly config: HostedR2Config }
+  | { readonly status: "config_error"; readonly message: string };
+
+function hostedR2Config(): HostedR2ConfigResult {
+  const bucket = env("R2_HOSTED_SITES_BUCKET_NAME");
+  if (!bucket) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_BUCKET_NAME is not configured",
+    };
+  }
+  if (!env("R2_HOSTED_SITES_ACCESS_KEY_ID")) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_ACCESS_KEY_ID is not configured",
+    };
+  }
+  if (!env("R2_HOSTED_SITES_SECRET_ACCESS_KEY")) {
+    return {
+      status: "config_error",
+      message: "R2_HOSTED_SITES_SECRET_ACCESS_KEY is not configured",
+    };
+  }
+  return { status: "ok", config: { bucket } };
 }
 
 function publicUrl(publicSlug: string): string {
@@ -300,12 +327,9 @@ export const prepareHostedSiteDeployment$ = command(
     args: PrepareDeploymentArgs,
     signal: AbortSignal,
   ): Promise<PrepareDeploymentResult> => {
-    const bucket = hostedBucket();
-    if (!bucket) {
-      return {
-        status: "config_error",
-        message: "R2_HOSTED_SITES_BUCKET_NAME is not configured",
-      };
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
     }
 
     const fileError = validateFiles(args.body.files);
@@ -338,8 +362,8 @@ export const prepareHostedSiteDeployment$ = command(
       Object.values(siteAndDeployment.deployment.manifest.files).map(
         async (file) => {
           const uploadUrl = await get(
-            generatePresignedPutUrl(
-              bucket,
+            generateHostedSitesPresignedPutUrl(
+              hostedR2.config.bucket,
               fileKey(siteAndDeployment.deployment.r2Prefix, file.path),
               file.contentType,
               PUT_URL_TTL_SECONDS,
@@ -371,12 +395,9 @@ export const completeHostedSiteDeployment$ = command(
     args: CompleteDeploymentArgs,
     signal: AbortSignal,
   ): Promise<CompleteDeploymentResult> => {
-    const bucket = hostedBucket();
-    if (!bucket) {
-      return {
-        status: "config_error",
-        message: "R2_HOSTED_SITES_BUCKET_NAME is not configured",
-      };
+    const hostedR2 = hostedR2Config();
+    if (hostedR2.status === "config_error") {
+      return hostedR2;
     }
 
     const writeDb = set(writeDb$);
@@ -405,7 +426,10 @@ export const completeHostedSiteDeployment$ = command(
     const missingPath = await (async () => {
       for (const file of Object.values(deployment.manifest.files)) {
         const exists = await get(
-          s3ObjectExists(bucket, fileKey(deployment.r2Prefix, file.path)),
+          hostedSitesS3ObjectExists(
+            hostedR2.config.bucket,
+            fileKey(deployment.r2Prefix, file.path),
+          ),
         );
         signal.throwIfAborted();
         if (!exists) {
@@ -425,8 +449,8 @@ export const completeHostedSiteDeployment$ = command(
 
     const manifestKey = `${deployment.r2Prefix}/manifest.json`;
     await get(
-      putS3Object(
-        bucket,
+      putHostedSitesS3Object(
+        hostedR2.config.bucket,
         manifestKey,
         JSON.stringify(deployment.manifest, null, 2),
         "application/json",
@@ -466,8 +490,8 @@ export const completeHostedSiteDeployment$ = command(
       updatedAt: readyAt.toISOString(),
     };
     await get(
-      putS3Object(
-        bucket,
+      putHostedSitesS3Object(
+        hostedR2.config.bucket,
         activePointerKey(deployment.manifest.publicSlug),
         JSON.stringify(pointer, null, 2),
         "application/json",

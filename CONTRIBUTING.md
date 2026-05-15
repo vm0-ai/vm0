@@ -17,12 +17,18 @@ You need to register the following services and obtain API keys:
 
 **Required** (dev server won't start without these):
 
-| Service | Purpose | Keys needed |
-|---------|---------|-------------|
-| [Clerk](https://clerk.com) | User authentication and session management | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` |
+| Service                                                  | Purpose                                     | Keys needed                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [Clerk](https://clerk.com)                               | User authentication and session management  | `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`                                                 |
 | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | Object storage for user files and artifacts | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_USER_STORAGES_BUCKET_NAME` |
 
-All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be left empty.
+Hosted static sites are optional locally. When enabling them, configure a
+separate R2 token with `R2_HOSTED_SITES_BUCKET_NAME`,
+`R2_HOSTED_SITES_ACCESS_KEY_ID`, `R2_HOSTED_SITES_SECRET_ACCESS_KEY`,
+`ZERO_HOST_DOMAIN`, and `ZERO_HOST_SCHEME`.
+
+All other environment variables (OAuth connectors, Slack, Axiom, etc.) can be
+left empty.
 
 ### Getting Started
 
@@ -66,11 +72,13 @@ cd turbo && pnpm install && pnpm -F web db:migrate && pnpm build && pnpm test
 ### Running the Dev Server
 
 1. Run the preparation script (installs deps, migrates DB):
+
    ```bash
    bash scripts/prepare.sh
    ```
 
 2. Start the dev server:
+
    ```bash
    cd turbo && pnpm dev
    ```
