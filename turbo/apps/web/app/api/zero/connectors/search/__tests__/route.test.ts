@@ -113,7 +113,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // computer has a feature flag and only "api" auth (no api-token, no oauth)
+    // computer only has a feature-gated "api" auth method.
     // A random test user won't have the flag enabled, so it should be hidden
     const computer = data.connectors.find((c: { id: string }) => {
       return c.id === "computer";
@@ -121,19 +121,19 @@ describe("GET /api/zero/connectors/search", () => {
     expect(computer).toBeUndefined();
   });
 
-  it("should show feature-flagged connector with api-token even when flag is disabled", async () => {
+  it("should show ungated api-token while hiding feature-gated oauth", async () => {
     const response = await searchConnectors();
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // neon has a feature flag AND api-token auth method
+    // neon gates oauth but leaves api-token available.
     // Even with flag disabled, it should be visible with only api-token
     const neon = data.connectors.find((c: { id: string }) => {
       return c.id === "neon";
     });
     expect(neon).toBeDefined();
     expect(neon.authMethods).toContain("api-token");
-    // oauth should NOT be included since the feature flag is disabled
+    // oauth should NOT be included since its feature flag is disabled.
     expect(neon.authMethods).not.toContain("oauth");
   });
 
@@ -146,23 +146,24 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // computer has a feature flag (ComputerConnector) that is disabled
+    // computer only has a feature-gated auth method, and the flag is disabled.
     const computer = data.connectors.find((c: { id: string }) => {
       return c.id === "computer";
     });
     expect(computer).toBeUndefined();
   });
 
-  it("should include connectors without feature flags", async () => {
+  it("should include connectors with at least one ungated auth method", async () => {
     const response = await searchConnectors();
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // Find a connector without a feature flag (e.g., github)
     const unflaggedTypes = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).filter((type) => {
-      return !CONNECTOR_TYPES[type].featureFlag;
+      return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
+        return !method.featureFlag;
+      });
     });
     expect(unflaggedTypes.length).toBeGreaterThan(0);
 
@@ -185,7 +186,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(openai.authMethods).toEqual(["api-token"]);
   });
 
-  it("shows zapier with api-token even when ZapierConnector flag is disabled", async () => {
+  it("hides zapier when its api-token auth method is feature-gated", async () => {
     const response = await searchConnectors();
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -193,8 +194,7 @@ describe("GET /api/zero/connectors/search", () => {
     const zapier = data.connectors.find((c: { id: string }) => {
       return c.id === "zapier";
     });
-    expect(zapier).toBeDefined();
-    expect(zapier.authMethods).toContain("api-token");
+    expect(zapier).toBeUndefined();
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

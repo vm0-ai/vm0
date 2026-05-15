@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const canva = {
   canva: {
@@ -8,11 +8,11 @@ export const canva = {
     environmentMapping: {
       CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.CanvaConnector,
     helpText:
       "Connect your Canva account to access designs, assets, and projects",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.CanvaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Canva to grant access.",
         secrets: {

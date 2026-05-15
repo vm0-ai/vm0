@@ -128,7 +128,7 @@ describe("connectors", () => {
   });
 });
 
-describe("connectors — strictFeatureFlag", () => {
+describe("connectors — auth method feature flags", () => {
   it("hides zapier when ZapierConnector feature switch is disabled", async () => {
     detachedSetupPage({
       context,
@@ -162,7 +162,7 @@ describe("connectors — strictFeatureFlag", () => {
     expect(zapier?.availableAuthMethods).toContain("api-token");
   });
 
-  it("shows mercury (api-token, no strictFeatureFlag) even when its flag is disabled", async () => {
+  it("shows mercury because its api-token method is ungated", async () => {
     detachedSetupPage({
       context,
       path: "/",
@@ -174,7 +174,7 @@ describe("connectors — strictFeatureFlag", () => {
       return c.type === "mercury";
     });
 
-    // mercury has api-token auth and no strictFeatureFlag, so it is always visible
+    // mercury has an ungated api-token auth method, so it is always visible.
     expect(mercury).toBeDefined();
     expect(mercury?.availableAuthMethods).toContain("api-token");
   });

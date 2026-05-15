@@ -1,12 +1,10 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
-import {
-  zeroConnectorsSearchContract,
-  ConnectorSearchAuthMethod,
-} from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   type ConnectorType,
   CONNECTOR_TYPES,
 } from "@vm0/connectors/connectors";
+import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -43,21 +41,13 @@ const router = tsr.router(zeroConnectorsSearchContract, {
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
-      const flag = config.featureFlag;
-      const flagEnabled = !flag || !!featureStates[flag];
-      // api-token is always available; oauth requires the per-connector flag.
-      const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken = "api-token" in config.authMethods;
+      const availableAuthMethods = getAvailableConnectorAuthMethods(
+        type,
+        featureStates,
+      );
 
-      // Hidden unless at least one auth method shows.
-      if (!showOauth && !showApiToken) return [];
-
-      const availableAuthMethods: ConnectorSearchAuthMethod[] = [];
-      if (showOauth) {
-        availableAuthMethods.push("oauth");
-      }
-      if (showApiToken) {
-        availableAuthMethods.push("api-token");
+      if (availableAuthMethods.length === 0) {
+        return [];
       }
 
       const item = {

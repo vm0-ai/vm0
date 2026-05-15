@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const posthog = {
   posthog: {
@@ -8,11 +8,11 @@ export const posthog = {
     environmentMapping: {
       POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.PosthogConnector,
     helpText:
       "Connect your PostHog account to access product analytics, feature flags, and experiments",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.PosthogConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with PostHog to grant access.",
         secrets: {

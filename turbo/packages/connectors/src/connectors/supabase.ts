@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const supabase = {
   supabase: {
@@ -8,11 +8,11 @@ export const supabase = {
     environmentMapping: {
       SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.SupabaseConnector,
     helpText:
       "Connect your Supabase account to manage projects, databases, and APIs",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.SupabaseConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Supabase to grant access.",
         secrets: {

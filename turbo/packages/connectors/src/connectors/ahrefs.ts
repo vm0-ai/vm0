@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const ahrefs = {
   ahrefs: {
@@ -8,11 +8,11 @@ export const ahrefs = {
     environmentMapping: {
       AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.AhrefsConnector,
     helpText:
       "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.AhrefsConnector,
         label: "OAuth",
         helpText: "Sign in with Ahrefs to grant access.",
         secrets: {

@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const garminConnect = {
   "garmin-connect": {
@@ -8,11 +8,11 @@ export const garminConnect = {
     environmentMapping: {
       GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.GarminConnectConnector,
     helpText:
       "Connect your Garmin Connect account to access wellness and activity data",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.GarminConnectConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Garmin Connect to grant access.",
         secrets: {

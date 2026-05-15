@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
 
 export const freshdesk = {
@@ -10,7 +9,6 @@ export const freshdesk = {
       FRESHDESK_TOKEN: "$secrets.FRESHDESK_TOKEN",
       FRESHDESK_DOMAIN: "$vars.FRESHDESK_DOMAIN",
     },
-    featureFlag: FeatureSwitchKey.FreshdeskConnector,
     helpText:
       "Connect your Freshdesk account to manage support tickets, contacts, companies, agents, and knowledge base articles",
     authMethods: {

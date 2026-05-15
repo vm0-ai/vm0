@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const deel = {
   deel: {
@@ -8,11 +8,11 @@ export const deel = {
     environmentMapping: {
       DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.DeelConnector,
     helpText:
       "Connect your Deel account to access HR, payroll, and contractor data",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.DeelConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Deel to grant access.",
         secrets: {

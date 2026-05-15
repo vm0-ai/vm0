@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
 
 export const resend = {
@@ -8,7 +7,6 @@ export const resend = {
     environmentMapping: {
       RESEND_TOKEN: "$secrets.RESEND_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.ResendConnector,
     helpText:
       "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
     authMethods: {

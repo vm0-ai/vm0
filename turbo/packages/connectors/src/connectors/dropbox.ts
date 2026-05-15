@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const dropbox = {
   dropbox: {
@@ -8,10 +8,10 @@ export const dropbox = {
     environmentMapping: {
       DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.DropboxConnector,
     helpText: "Connect your Dropbox account to access and manage files",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.DropboxConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Dropbox to grant access.",
         secrets: {

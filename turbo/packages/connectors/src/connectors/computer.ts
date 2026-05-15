@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const computer = {
   computer: {
@@ -10,11 +10,11 @@ export const computer = {
         "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
       COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
     },
-    featureFlag: FeatureSwitchKey.ComputerConnector,
     helpText:
       "Expose local services to remote sandboxes via authenticated ngrok tunnels",
     authMethods: {
       api: {
+        featureFlag: FeatureSwitchKey.ComputerConnector,
         label: "API",
         helpText: "Server-provisioned ngrok tunnel credentials.",
         secrets: {

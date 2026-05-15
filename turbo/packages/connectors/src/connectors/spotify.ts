@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const spotify = {
   spotify: {
@@ -8,11 +8,11 @@ export const spotify = {
     environmentMapping: {
       SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.SpotifyConnector,
     helpText:
       "Connect your Spotify account to manage playlists, control playback, and access music data",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.SpotifyConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Spotify to grant access.",
         secrets: {

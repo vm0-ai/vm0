@@ -249,7 +249,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(localBrowser?.authMethods).toStrictEqual(["api"]);
   });
 
-  it("shows feature-flagged connector with api-token even when flag is disabled", async () => {
+  it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
@@ -287,7 +287,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(computer).toBeUndefined();
   });
 
-  it("includes connectors without feature flags", async () => {
+  it("includes connectors with at least one ungated auth method", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
@@ -302,7 +302,9 @@ describe("GET /api/zero/connectors/search", () => {
     const unflaggedTypes = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
     ).filter((type) => {
-      return !CONNECTOR_TYPES[type].featureFlag;
+      return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
+        return !method.featureFlag;
+      });
     });
     expect(unflaggedTypes.length).toBeGreaterThan(0);
 
@@ -333,7 +335,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(openai?.authMethods).toStrictEqual(["api-token"]);
   });
 
-  it("shows zapier with api-token even when ZapierConnector flag is disabled", async () => {
+  it("hides zapier when its api-token auth method is feature-gated", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
@@ -348,8 +350,7 @@ describe("GET /api/zero/connectors/search", () => {
     const zapier = response.body.connectors.find((c) => {
       return c.id === "zapier";
     });
-    expect(zapier).toBeDefined();
-    expect(zapier?.authMethods).toContain("api-token");
+    expect(zapier).toBeUndefined();
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

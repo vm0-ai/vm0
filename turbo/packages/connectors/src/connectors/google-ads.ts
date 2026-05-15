@@ -1,12 +1,11 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleAds = {
   "google-ads": {
     label: "Google Ads",
     category: "marketing-content-growth",
     tags: ["ads", "advertising", "google ads", "campaigns", "gaql"],
-    featureFlag: FeatureSwitchKey.GoogleAdsConnector,
     environmentMapping: {
       GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
     },
@@ -14,6 +13,7 @@ export const googleAds = {
       "Connect your Google Ads account to manage campaigns, ad groups, and performance reports",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.GoogleAdsConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",
         secrets: {

@@ -4,8 +4,6 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 export const zapier = {
   zapier: {
     label: "Zapier",
-    featureFlag: FeatureSwitchKey.ZapierConnector,
-    strictFeatureFlag: true,
     category: "data-automation-infrastructure",
     environmentMapping: {
       ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
@@ -14,6 +12,7 @@ export const zapier = {
       "Connect your Zapier account to trigger zaps and use AI Actions (NLA) to automate workflows",
     authMethods: {
       "api-token": {
+        featureFlag: FeatureSwitchKey.ZapierConnector,
         label: "API Key",
         secrets: {
           ZAPIER_TOKEN: {

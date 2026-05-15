@@ -356,7 +356,7 @@ describe("zero connector search command", () => {
     });
   });
 
-  describe("strictFeatureFlag filtering", () => {
+  describe("auth method feature flag filtering", () => {
     it("excludes zapier from search results when ZapierConnector feature switch is disabled (default)", async () => {
       server.use(
         stubConnectors([]),
@@ -382,7 +382,7 @@ describe("zero connector search command", () => {
       expect(output).not.toContain("zapier");
     });
 
-    it("includes connectors with api-token auth and no strictFeatureFlag even when their flag is disabled", async () => {
+    it("includes connectors with ungated api-token auth even when oauth is feature-gated", async () => {
       server.use(
         stubConnectors([]),
         stubAgent(AGENT_UUID, "test"),
@@ -402,7 +402,7 @@ describe("zero connector search command", () => {
       const types = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
-      // mercury has api-token auth and no strictFeatureFlag so it is always visible
+      // mercury has an ungated api-token auth method, so it is always visible.
       expect(types).toContain("mercury");
     });
 

@@ -3,11 +3,15 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodType,
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { hasRequiredScopes } from "@vm0/connectors/connector-utils";
+import {
+  getAvailableConnectorAuthMethods,
+  hasRequiredScopes,
+} from "@vm0/connectors/connector-utils";
 import {
   zeroRemoteAgentHostsContract,
   type RemoteAgentHost,
@@ -60,6 +64,10 @@ const LOCAL_BROWSER_WEB_MESSAGE_SOURCE = "vm0-local-browser-web";
 const LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE = "vm0-local-browser-extension";
 const LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS = 1000;
 const LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS = 10_000;
+const CONNECTOR_LIST_API_AUTH_METHOD_TYPES = [
+  REMOTE_AGENT_CONNECTOR_TYPE,
+  LOCAL_BROWSER_CONNECTOR_TYPE,
+] as const satisfies readonly ConnectorType[];
 
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
@@ -83,7 +91,7 @@ export interface ConnectorTypeWithStatus {
   connected: boolean;
   connector: ConnectorResponse | null;
   /** Auth methods available for this connector (considering feature flags). */
-  availableAuthMethods: string[];
+  availableAuthMethods: ConnectorAuthMethodType[];
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
   /** True if stored OAuth scopes don't cover all currently required scopes. */
@@ -207,35 +215,6 @@ function isHostBackedConnector(type: ConnectorType): boolean {
   return isRemoteAgentConnector(type) || isLocalBrowserConnector(type);
 }
 
-function isConnectorFlagEnabled(
-  type: ConnectorType,
-  features: Record<string, boolean> | null | undefined,
-): boolean {
-  const flag = CONNECTOR_TYPES[type].featureFlag;
-  return !flag || !!features?.[flag];
-}
-
-function getAvailableAuthMethodsForConnector(
-  type: ConnectorType,
-  flagEnabled: boolean,
-): string[] {
-  const config = CONNECTOR_TYPES[type];
-  const methods = config.authMethods;
-  const availableAuthMethods: string[] = [];
-
-  if (flagEnabled && "oauth" in methods) {
-    availableAuthMethods.push("oauth");
-  }
-  if ("api-token" in methods && (flagEnabled || !config.strictFeatureFlag)) {
-    availableAuthMethods.push("api-token");
-  }
-  if (isHostBackedConnector(type) && flagEnabled && "api" in methods) {
-    availableAuthMethods.push("api");
-  }
-
-  return availableAuthMethods;
-}
-
 function buildConnectorTypeStatus(params: {
   readonly type: ConnectorType;
   readonly connector: ConnectorResponse | null;
@@ -244,20 +223,29 @@ function buildConnectorTypeStatus(params: {
   readonly localBrowserOnlineHosts: LocalBrowserHost[];
 }): ConnectorTypeWithStatus {
   const config = CONNECTOR_TYPES[params.type];
-  const flag = config.featureFlag;
   const isRemoteAgent = isRemoteAgentConnector(params.type);
   const isLocalBrowser = isLocalBrowserConnector(params.type);
-  const availableAuthMethods = getAvailableAuthMethodsForConnector(
+  const availableAuthMethods = getAvailableConnectorAuthMethods(
     params.type,
-    isConnectorFlagEnabled(params.type, params.features),
+    params.features,
+    {
+      apiAuthMethodPolicy: {
+        includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
+      },
+    },
   );
   const hasApiToken = availableAuthMethods.includes("api-token");
+  const hasFeatureFlaggedMethod = availableAuthMethods.some((authMethod) => {
+    return !!config.authMethods[authMethod]?.featureFlag;
+  });
   const connected = params.connector !== null;
 
   return {
     type: params.type,
     label:
-      flag && !hasApiToken && !isRemoteAgent && !isLocalBrowser
+      hasFeatureFlaggedMethod &&
+      !hasApiToken &&
+      !isHostBackedConnector(params.type)
         ? `[Experimental] ${config.label}`
         : config.label,
     helpText: config.helpText,
@@ -343,10 +331,11 @@ export const allConnectorTypes$ = computed(async (get) => {
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       return (
-        getAvailableAuthMethodsForConnector(
-          type,
-          isConnectorFlagEnabled(type, features),
-        ).length > 0
+        getAvailableConnectorAuthMethods(type, features, {
+          apiAuthMethodPolicy: {
+            includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
+          },
+        }).length > 0
       );
     })
     .map((type) => {

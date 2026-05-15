@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const close = {
   close: {
@@ -8,11 +8,11 @@ export const close = {
     environmentMapping: {
       CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.CloseConnector,
     helpText:
       "Connect your Close account to manage leads, contacts, and opportunities",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.CloseConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Close to grant access.",
         secrets: {

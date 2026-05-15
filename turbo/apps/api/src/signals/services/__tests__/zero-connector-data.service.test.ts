@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
+import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import {
+  zeroConnectorByType,
   zeroConnectorList,
   zeroConnectorSearch,
 } from "../zero-connector-data.service";
@@ -65,22 +67,65 @@ describe("zeroConnectorList", () => {
     expect(list.configuredTypes).toContain("computer");
     expect(list.configuredTypes).toContain("amplitude");
   });
+
+  it("keeps a stored oauth connector visible when another auth method is ungated", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "neon",
+      authMethod: "oauth",
+    });
+    await writeDb.insert(secrets).values({
+      orgId,
+      userId,
+      name: "NEON_TOKEN",
+      encryptedValue: "encrypted_neon_token",
+      type: "user",
+    });
+
+    const connector = await store.get(
+      zeroConnectorByType({ orgId, userId, type: "neon" }),
+    );
+
+    expect(connector?.authMethod).toBe("oauth");
+    expect(connector?.id).not.toBeNull();
+  });
+
+  it("hides a stored connector when all auth methods are feature-gated", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "google-ads",
+      authMethod: "oauth",
+    });
+
+    const connector = await store.get(
+      zeroConnectorByType({ orgId, userId, type: "google-ads" }),
+    );
+
+    expect(connector).toBeNull();
+  });
 });
 
 describe("zeroConnectorSearch", () => {
-  it("shows feature-flagged api-token connectors even when the flag is disabled", async () => {
+  it("hides feature-flagged api-token connectors when the flag is disabled", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
     const connectors = await store.get(
-      zeroConnectorSearch({ orgId, userId, keyword: undefined }),
+      zeroConnectorSearch({ orgId, userId, keyword: "zapier" }),
     );
 
     const zapier = connectors.find((connector) => {
       return connector.id === "zapier";
     });
-    expect(zapier).toBeDefined();
-    expect(zapier?.authMethods).toStrictEqual(["api-token"]);
+    expect(zapier).toBeUndefined();
   });
 
   it("shows feature-flagged api-token connectors when an override enables the flag", async () => {

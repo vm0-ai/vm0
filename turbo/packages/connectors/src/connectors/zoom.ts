@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const zoom = {
   zoom: {
@@ -8,11 +8,11 @@ export const zoom = {
     environmentMapping: {
       ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.ZoomConnector,
     helpText:
       "Connect your Zoom account to schedule meetings, manage cloud recordings, and access webinar and participant data",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.ZoomConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Zoom to grant access.",
         secrets: {

@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const neon = {
   neon: {
@@ -8,11 +8,11 @@ export const neon = {
     environmentMapping: {
       NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.NeonConnector,
     helpText:
       "Connect your Neon account to manage serverless Postgres databases and projects",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.NeonConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Neon to grant access.",
         secrets: {

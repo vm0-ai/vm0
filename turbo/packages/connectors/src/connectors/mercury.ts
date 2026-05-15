@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const mercury = {
   mercury: {
@@ -8,11 +8,11 @@ export const mercury = {
     environmentMapping: {
       MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.MercuryConnector,
     helpText:
       "Connect your Mercury account to access banking and financial data",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.MercuryConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Mercury to grant access.",
         secrets: {

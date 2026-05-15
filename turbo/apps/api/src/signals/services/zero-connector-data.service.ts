@@ -8,10 +8,12 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
+  getAvailableConnectorAuthMethods,
   getConfiguredConnectorTypes,
   getConnectorOAuthEnvKeys,
   getConnectorProvidedSecretNames,
   getScopeDiff,
+  isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
@@ -103,11 +105,11 @@ function storedConnectorTypeIsVisible(
   type: ConnectorType,
   featureStates: FeatureStates,
 ): boolean {
-  const config = CONNECTOR_TYPES[type];
-  if (!config.featureFlag || !config.strictFeatureFlag) {
-    return true;
-  }
-  return featureStates[config.featureFlag] ?? false;
+  return (
+    getAvailableConnectorAuthMethods(type, featureStates, {
+      apiAuthMethodPolicy: "include",
+    }).length > 0
+  );
 }
 
 function apiTokenConnectorTypes(args: {
@@ -211,6 +213,9 @@ export function zeroConnectorList(args: {
     const derivedConnectors: ConnectorResponse[] = derivedTypes
       .filter((type) => {
         return !dbTypes.has(type);
+      })
+      .filter((type) => {
+        return isConnectorAuthMethodAvailable(type, "api-token", featureStates);
       })
       .map((type) => {
         return {
@@ -374,12 +379,16 @@ export function zeroConnectorByType(args: {
       orgId: args.orgId,
       overrides,
     });
-    if (!storedConnectorTypeIsVisible(args.type, featureStates)) {
-      return null;
-    }
     const storedConnector = await get(storedConnectorByType(args));
     if (storedConnector) {
-      return storedConnector;
+      if (storedConnectorTypeIsVisible(args.type, featureStates)) {
+        return storedConnector;
+      }
+    }
+    if (
+      !isConnectorAuthMethodAvailable(args.type, "api-token", featureStates)
+    ) {
+      return null;
     }
     return get(apiTokenConnectorByType(args));
   });
@@ -1035,26 +1044,15 @@ export function zeroConnectorSearch(args: {
     const keyword = args.keyword?.toLowerCase();
     return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
-      const flag = config.featureFlag;
-      const flagEnabled = !flag || featureStates[flag];
-      const showOauth = flagEnabled && "oauth" in config.authMethods;
-      const showApiToken = "api-token" in config.authMethods;
-      const showApi = flagEnabled && "api" in config.authMethods;
+      const authMethods: ConnectorSearchAuthMethod[] =
+        getAvailableConnectorAuthMethods(type, featureStates, {
+          apiAuthMethodPolicy: "include",
+        });
 
-      if (!showOauth && !showApiToken && !showApi) {
+      if (authMethods.length === 0) {
         return [];
       }
 
-      const authMethods: ConnectorSearchAuthMethod[] = [];
-      if (showOauth) {
-        authMethods.push("oauth");
-      }
-      if (showApiToken) {
-        authMethods.push("api-token");
-      }
-      if (showApi) {
-        authMethods.push("api");
-      }
       const item = {
         id: type,
         label: config.label,

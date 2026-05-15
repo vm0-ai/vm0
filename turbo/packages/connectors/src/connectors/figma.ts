@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const figma = {
   figma: {
@@ -8,10 +8,10 @@ export const figma = {
     environmentMapping: {
       FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.FigmaConnector,
     helpText: "Connect your Figma account to access design files and projects",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.FigmaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Figma to grant access.",
         secrets: {

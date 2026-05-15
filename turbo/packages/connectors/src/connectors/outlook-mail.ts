@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const outlookMail = {
   "outlook-mail": {
@@ -8,10 +8,10 @@ export const outlookMail = {
     environmentMapping: {
       OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.OutlookMailConnector,
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.OutlookMailConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Mail access.",
         secrets: {

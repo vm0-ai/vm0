@@ -210,6 +210,8 @@ export interface ConnectorSecretConfig {
 export interface ConnectorAuthMethodConfig {
   label: string;
   helpText?: string;
+  /** When set, this auth method is only available while the feature is enabled. */
+  featureFlag?: FeatureSwitchKey;
   secrets: Record<string, ConnectorSecretConfig>;
 }
 
@@ -229,9 +231,25 @@ export interface ConnectorOAuthConfig {
  *   `connectors` (with scopes, external identity, token refresh metadata).
  * - `api-token` — user supplies an API token via the UI. No DB row:
  *   enablement is derived from the presence of required secrets/variables.
- * - `api` — legacy placeholder; no active consumers.
+ * - `api` — connector-specific first-party flow, not the generic OAuth or
+ *   user-entered API-token setup.
  */
 export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
+
+export const CONNECTOR_AUTH_METHOD_TYPES = [
+  "oauth",
+  "api-token",
+  "api",
+] as const satisfies readonly ConnectorAuthMethodType[];
+
+type MissingConnectorAuthMethodType = Exclude<
+  ConnectorAuthMethodType,
+  (typeof CONNECTOR_AUTH_METHOD_TYPES)[number]
+>;
+
+type AssertNever<T extends never> = T;
+export type ConnectorAuthMethodTypesCoverUnion =
+  AssertNever<MissingConnectorAuthMethodType>;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -348,12 +366,6 @@ export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
-  readonly featureFlag?: FeatureSwitchKey;
-  /**
-   * When true, the featureFlag gates this connector even when it has api-token
-   * auth (overrides the default api-token exception).
-   */
-  readonly strictFeatureFlag?: boolean;
   readonly authMethods: Partial<
     Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
   >;

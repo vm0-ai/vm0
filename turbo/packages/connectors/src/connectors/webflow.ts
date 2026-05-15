@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const webflow = {
   webflow: {
@@ -8,11 +8,11 @@ export const webflow = {
     environmentMapping: {
       WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.WebflowConnector,
     helpText:
       "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.WebflowConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Webflow to grant access.",
         secrets: {

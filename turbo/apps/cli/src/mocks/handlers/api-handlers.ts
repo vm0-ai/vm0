@@ -8,8 +8,9 @@ function defaultAvailableConnectors() {
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       const config = CONNECTOR_TYPES[type];
-      const hasApiToken = "api-token" in config.authMethods;
-      return !config.featureFlag || (hasApiToken && !config.strictFeatureFlag);
+      return Object.values(config.authMethods).some((method) => {
+        return !method.featureFlag;
+      });
     })
     .map((type) => {
       const config = CONNECTOR_TYPES[type];

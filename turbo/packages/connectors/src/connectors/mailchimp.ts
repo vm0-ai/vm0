@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const mailchimp = {
   mailchimp: {
@@ -8,11 +8,11 @@ export const mailchimp = {
     environmentMapping: {
       MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.MailchimpConnector,
     helpText:
       "Connect your Mailchimp account to manage audiences, campaigns, templates, and automations",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.MailchimpConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Mailchimp to grant access.",
         secrets: {

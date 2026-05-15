@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const docusign = {
   docusign: {
@@ -8,11 +8,11 @@ export const docusign = {
     environmentMapping: {
       DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.DocuSignConnector,
     helpText:
       "Connect your DocuSign account to send and manage electronic signatures",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.DocuSignConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with DocuSign to grant access.",
         secrets: {

@@ -1,11 +1,10 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const testOauth = {
   "test-oauth": {
     label: "Test OAuth (internal)",
     category: "data-automation-infrastructure",
-    featureFlag: FeatureSwitchKey.TestOauthConnector,
     environmentMapping: {
       TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
     },
@@ -13,6 +12,7 @@ export const testOauth = {
       "Synthetic OAuth 2.0 connector served by this app itself. For automated tests only — not a real third-party service.",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.TestOauthConnector,
         label: "OAuth",
         helpText: "Test-only OAuth provider. Only reachable in dev/preview.",
         secrets: {

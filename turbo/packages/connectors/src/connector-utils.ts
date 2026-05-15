@@ -1,4 +1,5 @@
 import {
+  CONNECTOR_AUTH_METHOD_TYPES,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
@@ -8,6 +9,7 @@ import {
   type ConnectorSecretConfig,
   type ConnectorType,
 } from "./connectors";
+import type { FeatureSwitchKey } from "./feature-switch-key";
 
 /**
  * Get auth methods for a connector type
@@ -25,6 +27,77 @@ export function getConnectorDefaultAuthMethod(
   type: ConnectorType,
 ): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
+}
+
+export type ConnectorFeatureStates =
+  | Partial<Record<FeatureSwitchKey, boolean>>
+  | null
+  | undefined;
+
+export type ApiAuthMethodPolicy =
+  | "exclude"
+  | "include"
+  | { readonly includeForTypes: readonly ConnectorType[] };
+
+export interface AvailableConnectorAuthMethodsOptions {
+  readonly apiAuthMethodPolicy?: ApiAuthMethodPolicy;
+}
+
+export function isConnectorAuthMethodAvailable(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodType,
+  featureStates: ConnectorFeatureStates,
+): boolean {
+  const method = CONNECTOR_TYPES[type].authMethods[authMethod];
+  if (!method) {
+    return false;
+  }
+  return !method.featureFlag || !!featureStates?.[method.featureFlag];
+}
+
+function shouldIncludeApiAuthMethod(
+  type: ConnectorType,
+  policy: ApiAuthMethodPolicy | undefined,
+): boolean {
+  if (policy === "include") {
+    return true;
+  }
+  if (!policy || policy === "exclude") {
+    return false;
+  }
+  return policy.includeForTypes.includes(type);
+}
+
+/**
+ * Return user-selectable connector connection flows for a surface.
+ *
+ * This describes configured connection flows, not persisted connected state.
+ */
+export function getAvailableConnectorAuthMethods(
+  type: ConnectorType,
+  featureStates: ConnectorFeatureStates,
+  options: AvailableConnectorAuthMethodsOptions = {},
+): ConnectorAuthMethodType[] {
+  const methods = CONNECTOR_TYPES[type].authMethods;
+  const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
+  const availableAuthMethods: ConnectorAuthMethodType[] = [];
+
+  for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
+    if (!methods[authMethod]) {
+      continue;
+    }
+    if (
+      authMethod === "api" &&
+      !shouldIncludeApiAuthMethod(type, apiAuthMethodPolicy)
+    ) {
+      continue;
+    }
+    if (isConnectorAuthMethodAvailable(type, authMethod, featureStates)) {
+      availableAuthMethods.push(authMethod);
+    }
+  }
+
+  return availableAuthMethods;
 }
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
@@ -302,14 +375,15 @@ export function getConnectorEnvironmentMapping(
 }
 
 /**
- * Connector types eligible for agent compose: GA (no feature flag) or
- * feature-flagged with an api-token auth method. Feature flags gate OAuth;
- * api-token is always available.
+ * Connector types eligible for agent compose without runtime feature context:
+ * include connectors with at least one always-available connection flow.
  */
 export function getEligibleConnectorTypes(): string[] {
   return Object.entries(CONNECTOR_TYPES)
     .filter(([, config]) => {
-      return !config.featureFlag || "api-token" in config.authMethods;
+      return Object.values(config.authMethods).some((method) => {
+        return !method.featureFlag;
+      });
     })
     .map(([type]) => {
       return type;

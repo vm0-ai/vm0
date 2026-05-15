@@ -1,5 +1,5 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const reddit = {
   reddit: {
@@ -8,11 +8,11 @@ export const reddit = {
     environmentMapping: {
       REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.RedditConnector,
     helpText:
       "Connect your Reddit account to access Reddit discussions and content",
     authMethods: {
       oauth: {
+        featureFlag: FeatureSwitchKey.RedditConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Reddit to grant access.",
         secrets: {

@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
 
 export const stabilityAi = {
@@ -9,7 +8,6 @@ export const stabilityAi = {
     environmentMapping: {
       STABILITY_TOKEN: "$secrets.STABILITY_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.StabilityAiConnector,
     helpText:
       "Connect your Stability AI account to generate images using Stable Diffusion models",
     authMethods: {
