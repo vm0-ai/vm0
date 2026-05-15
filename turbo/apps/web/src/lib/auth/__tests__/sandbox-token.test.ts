@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+
 import {
   generateSandboxToken,
   verifySandboxToken,
@@ -363,6 +365,8 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
       expect(auth?.capabilities).not.toContain("local-browser:read");
+      expect(auth?.capabilities).not.toContain("host:read");
+      expect(auth?.capabilities).not.toContain("host:write");
     });
 
     it("should include conditional capabilities when feature flags are enabled", async () => {
@@ -393,7 +397,23 @@ describe("sandbox-token", () => {
         "computer-use:write",
         "file:read",
         "file:write",
+        "host:read",
+        "host:write",
       ]);
+    });
+
+    it("should gate hosted-site capabilities on the hosted-sites feature flag", async () => {
+      mockIsFeatureEnabled.mockImplementation((flag) => {
+        return flag === FeatureSwitchKey.HostedSites;
+      });
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).not.toContain("computer-use:write");
+      expect(auth?.capabilities).not.toContain("local-browser:read");
+      expect(auth?.capabilities).toContain("host:read");
+      expect(auth?.capabilities).toContain("host:write");
     });
 
     it("should include file:read and file:write capabilities by default", async () => {
