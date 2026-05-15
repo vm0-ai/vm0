@@ -9,10 +9,10 @@ VALUES
   ('image', 'gpt-image-1-mini', 'tokens.input.text', 1200, 1000000),
   ('image', 'gpt-image-1-mini', 'tokens.input.image', 2400, 1000000),
   ('image', 'gpt-image-1-mini', 'tokens.output.image', 12000, 1000000),
-  ('image', 'fal-ai/flux-pro/v1.1', 'output_megapixel', 40, 1),
-  ('image', 'fal-ai/flux-pro/v1.1-ultra', 'output_image', 60, 1),
-  ('image', 'fal-ai/qwen-image', 'output_megapixel', 20, 1),
-  ('image', 'fal-ai/bytedance/seedream/v4/text-to-image', 'output_image', 30, 1)
+  ('image', 'fal-ai/flux-pro/v1.1', 'output_megapixel', 48, 1),
+  ('image', 'fal-ai/flux-pro/v1.1-ultra', 'output_image', 72, 1),
+  ('image', 'fal-ai/qwen-image', 'output_megapixel', 24, 1),
+  ('image', 'fal-ai/bytedance/seedream/v4/text-to-image', 'output_image', 36, 1)
 ON CONFLICT ("kind", "provider", "category")
 DO UPDATE SET
   "unit_price" = EXCLUDED."unit_price",

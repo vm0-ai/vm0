@@ -187,18 +187,18 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output.image", usd(12), 1_000_000],
   ]),
 
-  // fal.ai image generation — billed by model-specific output unit.
+  // fal.ai image generation — billed by model-specific output unit with 20% markup.
   ...usageGroup("image", "fal-ai/flux-pro/v1.1", [
-    ["output_megapixel", usd(0.04), 1],
+    ["output_megapixel", usd(0.048), 1],
   ]),
   ...usageGroup("image", "fal-ai/flux-pro/v1.1-ultra", [
-    ["output_image", usd(0.06), 1],
+    ["output_image", usd(0.072), 1],
   ]),
   ...usageGroup("image", "fal-ai/qwen-image", [
-    ["output_megapixel", usd(0.02), 1],
+    ["output_megapixel", usd(0.024), 1],
   ]),
   ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
-    ["output_image", usd(0.03), 1],
+    ["output_image", usd(0.036), 1],
   ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing

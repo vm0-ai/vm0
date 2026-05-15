@@ -780,7 +780,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(body).toMatchObject({
       contentType: "image/jpeg",
       size: IMAGE_BYTES.byteLength,
-      creditsCharged: 40,
+      creditsCharged: 48,
       model: "fal-ai/qwen-image",
       provider: "fal",
       imageSize: "1536x1024",
@@ -839,7 +839,7 @@ describe("POST /api/zero/image-io/generate", () => {
       quantity: 2,
       status: "processed",
       billingError: null,
-      creditsCharged: 40,
+      creditsCharged: 48,
     });
   });
 

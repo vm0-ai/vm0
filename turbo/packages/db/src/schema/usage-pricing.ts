@@ -25,7 +25,7 @@ import {
  *   model      claude-sonnet-4-6         tokens.input   3000        1000000    $3 / 1M input tokens
  *   image      gemini-2.5-flash-image    output_image   39          1          $0.0387 per image
  *   image      gpt-image-2               tokens.output.image 36000  1000000    $36 / 1M output image tokens
- *   image      fal-ai/qwen-image         output_megapixel 20        1          $0.02 per output megapixel
+ *   image      fal-ai/qwen-image         output_megapixel 24        1          $0.024 per output megapixel
  *   video      fal-ai/veo3.1/fast        output_video_seconds.audio 180 1      generated video seconds
  *   video      bytedance/seedance-2.0    output_video_tokens 1680   100000     generated video tokens
  */
