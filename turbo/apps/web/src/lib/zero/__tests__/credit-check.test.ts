@@ -30,7 +30,10 @@ import {
   checkOrgCreditsForRunAdmission,
   resolveRunAdmissionContext,
 } from "../zero-run-policy";
-import { checkOrgCredits } from "../credit/check-org-credits";
+import {
+  checkOrgCredits,
+  resolveOrgCreditAvailability,
+} from "../credit/check-org-credits";
 import { isInsufficientCredits } from "@vm0/api-services/errors";
 import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
 
@@ -391,6 +394,21 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
     await expect(
       checkOrgCredits(user.orgId, user.userId),
     ).resolves.toBeUndefined();
+  });
+
+  it("resolves spendable credits after unsettled expired credits", async () => {
+    await setOrgCredits(user.orgId, 10000);
+    await insertCreditExpiresRecord({
+      orgId: user.orgId,
+      source: "subscription_renewal",
+      amount: 2500,
+      remaining: 2500,
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    await expect(
+      resolveOrgCreditAvailability(user.orgId, user.userId),
+    ).resolves.toStrictEqual({ spendableCredits: 7500 });
   });
 
   it("throws when member creditEnabled is false", async () => {
