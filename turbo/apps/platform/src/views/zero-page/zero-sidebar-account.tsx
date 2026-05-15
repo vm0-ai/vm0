@@ -234,11 +234,7 @@ function PreferencesGroup({
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
-          <IconFlask
-            size={18}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
+          <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
           <span>Lab</span>
         </DropdownMenuItem>
       )}
