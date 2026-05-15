@@ -40,12 +40,15 @@
 //! | 0x14 | G→H       | process_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
-//! Exec operation messages are request-scoped; host/guest dispatch layers
-//! must use a non-zero sequence number for start/output/result/cancel.
+//! Exec operation and process operation messages are request-scoped; host/guest
+//! dispatch layers must use a non-zero sequence number for exec
+//! start/output/result/cancel, spawn_process, and process_control messages.
 //! `exec_output.output_seq` is per exec operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
 //! `exec_start.expected_exit_count` may be zero, but the count field is
 //! always present.
+//! `process_control_result.status` uses 0=delivered, 1=inactive,
+//! 2=nonce_mismatch, and 3=unsupported.
 
 mod error;
 mod frame;
