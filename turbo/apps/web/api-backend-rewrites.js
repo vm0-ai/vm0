@@ -1,3 +1,11 @@
+const UUID_PATH_SEGMENT_PATTERN =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
+const ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE = `/api/zero/voice-chat/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE = new RegExp(
+  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+
 export const API_BACKEND_REWRITES = [
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
@@ -63,10 +71,19 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/voice-chat", "/api/zero/voice-chat"],
+  [
+    ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE,
+    "/api/zero/voice-chat/:id",
+    ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE,
+  ],
 ];
 
 export function matchesApiBackendRewritePath(pathname) {
-  return API_BACKEND_REWRITES.some(([source]) => {
+  return API_BACKEND_REWRITES.some(([source, , pathMatcher]) => {
+    if (pathMatcher) {
+      return pathMatcher.test(pathname);
+    }
+
     if (source.endsWith("/:path*")) {
       const prefix = source.slice(0, -"/:path*".length);
       return pathname === prefix || pathname.startsWith(`${prefix}/`);

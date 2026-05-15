@@ -1,4 +1,31 @@
+import { createRequire } from "node:module";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { matchesApiBackendRewritePath } from "../api-backend-rewrites.js";
+
+type PathMatchResult =
+  | false
+  | Record<string, string | readonly string[] | undefined>;
+
+type GetPathMatch = (
+  path: string,
+  options?: {
+    readonly removeUnnamedParams?: boolean;
+    readonly strict?: boolean;
+    readonly sensitive?: boolean;
+  },
+) => (pathname: string) => PathMatchResult;
+
+const require = createRequire(import.meta.url);
+const { getPathMatch } =
+  require("next/dist/shared/lib/router/utils/path-match.js") as {
+    readonly getPathMatch: GetPathMatch;
+  };
+
+const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const VOICE_CHAT_SESSION_REWRITE_SOURCE =
+  "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const VOICE_CHAT_SESSION_PATH = `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}`;
 
 // Import the nextConfig to test headers() function
 // next.config.js exports the Sentry-wrapped config, so we need to extract headers from the raw config
@@ -233,8 +260,50 @@ describe("API backend rewrites", () => {
           source: "/api/zero/voice-chat",
           destination: "https://api.example.test/api/zero/voice-chat",
         },
+        {
+          source: VOICE_CHAT_SESSION_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/voice-chat/:id",
+        },
       ]),
     );
+  });
+
+  it("should match only UUID-shaped voice-chat session detail rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === VOICE_CHAT_SESSION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: VOICE_CHAT_SESSION_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/voice-chat/:id",
+    });
+
+    const matcher = getPathMatch(VOICE_CHAT_SESSION_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(VOICE_CHAT_SESSION_PATH)).toStrictEqual({
+      id: VOICE_CHAT_SESSION_ID,
+    });
+    expect(matcher("/api/zero/voice-chat/token")).toBe(false);
+    expect(matcher(`${VOICE_CHAT_SESSION_PATH}/tasks`)).toBe(false);
+    expect(matcher("/api/zero/voice-chat/not-a-uuid")).toBe(false);
+  });
+
+  it("should bypass web middleware only for UUID-shaped voice-chat session detail paths", () => {
+    expect(matchesApiBackendRewritePath(VOICE_CHAT_SESSION_PATH)).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(`${VOICE_CHAT_SESSION_PATH}/tasks`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid"),
+    ).toBe(false);
   });
 
   it("should not add a broad /api catch-all rewrite", async () => {
