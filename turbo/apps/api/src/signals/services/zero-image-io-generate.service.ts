@@ -210,6 +210,7 @@ type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 export type ImageModel = keyof typeof IMAGE_MODEL_CONFIGS;
 export type ImageProvider =
   (typeof IMAGE_MODEL_CONFIGS)[ImageModel]["provider"];
+type ImageModelConfig = (typeof IMAGE_MODEL_CONFIGS)[ImageModel];
 
 type ErrorStatus = 400 | 402 | 500 | 502 | 503;
 
@@ -233,6 +234,11 @@ interface ImagePricingRow {
 }
 
 export type ImagePricing = ReadonlyMap<string, ImagePricingRow>;
+
+interface ImageOutputOptions {
+  readonly outputFormat: ImageOutputFormat;
+  readonly outputCompression: number | undefined;
+}
 
 export interface ImageOptions {
   readonly model: ImageModel;
@@ -549,11 +555,7 @@ function readBoolean(
   return typeof value === "boolean" ? value : fallback;
 }
 
-export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
-  if (!isRecord(body)) {
-    return badRequest("Invalid JSON body");
-  }
-
+function parsePrompt(body: Record<string, unknown>): string | ErrorResponse {
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (prompt.length === 0) {
     return badRequest("prompt is required");
@@ -564,6 +566,12 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     );
   }
 
+  return prompt;
+}
+
+function parseImageModel(
+  body: Record<string, unknown>,
+): ImageModel | ErrorResponse {
   const rawModel = readString(body, "model", IMAGE_IO_MODEL);
   const model = normalizeImageModel(rawModel);
   if (!model) {
@@ -571,19 +579,25 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
       `Unsupported image model: ${rawModel}. Available models: ${imageModelList()}`,
     );
   }
-  const modelConfig = IMAGE_MODEL_CONFIGS[model];
 
-  const size = readString(body, "size", "1024x1024");
-  const sizeError = validateImageSize(model, size);
-  if (sizeError) {
-    return sizeError;
-  }
+  return model;
+}
 
+function parseImageQuality(
+  body: Record<string, unknown>,
+): ImageQuality | ErrorResponse {
   const quality = readString(body, "quality", "medium");
   if (!includesString(IMAGE_QUALITIES, quality)) {
     return badRequest(`Unsupported image quality: ${quality}`);
   }
 
+  return quality;
+}
+
+function parseImageBackground(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageBackground | ErrorResponse {
   const background = readString(body, "background", "auto");
   if (!includesString(IMAGE_BACKGROUNDS, background)) {
     return badRequest(`Unsupported image background: ${background}`);
@@ -597,6 +611,14 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     );
   }
 
+  return background;
+}
+
+function parseImageOutputOptions(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  background: ImageBackground,
+): ImageOutputOptions | ErrorResponse {
   const outputFormat = readString(body, "outputFormat", "png");
   if (!includesString(IMAGE_OUTPUT_FORMATS, outputFormat)) {
     return badRequest(`Unsupported image output format: ${outputFormat}`);
@@ -634,6 +656,13 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     return badRequest("transparent backgrounds require png or webp output");
   }
 
+  return { outputFormat, outputCompression };
+}
+
+function parseImageModeration(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageModeration | ErrorResponse {
   const moderation = readString(body, "moderation", "auto");
   if (!includesString(IMAGE_MODERATIONS, moderation)) {
     return badRequest(`Unsupported image moderation: ${moderation}`);
@@ -642,6 +671,13 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     return badRequest(`moderation is not supported for ${modelConfig.alias}`);
   }
 
+  return moderation;
+}
+
+function parseImageSeed(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): number | ErrorResponse | undefined {
   const seed = readOptionalSafeInteger(body, "seed");
   if (typeof seed === "object") {
     return seed;
@@ -650,6 +686,13 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     return badRequest(`seed is not supported for ${modelConfig.alias}`);
   }
 
+  return seed;
+}
+
+function parseSafetyTolerance(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): ImageSafetyTolerance | ErrorResponse {
   const safetyTolerance = readString(body, "safetyTolerance", "4");
   if (!includesString(IMAGE_SAFETY_TOLERANCES, safetyTolerance)) {
     return badRequest(`Unsupported safety tolerance: ${safetyTolerance}`);
@@ -660,6 +703,13 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     );
   }
 
+  return safetyTolerance;
+}
+
+function parseEnhancePrompt(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): boolean | ErrorResponse {
   const enhancePrompt = readBoolean(
     body,
     "enhancePrompt",
@@ -671,6 +721,66 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     );
   }
 
+  return enhancePrompt;
+}
+
+export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
+  if (!isRecord(body)) {
+    return badRequest("Invalid JSON body");
+  }
+
+  const prompt = parsePrompt(body);
+  if (typeof prompt === "object") {
+    return prompt;
+  }
+
+  const model = parseImageModel(body);
+  if (typeof model === "object") {
+    return model;
+  }
+  const modelConfig = IMAGE_MODEL_CONFIGS[model];
+
+  const size = readString(body, "size", "1024x1024");
+  const sizeError = validateImageSize(model, size);
+  if (sizeError) {
+    return sizeError;
+  }
+
+  const quality = parseImageQuality(body);
+  if (typeof quality === "object") {
+    return quality;
+  }
+
+  const background = parseImageBackground(body, modelConfig);
+  if (typeof background === "object") {
+    return background;
+  }
+
+  const outputOptions = parseImageOutputOptions(body, modelConfig, background);
+  if (typeof outputOptions === "object" && "status" in outputOptions) {
+    return outputOptions;
+  }
+
+  const moderation = parseImageModeration(body, modelConfig);
+  if (typeof moderation === "object") {
+    return moderation;
+  }
+
+  const seed = parseImageSeed(body, modelConfig);
+  if (typeof seed === "object") {
+    return seed;
+  }
+
+  const safetyTolerance = parseSafetyTolerance(body, modelConfig);
+  if (typeof safetyTolerance === "object") {
+    return safetyTolerance;
+  }
+
+  const enhancePrompt = parseEnhancePrompt(body, modelConfig);
+  if (typeof enhancePrompt === "object") {
+    return enhancePrompt;
+  }
+
   return {
     model,
     provider: modelConfig.provider,
@@ -678,8 +788,8 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     size,
     quality,
     background,
-    outputFormat,
-    outputCompression,
+    outputFormat: outputOptions.outputFormat,
+    outputCompression: outputOptions.outputCompression,
     moderation,
     seed,
     safetyTolerance,
