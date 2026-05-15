@@ -46,7 +46,15 @@ const hostNameSchema = z.string().trim().min(1).max(128);
 const browserSchema = z.string().trim().min(1).max(64);
 const extensionVersionSchema = z.string().trim().min(1).max(64);
 const tabIdSchema = z.string().trim().min(1).max(128);
-const targetUrlSchema = z.string().trim().url().max(2_048);
+const targetUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(2_048)
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "URL must use http or https");
 const cssSelectorSchema = z.string().trim().min(1).max(1_024);
 const supportedCapabilitiesSchema = z
   .array(z.string().trim().min(1).max(128))

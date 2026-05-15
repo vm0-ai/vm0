@@ -218,6 +218,28 @@ describe("local-browser read commands", () => {
     );
   });
 
+  it("rejects write command URLs with non-http schemes", async () => {
+    const fixture = await createOrgFixture();
+    const client = setupApp({ context })(zeroLocalBrowserWriteCommandContract);
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["local-browser:write"],
+    });
+
+    await accept(
+      client.create({
+        body: {
+          kind: "page.navigate",
+          url: "javascript:alert(1)",
+          timeoutMs: 15_000,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [400],
+    );
+  });
+
   it("returns no-host when the connector is connected without an online host", async () => {
     const fixture = await createOrgFixture();
     await seedLocalBrowserConnector(fixture);
