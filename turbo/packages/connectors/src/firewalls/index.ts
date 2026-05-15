@@ -47,6 +47,7 @@ import { asanaFirewall } from "./asana.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { axiomFirewall } from "./axiom.generated";
+import { bentomlFirewall } from "./bentoml.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
@@ -246,6 +247,7 @@ const CONNECTOR_FIREWALLS = {
   attio: attioFirewall,
   atlassian: atlassianFirewall,
   axiom: axiomFirewall,
+  bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,

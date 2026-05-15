@@ -18,6 +18,7 @@ import { generate as generateAsana } from "./asana";
 import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAxiom } from "./axiom";
+import { generate as generateBentoml } from "./bentoml";
 import { generate as generateBitrix } from "./bitrix";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
@@ -200,6 +201,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   attio: generateAttio,
   atlassian: generateAtlassian,
   axiom: generateAxiom,
+  bentoml: generateBentoml,
   bitrix: generateBitrix,
   "brave-search": generateBraveSearch,
   brevo: generateBrevo,

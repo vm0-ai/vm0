@@ -6,6 +6,7 @@ import { agora } from "./connectors/agora";
 import { agentmail } from "./connectors/agentmail";
 import { airtable } from "./connectors/airtable";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
+import { bentoml } from "./connectors/bentoml";
 import { github } from "./connectors/github";
 import { notion } from "./connectors/notion";
 import { gmail } from "./connectors/gmail";
@@ -425,6 +426,7 @@ const CONNECTOR_TYPES_DEF = {
   ...agentmail,
   ...airtable,
   ...anthropicManagedAgents,
+  ...bentoml,
   ...github,
   ...notion,
   ...gmail,

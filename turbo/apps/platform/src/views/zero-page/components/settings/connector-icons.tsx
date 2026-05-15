@@ -72,6 +72,7 @@ const CONNECTOR_ICON_COLORFUL = {
   asana: true,
   azure: true,
   bedrock: true,
+  bentoml: true,
   bitrix: true,
   "brave-search": true,
   brevo: true,
