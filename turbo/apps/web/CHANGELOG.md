@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.365.3](https://github.com/vm0-ai/vm0/compare/web-v12.365.2...web-v12.365.3) (2026-05-15)
+
+
+### Bug Fixes
+
+* accept ZERO_TOKEN on connector search route ([#13349](https://github.com/vm0-ai/vm0/issues/13349)) ([86a16ee](https://github.com/vm0-ai/vm0/commit/86a16ee038ebafc3138a25a1284dbbe05485c9ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.24.2
+    * @vm0/core bumped to 8.276.4
+    * @vm0/db bumped to 1.11.3
+
 ## [12.365.2](https://github.com/vm0-ai/vm0/compare/web-v12.365.1...web-v12.365.2) (2026-05-14)
 
 

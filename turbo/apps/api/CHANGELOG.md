@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.47.2](https://github.com/vm0-ai/vm0/compare/api-v1.47.1...api-v1.47.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* accept ZERO_TOKEN on connector search route ([#13349](https://github.com/vm0-ai/vm0/issues/13349)) ([86a16ee](https://github.com/vm0-ai/vm0/commit/86a16ee038ebafc3138a25a1284dbbe05485c9ef))
+* build run skill volumes from the model provider framework ([#13352](https://github.com/vm0-ai/vm0/issues/13352)) ([351d2bc](https://github.com/vm0-ai/vm0/commit/351d2bca28854e20f8899f3196ff10b8f7f1216c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.24.2
+    * @vm0/core bumped to 8.276.4
+    * @vm0/db bumped to 1.11.3
+
 ## [1.47.1](https://github.com/vm0-ai/vm0/compare/api-v1.47.0...api-v1.47.1) (2026-05-14)
 
 
