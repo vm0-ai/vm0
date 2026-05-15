@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { parse, type UrlWithParsedQuery } from "node:url";
 import { http as mswHttp, passthrough } from "msw";
 import { describe, expect, it } from "vitest";
+import { matchesApiBackendRewritePath } from "../api-backend-rewrites";
 import { server } from "../src/mocks/server";
 
 type ProxyRequest = (
@@ -130,6 +131,17 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("routes hosted-site deployment endpoints to the API backend", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/host/deployments/eca12aa0-4c26-48c7-85d8-b3af58d408c7/complete",
+      ),
+    ).toBe(true);
+  });
+
   it("forwards method, query, cookies, and request body", async () => {
     await withRewriteProxy(
       async (request) => {

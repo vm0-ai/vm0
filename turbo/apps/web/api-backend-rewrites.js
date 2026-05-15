@@ -21,6 +21,14 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/remote-agent/:path*", "/api/zero/remote-agent/:path*"],
   ["/api/zero/video-io/generate", "/api/zero/video-io/generate"],
   [
+    "/api/zero/host/deployments/prepare",
+    "/api/zero/host/deployments/prepare",
+  ],
+  [
+    "/api/zero/host/deployments/:path*",
+    "/api/zero/host/deployments/:path*",
+  ],
+  [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",
   ],
