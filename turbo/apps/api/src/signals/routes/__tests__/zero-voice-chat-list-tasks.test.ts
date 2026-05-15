@@ -117,6 +117,38 @@ describe("GET /api/zero/voice-chat/:id/tasks (listTasks)", () => {
     });
   });
 
+  it("returns 404 when the session belongs to a different org (no existence leak)", async () => {
+    const otherOrgId = `org_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedVoiceChatFixture$,
+        {
+          trinityEnabled: true,
+          sessions: [{ orgId: otherOrgId }],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const otherOrgSessionId = fixture.sessionIds[0]!;
+
+    const client = setupApp({ context })(zeroVoiceChatContract);
+    const response = await accept(
+      client.listTasks({
+        params: { id: otherOrgSessionId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Voice-chat session not found",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
   it("returns an empty list when the session has no tasks", async () => {
     const fixture = await track(
       store.set(

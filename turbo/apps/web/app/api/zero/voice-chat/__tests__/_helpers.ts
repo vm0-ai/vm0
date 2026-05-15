@@ -23,8 +23,8 @@ export async function setupVoiceChatOrg(userId: string): Promise<{
   const orgId = `org_mock_${userId}`;
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
-  // POST /:id/tasks tests spawn zero runs; createZeroRun asserts an org-default
-  // model provider exists. Seeding here keeps per-test setup lean.
+  // Trigger-reasoning tests spawn zero runs; createZeroRun asserts an
+  // org-default model provider exists. Seeding here keeps per-test setup lean.
   const modelProviderId = await insertOrgDefaultModelProvider(
     orgId,
     "anthropic-api-key",
@@ -50,8 +50,8 @@ export async function seedVoiceChatAgent(
     orgId,
     name: uniqueId("vcc-agent"),
   });
-  // createZeroRun requires a head version; tests that spawn runs (POST tasks)
-  // need this, and other tests don't care either way.
+  // createZeroRun requires a head version; trigger-reasoning tests need this,
+  // and other tests don't care either way.
   await createTestComposeVersion(composeId, userId);
   return { agentId: composeId };
 }
@@ -71,10 +71,6 @@ export function postRequest(path: string, body?: unknown): NextRequest {
     headers: { "Content-Type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-}
-
-export function getRequest(path: string): NextRequest {
-  return createTestRequest(`${BASE_URL}${path}`);
 }
 
 export function paramsFor(id: string): { params: Promise<{ id: string }> } {

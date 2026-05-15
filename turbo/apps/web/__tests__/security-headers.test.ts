@@ -26,13 +26,33 @@ const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_REWRITE_SOURCE =
   "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 const VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE = `${VOICE_CHAT_SESSION_REWRITE_SOURCE}/items`;
+const VOICE_CHAT_TASKS_REWRITE_SOURCE = `${VOICE_CHAT_SESSION_REWRITE_SOURCE}/tasks`;
 const VOICE_CHAT_SESSION_PATH = `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}`;
 const VOICE_CHAT_ITEM_APPEND_PATH = `${VOICE_CHAT_SESSION_PATH}/items`;
-const VOICE_CHAT_ITEM_APPEND_NEGATIVE_PATHS = [
+const VOICE_CHAT_TASKS_PATH = `${VOICE_CHAT_SESSION_PATH}/tasks`;
+const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
   `${VOICE_CHAT_SESSION_PATH}/tasks`,
   "/api/zero/voice-chat/not-a-uuid/items",
+] as const;
+const VOICE_CHAT_TASKS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token",
+  "/api/zero/voice-chat/token/tasks",
+  `${VOICE_CHAT_SESSION_PATH}/items`,
+  "/api/zero/voice-chat/not-a-uuid/tasks",
+] as const;
+const VOICE_CHAT_SESSION_REWRITE_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token",
+  "/api/zero/voice-chat/not-a-uuid",
+] as const;
+const VOICE_CHAT_ITEM_APPEND_REWRITE_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token/items",
+  "/api/zero/voice-chat/not-a-uuid/items",
+] as const;
+const VOICE_CHAT_TASKS_REWRITE_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token/tasks",
+  "/api/zero/voice-chat/not-a-uuid/tasks",
 ] as const;
 
 // Import the nextConfig to test headers() function
@@ -289,6 +309,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/voice-chat/:id/items",
         },
         {
+          source: VOICE_CHAT_TASKS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/voice-chat/:id/tasks",
+        },
+        {
           source: "/api/zero/web/download-file",
           destination: "https://api.example.test/api/zero/web/download-file",
         },
@@ -342,29 +366,55 @@ describe("API backend rewrites", () => {
     expect(matcher(VOICE_CHAT_ITEM_APPEND_PATH)).toStrictEqual({
       id: VOICE_CHAT_SESSION_ID,
     });
-    for (const pathname of VOICE_CHAT_ITEM_APPEND_NEGATIVE_PATHS) {
+    for (const pathname of VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
 
   it("should bypass web middleware only for UUID-shaped voice-chat session detail paths", () => {
     expect(matchesApiBackendRewritePath(VOICE_CHAT_SESSION_PATH)).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
-      false,
-    );
-    expect(
-      matchesApiBackendRewritePath(`${VOICE_CHAT_SESSION_PATH}/tasks`),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid"),
-    ).toBe(false);
+    for (const pathname of VOICE_CHAT_SESSION_REWRITE_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should bypass web middleware only for UUID-shaped voice-chat item append paths", () => {
     expect(matchesApiBackendRewritePath(VOICE_CHAT_ITEM_APPEND_PATH)).toBe(
       true,
     );
-    for (const pathname of VOICE_CHAT_ITEM_APPEND_NEGATIVE_PATHS) {
+    for (const pathname of VOICE_CHAT_ITEM_APPEND_REWRITE_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped voice-chat task rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === VOICE_CHAT_TASKS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: VOICE_CHAT_TASKS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/voice-chat/:id/tasks",
+    });
+
+    const matcher = getPathMatch(VOICE_CHAT_TASKS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(VOICE_CHAT_TASKS_PATH)).toStrictEqual({
+      id: VOICE_CHAT_SESSION_ID,
+    });
+    for (const pathname of VOICE_CHAT_TASKS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped voice-chat task paths", () => {
+    expect(matchesApiBackendRewritePath(VOICE_CHAT_TASKS_PATH)).toBe(true);
+    for (const pathname of VOICE_CHAT_TASKS_REWRITE_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
