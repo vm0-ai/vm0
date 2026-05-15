@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.52.1](https://github.com/vm0-ai/vm0/compare/api-v1.52.0...api-v1.52.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* **api:** resolve resume session history from R2 hash ([#13495](https://github.com/vm0-ai/vm0/issues/13495)) ([2fce61f](https://github.com/vm0-ai/vm0/commit/2fce61fc6b7f727a85796cf9d665fc90fc9cc6ea)), closes [#13489](https://github.com/vm0-ai/vm0/issues/13489)
+
+
+### Refactoring
+
+* proxy voice-io speech route to api backend ([#13473](https://github.com/vm0-ai/vm0/issues/13473)) ([829be26](https://github.com/vm0-ai/vm0/commit/829be26fb2d1f2ee46584199a178fe77e269a26c))
+* proxy zero voice-chat token to api backend ([#13500](https://github.com/vm0-ai/vm0/issues/13500)) ([244fff8](https://github.com/vm0-ai/vm0/commit/244fff8600d643ac2cb6c12444a2b63a26dc258b))
+
 ## [1.52.0](https://github.com/vm0-ai/vm0/compare/api-v1.51.1...api-v1.52.0) (2026-05-15)
 
 

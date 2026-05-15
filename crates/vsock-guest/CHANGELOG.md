@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.16.2...vsock-guest-v0.17.0) (2026-05-15)
+
+
+### Features
+
+* add spawn process control plane ([#13482](https://github.com/vm0-ai/vm0/issues/13482)) ([a315a3a](https://github.com/vm0-ai/vm0/commit/a315a3ac3cd61e5ed42e642eb88f44fb943631a1))
+
 ## [0.16.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.16.1...vsock-guest-v0.16.2) (2026-05-15)
 
 

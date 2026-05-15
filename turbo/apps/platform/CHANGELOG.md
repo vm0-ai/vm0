@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.358.0](https://github.com/vm0-ai/vm0/compare/app-v0.357.5...app-v0.358.0) (2026-05-15)
+
+
+### Features
+
+* move lab entry into account dropdown ([#13487](https://github.com/vm0-ai/vm0/issues/13487)) ([12dad4b](https://github.com/vm0-ai/vm0/commit/12dad4ba56e53601053de592430e7fbfdc8a1e58))
+
+
+### Refactoring
+
+* simplify chat thread header ([#13486](https://github.com/vm0-ai/vm0/issues/13486)) ([3984e83](https://github.com/vm0-ai/vm0/commit/3984e83399206629ef123a18537cc25ec8bd884f))
+
 ## [0.357.5](https://github.com/vm0-ai/vm0/compare/app-v0.357.4...app-v0.357.5) (2026-05-15)
 
 

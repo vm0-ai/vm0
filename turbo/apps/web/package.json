@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "12.369.2",
+  "version": "12.369.3",
   "type": "module",
   "private": true,
   "scripts": {
@@ -50,6 +50,7 @@
     "croner": "^9.1.0",
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^10.6.2",
+    "gpt-tokenizer": "^3.4.0",
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^3.0.0",
     "next": "^16.2.6",

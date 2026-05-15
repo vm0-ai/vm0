@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.369.3](https://github.com/vm0-ai/vm0/compare/web-v12.369.2...web-v12.369.3) (2026-05-15)
+
+
+### Refactoring
+
+* proxy voice-io speech route to api backend ([#13473](https://github.com/vm0-ai/vm0/issues/13473)) ([829be26](https://github.com/vm0-ai/vm0/commit/829be26fb2d1f2ee46584199a178fe77e269a26c))
+* proxy zero voice-chat token to api backend ([#13500](https://github.com/vm0-ai/vm0/issues/13500)) ([244fff8](https://github.com/vm0-ai/vm0/commit/244fff8600d643ac2cb6c12444a2b63a26dc258b))
+
 ## [12.369.2](https://github.com/vm0-ai/vm0/compare/web-v12.369.1...web-v12.369.2) (2026-05-15)
 
 
