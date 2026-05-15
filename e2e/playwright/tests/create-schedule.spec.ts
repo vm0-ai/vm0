@@ -14,10 +14,8 @@ test("create a new schedule and verify it appears in the list", async ({
     page.getByRole("heading", { name: "Scheduled tasks" }),
   ).toBeVisible({ timeout: 20_000 });
   await expect(
-    page.getByText(
-      /Warming up the neurons|Brewing some ideas|Getting things ready|Almost there|Loading your workspace|Tuning the instruments|Connecting the dots|Spinning up the team/,
-    ),
-  ).toHaveCount(0, { timeout: 60_000 });
+    page.getByTestId("app-skeleton"),
+  ).toHaveAttribute("aria-hidden", "true", { timeout: 60_000 });
 
   // Click "Add schedule" in the page header (the list empty-state may show a second button)
   await page

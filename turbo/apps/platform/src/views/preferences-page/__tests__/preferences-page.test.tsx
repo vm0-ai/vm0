@@ -34,7 +34,7 @@ function renderPreferencesPage() {
 }
 
 describe("zero preferences page - tab navigation", () => {
-  it("loads preferences from the API backend host", async () => {
+  it("loads preferences through the web proxy host", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/settings"));
     const requestHosts: string[] = [];
 
@@ -50,7 +50,7 @@ describe("zero preferences page - tab navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
-    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
   it("should show appearance tab by default and switch to time zone tab", async () => {
