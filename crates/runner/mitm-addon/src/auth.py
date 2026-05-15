@@ -68,6 +68,34 @@ _last_force_refresh_at: dict[tuple[str, str], float] = {}
 _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
+def is_billable_firewall(match_info: dict, vm_info: dict) -> bool:
+    """Return whether this firewall should emit connector/model usage."""
+    return match_info.get("name", "") in (vm_info.get("billableFirewalls") or [])
+
+
+def _prepare_firewall_metadata(
+    flow: http.HTTPFlow,
+    api_entry: dict,
+    vm_info: dict,
+    match_info: dict,
+) -> None:
+    """Store firewall match metadata once before auth resolution starts."""
+    firewall_base = api_entry["base"]
+    api_id = api_entry.get("id", firewall_base)
+    # billableFirewalls is optional in the TS schema; runner may omit the
+    # field entirely for non-vm0 / no-billable-connector runs.
+    firewall_billable = is_billable_firewall(match_info, vm_info)
+
+    flow.metadata["firewall_base"] = firewall_base
+    flow.metadata["firewall_api_id"] = api_id
+    flow.metadata["firewall_name"] = match_info.get("name", "")
+    flow.metadata["firewall_permission"] = match_info.get("permission", "")
+    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
+    flow.metadata["firewall_params"] = match_info.get("params", {})
+    flow.metadata["firewall_billable"] = firewall_billable
+    flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
+
+
 def request_force_refresh(cache_key: tuple[str, str]) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
 
@@ -461,8 +489,9 @@ async def handle_firewall_request(
     flow: http.HTTPFlow, api_entry: dict, vm_info: dict, match_info: dict
 ) -> None:
     """Handle a firewall-matched request: fetch resolved headers, inject into request."""
-    firewall_base = api_entry["base"]
-    api_id = api_entry.get("id", firewall_base)
+    _prepare_firewall_metadata(flow, api_entry, vm_info, match_info)
+    firewall_base = flow.metadata["firewall_base"]
+    api_id = flow.metadata["firewall_api_id"]
     run_id = flow.metadata.get("vm_run_id", "")
     proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     sandbox_token = vm_info.get("sandboxToken", "")
@@ -474,20 +503,7 @@ async def handle_firewall_request(
     secret_connector_metadata_map = vm_info.get("secretConnectorMetadataMap")
     vars_map = vm_info.get("vars")
 
-    # Store metadata upfront — shared across ALLOW/ERROR paths
-    flow.metadata["firewall_base"] = firewall_base
-    flow.metadata["firewall_api_id"] = api_id
-    flow.metadata["firewall_name"] = match_info.get("name", "")
-    flow.metadata["firewall_permission"] = match_info.get("permission", "")
-    flow.metadata["firewall_rule_match"] = match_info.get("rule", "")
-    flow.metadata["firewall_params"] = match_info.get("params", {})
-    # billableFirewalls is optional in the TS schema; runner may omit the
-    # field entirely for non-vm0 / no-billable-connector runs.  Fall back
-    # to an empty list so a missing key doesn't KeyError the auth handler.
-    flow.metadata["firewall_billable"] = match_info.get("name", "") in (
-        vm_info.get("billableFirewalls") or []
-    )
-    flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
+    firewall_billable = bool(flow.metadata["firewall_billable"])
 
     if not encrypted_secrets:
         log_proxy_entry(
@@ -534,7 +550,7 @@ async def handle_firewall_request(
             vars_map,
             auth_base,
             auth_query,
-            flow.metadata["firewall_billable"],
+            firewall_billable,
         )
     except ConnectorNotConfiguredError as e:
         fw_name = match_info.get("name", "")

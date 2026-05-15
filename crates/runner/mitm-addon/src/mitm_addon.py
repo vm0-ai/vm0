@@ -36,6 +36,7 @@ import usage
 from auth import (
     _firewall_header_cache,
     handle_firewall_request,
+    is_billable_firewall,
     request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
@@ -237,18 +238,16 @@ async def request(flow: http.HTTPFlow) -> None:
                 )
                 return
             if isinstance(result, FirewallAllow):
-                flow.metadata["firewall_billable"] = result.match_info.get("name", "") in (
-                    vm_info.get("billableFirewalls") or []
+                _maybe_track_usage_flow(
+                    flow,
+                    is_billable_firewall(result.match_info, vm_info),
                 )
-                _maybe_track_usage_flow(flow)
                 await handle_firewall_request(flow, result.api_entry, vm_info, result.match_info)
                 if flow.response is not None and not flow.metadata.get("auth_url_rewrite"):
                     # Local firewall/auth errors never reach a provider. They only
                     # need pre-tracking to keep shutdown from racing while auth is
                     # resolving, so release as soon as the local response exists.
                     _release_tracked_usage_flow(flow)
-                else:
-                    _maybe_track_usage_flow(flow)
                 return
 
         # No firewall match — pass through directly
@@ -259,7 +258,7 @@ async def request(flow: http.HTTPFlow) -> None:
         raise
 
 
-def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:
+def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> None:
     """Track billable flows before provider work can outlive shutdown.
 
     This closes the shutdown drain gap before standard upstream dispatch and
@@ -269,7 +268,7 @@ def _maybe_track_usage_flow(flow: http.HTTPFlow) -> None:
     """
     if flow.metadata.get("_usage_flow_tracked"):
         return
-    if flow.metadata.get("firewall_billable", False):
+    if firewall_billable:
         usage.increment_flows()
         flow.metadata["_usage_flow_tracked"] = True
 
