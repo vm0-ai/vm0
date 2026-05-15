@@ -213,7 +213,7 @@ jobs:
         id: detect-api-backend
         run: |
           BASE_REF="${{ steps.detect.outputs.base-ref }}"
-          if git diff --name-only "$BASE_REF" HEAD | grep -q "^turbo/apps/web/next\.config\.js$"; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/(next\.config\.js|api-backend-rewrites\.js)$"; then
             echo "Web API backend proxy changes detected"
             echo "api-backend-needed=true" >> "$GITHUB_OUTPUT"
           else
