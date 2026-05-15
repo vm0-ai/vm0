@@ -7,7 +7,11 @@ import { bodyResultOf } from "../context/request";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
-import { imagePricing$ } from "../services/zero-image-io-generate.service";
+import {
+  getMissingImagePricing,
+  IMAGE_IO_MODEL,
+  imagePricing$,
+} from "../services/zero-image-io-generate.service";
 import {
   checkPresentationCredits$,
   createOpenAiPresentationRequest,
@@ -60,7 +64,10 @@ const postPresentationInner$ = command(
     const imagePricing =
       options.imageCount > 0 ? await get(imagePricing$) : null;
     signal.throwIfAborted();
-    if (options.imageCount > 0 && !imagePricing) {
+    const missingImagePricing = imagePricing
+      ? getMissingImagePricing(imagePricing, IMAGE_IO_MODEL)
+      : [];
+    if (options.imageCount > 0 && missingImagePricing.length > 0) {
       return presentationServiceUnavailable(
         "Presentation image generation pricing is not configured",
         "NOT_CONFIGURED",

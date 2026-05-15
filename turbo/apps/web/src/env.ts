@@ -232,6 +232,8 @@ function initEnv() {
       ABLY_API_KEY: z.string().min(1),
       // OpenAI (voice-chat ephemeral token minting, STT, TTS, image generation)
       OPENAI_API_KEY: z.string().min(1),
+      // fal.ai (built-in image/video generation fallback models)
+      FAL_KEY: z.string().min(1).optional(),
       // Vercel cron job authentication
       CRON_SECRET: z.string().min(1).optional(),
       // Lightweight model (OpenRouter) — used for internal tasks like title generation
@@ -432,6 +434,7 @@ function initEnv() {
       CONCURRENT_RUN_LIMIT_CAP: process.env.CONCURRENT_RUN_LIMIT_CAP,
       ABLY_API_KEY: process.env.ABLY_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      FAL_KEY: process.env.FAL_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,

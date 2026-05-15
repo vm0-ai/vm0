@@ -110,11 +110,17 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("openai");
     expect(text).toContain("OpenAI");
     expect(text).not.toContain("replicate-user");
-    expect(text).toContain("Built-in provider:");
+    expect(text).toContain("Built-in providers:");
     expect(text).toContain("vm0");
-    expect(text).toContain("Built-in");
+    expect(text).toContain("Built-in OpenAI");
     expect(text).toContain("Model: gpt-image-2");
-    expect(text).toContain("Use: zero built-in generate image -h");
+    expect(text).toContain(
+      "Use: zero built-in generate image --model gpt-image-2 -h",
+    );
+    expect(text).toContain("Model: gpt-image-1.5");
+    expect(text).toContain("Model: fal-ai/flux-pro/v1.1");
+    expect(text).toContain("Model: fal-ai/qwen-image");
+    expect(text).toContain("Model: fal-ai/bytedance/seedream/v4/text-to-image");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
@@ -186,10 +192,20 @@ describe("zero doctor generate command", () => {
     );
     expect(json).toMatchObject({
       builtInProvider: {
-        label: "Built-in",
+        label: "Built-in OpenAI",
         model: "gpt-image-2",
-        command: "zero built-in generate image -h",
+        command: "zero built-in generate image --model gpt-image-2 -h",
       },
+    });
+    expect(json).toMatchObject({
+      builtInProviders: expect.arrayContaining([
+        expect.objectContaining({ model: "gpt-image-1.5" }),
+        expect.objectContaining({ model: "fal-ai/flux-pro/v1.1" }),
+        expect.objectContaining({ model: "fal-ai/qwen-image" }),
+        expect.objectContaining({
+          model: "fal-ai/bytedance/seedream/v4/text-to-image",
+        }),
+      ]),
     });
   });
 

@@ -8,12 +8,16 @@ const c = initContract();
 export const zeroImageIoGenerateRequestSchema = z
   .object({
     prompt: z.unknown().optional(),
+    model: z.unknown().optional(),
     size: z.unknown().optional(),
     quality: z.unknown().optional(),
     background: z.unknown().optional(),
     outputFormat: z.unknown().optional(),
     outputCompression: z.unknown().optional(),
     moderation: z.unknown().optional(),
+    seed: z.unknown().optional(),
+    safetyTolerance: z.unknown().optional(),
+    enhancePrompt: z.unknown().optional(),
   })
   .passthrough();
 
@@ -32,14 +36,20 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   url: z.string(),
   creditsCharged: z.number(),
   model: z.string(),
+  provider: z.string(),
   imageSize: z.string(),
   quality: z.string(),
   background: z.string(),
   outputFormat: z.string(),
   outputCompression: z.number().optional(),
   moderation: z.string().optional(),
+  safetyTolerance: z.string().optional(),
   revisedPrompt: z.string().optional(),
-  usage: zeroImageIoUsageSchema,
+  usage: zeroImageIoUsageSchema.optional(),
+  billingCategory: z.string().optional(),
+  billingQuantity: z.number().optional(),
+  sourceUrl: z.string().optional(),
+  seed: z.number().optional(),
 });
 
 export type ZeroImageIoGenerateRequest = z.infer<

@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
@@ -18,8 +18,8 @@ import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
   IMAGE_IO_MODEL,
+  imagePricingKey,
   OPENAI_IMAGE_GENERATION_URL,
-  type ImagePricing,
   type ImageUsage,
 } from "../../services/zero-image-io-generate.service";
 import {
@@ -41,6 +41,8 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-storages";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
+const FAL_QWEN_IMAGE_URL = "https://fal.run/fal-ai/qwen-image";
+const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const IMAGE_PRICING_CATEGORIES = [
   "tokens.input.text",
   "tokens.input.image",
@@ -100,7 +102,10 @@ function zeroToken(args: {
   });
 }
 
-function expectedCredits(usage: ImageUsage, pricing: ImagePricing): number {
+function expectedCredits(
+  usage: ImageUsage,
+  pricing: ReadonlyMap<string, PricingSnapshot>,
+): number {
   const rows: readonly (readonly [ImagePricingCategory, number])[] = [
     ["tokens.input.text", usage.textInputTokens],
     ["tokens.input.image", usage.imageInputTokens],
@@ -111,7 +116,7 @@ function expectedCredits(usage: ImageUsage, pricing: ImagePricing): number {
     if (quantity <= 0) {
       return total;
     }
-    const row = pricing.get(category);
+    const row = pricing.get(imagePricingKey(IMAGE_IO_MODEL, category));
     if (!row) {
       return total;
     }
@@ -120,7 +125,7 @@ function expectedCredits(usage: ImageUsage, pricing: ImagePricing): number {
 }
 
 async function ensureImagePricing(): Promise<{
-  readonly pricing: ImagePricing;
+  readonly pricing: ReadonlyMap<string, PricingSnapshot>;
   readonly insertedCategories: readonly ImagePricingCategory[];
 }> {
   const writeDb = store.set(writeDb$);
@@ -139,10 +144,10 @@ async function ensureImagePricing(): Promise<{
       ),
     );
 
-  const pricing = new Map<ImagePricingCategory, PricingSnapshot>();
+  const pricing = new Map<string, PricingSnapshot>();
   for (const row of rows) {
     if (isImagePricingCategory(row.category)) {
-      pricing.set(row.category, {
+      pricing.set(imagePricingKey(IMAGE_IO_MODEL, row.category), {
         category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
@@ -170,7 +175,7 @@ async function ensureImagePricing(): Promise<{
   };
 
   for (const category of IMAGE_PRICING_CATEGORIES) {
-    if (!pricing.has(category)) {
+    if (!pricing.has(imagePricingKey(IMAGE_IO_MODEL, category))) {
       const row = defaults[category];
       await writeDb.insert(usagePricing).values({
         kind: "image",
@@ -179,12 +184,33 @@ async function ensureImagePricing(): Promise<{
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
       });
-      pricing.set(category, row);
+      pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), row);
       insertedCategories.push(category);
     }
   }
 
   return { pricing, insertedCategories };
+}
+
+async function upsertFalImagePricing(): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .insert(usagePricing)
+    .values({
+      kind: "image",
+      provider: "fal-ai/qwen-image",
+      category: "output_megapixel",
+      unitPrice: 20,
+      unitSize: 1,
+    })
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: 20,
+        unitSize: 1,
+        updatedAt: sql`now()`,
+      },
+    });
 }
 
 function isImagePricingCategory(value: string): value is ImagePricingCategory {
@@ -685,6 +711,136 @@ describe("POST /api/zero/image-io/generate", () => {
       return total + (row.creditsCharged ?? 0);
     }, 0);
     expect(totalCredits).toBe(creditsCharged);
+  });
+
+  it("generates fal image files and settles megapixel usage inline", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertFalImagePricing();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedBody = await request.json();
+        return HttpResponse.json({
+          images: [
+            {
+              url: FAL_MEDIA_URL,
+              width: 1536,
+              height: 1024,
+              content_type: "image/jpeg",
+            },
+          ],
+          prompt: "A precise product render.",
+          seed: 99,
+        });
+      }),
+      http.get(FAL_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        prompt: "a precise product render",
+        model: "qwen-image",
+        size: "1536x1024",
+        outputFormat: "jpeg",
+        seed: 99,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({
+      contentType: "image/jpeg",
+      size: IMAGE_BYTES.byteLength,
+      creditsCharged: 40,
+      model: "fal-ai/qwen-image",
+      provider: "fal",
+      imageSize: "1536x1024",
+      quality: "model-default",
+      background: "auto",
+      outputFormat: "jpeg",
+      billingCategory: "output_megapixel",
+      billingQuantity: 2,
+      sourceUrl: FAL_MEDIA_URL,
+      seed: 99,
+    });
+    expect(body).not.toHaveProperty("usage");
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "a precise product render",
+      image_size: { width: 1536, height: 1024 },
+      num_images: 1,
+      output_format: "jpeg",
+      seed: 99,
+    });
+
+    if (
+      !(
+        typeof body === "object" &&
+        body !== null &&
+        "id" in body &&
+        "filename" in body
+      )
+    ) {
+      throw new Error("Expected image response id and filename");
+    }
+    const fileId = String(body.id);
+    const filename = String(body.filename);
+    const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
+    expect(putInput.Key).toBe(
+      `uploads/${fixture.userId}/${fileId}/${filename}`,
+    );
+    expect(putInput.ContentType).toBe("image/jpeg");
+
+    const usageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "image"),
+          eq(usageEvent.provider, "fal-ai/qwen-image"),
+        ),
+      );
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({
+      runId,
+      category: "output_megapixel",
+      quantity: 2,
+      status: "processed",
+      billingError: null,
+      creditsCharged: 40,
+    });
   });
 
   it("returns 500 when OpenAI image generation fails", async () => {

@@ -171,6 +171,35 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["tokens.input.image", usd(9.6), 1_000_000],
     ["tokens.output.image", usd(36), 1_000_000],
   ]),
+  ...usageGroup("image", "gpt-image-1.5", [
+    ["tokens.input.text", usd(9.6), 1_000_000],
+    ["tokens.input.image", usd(9.6), 1_000_000],
+    ["tokens.output.image", usd(38.4), 1_000_000],
+  ]),
+  ...usageGroup("image", "gpt-image-1", [
+    ["tokens.input.text", usd(6), 1_000_000],
+    ["tokens.input.image", usd(12), 1_000_000],
+    ["tokens.output.image", usd(48), 1_000_000],
+  ]),
+  ...usageGroup("image", "gpt-image-1-mini", [
+    ["tokens.input.text", usd(1.2), 1_000_000],
+    ["tokens.input.image", usd(2.4), 1_000_000],
+    ["tokens.output.image", usd(12), 1_000_000],
+  ]),
+
+  // fal.ai image generation — billed by model-specific output unit.
+  ...usageGroup("image", "fal-ai/flux-pro/v1.1", [
+    ["output_megapixel", usd(0.04), 1],
+  ]),
+  ...usageGroup("image", "fal-ai/flux-pro/v1.1-ultra", [
+    ["output_image", usd(0.06), 1],
+  ]),
+  ...usageGroup("image", "fal-ai/qwen-image", [
+    ["output_megapixel", usd(0.02), 1],
+  ]),
+  ...usageGroup("image", "fal-ai/bytedance/seedream/v4/text-to-image", [
+    ["output_image", usd(0.03), 1],
+  ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute cost with 20% gross margin = $0.01875/minute,

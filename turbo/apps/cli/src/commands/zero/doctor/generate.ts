@@ -27,9 +27,51 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 > = {
   image: [
     {
-      label: "Built-in",
+      label: "Built-in OpenAI",
       model: "gpt-image-2",
-      command: "zero built-in generate image -h",
+      command: "zero built-in generate image --model gpt-image-2 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in OpenAI",
+      model: "gpt-image-1.5",
+      command: "zero built-in generate image --model gpt-image-1.5 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in OpenAI",
+      model: "gpt-image-1",
+      command: "zero built-in generate image --model gpt-image-1 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in OpenAI",
+      model: "gpt-image-1-mini",
+      command: "zero built-in generate image --model gpt-image-1-mini -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "fal-ai/flux-pro/v1.1",
+      command: "zero built-in generate image --model flux-pro-1.1 -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "fal-ai/flux-pro/v1.1-ultra",
+      command: "zero built-in generate image --model flux-pro-1.1-ultra -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "fal-ai/qwen-image",
+      command: "zero built-in generate image --model qwen-image -h",
+      reason: "available without connector setup",
+    },
+    {
+      label: "Built-in fal.ai",
+      model: "fal-ai/bytedance/seedream/v4/text-to-image",
+      command: "zero built-in generate image --model seedream4 -h",
       reason: "available without connector setup",
     },
   ],

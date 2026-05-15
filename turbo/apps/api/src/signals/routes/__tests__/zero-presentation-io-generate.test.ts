@@ -18,8 +18,8 @@ import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
   IMAGE_IO_MODEL,
+  imagePricingKey,
   OPENAI_IMAGE_GENERATION_URL,
-  type ImagePricing,
   type ImageUsage,
 } from "../../services/zero-image-io-generate.service";
 import {
@@ -69,6 +69,12 @@ interface PresentationFixture {
 
 interface PricingSnapshot {
   readonly category: PresentationPricingCategory;
+  readonly unitPrice: number;
+  readonly unitSize: number;
+}
+
+interface ImagePricingSnapshot {
+  readonly category: ImagePricingCategory;
   readonly unitPrice: number;
   readonly unitSize: number;
 }
@@ -155,7 +161,7 @@ function expectedCredits(
 
 function expectedImageCredits(
   usage: ImageUsage,
-  pricing: ImagePricing,
+  pricing: ReadonlyMap<string, ImagePricingSnapshot>,
 ): number {
   const rows: readonly (readonly [ImagePricingCategory, number])[] = [
     ["tokens.input.text", usage.textInputTokens],
@@ -167,7 +173,7 @@ function expectedImageCredits(
     if (quantity <= 0) {
       return total;
     }
-    const row = pricing.get(category);
+    const row = pricing.get(imagePricingKey(IMAGE_IO_MODEL, category));
     if (!row) {
       return total;
     }
@@ -241,7 +247,7 @@ async function ensurePresentationPricing(): Promise<{
 }
 
 async function ensureImagePricing(): Promise<{
-  readonly pricing: ImagePricing;
+  readonly pricing: ReadonlyMap<string, ImagePricingSnapshot>;
   readonly insertedCategories: readonly ImagePricingCategory[];
 }> {
   const writeDb = store.set(writeDb$);
@@ -260,49 +266,39 @@ async function ensureImagePricing(): Promise<{
       ),
     );
 
-  const pricing = new Map<
-    ImagePricingCategory,
-    { readonly unitPrice: number; readonly unitSize: number }
-  >();
+  const pricing = new Map<string, ImagePricingSnapshot>();
   for (const row of rows) {
     if (isImagePricingCategory(row.category)) {
-      pricing.set(row.category, {
+      pricing.set(imagePricingKey(IMAGE_IO_MODEL, row.category), {
+        category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
       });
     }
   }
 
-  const defaults: Readonly<
-    Record<
-      ImagePricingCategory,
-      {
-        readonly category: ImagePricingCategory;
-        readonly unitPrice: number;
-        readonly unitSize: number;
-      }
-    >
-  > = {
-    "tokens.input.text": {
-      category: "tokens.input.text",
-      unitPrice: 6000,
-      unitSize: 1_000_000,
-    },
-    "tokens.input.image": {
-      category: "tokens.input.image",
-      unitPrice: 9600,
-      unitSize: 1_000_000,
-    },
-    "tokens.output.image": {
-      category: "tokens.output.image",
-      unitPrice: 36_000,
-      unitSize: 1_000_000,
-    },
-  };
+  const defaults: Readonly<Record<ImagePricingCategory, ImagePricingSnapshot>> =
+    {
+      "tokens.input.text": {
+        category: "tokens.input.text",
+        unitPrice: 6000,
+        unitSize: 1_000_000,
+      },
+      "tokens.input.image": {
+        category: "tokens.input.image",
+        unitPrice: 9600,
+        unitSize: 1_000_000,
+      },
+      "tokens.output.image": {
+        category: "tokens.output.image",
+        unitPrice: 36_000,
+        unitSize: 1_000_000,
+      },
+    };
 
   const insertedCategories: ImagePricingCategory[] = [];
   for (const category of IMAGE_PRICING_CATEGORIES) {
-    if (!pricing.has(category)) {
+    if (!pricing.has(imagePricingKey(IMAGE_IO_MODEL, category))) {
       const row = defaults[category];
       await writeDb.insert(usagePricing).values({
         kind: "image",
@@ -311,7 +307,7 @@ async function ensureImagePricing(): Promise<{
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
       });
-      pricing.set(category, row);
+      pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), row);
       insertedCategories.push(category);
     }
   }

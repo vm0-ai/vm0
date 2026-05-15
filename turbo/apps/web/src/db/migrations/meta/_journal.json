@@ -2654,6 +2654,13 @@
       "when": 1778815923713,
       "tag": "0378_wise_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 379,
+      "version": "7",
+      "when": 1778819068481,
+      "tag": "0379_add_image_model_usage_pricing",
+      "breakpoints": true
     }
   ]
 }

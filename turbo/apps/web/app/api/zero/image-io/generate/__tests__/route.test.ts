@@ -33,6 +33,8 @@ const { POST } = await import("../route");
 const context = testContext();
 const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
+const FAL_QWEN_IMAGE_URL = "https://fal.run/fal-ai/qwen-image";
+const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const MODEL = "gpt-image-2";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 
@@ -44,13 +46,18 @@ type ImageResponse = {
   url: string;
   creditsCharged: number;
   model: string;
+  provider: string;
   imageSize: string;
   quality: string;
   background: string;
   outputFormat: string;
   outputCompression?: number;
   moderation?: string;
-  usage: {
+  billingCategory?: string;
+  billingQuantity?: number;
+  sourceUrl?: string;
+  seed?: number;
+  usage?: {
     textInputTokens: number;
     imageInputTokens: number;
     imageOutputTokens: number;
@@ -101,6 +108,16 @@ async function seedImagePricing() {
   });
 }
 
+async function seedFalImagePricing() {
+  await insertTestUsagePricing({
+    kind: "image",
+    provider: "fal-ai/qwen-image",
+    category: "output_megapixel",
+    unitPrice: 20,
+    unitSize: 1,
+  });
+}
+
 async function setupRunScopedToken(userId: string, orgId: string) {
   const { composeId } = await createTestCompose(uniqueId("image-agent"));
   const threadId = await insertTestChatThread(userId, composeId, "Images");
@@ -138,6 +155,7 @@ describe("POST /api/zero/image-io/generate", () => {
     context.setupMocks();
     mockAblyPublish.mockClear();
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubEnv("FAL_KEY", "test-fal-key");
     reloadEnv();
   });
 
@@ -289,6 +307,7 @@ describe("POST /api/zero/image-io/generate", () => {
       size: IMAGE_BYTES.byteLength,
       creditsCharged: 78,
       model: MODEL,
+      provider: "openai",
       imageSize: "2048x1152",
       quality: "auto",
       background: "opaque",
@@ -330,6 +349,7 @@ describe("POST /api/zero/image-io/generate", () => {
       metadata: expect.objectContaining({
         generatedBy: "zero-official-image",
         model: MODEL,
+        provider: "openai",
         s3Key: `uploads/${userId}/${body.id}/${body.filename}`,
         imageSize: "2048x1152",
         quality: "auto",
@@ -362,6 +382,94 @@ describe("POST /api/zero/image-io/generate", () => {
         }),
       ]),
     );
+  });
+
+  it("stores a /f image and settles fal megapixel usage inline", async () => {
+    const userId = uniqueId("image-fal");
+    const { orgId } = await setupOrg(userId);
+    const { token, runId } = await setupRunScopedToken(userId, orgId);
+    await setOrgCredits(orgId, 1000);
+    await seedFalImagePricing();
+
+    let observedAuthorization: string | null = null;
+    let observedBody: unknown = null;
+    server.use(
+      http.post(FAL_QWEN_IMAGE_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedBody = await request.json();
+        return HttpResponse.json({
+          images: [
+            {
+              url: FAL_MEDIA_URL,
+              width: 1536,
+              height: 1024,
+              content_type: "image/jpeg",
+            },
+          ],
+          prompt: "A precise product render.",
+          seed: 99,
+        });
+      }),
+      http.get(FAL_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const response = await POST(
+      imageRequest(
+        {
+          prompt: "a precise product render",
+          model: "qwen-image",
+          size: "1536x1024",
+          outputFormat: "jpeg",
+          seed: 99,
+        },
+        { Authorization: `Bearer ${token}` },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ImageResponse;
+    expect(body).toMatchObject({
+      contentType: "image/jpeg",
+      size: IMAGE_BYTES.byteLength,
+      creditsCharged: 40,
+      model: "fal-ai/qwen-image",
+      provider: "fal",
+      imageSize: "1536x1024",
+      quality: "model-default",
+      background: "auto",
+      outputFormat: "jpeg",
+      billingCategory: "output_megapixel",
+      billingQuantity: 2,
+      sourceUrl: FAL_MEDIA_URL,
+      seed: 99,
+    });
+    expect(body.usage).toBeUndefined();
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "a precise product render",
+      image_size: { width: 1536, height: 1024 },
+      num_images: 1,
+      output_format: "jpeg",
+      seed: 99,
+    });
+
+    const rows = await findTestUsageEventsByRunId(runId);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "image",
+          provider: "fal-ai/qwen-image",
+          category: "output_megapixel",
+          quantity: 2,
+          status: "processed",
+        }),
+      ]),
+    );
+    expect(await getOrgCredits(orgId)).toBe(960);
   });
 
   it("returns 500 when OpenAI image generation fails", async () => {

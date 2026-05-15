@@ -20,16 +20,23 @@ export const runtime = "nodejs";
 const log = logger("api:zero:image-io:generate");
 
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
-const MODEL = "gpt-image-2";
+const FAL_IMAGE_RUN_URL_PREFIX = "https://fal.run";
+const DEFAULT_MODEL = "gpt-image-2";
 const USAGE_KIND = "image";
-const USAGE_PROVIDER = MODEL;
 const TEXT_INPUT_CATEGORY = "tokens.input.text";
 const IMAGE_INPUT_CATEGORY = "tokens.input.image";
 const IMAGE_OUTPUT_CATEGORY = "tokens.output.image";
-const REQUIRED_PRICING_CATEGORIES = [
+const FAL_OUTPUT_IMAGE_CATEGORY = "output_image";
+const FAL_OUTPUT_MEGAPIXEL_CATEGORY = "output_megapixel";
+const OPENAI_PRICING_CATEGORIES = [
   TEXT_INPUT_CATEGORY,
   IMAGE_INPUT_CATEGORY,
   IMAGE_OUTPUT_CATEGORY,
+] as const;
+const IMAGE_PRICING_CATEGORIES = [
+  ...OPENAI_PRICING_CATEGORIES,
+  FAL_OUTPUT_IMAGE_CATEGORY,
+  FAL_OUTPUT_MEGAPIXEL_CATEGORY,
 ] as const;
 const MAX_PROMPT_LENGTH = 32_000;
 const MIN_IMAGE_PIXELS = 655_360;
@@ -38,21 +45,223 @@ const MAX_IMAGE_EDGE = 3840;
 const IMAGE_EDGE_MULTIPLE = 16;
 const MAX_ASPECT_RATIO = 3;
 
-const QUALITIES = new Set(["low", "medium", "high", "auto"]);
-const BACKGROUNDS = new Set(["auto", "opaque"]);
-const OUTPUT_FORMATS = new Set(["png", "webp", "jpeg"]);
-const MODERATIONS = new Set(["auto", "low"]);
+const QUALITIES = ["low", "medium", "high", "auto"] as const;
+const BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
+const OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
+const FAL_OUTPUT_FORMATS = ["png", "jpeg"] as const;
+const MODERATIONS = ["auto", "low"] as const;
+const SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
+const STANDARD_OPENAI_IMAGE_SIZES = [
+  "auto",
+  "1024x1024",
+  "1536x1024",
+  "1024x1536",
+] as const;
+const FAL_IMAGE_ASPECT_RATIOS = [
+  "21:9",
+  "16:9",
+  "4:3",
+  "3:2",
+  "1:1",
+  "2:3",
+  "3:4",
+  "9:16",
+  "9:21",
+] as const;
 
-type PricingCategory = (typeof REQUIRED_PRICING_CATEGORIES)[number];
+const IMAGE_MODEL_ALIASES = {
+  "gpt-image-2": "gpt-image-2",
+  "gpt-image-1.5": "gpt-image-1.5",
+  "gpt-image-1": "gpt-image-1",
+  "gpt-image-1-mini": "gpt-image-1-mini",
+  "flux-pro-1.1": "fal-ai/flux-pro/v1.1",
+  "flux-pro-1.1-ultra": "fal-ai/flux-pro/v1.1-ultra",
+  "qwen-image": "fal-ai/qwen-image",
+  seedream4: "fal-ai/bytedance/seedream/v4/text-to-image",
+} as const;
+
+const IMAGE_MODEL_CONFIGS = {
+  "gpt-image-2": {
+    alias: "gpt-image-2",
+    provider: "openai",
+    sizeMode: "flexible",
+    sizeParameter: undefined,
+    outputFormats: OUTPUT_FORMATS,
+    pricingCategories: OPENAI_PRICING_CATEGORIES,
+    billingMode: "tokens",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: true,
+    supportsModeration: true,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+  "gpt-image-1.5": {
+    alias: "gpt-image-1.5",
+    provider: "openai",
+    sizeMode: "standard",
+    sizeParameter: undefined,
+    outputFormats: OUTPUT_FORMATS,
+    pricingCategories: OPENAI_PRICING_CATEGORIES,
+    billingMode: "tokens",
+    supportsTransparentBackground: true,
+    supportsOutputCompression: true,
+    supportsModeration: true,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+  "gpt-image-1": {
+    alias: "gpt-image-1",
+    provider: "openai",
+    sizeMode: "standard",
+    sizeParameter: undefined,
+    outputFormats: OUTPUT_FORMATS,
+    pricingCategories: OPENAI_PRICING_CATEGORIES,
+    billingMode: "tokens",
+    supportsTransparentBackground: true,
+    supportsOutputCompression: true,
+    supportsModeration: true,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+  "gpt-image-1-mini": {
+    alias: "gpt-image-1-mini",
+    provider: "openai",
+    sizeMode: "standard",
+    sizeParameter: undefined,
+    outputFormats: OUTPUT_FORMATS,
+    pricingCategories: OPENAI_PRICING_CATEGORIES,
+    billingMode: "tokens",
+    supportsTransparentBackground: true,
+    supportsOutputCompression: true,
+    supportsModeration: true,
+    supportsSeed: false,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+  "fal-ai/flux-pro/v1.1": {
+    alias: "flux-pro-1.1",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
+    billingMode: "megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
+    supportsEnhancePrompt: true,
+  },
+  "fal-ai/flux-pro/v1.1-ultra": {
+    alias: "flux-pro-1.1-ultra",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "aspect_ratio",
+    outputFormats: FAL_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: true,
+    supportsEnhancePrompt: false,
+  },
+  "fal-ai/qwen-image": {
+    alias: "qwen-image",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: FAL_OUTPUT_FORMATS,
+    pricingCategories: [FAL_OUTPUT_MEGAPIXEL_CATEGORY],
+    billingMode: "megapixel",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+  "fal-ai/bytedance/seedream/v4/text-to-image": {
+    alias: "seedream4",
+    provider: "fal",
+    sizeMode: "flexible",
+    sizeParameter: "image_size",
+    outputFormats: ["png"],
+    pricingCategories: [FAL_OUTPUT_IMAGE_CATEGORY],
+    billingMode: "image",
+    supportsTransparentBackground: false,
+    supportsOutputCompression: false,
+    supportsModeration: false,
+    supportsSeed: true,
+    supportsSafetyTolerance: false,
+    supportsEnhancePrompt: false,
+  },
+} as const;
+
+const IMAGE_MODELS = Object.keys(IMAGE_MODEL_CONFIGS) as ImageModel[];
+
+type ImageQuality = (typeof QUALITIES)[number];
+type ImageBackground = (typeof BACKGROUNDS)[number];
+type ImageOutputFormat = (typeof OUTPUT_FORMATS)[number];
+type ImageModeration = (typeof MODERATIONS)[number];
+type ImageSafetyTolerance = (typeof SAFETY_TOLERANCES)[number];
+type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
+type ImageModel = keyof typeof IMAGE_MODEL_CONFIGS;
+type ImageProvider = (typeof IMAGE_MODEL_CONFIGS)[ImageModel]["provider"];
 
 interface ImageOptions {
   prompt: string;
+  model: ImageModel;
+  provider: ImageProvider;
   size: string;
+  quality: ImageQuality;
+  background: ImageBackground;
+  outputFormat: ImageOutputFormat;
+  outputCompression: number | undefined;
+  moderation: ImageModeration;
+  seed: number | undefined;
+  safetyTolerance: ImageSafetyTolerance;
+  enhancePrompt: boolean;
+}
+
+interface ImageUsage {
+  textInputTokens: number;
+  imageInputTokens: number;
+  imageOutputTokens: number;
+  totalTokens: number;
+}
+
+interface BillingEntry {
+  category: ImagePricingCategory;
+  quantity: number;
+}
+
+interface ImagePricingRow {
+  provider: ImageModel;
+  category: ImagePricingCategory;
+  unitPrice: number;
+  unitSize: number;
+}
+
+interface ParsedImageGeneration {
+  imageBytes: Buffer;
+  revisedPrompt: string | undefined;
+  imageSize: string;
   quality: string;
   background: string;
-  outputFormat: string;
+  outputFormat: ImageOutputFormat;
   outputCompression: number | undefined;
-  moderation: string;
+  moderation: ImageModeration;
+  safetyTolerance: ImageSafetyTolerance | undefined;
+  usage: ImageUsage | undefined;
+  billing: readonly BillingEntry[];
+  sourceUrl: string | undefined;
+  seed: number | undefined;
 }
 
 interface OpenAiImageGenerationResponse {
@@ -72,11 +281,17 @@ interface OpenAiImageGenerationResponse {
   };
 }
 
-interface ImageUsage {
-  textInputTokens: number;
-  imageInputTokens: number;
-  imageOutputTokens: number;
-  totalTokens: number;
+interface FalImageFile {
+  url: string;
+  contentType: string | undefined;
+  width: number | undefined;
+  height: number | undefined;
+}
+
+interface FalImageResult {
+  image: FalImageFile;
+  revisedPrompt: string | undefined;
+  seed: number | undefined;
 }
 
 function errorResponse(message: string, code: string, status: number) {
@@ -85,6 +300,19 @@ function errorResponse(message: string, code: string, status: number) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function includesString<T extends string>(
+  values: readonly T[],
+  value: string,
+): value is T {
+  return values.some((candidate) => {
+    return candidate === value;
+  });
+}
+
+function hasString(values: readonly string[], value: string): boolean {
+  return values.includes(value);
 }
 
 function readString(
@@ -120,21 +348,90 @@ function readOptionalInteger(
   return parsed;
 }
 
-function validateImageSize(size: string): Response | null {
+function readOptionalSafeInteger(
+  body: Record<string, unknown>,
+  key: string,
+): number | undefined | Response {
+  const value = readOptionalInteger(body, key);
+  if (value instanceof Response) return value;
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    return errorResponse(
+      `${key} must be a non-negative safe integer`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  return value;
+}
+
+function readBoolean(
+  body: Record<string, unknown>,
+  key: string,
+  fallback: boolean,
+): boolean {
+  const value = body[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeImageModel(value: string): ImageModel | null {
+  if (value in IMAGE_MODEL_CONFIGS) {
+    return value as ImageModel;
+  }
+  if (value in IMAGE_MODEL_ALIASES) {
+    return IMAGE_MODEL_ALIASES[value as keyof typeof IMAGE_MODEL_ALIASES];
+  }
+  return null;
+}
+
+function imageModelList(): string {
+  return Object.keys(IMAGE_MODEL_ALIASES).join(", ");
+}
+
+function imagePricingKey(
+  model: ImageModel,
+  category: ImagePricingCategory,
+): string {
+  return `${model}:${category}`;
+}
+
+function parseSize(size: string): {
+  width: number;
+  height: number;
+} | null {
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) {
+    return null;
+  }
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+function validateImageSize(model: ImageModel, size: string): Response | null {
   if (size === "auto") {
     return null;
   }
 
-  const match = /^(\d+)x(\d+)$/.exec(size);
-  if (!match) {
+  const parsed = parseSize(size);
+  if (!parsed) {
     return errorResponse(`Unsupported image size: ${size}`, "BAD_REQUEST", 400);
   }
 
-  const width = Number(match[1]);
-  const height = Number(match[2]);
+  const { width, height } = parsed;
   const longEdge = Math.max(width, height);
   const shortEdge = Math.min(width, height);
   const pixels = width * height;
+  const modelConfig = IMAGE_MODEL_CONFIGS[model];
+
+  if (
+    modelConfig.provider === "openai" &&
+    modelConfig.sizeMode === "standard" &&
+    !hasString(STANDARD_OPENAI_IMAGE_SIZES, size)
+  ) {
+    return errorResponse(
+      `Unsupported image size for ${modelConfig.alias}: ${size}. Use auto, 1024x1024, 1536x1024, or 1024x1536`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
 
   if (longEdge > MAX_IMAGE_EDGE) {
     return errorResponse(
@@ -185,12 +482,23 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
     );
   }
 
+  const rawModel = readString(body, "model", DEFAULT_MODEL);
+  const model = normalizeImageModel(rawModel);
+  if (!model) {
+    return errorResponse(
+      `Unsupported image model: ${rawModel}. Available models: ${imageModelList()}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  const modelConfig = IMAGE_MODEL_CONFIGS[model];
+
   const size = readString(body, "size", "1024x1024");
-  const sizeError = validateImageSize(size);
+  const sizeError = validateImageSize(model, size);
   if (sizeError) return sizeError;
 
   const quality = readString(body, "quality", "medium");
-  if (!QUALITIES.has(quality)) {
+  if (!includesString(QUALITIES, quality)) {
     return errorResponse(
       `Unsupported image quality: ${quality}`,
       "BAD_REQUEST",
@@ -199,25 +507,35 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
   }
 
   const background = readString(body, "background", "auto");
-  if (background === "transparent") {
-    return errorResponse(
-      "gpt-image-2 does not support transparent backgrounds",
-      "BAD_REQUEST",
-      400,
-    );
-  }
-  if (!BACKGROUNDS.has(background)) {
+  if (!includesString(BACKGROUNDS, background)) {
     return errorResponse(
       `Unsupported image background: ${background}`,
       "BAD_REQUEST",
       400,
     );
   }
+  if (
+    background === "transparent" &&
+    !modelConfig.supportsTransparentBackground
+  ) {
+    return errorResponse(
+      `${modelConfig.alias} does not support transparent backgrounds`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
 
   const outputFormat = readString(body, "outputFormat", "png");
-  if (!OUTPUT_FORMATS.has(outputFormat)) {
+  if (!includesString(OUTPUT_FORMATS, outputFormat)) {
     return errorResponse(
       `Unsupported image output format: ${outputFormat}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (!hasString(modelConfig.outputFormats, outputFormat)) {
+    return errorResponse(
+      `Unsupported image output format for ${modelConfig.alias}: ${outputFormat}`,
       "BAD_REQUEST",
       400,
     );
@@ -242,11 +560,74 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
       400,
     );
   }
+  if (
+    outputCompression !== undefined &&
+    !modelConfig.supportsOutputCompression
+  ) {
+    return errorResponse(
+      `outputCompression is not supported for ${modelConfig.alias}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (background === "transparent" && outputFormat === "jpeg") {
+    return errorResponse(
+      "transparent backgrounds require png or webp output",
+      "BAD_REQUEST",
+      400,
+    );
+  }
 
   const moderation = readString(body, "moderation", "auto");
-  if (!MODERATIONS.has(moderation)) {
+  if (!includesString(MODERATIONS, moderation)) {
     return errorResponse(
       `Unsupported image moderation: ${moderation}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (moderation !== "auto" && !modelConfig.supportsModeration) {
+    return errorResponse(
+      `moderation is not supported for ${modelConfig.alias}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  const seed = readOptionalSafeInteger(body, "seed");
+  if (seed instanceof Response) return seed;
+  if (seed !== undefined && !modelConfig.supportsSeed) {
+    return errorResponse(
+      `seed is not supported for ${modelConfig.alias}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  const safetyTolerance = readString(body, "safetyTolerance", "4");
+  if (!includesString(SAFETY_TOLERANCES, safetyTolerance)) {
+    return errorResponse(
+      `Unsupported safety tolerance: ${safetyTolerance}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+  if (safetyTolerance !== "4" && !modelConfig.supportsSafetyTolerance) {
+    return errorResponse(
+      `safetyTolerance is not supported for ${modelConfig.alias}`,
+      "BAD_REQUEST",
+      400,
+    );
+  }
+
+  const enhancePrompt = readBoolean(
+    body,
+    "enhancePrompt",
+    readBoolean(body, "enhance_prompt", false),
+  );
+  if (enhancePrompt && !modelConfig.supportsEnhancePrompt) {
+    return errorResponse(
+      `enhancePrompt is not supported for ${modelConfig.alias}`,
       "BAD_REQUEST",
       400,
     );
@@ -254,20 +635,24 @@ function parseImageOptions(body: unknown): ImageOptions | Response {
 
   return {
     prompt,
+    model,
+    provider: modelConfig.provider,
     size,
     quality,
     background,
     outputFormat,
     outputCompression,
     moderation,
+    seed,
+    safetyTolerance,
+    enhancePrompt,
   };
 }
 
-async function loadImagePricing(): Promise<
-  Map<PricingCategory, { unitPrice: number; unitSize: number }>
-> {
+async function loadImagePricing(): Promise<Map<string, ImagePricingRow>> {
   const rows = await globalThis.services.db
     .select({
+      provider: usagePricing.provider,
       category: usagePricing.category,
       unitPrice: usagePricing.unitPrice,
       unitSize: usagePricing.unitSize,
@@ -276,18 +661,18 @@ async function loadImagePricing(): Promise<
     .where(
       and(
         eq(usagePricing.kind, USAGE_KIND),
-        eq(usagePricing.provider, USAGE_PROVIDER),
-        inArray(usagePricing.category, [...REQUIRED_PRICING_CATEGORIES]),
+        inArray(usagePricing.provider, [...IMAGE_MODELS]),
+        inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
       ),
     );
 
-  const pricing = new Map<
-    PricingCategory,
-    { unitPrice: number; unitSize: number }
-  >();
+  const pricing = new Map<string, ImagePricingRow>();
   for (const row of rows) {
-    if (REQUIRED_PRICING_CATEGORIES.includes(row.category as PricingCategory)) {
-      pricing.set(row.category as PricingCategory, {
+    const model = normalizeImageModel(row.provider);
+    if (model && includesString(IMAGE_PRICING_CATEGORIES, row.category)) {
+      pricing.set(imagePricingKey(model, row.category), {
+        provider: model,
+        category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
       });
@@ -298,11 +683,16 @@ async function loadImagePricing(): Promise<
 }
 
 function getMissingPricing(
-  pricing: Map<PricingCategory, { unitPrice: number; unitSize: number }>,
-): string[] {
-  return REQUIRED_PRICING_CATEGORIES.filter((category) => {
-    return !pricing.has(category);
+  pricing: Map<string, ImagePricingRow>,
+  model: ImageModel,
+): readonly ImagePricingCategory[] {
+  return IMAGE_MODEL_CONFIGS[model].pricingCategories.filter((category) => {
+    return !pricing.has(imagePricingKey(model, category));
   });
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
 }
 
 function parseUsage(
@@ -340,31 +730,58 @@ function parseUsage(
   };
 }
 
-function calculateCredits(
-  usage: ImageUsage,
-  pricing: Map<PricingCategory, { unitPrice: number; unitSize: number }>,
-): number {
-  const rows: Array<[PricingCategory, number]> = [
-    [TEXT_INPUT_CATEGORY, usage.textInputTokens],
-    [IMAGE_INPUT_CATEGORY, usage.imageInputTokens],
-    [IMAGE_OUTPUT_CATEGORY, usage.imageOutputTokens],
+function openAiBillingEntries(usage: ImageUsage): readonly BillingEntry[] {
+  const rows: readonly BillingEntry[] = [
+    { category: TEXT_INPUT_CATEGORY, quantity: usage.textInputTokens },
+    { category: IMAGE_INPUT_CATEGORY, quantity: usage.imageInputTokens },
+    { category: IMAGE_OUTPUT_CATEGORY, quantity: usage.imageOutputTokens },
   ];
+  return rows.filter((row) => {
+    return row.quantity > 0;
+  });
+}
 
-  return rows.reduce((total, [category, quantity]) => {
-    if (quantity <= 0) return total;
-    const row = pricing.get(category);
-    if (!row) return total;
-    return total + Math.ceil((quantity * row.unitPrice) / row.unitSize);
+function calculateCredits(
+  model: ImageModel,
+  billing: readonly BillingEntry[],
+  pricing: Map<string, ImagePricingRow>,
+): number {
+  return billing.reduce((total, row) => {
+    if (row.quantity <= 0) return total;
+    const pricingRow = pricing.get(imagePricingKey(model, row.category));
+    if (!pricingRow) return total;
+    return (
+      total +
+      Math.ceil((row.quantity * pricingRow.unitPrice) / pricingRow.unitSize)
+    );
   }, 0);
 }
 
-function contentTypeForFormat(format: string): string {
+function contentTypeForFormat(format: ImageOutputFormat): string {
   if (format === "webp") return "image/webp";
   if (format === "jpeg") return "image/jpeg";
   return "image/png";
 }
 
-function extensionForFormat(format: string): string {
+function normalizeImageContentType(value: string | null | undefined) {
+  const contentType = value?.split(";")[0]?.trim().toLowerCase();
+  if (
+    contentType === "image/png" ||
+    contentType === "image/webp" ||
+    contentType === "image/jpeg"
+  ) {
+    return contentType;
+  }
+  return null;
+}
+
+function formatForContentType(contentType: string): ImageOutputFormat {
+  if (contentType === "image/webp") return "webp";
+  if (contentType === "image/jpeg") return "jpeg";
+  return "png";
+}
+
+function extensionForFormat(format: ImageOutputFormat): string {
   return format === "jpeg" ? "jpg" : format;
 }
 
@@ -376,7 +793,7 @@ function outputCompressionField(options: ImageOptions) {
 
 function openAiRequestBody(options: ImageOptions) {
   return {
-    model: MODEL,
+    model: options.model,
     prompt: options.prompt,
     n: 1,
     size: options.size,
@@ -390,72 +807,89 @@ function openAiRequestBody(options: ImageOptions) {
   };
 }
 
-function imageMetadata(
-  responseBody: OpenAiImageGenerationResponse,
-  options: ImageOptions,
-  outputFormat: string,
-) {
+function nearestFalAspectRatio(width: number, height: number): string {
+  const requestedRatio = width / height;
+  let bestRatio: (typeof FAL_IMAGE_ASPECT_RATIOS)[number] =
+    FAL_IMAGE_ASPECT_RATIOS[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const ratio of FAL_IMAGE_ASPECT_RATIOS) {
+    const [ratioWidth, ratioHeight] = ratio.split(":").map(Number) as [
+      number,
+      number,
+    ];
+    const distance = Math.abs(requestedRatio - ratioWidth / ratioHeight);
+    if (distance < bestDistance) {
+      bestRatio = ratio;
+      bestDistance = distance;
+    }
+  }
+  return bestRatio;
+}
+
+function falImageSize(options: ImageOptions) {
+  if (options.size === "auto") {
+    return "landscape_4_3";
+  }
+  const parsed = parseSize(options.size);
+  if (!parsed) {
+    return "landscape_4_3";
+  }
+  return parsed;
+}
+
+function falAspectRatio(options: ImageOptions): string {
+  if (options.size === "auto") {
+    return "16:9";
+  }
+  const parsed = parseSize(options.size);
+  if (!parsed) {
+    return "16:9";
+  }
+  return nearestFalAspectRatio(parsed.width, parsed.height);
+}
+
+function falImageInput(options: ImageOptions): Record<string, unknown> {
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
   return {
-    generatedBy: "zero-official-image",
-    model: MODEL,
-    imageSize: responseBody.size ?? options.size,
-    quality: responseBody.quality ?? options.quality,
-    background: responseBody.background ?? options.background,
-    outputFormat,
-    ...outputCompressionField(options),
-    moderation: options.moderation,
+    prompt: options.prompt,
+    ...(modelConfig.sizeParameter === "aspect_ratio"
+      ? { aspect_ratio: falAspectRatio(options) }
+      : { image_size: falImageSize(options) }),
+    num_images: 1,
+    ...(hasString(modelConfig.outputFormats, options.outputFormat) &&
+    modelConfig.alias !== "seedream4"
+      ? { output_format: options.outputFormat }
+      : {}),
+    ...(modelConfig.supportsSeed && options.seed !== undefined
+      ? { seed: options.seed }
+      : {}),
+    ...(modelConfig.supportsSafetyTolerance
+      ? { safety_tolerance: options.safetyTolerance }
+      : {}),
+    ...(modelConfig.supportsEnhancePrompt
+      ? { enhance_prompt: options.enhancePrompt }
+      : {}),
   };
 }
 
-async function handlePost(request: Request): Promise<Response> {
-  initServices();
-
-  const authCtx = await getAuthContext(
-    request.headers.get("authorization") ?? undefined,
-    { requiredCapability: "file:write" },
-  );
-  if (!authCtx) {
-    return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
-  }
-
-  const options = parseImageOptions(body);
-  if (options instanceof Response) return options;
-
-  const { org } = await resolveOrg(authCtx);
-  const db = globalThis.services.db;
-  await checkOrgCredits(org.orgId, authCtx.userId, db);
-
-  const pricing = await loadImagePricing();
-  const missingPricing = getMissingPricing(pricing);
-  if (missingPricing.length > 0) {
-    return errorResponse(
-      `Image generation pricing is not configured: ${missingPricing.join(", ")}`,
-      "NOT_CONFIGURED",
-      503,
-    );
-  }
-
-  const openaiResponse = await fetch(OPENAI_IMAGE_URL, {
+async function generateOpenAiImage(
+  options: ImageOptions,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | Response> {
+  const response = await fetch(OPENAI_IMAGE_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env().OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(openAiRequestBody(options)),
-    signal: request.signal,
+    signal,
   });
 
-  if (!openaiResponse.ok) {
-    const errorBody = await openaiResponse.text();
+  if (!response.ok) {
+    const errorBody = await response.text();
     log.error("OpenAI image request failed", {
-      status: openaiResponse.status,
+      status: response.status,
       body: errorBody,
     });
     return errorResponse(
@@ -465,8 +899,7 @@ async function handlePost(request: Request): Promise<Response> {
     );
   }
 
-  const responseBody =
-    (await openaiResponse.json()) as OpenAiImageGenerationResponse;
+  const responseBody = (await response.json()) as OpenAiImageGenerationResponse;
   const image = responseBody.data?.[0];
   if (!image?.b64_json) {
     return errorResponse(
@@ -496,17 +929,266 @@ async function handlePost(request: Request): Promise<Response> {
   }
 
   const outputFormat =
-    responseBody.output_format && OUTPUT_FORMATS.has(responseBody.output_format)
+    responseBody.output_format &&
+    includesString(OUTPUT_FORMATS, responseBody.output_format)
       ? responseBody.output_format
       : options.outputFormat;
-  const contentType = contentTypeForFormat(outputFormat);
+
+  return {
+    imageBytes,
+    revisedPrompt: image.revised_prompt,
+    imageSize: responseBody.size ?? options.size,
+    quality: responseBody.quality ?? options.quality,
+    background: responseBody.background ?? options.background,
+    outputFormat,
+    outputCompression: options.outputCompression,
+    moderation: options.moderation,
+    safetyTolerance: undefined,
+    usage,
+    billing: openAiBillingEntries(usage),
+    sourceUrl: undefined,
+    seed: options.seed,
+  };
+}
+
+function parseFalImageFile(value: unknown): FalImageFile | null {
+  if (!isRecord(value) || typeof value.url !== "string") {
+    return null;
+  }
+  return {
+    url: value.url,
+    contentType:
+      typeof value.content_type === "string" ? value.content_type : undefined,
+    width: readNumber(value.width),
+    height: readNumber(value.height),
+  };
+}
+
+function readFalSeed(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? value
+    : undefined;
+}
+
+function parseFalImageResult(value: unknown): FalImageResult | Response {
+  if (!isRecord(value) || !Array.isArray(value.images)) {
+    return errorResponse(
+      "Model returned no image data",
+      "NO_IMAGE_RETURNED",
+      502,
+    );
+  }
+
+  const image = parseFalImageFile(value.images[0]);
+  if (!image) {
+    return errorResponse(
+      "Model returned no image data",
+      "NO_IMAGE_RETURNED",
+      502,
+    );
+  }
+
+  return {
+    image,
+    revisedPrompt:
+      typeof value.prompt === "string"
+        ? value.prompt
+        : typeof value.description === "string"
+          ? value.description
+          : undefined,
+    seed: readFalSeed(value.seed),
+  };
+}
+
+function megapixelsForImage(
+  image: FalImageFile,
+  options: ImageOptions,
+): number {
+  if (image.width && image.height) {
+    return Math.max(1, Math.ceil((image.width * image.height) / 1_000_000));
+  }
+  const parsed = parseSize(options.size);
+  if (!parsed) {
+    return 1;
+  }
+  return Math.max(1, Math.ceil((parsed.width * parsed.height) / 1_000_000));
+}
+
+function falBillingEntries(
+  image: FalImageFile,
+  options: ImageOptions,
+): readonly BillingEntry[] {
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  if (modelConfig.billingMode === "megapixel") {
+    return [
+      {
+        category: FAL_OUTPUT_MEGAPIXEL_CATEGORY,
+        quantity: megapixelsForImage(image, options),
+      },
+    ];
+  }
+  return [{ category: FAL_OUTPUT_IMAGE_CATEGORY, quantity: 1 }];
+}
+
+async function generateFalImage(
+  options: ImageOptions,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | Response> {
+  const falKey = env().FAL_KEY;
+  if (!falKey) {
+    return errorResponse(
+      "Fal image generation is not configured",
+      "NOT_CONFIGURED",
+      503,
+    );
+  }
+
+  const response = await fetch(`${FAL_IMAGE_RUN_URL_PREFIX}/${options.model}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Key ${falKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(falImageInput(options)),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    log.error("Fal image request failed", {
+      model: options.model,
+      status: response.status,
+      body: errorBody,
+    });
+    return errorResponse(
+      "Image generation failed",
+      "INTERNAL_SERVER_ERROR",
+      500,
+    );
+  }
+
+  const falResult = parseFalImageResult(await response.json());
+  if (falResult instanceof Response) return falResult;
+
+  const imageResponse = await fetch(falResult.image.url, {
+    method: "GET",
+    signal,
+  });
+  if (!imageResponse.ok) {
+    return errorResponse(
+      "Could not download generated image",
+      "IMAGE_DOWNLOAD_FAILED",
+      502,
+    );
+  }
+
+  const imageBytes = Buffer.from(await imageResponse.arrayBuffer());
+  if (imageBytes.byteLength === 0) {
+    return errorResponse(
+      "Model returned empty image",
+      "NO_IMAGE_RETURNED",
+      502,
+    );
+  }
+
+  const contentType =
+    normalizeImageContentType(falResult.image.contentType) ??
+    normalizeImageContentType(imageResponse.headers.get("content-type")) ??
+    contentTypeForFormat(options.outputFormat);
+  const outputFormat = formatForContentType(contentType);
+  const imageSize =
+    falResult.image.width && falResult.image.height
+      ? `${falResult.image.width}x${falResult.image.height}`
+      : options.size;
+
+  return {
+    imageBytes,
+    revisedPrompt: falResult.revisedPrompt,
+    imageSize,
+    quality: "model-default",
+    background: "auto",
+    outputFormat,
+    outputCompression: undefined,
+    moderation: options.moderation,
+    safetyTolerance: IMAGE_MODEL_CONFIGS[options.model].supportsSafetyTolerance
+      ? options.safetyTolerance
+      : undefined,
+    usage: undefined,
+    billing: falBillingEntries(falResult.image, options),
+    sourceUrl: falResult.image.url,
+    seed: falResult.seed ?? options.seed,
+  };
+}
+
+function imageMetadata(
+  generation: ParsedImageGeneration,
+  options: ImageOptions,
+) {
+  return {
+    generatedBy: "zero-official-image",
+    model: options.model,
+    provider: options.provider,
+    imageSize: generation.imageSize,
+    quality: generation.quality,
+    background: generation.background,
+    outputFormat: generation.outputFormat,
+    ...outputCompressionField(options),
+    moderation: generation.moderation,
+    safetyTolerance: generation.safetyTolerance,
+    sourceUrl: generation.sourceUrl,
+    seed: generation.seed,
+  };
+}
+
+async function handlePost(request: Request): Promise<Response> {
+  initServices();
+
+  const authCtx = await getAuthContext(
+    request.headers.get("authorization") ?? undefined,
+    { requiredCapability: "file:write" },
+  );
+  if (!authCtx) {
+    return errorResponse("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse("Invalid JSON body", "BAD_REQUEST", 400);
+  }
+
+  const options = parseImageOptions(body);
+  if (options instanceof Response) return options;
+
+  const { org } = await resolveOrg(authCtx);
+  const db = globalThis.services.db;
+  await checkOrgCredits(org.orgId, authCtx.userId, db);
+
+  const pricing = await loadImagePricing();
+  const missingPricing = getMissingPricing(pricing, options.model);
+  if (missingPricing.length > 0) {
+    return errorResponse(
+      "Image generation pricing is not configured",
+      "NOT_CONFIGURED",
+      503,
+    );
+  }
+
+  const generation =
+    options.provider === "fal"
+      ? await generateFalImage(options, request.signal)
+      : await generateOpenAiImage(options, request.signal);
+  if (generation instanceof Response) return generation;
+
+  const contentType = contentTypeForFormat(generation.outputFormat);
   const fileId = randomUUID();
   const filename = `image-${fileId.slice(0, 8)}.${extensionForFormat(
-    outputFormat,
+    generation.outputFormat,
   )}`;
   const s3Key = `uploads/${authCtx.userId}/${fileId}/${filename}`;
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  await uploadS3Buffer(bucket, s3Key, imageBytes, contentType);
+  await uploadS3Buffer(bucket, s3Key, generation.imageBytes, contentType);
   const url = buildFileUrl(authCtx.userId, fileId, filename);
 
   await recordGeneratedRunFile({
@@ -516,17 +1198,13 @@ async function handlePost(request: Request): Promise<Response> {
     orgId: authCtx.orgId,
     filename,
     contentType,
-    sizeBytes: imageBytes.byteLength,
+    sizeBytes: generation.imageBytes.byteLength,
     url,
     s3Key,
-    metadata: imageMetadata(responseBody, options, outputFormat),
+    metadata: imageMetadata(generation, options),
   });
 
-  const usageRows = [
-    { category: TEXT_INPUT_CATEGORY, quantity: usage.textInputTokens },
-    { category: IMAGE_INPUT_CATEGORY, quantity: usage.imageInputTokens },
-    { category: IMAGE_OUTPUT_CATEGORY, quantity: usage.imageOutputTokens },
-  ].filter((row) => {
+  const usageRows = generation.billing.filter((row) => {
     return row.quantity > 0;
   });
 
@@ -538,7 +1216,7 @@ async function handlePost(request: Request): Promise<Response> {
         orgId: org.orgId,
         userId: authCtx.userId,
         kind: USAGE_KIND,
-        provider: USAGE_PROVIDER,
+        provider: options.model,
         category: row.category,
         quantity: row.quantity,
       };
@@ -550,18 +1228,28 @@ async function handlePost(request: Request): Promise<Response> {
     id: fileId,
     filename,
     contentType,
-    size: imageBytes.byteLength,
+    size: generation.imageBytes.byteLength,
     url,
-    creditsCharged: calculateCredits(usage, pricing),
-    model: MODEL,
-    imageSize: responseBody.size ?? options.size,
-    quality: responseBody.quality ?? options.quality,
-    background: responseBody.background ?? options.background,
-    outputFormat,
-    ...outputCompressionField(options),
-    moderation: options.moderation,
-    revisedPrompt: image.revised_prompt,
-    usage,
+    creditsCharged: calculateCredits(
+      options.model,
+      generation.billing,
+      pricing,
+    ),
+    model: options.model,
+    provider: options.provider,
+    imageSize: generation.imageSize,
+    quality: generation.quality,
+    background: generation.background,
+    outputFormat: generation.outputFormat,
+    outputCompression: generation.outputCompression,
+    moderation: generation.moderation,
+    safetyTolerance: generation.safetyTolerance,
+    revisedPrompt: generation.revisedPrompt,
+    usage: generation.usage,
+    billingCategory: generation.billing[0]?.category,
+    billingQuantity: generation.billing[0]?.quantity,
+    sourceUrl: generation.sourceUrl,
+    seed: generation.seed,
   });
 }
 

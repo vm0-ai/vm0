@@ -31,11 +31,20 @@ describe("buildAgentPrompt", () => {
     );
     expect(prompt).toContain("run `zero doctor generate -h`");
     expect(prompt).toContain("zero built-in generate image --prompt");
-    expect(prompt).toContain("Model: OpenAI `gpt-image-2`");
+    expect(prompt).toContain(
+      "OpenAI `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`",
+    );
+    expect(prompt).toContain(
+      "fal.ai `flux-pro-1.1`, `flux-pro-1.1-ultra`, `qwen-image`, `seedream4`",
+    );
+    expect(prompt).toContain("Prefer OpenAI image models");
+    expect(prompt).toContain("`--model`");
     expect(prompt).toContain("flexible `--size`");
     expect(prompt).toContain("`--compression`");
     expect(prompt).toContain("`--moderation`");
-    expect(prompt).toContain("does not support transparent backgrounds");
+    expect(prompt).toContain("`--seed`");
+    expect(prompt).toContain("`--safety-tolerance`");
+    expect(prompt).toContain("do not support transparent backgrounds");
     expect(prompt).toContain("reference images, masks");
     expect(prompt).toContain("Pass `--json`");
     expect(prompt).toContain(

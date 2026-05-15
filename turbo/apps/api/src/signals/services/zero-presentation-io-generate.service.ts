@@ -15,6 +15,7 @@ import {
   OPENAI_IMAGE_GENERATION_URL,
   parseImageGenerationResult,
   recordGeneratedImage$,
+  type ImageOptions,
   type ImagePricing,
 } from "./zero-image-io-generate.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
@@ -55,12 +56,17 @@ const PRESENTATION_LAYOUTS = [
 ] as const;
 
 const PRESENTATION_VISUAL_IMAGE_OPTIONS = {
+  model: IMAGE_IO_MODEL,
+  provider: "openai",
   size: "1536x864",
   quality: "medium",
   background: "opaque",
   outputFormat: "webp",
   outputCompression: undefined,
   moderation: "auto",
+  seed: undefined,
+  safetyTolerance: "4",
+  enhancePrompt: false,
 } as const;
 
 type PresentationStyle = (typeof PRESENTATION_STYLES)[number];
@@ -1385,7 +1391,7 @@ function selectVisualSlides(
   return [...preferred, ...remaining].slice(0, imageCount);
 }
 
-function createVisualImageOptions(prompt: string) {
+function createVisualImageOptions(prompt: string): ImageOptions {
   return {
     prompt,
     ...PRESENTATION_VISUAL_IMAGE_OPTIONS,

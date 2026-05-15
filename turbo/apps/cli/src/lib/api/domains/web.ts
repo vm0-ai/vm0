@@ -203,12 +203,16 @@ interface GenerateWebVoiceResult {
 
 interface GenerateWebImageOptions {
   prompt: string;
+  model?: string;
   size?: string;
   quality?: string;
   background?: string;
   outputFormat?: string;
   outputCompression?: number;
   moderation?: string;
+  seed?: number;
+  safetyTolerance?: string;
+  enhancePrompt?: boolean;
 }
 
 interface GenerateWebImageResult {
@@ -219,19 +223,25 @@ interface GenerateWebImageResult {
   url: string;
   creditsCharged: number;
   model: string;
+  provider: string;
   imageSize: string;
   quality: string;
   background: string;
   outputFormat: string;
   outputCompression?: number;
   moderation?: string;
+  safetyTolerance?: string;
   revisedPrompt?: string;
-  usage: {
+  usage?: {
     textInputTokens: number;
     imageInputTokens: number;
     imageOutputTokens: number;
     totalTokens: number;
   };
+  billingCategory?: string;
+  billingQuantity?: number;
+  sourceUrl?: string;
+  seed?: number;
 }
 
 interface GenerateWebVideoOptions {
@@ -513,6 +523,7 @@ export async function generateWebImage(
       headers,
       body: JSON.stringify({
         prompt: options.prompt,
+        ...(options.model ? { model: options.model } : {}),
         ...(options.size ? { size: options.size } : {}),
         ...(options.quality ? { quality: options.quality } : {}),
         ...(options.background ? { background: options.background } : {}),
@@ -521,6 +532,13 @@ export async function generateWebImage(
           ? { outputCompression: options.outputCompression }
           : {}),
         ...(options.moderation ? { moderation: options.moderation } : {}),
+        ...(options.seed !== undefined ? { seed: options.seed } : {}),
+        ...(options.safetyTolerance
+          ? { safetyTolerance: options.safetyTolerance }
+          : {}),
+        ...(options.enhancePrompt !== undefined
+          ? { enhancePrompt: options.enhancePrompt }
+          : {}),
       }),
     },
   );
