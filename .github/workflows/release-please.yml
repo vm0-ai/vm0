@@ -516,6 +516,161 @@ jobs:
                   type: mrkdwn
                   text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
+  detect-host-worker-production:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.detect.outputs.should-deploy }}
+      base_ref: ${{ steps.detect.outputs.base-ref }}
+      head_sha: ${{ steps.detect.outputs.head-sha }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Host Worker release changes
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          if [[ -z "$HEAD_SHA" ]]; then
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "::error::Release head commit $HEAD_SHA is not available"
+            exit 1
+          fi
+
+          BASE_REF=$(git tag --merged "${HEAD_SHA}^" --sort=-creatordate \
+            | grep -E '^(web|api|platform|cli|runner-rs)-v' \
+            | head -1 || true)
+          if [[ -z "$BASE_REF" ]]; then
+            BASE_REF="${HEAD_SHA}^"
+          fi
+
+          echo "Comparing $BASE_REF..$HEAD_SHA for host worker deploy inputs"
+          git diff --name-only "$BASE_REF" "$HEAD_SHA" | tee /tmp/host-worker-release-changes.txt
+
+          if grep -qE '^turbo/apps/host-worker/|^\.github/workflows/(turbo|crates|runner-image|release-please)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/' /tmp/host-worker-release-changes.txt; then
+            echo "Host worker deploy inputs changed"
+            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No host worker deploy inputs changed"
+            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "base-ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "head-sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  deploy-host-worker-production:
+    needs: [release-please, detect-host-worker-production]
+    if: >-
+      ${{
+        needs.release-please.outputs.releases_created == 'true' &&
+        needs.detect-host-worker-production.outputs.should_deploy == 'true'
+      }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-host-worker-production
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Notify Slack - Starting
+        id: slack-start
+        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Host Worker* deploying to Cloudflare..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Host Worker* deploying to Cloudflare...\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+      - name: Record start time
+        id: timer
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Host Worker to Cloudflare
+        shell: bash
+        working-directory: turbo
+        env:
+          CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN: ${{ secrets.CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN:-}" ]]; then
+            echo "::error::CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN must be configured as a GitHub Actions secret"
+            exit 1
+          fi
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CF_ACCOUNT_ID must be configured as a GitHub Actions variable or secret"
+            exit 1
+          fi
+          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @vm0/host-worker deploy
+
+      - name: Calculate duration
+        id: duration
+        if: ${{ always() && steps.timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Success
+        if: ${{ success() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Host Worker* ✅ Deployed to Cloudflare"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Host Worker* ✅ Deployed to Cloudflare\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+      - name: Notify Slack - Failure
+        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Host Worker* ❌ Deploy failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Host Worker* ❌ Deploy failed\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
   # Promote web staged deployment to production (traffic switch)
   # Fan-in barrier: all build-phase jobs must finish (success or skipped) before
   # any promote-phase job starts. If any build fails, this job fails, which in
@@ -530,6 +685,8 @@ jobs:
       - build-e2b-template-production
       - sbom
       - resolve-image-cache
+      - detect-host-worker-production
+      - deploy-host-worker-production
     # Use always() so this job runs even when upstream build jobs are skipped.
     # !cancelled() is insufficient — it still propagates "skipped" from needs
     # dependencies, which causes builds-complete (and transitively
