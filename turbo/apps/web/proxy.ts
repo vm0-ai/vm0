@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import type { NextFetchEvent } from "next/server";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   runLayers,
   authRedirectLayer,
@@ -10,7 +10,9 @@ import {
   isProtectedSkipRoute,
   classifyRoute,
 } from "./proxy.layers";
-import { handleCors } from "./proxy.cors";
+import { applyCorsHeaders, handleCors } from "./proxy.cors";
+import { env } from "./src/env";
+import { matchesApiBackendRewritePath } from "./api-backend-rewrites";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -69,6 +71,19 @@ const isPublicRoute = createRouteMatcher([
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 
+function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypass) {
+    requestHeaders.set("x-vercel-protection-bypass", bypass);
+  }
+
+  return applyCorsHeaders(
+    request,
+    NextResponse.next({ request: { headers: requestHeaders } }),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Clerk middleware (inner)
 // ---------------------------------------------------------------------------
@@ -116,6 +131,9 @@ export default async function middleware(
   event: NextFetchEvent,
 ) {
   const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+  const isApiBackendProxyRoute = matchesApiBackendRewritePath(
+    request.nextUrl.pathname,
+  );
 
   // Handle CORS preflight before Clerk — OPTIONS requests carry no credentials,
   // and Clerk may add x-middleware-next to the response which prevents Next.js
@@ -134,6 +152,10 @@ export default async function middleware(
   // detection never touches the opaque Bearer tokens it cannot parse.
   if (request.nextUrl.pathname.startsWith("/api/v1/")) {
     return handleCors(request);
+  }
+
+  if (isApiBackendProxyRoute) {
+    return apiBackendProxyPassThrough(request);
   }
 
   // Self-signed tokens (sandbox, PAT) are only consumed by /api/* endpoints.

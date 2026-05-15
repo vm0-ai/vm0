@@ -317,6 +317,7 @@ runs:
         add_var GCP_SERVICE_ACCOUNT_EMAIL GCP_SERVICE_ACCOUNT_EMAIL
         add_var GCP_WORKLOAD_IDENTITY_POOL_ID GCP_WORKLOAD_IDENTITY_POOL_ID
         add_var GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
+        add_secret VERCEL_AUTOMATION_BYPASS_SECRET VERCEL_AUTOMATION_BYPASS_SECRET
 
         echo "file=$env_file" >> "$GITHUB_OUTPUT"
         echo "Rendered $(wc -l < "$env_file") Web/API environment variables to $env_file"

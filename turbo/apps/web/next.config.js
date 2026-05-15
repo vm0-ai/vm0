@@ -1,5 +1,6 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import createNextIntlPlugin from "next-intl/plugin";
+import { API_BACKEND_REWRITES } from "./api-backend-rewrites.js";
 
 const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
@@ -13,35 +14,6 @@ const MODEL_SLUG_REDIRECTS = [
   ["kimi-k2.5", "kimi-k2-5"],
   ["glm-5.1", "glm-5-1"],
   ["minimax-m2.7", "minimax-m2-7"],
-];
-
-const API_BACKEND_REWRITES = [
-  ["/api/device-token", "/api/device-token"],
-  ["/api/device-token/poll", "/api/device-token/poll"],
-  ["/api/agentphone/:path*", "/api/agentphone/:path*"],
-  ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
-  [
-    "/api/internal/event-consumers/agentphone-typing",
-    "/api/internal/event-consumers/agentphone-typing",
-  ],
-  ["/api/user/export", "/api/user/export"],
-  ["/api/zero/devices/bb0/confirm", "/api/zero/devices/bb0/confirm"],
-  [
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-  ],
-  [
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-  ],
-  ["/api/zero/presentation-io/generate", "/api/zero/presentation-io/generate"],
-  ["/api/zero/remote-agent/:path*", "/api/zero/remote-agent/:path*"],
-  ["/api/zero/video-io/generate", "/api/zero/video-io/generate"],
-  [
-    "/api/zero/integrations/phone/:path*",
-    "/api/zero/integrations/phone/:path*",
-  ],
-  ["/api/zero/user-preferences", "/api/zero/user-preferences"],
 ];
 
 function resolveApiBackendUrl() {
