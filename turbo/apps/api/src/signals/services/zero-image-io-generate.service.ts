@@ -20,7 +20,10 @@ import {
 
 export const OPENAI_IMAGE_GENERATION_URL =
   "https://api.openai.com/v1/images/generations";
+const OPENAI_IMAGE_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const OPENAI_IMAGE_RESPONSES_MODEL = "gpt-5.5";
 const FAL_IMAGE_RUN_URL_PREFIX = "https://fal.run";
+const FAL_IMAGE_QUEUE_URL_PREFIX = "https://queue.fal.run";
 export const IMAGE_IO_MODEL = "gpt-image-1";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
 const IMAGE_IO_MIN_PIXELS = 655_360;
@@ -326,6 +329,23 @@ interface FalImageResult {
   readonly image: FalImageFile;
   readonly revisedPrompt: string | undefined;
   readonly seed: number | undefined;
+}
+
+interface FalImageQueueHandle {
+  readonly requestId: string | undefined;
+  readonly statusUrl: string;
+  readonly responseUrl: string;
+}
+
+interface OpenAiBackgroundImageHandle {
+  readonly responseId: string;
+}
+
+interface OpenAiImageBackgroundContext {
+  readonly generationId: string;
+  readonly generationType: "image" | "presentation";
+  readonly task: "image" | "presentation-visual";
+  readonly visualKey?: string;
 }
 
 interface CreditCheckRow extends Record<string, unknown> {
@@ -1055,6 +1075,152 @@ function parseImageGenerationResult(
   };
 }
 
+function readResponseId(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return typeof value.id === "string" ? value.id : undefined;
+}
+
+function readOpenAiResponsesImage(value: unknown): OpenAiImageData | null {
+  if (!isRecord(value) || !Array.isArray(value.output)) {
+    return null;
+  }
+  for (const item of value.output) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    if (
+      item.type === "image_generation_call" &&
+      typeof item.result === "string"
+    ) {
+      return {
+        b64_json: item.result,
+        revised_prompt:
+          typeof item.revised_prompt === "string"
+            ? item.revised_prompt
+            : undefined,
+      };
+    }
+  }
+  return null;
+}
+
+export function parseOpenAiResponsesImageGenerationResult(
+  value: unknown,
+  options: ImageOptions,
+): ParsedImageGeneration | ErrorResponse {
+  const image = readOpenAiResponsesImage(value);
+  if (!image?.b64_json) {
+    return badGateway("Model returned no image data", "NO_IMAGE_RETURNED");
+  }
+
+  const usage = parseUsage(isRecord(value) ? readOpenAiUsage(value.usage) : {});
+  if (!usage) {
+    return badGateway(
+      "Image generation usage was not returned",
+      "USAGE_UNKNOWN",
+    );
+  }
+
+  const imageBytes = Buffer.from(image.b64_json, "base64");
+  if (imageBytes.byteLength === 0) {
+    return badGateway("Model returned empty image", "NO_IMAGE_RETURNED");
+  }
+
+  return {
+    model: options.model,
+    provider: "openai",
+    imageBytes,
+    revisedPrompt: image.revised_prompt,
+    imageSize: options.size,
+    quality: options.quality,
+    background: options.background,
+    outputFormat: options.outputFormat,
+    outputCompression: options.outputCompression,
+    moderation: options.moderation,
+    safetyTolerance: undefined,
+    usage,
+    billing: openAiBillingEntries(usage),
+    sourceUrl: undefined,
+    seed: options.seed,
+  };
+}
+
+function openAiImageBackgroundMetadata(
+  context: OpenAiImageBackgroundContext,
+): Record<string, string> {
+  return {
+    built_in_generation_id: context.generationId,
+    built_in_generation_type: context.generationType,
+    built_in_generation_task: context.task,
+    ...(context.visualKey
+      ? { built_in_generation_visual_key: context.visualKey }
+      : {}),
+  };
+}
+
+function createOpenAiImageBackgroundRequest(
+  options: ImageOptions,
+  context: OpenAiImageBackgroundContext,
+): Record<string, unknown> {
+  return {
+    model: OPENAI_IMAGE_RESPONSES_MODEL,
+    background: true,
+    store: true,
+    metadata: openAiImageBackgroundMetadata(context),
+    input: options.prompt,
+    tools: [
+      {
+        type: "image_generation",
+        quality: options.quality,
+        size: options.size,
+        background: options.background,
+        output_format: options.outputFormat,
+        ...(options.outputCompression !== undefined
+          ? { output_compression: options.outputCompression }
+          : {}),
+        moderation: options.moderation,
+      },
+    ],
+  };
+}
+
+export async function submitOpenAiImageBackgroundGeneration(
+  options: ImageOptions,
+  context: OpenAiImageBackgroundContext,
+  signal: AbortSignal,
+): Promise<OpenAiBackgroundImageHandle | ErrorResponse> {
+  const response = await fetch(OPENAI_IMAGE_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(createOpenAiImageBackgroundRequest(options, context)),
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    signal.throwIfAborted();
+    L.error("OpenAI background image request failed", {
+      status: response.status,
+      body: errorBody,
+    });
+    return internalError("Image generation failed");
+  }
+
+  const responseBody: unknown = await response.json();
+  signal.throwIfAborted();
+  const responseId = readResponseId(responseBody);
+  if (!responseId) {
+    return badGateway("OpenAI returned no response ID", "NO_RESPONSE_ID");
+  }
+  return { responseId };
+}
+
 function contentTypeForFormat(format: ImageOutputFormat): string {
   if (format === "webp") {
     return "image/webp";
@@ -1115,6 +1281,25 @@ function falHeaders(falKey: string): Record<string, string> {
   return {
     Authorization: `Key ${falKey}`,
     "Content-Type": "application/json",
+  };
+}
+
+function parseFalQueueHandle(value: unknown): FalImageQueueHandle | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const statusUrl =
+    typeof value.status_url === "string" ? value.status_url : undefined;
+  const responseUrl =
+    typeof value.response_url === "string" ? value.response_url : undefined;
+  if (!statusUrl || !responseUrl) {
+    return null;
+  }
+  return {
+    requestId:
+      typeof value.request_id === "string" ? value.request_id : undefined,
+    statusUrl,
+    responseUrl,
   };
 }
 
@@ -1202,6 +1387,37 @@ async function submitFalImageGeneration(
   return await response.json();
 }
 
+export async function submitFalImageQueueGeneration(
+  options: ImageOptions,
+  falKey: string,
+  webhookUrl: string,
+  signal: AbortSignal,
+): Promise<FalImageQueueHandle | ErrorResponse> {
+  const response = await fetch(
+    `${FAL_IMAGE_QUEUE_URL_PREFIX}/${options.model}`,
+    {
+      method: "POST",
+      headers: falHeaders(falKey),
+      body: JSON.stringify({
+        ...falImageInput(options),
+        webhook_url: webhookUrl,
+      }),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    return internalError("Image generation failed");
+  }
+
+  const body: unknown = await response.json();
+  const handle = parseFalQueueHandle(body);
+  if (!handle) {
+    return badGateway("Fal returned no queue handle", "NO_QUEUE_HANDLE");
+  }
+  return handle;
+}
+
 function parseFalImageFile(value: unknown): FalImageFile | null {
   if (!isRecord(value) || typeof value.url !== "string") {
     return null;
@@ -1221,7 +1437,9 @@ function readFalSeed(value: unknown): number | undefined {
     : undefined;
 }
 
-function parseFalImageResult(value: unknown): FalImageResult | ErrorResponse {
+export function parseFalImageResult(
+  value: unknown,
+): FalImageResult | ErrorResponse {
   if (!isRecord(value) || !Array.isArray(value.images)) {
     return badGateway("Model returned no image data", "NO_IMAGE_RETURNED");
   }
@@ -1273,7 +1491,7 @@ function falBillingEntries(
   return [{ category: FAL_OUTPUT_IMAGE_CATEGORY, quantity: 1 }];
 }
 
-async function downloadFalImage(
+export async function downloadFalImage(
   result: FalImageResult,
   options: ImageOptions,
   signal: AbortSignal,

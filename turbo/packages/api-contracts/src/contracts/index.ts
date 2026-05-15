@@ -221,6 +221,8 @@ export {
   webhookFirewallAuthContract,
   webhookGithubContract,
   webhookStripeContract,
+  webhookBuiltInGenerationOpenAiContract,
+  webhookBuiltInGenerationFalContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -248,6 +250,8 @@ export {
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookStripeContract,
+  type WebhookBuiltInGenerationOpenAiContract,
+  type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,

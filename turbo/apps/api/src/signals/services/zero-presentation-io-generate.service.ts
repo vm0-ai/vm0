@@ -121,7 +121,7 @@ interface OpenAiUsage {
   readonly total_tokens?: number;
 }
 
-interface SlideSpec {
+export interface SlideSpec {
   readonly layout: PresentationLayout;
   readonly kicker: string;
   readonly title: string;
@@ -132,13 +132,13 @@ interface SlideSpec {
   readonly visualPrompt: string;
 }
 
-interface DeckSpec {
+export interface DeckSpec {
   readonly title: string;
   readonly subtitle: string;
   readonly slides: readonly SlideSpec[];
 }
 
-interface ParsedPresentationGeneration {
+export interface ParsedPresentationGeneration {
   readonly deck: DeckSpec;
   readonly usage: PresentationUsage;
   readonly responseId: string | undefined;
@@ -148,7 +148,7 @@ interface ParsedPresentationGeneration {
   readonly slideCount: number;
 }
 
-interface PresentationVisual {
+export interface PresentationVisual {
   readonly slideIndex: number;
   readonly url: string;
   readonly alt: string;
@@ -163,6 +163,19 @@ interface GeneratedPresentationVisualImage {
   readonly slide: SlideSpec;
   readonly prompt: string;
   readonly generation: ParsedImageGeneration;
+}
+
+export interface PresentationVisualGenerationTask {
+  readonly key: string;
+  readonly slideIndex: number;
+  readonly slide: SlideSpec;
+  readonly prompt: string;
+  readonly alt: string;
+  readonly imageOptions: ImageOptions;
+}
+
+interface OpenAiPresentationBackgroundHandle {
+  readonly responseId: string;
 }
 
 interface RecordedPresentation {
@@ -680,6 +693,72 @@ export function createOpenAiPresentationRequest(
       },
     },
   };
+}
+
+function createOpenAiPresentationBackgroundRequest(
+  options: PresentationOptions,
+  generationId: string,
+): Record<string, unknown> {
+  return {
+    ...createOpenAiPresentationRequest(options),
+    background: true,
+    store: true,
+    metadata: {
+      built_in_generation_id: generationId,
+      built_in_generation_type: "presentation",
+      built_in_generation_task: "presentation-deck",
+    },
+  };
+}
+
+function readOpenAiResponseId(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  return typeof value.id === "string" ? value.id : undefined;
+}
+
+export async function submitOpenAiPresentationBackgroundGeneration(
+  options: PresentationOptions,
+  generationId: string,
+  signal: AbortSignal,
+): Promise<OpenAiPresentationBackgroundHandle | ErrorResponse> {
+  const response = await fetch(OPENAI_PRESENTATION_GENERATION_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      createOpenAiPresentationBackgroundRequest(options, generationId),
+    ),
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    signal.throwIfAborted();
+    L.error("OpenAI background presentation request failed", {
+      status: response.status,
+      body: errorText,
+    });
+    return {
+      status: 500 as const,
+      body: errorBody(
+        "Presentation generation failed",
+        "INTERNAL_SERVER_ERROR",
+      ),
+    };
+  }
+
+  const responseBody: unknown = await response.json();
+  signal.throwIfAborted();
+  const responseId = readOpenAiResponseId(responseBody);
+  if (!responseId) {
+    return badGateway("OpenAI returned no response ID", "NO_RESPONSE_ID");
+  }
+  return { responseId };
 }
 
 function readNumber(value: unknown): number | undefined {
@@ -1444,6 +1523,34 @@ function createVisualImageOptions(
     enhancePrompt: false,
   });
   return options;
+}
+
+export function createPresentationVisualGenerationTasks(
+  generation: ParsedPresentationGeneration,
+  options: PresentationOptions,
+): readonly PresentationVisualGenerationTask[] | ErrorResponse {
+  const candidates = selectVisualSlides(generation.deck, options.imageCount);
+  const tasks: PresentationVisualGenerationTask[] = [];
+  for (const [slideIndex, slide] of candidates) {
+    const prompt = visualPromptForSlide({
+      deck: generation.deck,
+      slide,
+      options,
+    });
+    const imageOptions = createVisualImageOptions(prompt, options.imageModel);
+    if ("status" in imageOptions) {
+      return imageOptions;
+    }
+    tasks.push({
+      key: String(slideIndex),
+      slideIndex,
+      slide,
+      prompt,
+      alt: visualAltText(slide),
+      imageOptions,
+    });
+  }
+  return tasks;
 }
 
 function presentationVisualImageTimeoutMs(deadlineAtMs: number | undefined) {

@@ -724,11 +724,15 @@ export async function submitFalVideoGeneration(
   options: VideoOptions,
   falKey: string,
   signal: AbortSignal,
+  webhookUrl?: string,
 ): Promise<FalQueueHandle | VideoErrorResponse> {
   const response = await fetch(falVideoQueueUrl(options.model), {
     method: "POST",
     headers: falHeaders(falKey),
-    body: JSON.stringify(falVideoInput(options)),
+    body: JSON.stringify({
+      ...falVideoInput(options),
+      ...(webhookUrl ? { webhook_url: webhookUrl } : {}),
+    }),
     signal,
   });
 

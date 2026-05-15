@@ -60,6 +60,7 @@ import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewall-auth";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
+import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
@@ -207,6 +208,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...userExportRoutes,
   ...vercelSandboxSmokeRoutes,
   ...webhooksClerkRoutes,
+  ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,

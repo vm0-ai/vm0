@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroPresentationIoGenerateContract } from "@vm0/api-contracts/contracts/zero-presentation-io-generate";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -9,7 +10,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import {
   getMissingImagePricing,
   imagePricing$,
@@ -30,14 +31,18 @@ import {
   presentationPricing$,
   presentationServiceUnavailable,
   recordGeneratedPresentation$,
+  submitOpenAiPresentationBackgroundGeneration,
 } from "../services/zero-presentation-io-generate.service";
 import {
+  builtInGenerationRequestWithInternal,
   completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
+  mergeBuiltInGenerationJobInternal$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
+import { shouldUseBuiltInGenerationProviderWebhooks } from "../services/built-in-generation-provider-webhooks.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
@@ -103,9 +108,25 @@ function presentationRequestRecord(
     style: options.style,
     slideCount: options.slideCount,
     imageCount: options.imageCount,
+    imageModel: options.imageModel,
     theme: options.theme,
     ...(options.audience ? { audience: options.audience } : {}),
     ...(options.title ? { title: options.title } : {}),
+  };
+}
+
+function acceptedPresentationResponse(
+  generationId: string,
+  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+) {
+  return {
+    status: 202 as const,
+    body: {
+      generationId,
+      type: "presentation" as const,
+      status: "queued" as const,
+      realtime,
+    },
   };
 }
 
@@ -276,6 +297,50 @@ const runPresentationGenerationJobSafely$ = command(
   },
 );
 
+const submitPresentationProviderWebhookJob$ = command(
+  async (
+    { set },
+    args: PresentationJobArgs,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    if (!optionalEnv("OPENAI_WEBHOOK_SECRET")) {
+      return presentationServiceUnavailable(
+        "OpenAI webhook is not configured",
+        "NOT_CONFIGURED",
+      );
+    }
+
+    await set(markBuiltInGenerationRunning$, args.generationId, signal);
+    const handle = await submitOpenAiPresentationBackgroundGeneration(
+      args.options,
+      args.generationId,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(handle)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: handle.body.error },
+        signal,
+      );
+      return handle;
+    }
+    await set(
+      mergeBuiltInGenerationJobInternal$,
+      {
+        generationId: args.generationId,
+        internal: {
+          provider: "openai",
+          providerJobId: handle.responseId,
+          providerTask: "presentation-deck",
+        },
+      },
+      signal,
+    );
+    return null;
+  },
+);
+
 const postPresentationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -348,10 +413,43 @@ const postPresentationInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
-        request: presentationRequestRecord(options),
+        request: builtInGenerationRequestWithInternal(
+          presentationRequestRecord(options),
+          {
+            admissionId: admission?.id,
+          },
+        ),
       },
       signal,
     );
+    if (shouldUseBuiltInGenerationProviderWebhooks()) {
+      const submitError = await set(
+        submitPresentationProviderWebhookJob$,
+        {
+          generationId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+          runId,
+          admission,
+          options,
+          pricing,
+          imagePricing,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (submitError) {
+        await set(completeRunBuiltInAdmission$, {
+          admission,
+          status: "failed",
+        });
+        signal.throwIfAborted();
+        return submitError;
+      }
+
+      return acceptedPresentationResponse(generationId, realtime);
+    }
+
     waitUntil(
       set(
         runPresentationGenerationJobSafely$,
@@ -369,15 +467,7 @@ const postPresentationInner$ = command(
       ),
     );
 
-    return {
-      status: 202 as const,
-      body: {
-        generationId,
-        type: "presentation" as const,
-        status: "queued" as const,
-        realtime,
-      },
-    };
+    return acceptedPresentationResponse(generationId, realtime);
   },
 );
 

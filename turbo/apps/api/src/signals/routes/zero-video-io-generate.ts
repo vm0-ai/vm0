@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -12,6 +13,10 @@ import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
 import { settle } from "../utils";
+import {
+  falBuiltInGenerationWebhookUrl,
+  shouldUseBuiltInGenerationProviderWebhooks,
+} from "../services/built-in-generation-provider-webhooks.service";
 import {
   checkVideoCredits$,
   downloadFalVideo,
@@ -29,10 +34,12 @@ import {
   waitForFalVideoResult,
 } from "../services/zero-video-io-generate.service";
 import {
+  builtInGenerationRequestWithInternal,
   completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
+  mergeBuiltInGenerationJobInternal$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
 import {
@@ -106,6 +113,21 @@ function videoRequestRecord(options: VideoOptions): Record<string, unknown> {
     ...(options.seed !== undefined ? { seed: options.seed } : {}),
     autoFix: options.autoFix,
     safetyTolerance: options.safetyTolerance,
+  };
+}
+
+function acceptedVideoResponse(
+  generationId: string,
+  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+) {
+  return {
+    status: 202 as const,
+    body: {
+      generationId,
+      type: "video" as const,
+      status: "queued" as const,
+      realtime,
+    },
   };
 }
 
@@ -233,6 +255,46 @@ const runVideoGenerationJobSafely$ = command(
   },
 );
 
+const submitVideoProviderWebhookJob$ = command(
+  async (
+    { set },
+    args: VideoJobArgs,
+    signal: AbortSignal,
+  ): Promise<GenerationErrorResponse | null> => {
+    await set(markBuiltInGenerationRunning$, args.generationId, signal);
+    const handle = await submitFalVideoGeneration(
+      args.options,
+      args.falKey,
+      signal,
+      falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(handle)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: handle.body.error },
+        signal,
+      );
+      return handle;
+    }
+    await set(
+      mergeBuiltInGenerationJobInternal$,
+      {
+        generationId: args.generationId,
+        internal: {
+          provider: "fal",
+          providerJobId: handle.requestId,
+          providerStatusUrl: handle.statusUrl,
+          providerResponseUrl: handle.responseUrl,
+          providerTask: "video",
+        },
+      },
+      signal,
+    );
+    return null;
+  },
+);
+
 const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(videoBody$);
@@ -303,10 +365,43 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       orgId: auth.orgId,
       userId: auth.userId,
       runId,
-      request: videoRequestRecord(options),
+      request: builtInGenerationRequestWithInternal(
+        videoRequestRecord(options),
+        {
+          admissionId: admission?.id,
+        },
+      ),
     },
     signal,
   );
+  if (shouldUseBuiltInGenerationProviderWebhooks()) {
+    const submitError = await set(
+      submitVideoProviderWebhookJob$,
+      {
+        generationId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        runId,
+        admission,
+        options,
+        pricing: pricingRow,
+        falKey,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (submitError) {
+      await set(completeRunBuiltInAdmission$, {
+        admission,
+        status: "failed",
+      });
+      signal.throwIfAborted();
+      return submitError;
+    }
+
+    return acceptedVideoResponse(generationId, realtime);
+  }
+
   waitUntil(
     set(
       runVideoGenerationJobSafely$,
@@ -324,15 +419,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     ),
   );
 
-  return {
-    status: 202 as const,
-    body: {
-      generationId,
-      type: "video" as const,
-      status: "queued" as const,
-      realtime,
-    },
-  };
+  return acceptedVideoResponse(generationId, realtime);
 });
 
 export const zeroVideoIoGenerateRoutes: readonly RouteEntry[] = [
