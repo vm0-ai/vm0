@@ -150,6 +150,7 @@ const listMessagesAfter$ = command(
     return {
       messages: result.body.messages,
       reachedEnd: result.body.messages.length < 50,
+      hasHistoryBefore: result.body.hasHistoryBefore,
     };
   },
 );
@@ -229,6 +230,55 @@ const markRead$ = command(
   },
 );
 
+function createThreadDataAtom(threadId: string) {
+  const reloadCounter$ = state(0);
+  const thread$ = computed(async (get): Promise<ChatThread | null> => {
+    get(reloadCounter$);
+    const threadClient = get(zeroClient$)(chatThreadByIdContract);
+    const threadResult = await accept(
+      threadClient.get({ params: { id: threadId } }),
+      [200, 404],
+      { toast: false },
+    );
+    if (threadResult.status === 404) {
+      return null;
+    }
+    const body = threadResult.body;
+    return {
+      id: threadId,
+      title: body.title ?? null,
+      agentId: body.agentId,
+      latestSessionId: body.latestSessionId ?? null,
+      lastReadMessageId: body.lastReadMessageId ?? null,
+      latestSessionProviderType: body.latestSessionProviderType ?? null,
+      activeRunIds: body.activeRunIds,
+      activeRuns: body.activeRuns ?? [],
+      isLegacySession: false,
+      draftContent: body.draftContent ?? null,
+      draftAttachments: body.draftAttachments ?? null,
+      modelProviderId: body.modelProviderId ?? null,
+      selectedModel: body.selectedModel ?? null,
+    };
+  });
+
+  return { reloadCounter$, thread$ };
+}
+
+function createThreadDataAtomFactory() {
+  const cache = new Map<string, ReturnType<typeof createThreadDataAtom>>();
+  return (threadId: string) => {
+    const existing = cache.get(threadId);
+    if (existing) {
+      return existing;
+    }
+    const atom = createThreadDataAtom(threadId);
+    cache.set(threadId, atom);
+    return atom;
+  };
+}
+
+const threadDataAtomById = createThreadDataAtomFactory();
+
 const subscribeRealtime$ = command(
   async (
     { set },
@@ -262,36 +312,7 @@ const subscribeRealtime$ = command(
 export function createRemoteChatThreadDataSource(
   threadId: string,
 ): ChatThreadDataSource {
-  const reloadCounter$ = state(0);
-
-  const getThread$ = computed(async (get): Promise<ChatThread | null> => {
-    get(reloadCounter$);
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-      { toast: false },
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      latestSessionId: body.latestSessionId ?? null,
-      lastReadMessageId: body.lastReadMessageId ?? null,
-      latestSessionProviderType: body.latestSessionProviderType ?? null,
-      activeRunIds: body.activeRunIds,
-      activeRuns: body.activeRuns ?? [],
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-    };
-  });
+  const { reloadCounter$, thread$: getThread$ } = threadDataAtomById(threadId);
 
   const reloadThread$ = command(({ set }) => {
     set(reloadCounter$, (v) => {

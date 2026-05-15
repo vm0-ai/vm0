@@ -5,10 +5,18 @@ import {
   clearMockedAuth,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
+import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { worker } from "../../../mocks/browser.ts";
 import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
 import { createIdbMessageStores } from "../../external/idb-message-store.ts";
-import { patchThreadMeta$ } from "../../external/idb-thread-meta-store.ts";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  patchThreadMeta$,
+  readThreadMeta$,
+} from "../../external/idb-thread-meta-store.ts";
+import {
+  chatThreadMessagesContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 function makeMsg(id: string, createdAt: string): PagedChatMessage {
   return {
@@ -31,6 +39,7 @@ function setupAuth() {
 }
 
 const context = testContext();
+const mockApi = createMockApi(context);
 
 describe("createIdbCachedDataSource initialPage cache-hit + thread meta", () => {
   it("cache hit defers history state when startMessageId is unknown", async () => {
@@ -124,5 +133,34 @@ describe("createIdbCachedDataSource listMessagesBefore cache-hit + thread meta",
         return m.id;
       }),
     ).toStrictEqual(["first"]);
+  });
+});
+
+describe("createIdbCachedDataSource listMessagesAfter bootstrap + thread meta", () => {
+  it("persists the start boundary when the bootstrap page has no older history", async () => {
+    setupAuth();
+    const threadId = `thread-after-bootstrap-${Date.now()}`;
+
+    worker.use(
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            makeMsg("boot-start", "2026-10-01T00:00:00Z"),
+            makeMsg("boot-latest", "2026-10-02T00:00:00Z"),
+          ],
+          hasHistoryBefore: false,
+        });
+      }),
+    );
+
+    const ds = createIdbCachedDataSource(threadId);
+    await context.store.set(
+      ds.listMessagesAfter$,
+      { threadId, sinceId: undefined },
+      context.signal,
+    );
+
+    const meta = await readThreadMeta$(USER_ID, ORG_ID, threadId);
+    expect(meta?.startMessageId).toBe("boot-start");
   });
 });

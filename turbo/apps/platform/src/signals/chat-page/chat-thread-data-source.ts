@@ -86,7 +86,11 @@ export interface ChatThreadDataSource {
     [RecallMessageArgs, AbortSignal]
   >;
   listMessagesAfter$: Command<
-    Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,
+    Promise<{
+      messages: PagedChatMessage[];
+      reachedEnd: boolean;
+      hasHistoryBefore?: boolean;
+    }>,
     [ListMessagesAfterArgs, AbortSignal]
   >;
   listMessagesBefore$: Command<

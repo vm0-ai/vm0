@@ -140,6 +140,16 @@ function createListMessagesAfter(
           sinceId,
           count: result.messages.length,
         });
+        const firstMessage = result.messages[0];
+        if (
+          sinceId === undefined &&
+          result.hasHistoryBefore === false &&
+          firstMessage
+        ) {
+          await patchThreadMeta$(userId, orgId, tid, {
+            startMessageId: firstMessage.id,
+          });
+        }
       } else {
         L.debug("listAfter:skipCache", {
           threadId: tid,

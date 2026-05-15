@@ -123,20 +123,43 @@ export interface ChatThread {
   selectedModel: string | null;
 }
 
-export const chatThreads$ = computed(async (get) => {
-  get(reloadChatThreadsCounter$);
+function createChatThreadsByAgentIdFactory() {
+  const cache = new Map<string, ReturnType<typeof createChatThreadsForAgent>>();
 
+  return (agentId: string) => {
+    const existing = cache.get(agentId);
+    if (existing) {
+      return existing;
+    }
+
+    const atom$ = createChatThreadsForAgent(agentId);
+    cache.set(agentId, atom$);
+    return atom$;
+  };
+}
+
+function createChatThreadsForAgent(agentId: string) {
+  return computed(async (get): Promise<ChatThreadListItem[]> => {
+    get(reloadChatThreadsCounter$);
+
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(
+      client.list({ query: { agentId: agentId } }),
+      [200],
+    );
+    return result.body.threads;
+  });
+}
+
+const chatThreadsByAgentId = createChatThreadsByAgentIdFactory();
+
+export const chatThreads$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return [];
   }
 
-  const client = get(zeroClient$)(chatThreadsContract);
-  const result = await accept(
-    client.list({ query: { agentId: agentId } }),
-    [200],
-  );
-  return result.body.threads;
+  return await get(chatThreadsByAgentId(agentId));
 });
 
 /**
