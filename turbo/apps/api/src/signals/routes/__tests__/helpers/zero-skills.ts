@@ -13,9 +13,10 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { TestContext } from "../../../../__tests__/test-helpers";
 import { writeDb$ } from "../../../external/db";
@@ -50,6 +51,15 @@ export const deleteSkillsForFixture$ = command(
     await db
       .delete(agentComposes)
       .where(eq(agentComposes.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.orgId, fixture.orgId),
+          eq(userFeatureSwitches.userId, fixture.userId),
+        ),
+      );
     signal.throwIfAborted();
   },
 );

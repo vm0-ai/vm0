@@ -160,6 +160,12 @@ async function enablePrivateAgentsFor(userContext: UserContext) {
   });
 }
 
+async function disablePrivateAgentsFor(userContext: UserContext) {
+  await seedUserFeatureSwitches(userContext.orgId, userContext.userId, {
+    [FeatureSwitchKey.PrivateAgents]: false,
+  });
+}
+
 function getAgentInstructions(name: string, token: string) {
   return getInstructions(
     createTestRequest(
@@ -324,6 +330,8 @@ describe("Zero Agents API", () => {
     });
 
     it("should reject private agent creation when the feature is disabled", async () => {
+      await disablePrivateAgentsFor(user);
+
       const response = await postAgent(
         { displayName: "Private Agent", visibility: "private" },
         testCliToken,

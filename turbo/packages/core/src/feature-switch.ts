@@ -345,8 +345,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable private agents. Private agents are visible only to their owner, " +
       "are excluded from the workspace public-agent limit, and can only be " +
       "managed or run by their owner.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.HostedSites]: {
     maintainer: "lancy@vm0.ai",

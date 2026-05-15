@@ -4,7 +4,9 @@ import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -43,6 +45,18 @@ function agentsClient() {
 
 function instructionsClient() {
   return setupApp({ context })(zeroAgentInstructionsContract);
+}
+
+async function setPrivateAgentsEnabled(
+  fixture: SkillsFixture,
+  enabled: boolean,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(userFeatureSwitches).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    switches: { [FeatureSwitchKey.PrivateAgents]: enabled },
+  });
 }
 
 function s3CommandInput(command: unknown): Record<string, unknown> {
@@ -303,6 +317,7 @@ describe("PUT /api/zero/agents/:id", () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
+    await setPrivateAgentsEnabled(fixture, false);
     const agent = await store.set(
       seedAgentForInstructions$,
       {
@@ -618,6 +633,7 @@ describe("PATCH /api/zero/agents/:id", () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
+    await setPrivateAgentsEnabled(fixture, false);
     const agent = await store.set(
       seedAgentForInstructions$,
       {
