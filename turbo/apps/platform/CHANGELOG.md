@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.357.5](https://github.com/vm0-ai/vm0/compare/app-v0.357.4...app-v0.357.5) (2026-05-15)
+
+
+### Refactoring
+
+* route connector modal content by auth method ([#13488](https://github.com/vm0-ai/vm0/issues/13488)) ([4a3dbc5](https://github.com/vm0-ai/vm0/commit/4a3dbc565fb5844832e523a8fd0b442c9efa05e4))
+
 ## [0.357.4](https://github.com/vm0-ai/vm0/compare/app-v0.357.3...app-v0.357.4) (2026-05-15)
 
 

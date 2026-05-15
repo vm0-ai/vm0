@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.369.2](https://github.com/vm0-ai/vm0/compare/web-v12.369.1...web-v12.369.2) (2026-05-15)
+
+
+### Refactoring
+
+* **web:** proxy voice chat tasks to api backend ([#13444](https://github.com/vm0-ai/vm0/issues/13444)) ([8dbcf6e](https://github.com/vm0-ai/vm0/commit/8dbcf6ec4dc4dc84cc25dfdd03c2c1525aa84392))
+
 ## [12.369.1](https://github.com/vm0-ai/vm0/compare/web-v12.369.0...web-v12.369.1) (2026-05-15)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.52.0](https://github.com/vm0-ai/vm0/compare/api-v1.51.1...api-v1.52.0) (2026-05-15)
+
+
+### Features
+
+* **zero-host:** add org hash to hosted site domain to prevent slug conflicts ([#13485](https://github.com/vm0-ai/vm0/issues/13485)) ([4ac102c](https://github.com/vm0-ai/vm0/commit/4ac102c5944e44957a29a1c6f79bf38ff54f3df0))
+
+
+### Refactoring
+
+* **web:** proxy voice chat tasks to api backend ([#13444](https://github.com/vm0-ai/vm0/issues/13444)) ([8dbcf6e](https://github.com/vm0-ai/vm0/commit/8dbcf6ec4dc4dc84cc25dfdd03c2c1525aa84392))
+
 ## [1.51.1](https://github.com/vm0-ai/vm0/compare/api-v1.51.0...api-v1.51.1) (2026-05-15)
 
 
