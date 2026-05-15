@@ -439,6 +439,18 @@ mod tests {
     }
 
     #[test]
+    fn decode_spawn_process_rejects_truncated_control_nonce() {
+        let mut payload = encode_spawn_process(1000, "cmd", &[], false, true, None).unwrap();
+        payload[4] |= SPAWN_PROCESS_FLAG_CONTROL_NONCE;
+
+        let err = decode_spawn_process_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_process control nonce truncated")
+        ));
+    }
+
+    #[test]
     fn decode_spawn_process_rejects_trailing_bytes_after_log_path() {
         let mut payload =
             encode_spawn_process(1000, "cmd", &[], false, true, Some("/tmp/log")).unwrap();

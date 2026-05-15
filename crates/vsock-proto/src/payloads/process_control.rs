@@ -289,8 +289,37 @@ mod tests {
     }
 
     #[test]
+    fn process_control_rejects_zero_target_seq() {
+        let err = encode_process_control(0, NONCE, "msg-1", b"payload").unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control target_seq must be non-zero")
+        ));
+
+        let mut encoded = encode_process_control(7, NONCE, "msg-1", b"payload").unwrap();
+        encoded[0..4].copy_from_slice(&0u32.to_be_bytes());
+
+        let err = decode_process_control(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control target_seq must be non-zero")
+        ));
+    }
+
+    #[test]
     fn process_control_rejects_empty_message_id() {
         let err = encode_process_control(7, NONCE, "", b"payload").unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control message_id empty")
+        ));
+
+        let mut encoded = encode_process_control(7, NONCE, "msg-1", b"payload").unwrap();
+        let message_id_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN;
+        encoded[message_id_len_offset..message_id_len_offset + 2]
+            .copy_from_slice(&0u16.to_be_bytes());
+
+        let err = decode_process_control(&encoded).unwrap_err();
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("process_control message_id empty")
@@ -329,6 +358,51 @@ mod tests {
     }
 
     #[test]
+    fn process_control_result_rejects_zero_target_seq() {
+        let err =
+            encode_process_control_result(0, NONCE, "msg-1", ProcessControlStatus::Delivered, "")
+                .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control_result target_seq must be non-zero")
+        ));
+
+        let mut encoded =
+            encode_process_control_result(7, NONCE, "msg-1", ProcessControlStatus::Delivered, "")
+                .unwrap();
+        encoded[0..4].copy_from_slice(&0u32.to_be_bytes());
+
+        let err = decode_process_control_result(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control_result target_seq must be non-zero")
+        ));
+    }
+
+    #[test]
+    fn process_control_result_rejects_empty_message_id() {
+        let err = encode_process_control_result(7, NONCE, "", ProcessControlStatus::Delivered, "")
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control_result message_id empty")
+        ));
+
+        let mut encoded =
+            encode_process_control_result(7, NONCE, "msg-1", ProcessControlStatus::Delivered, "")
+                .unwrap();
+        let message_id_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN;
+        encoded[message_id_len_offset..message_id_len_offset + 2]
+            .copy_from_slice(&0u16.to_be_bytes());
+
+        let err = decode_process_control_result(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control_result message_id empty")
+        ));
+    }
+
+    #[test]
     fn process_control_result_rejects_unknown_status() {
         let mut encoded =
             encode_process_control_result(7, NONCE, "msg-1", ProcessControlStatus::Delivered, "")
@@ -340,6 +414,20 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("process_control_result status invalid")
+        ));
+    }
+
+    #[test]
+    fn process_control_result_rejects_trailing_bytes() {
+        let mut encoded =
+            encode_process_control_result(7, NONCE, "msg-1", ProcessControlStatus::Delivered, "")
+                .unwrap();
+        encoded.push(0);
+
+        let err = decode_process_control_result(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_control_result trailing bytes")
         ));
     }
 }
