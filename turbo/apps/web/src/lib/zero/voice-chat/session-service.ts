@@ -55,20 +55,3 @@ export async function getVoiceChatSession(
     .limit(1);
   return session ?? null;
 }
-
-export async function listVoiceChatSessions(params: {
-  orgId: string;
-  userId: string;
-}): Promise<SessionRow[]> {
-  const db = globalThis.services.db;
-  return db
-    .select()
-    .from(voiceChatSessions)
-    .where(
-      and(
-        eq(voiceChatSessions.orgId, params.orgId),
-        eq(voiceChatSessions.userId, params.userId),
-      ),
-    )
-    .orderBy(desc(voiceChatSessions.createdAt));
-}

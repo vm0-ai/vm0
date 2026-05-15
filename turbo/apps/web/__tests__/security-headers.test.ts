@@ -216,6 +216,10 @@ describe("API backend rewrites", () => {
           source: "/api/zero/user-preferences",
           destination: "https://api.example.test/api/zero/user-preferences",
         },
+        {
+          source: "/api/zero/voice-chat",
+          destination: "https://api.example.test/api/zero/voice-chat",
+        },
       ]),
     );
   });

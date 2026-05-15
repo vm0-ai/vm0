@@ -10,10 +10,6 @@ import {
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
-export const createVoiceChatSessionBodySchema = z.object({
-  agentId: z.uuid(),
-});
-
 export const appendVoiceChatItemBodySchema = z.object({
   role: z.enum(["user", "assistant", "task_result", "system_note"]),
   content: z.string(),

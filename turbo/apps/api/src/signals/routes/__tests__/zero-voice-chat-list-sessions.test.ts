@@ -89,6 +89,31 @@ describe("GET /api/zero/voice-chat (listSessions)", () => {
     expect(response.body).toStrictEqual({ sessions: [] });
   });
 
+  it("returns more than 50 matching sessions", async () => {
+    const fixture = await track(
+      store.set(
+        seedVoiceChatFixture$,
+        {
+          trinityEnabled: true,
+          sessions: Array.from({ length: 51 }, (_, index) => {
+            return { createdAt: new Date(now() - index * 1000) };
+          }),
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(zeroVoiceChatContract);
+    const response = await accept(
+      client.listSessions({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.sessions).toHaveLength(51);
+  });
+
   it("returns the user's voice-chat sessions ordered by createdAt desc", async () => {
     const older = new Date(now() - 100_000);
     const newer = new Date(now() - 10_000);

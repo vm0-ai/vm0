@@ -10,6 +10,7 @@ import {
   createTestComposeVersion,
   seedTestCompose,
 } from "../../../../../src/__tests__/db-test-seeders/agents";
+import { seedTestVoiceChatSession } from "../../../../../src/__tests__/db-test-seeders/voice-chat";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const BASE_URL = "http://localhost:3000/api/zero/voice-chat";
@@ -60,10 +61,8 @@ export async function seedVoiceChatSession(opts: {
   userId: string;
   agentId: string;
 }): Promise<{ id: string }> {
-  const { POST } = await import("../route");
-  const response = await POST(postRequest("", { agentId: opts.agentId }));
-  const body = (await response.json()) as { session: { id: string } };
-  return { id: body.session.id };
+  const id = await seedTestVoiceChatSession(opts);
+  return { id };
 }
 
 export function postRequest(path: string, body?: unknown): NextRequest {

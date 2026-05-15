@@ -28,6 +28,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/phone/:path*",
   ],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
+  ["/api/zero/voice-chat", "/api/zero/voice-chat"],
 ];
 
 export function matchesApiBackendRewritePath(pathname) {

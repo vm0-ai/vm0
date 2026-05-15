@@ -8,6 +8,7 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -42,6 +43,19 @@ function client() {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+async function rawCreateSessionWithoutBody(): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/zero/voice-chat", {
+    method: "POST",
+    headers: { authorization: "Bearer clerk-session" },
+  });
+
+  return { status: response.status, body: await response.json() };
 }
 
 async function seedEnabledFixture(
@@ -103,6 +117,29 @@ describe("POST /api/zero/voice-chat (createSession)", () => {
       [403],
     );
     expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 400 when agentId is not a uuid", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().createSession({
+        headers: authHeaders(),
+        body: { agentId: "not-a-uuid" } as never,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when the body is missing", async () => {
+    await seedEnabledFixture();
+
+    const response = await rawCreateSessionWithoutBody();
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
   });
 
   it("creates or resumes the caller's latest session for the agent", async () => {
