@@ -118,3 +118,39 @@ export const localBrowserCommands = pgTable(
     ];
   },
 );
+
+export const localBrowserCommandAuditEvents = pgTable(
+  "local_browser_command_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commandId: uuid("command_id")
+      .references(() => {
+        return localBrowserCommands.id;
+      })
+      .notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    hostId: uuid("host_id").references(() => {
+      return localBrowserHosts.id;
+    }),
+    tabId: text("tab_id"),
+    kind: text("kind").notNull(),
+    targetUrl: text("target_url"),
+    event: text("event").notNull(),
+    approvalOutcome: text("approval_outcome"),
+    redactedResult: jsonb("redacted_result").$type<JsonObject>(),
+    error: jsonb("error").$type<JsonObject>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_local_browser_command_audit_command").on(table.commandId),
+      index("idx_local_browser_command_audit_org_user").on(
+        table.orgId,
+        table.userId,
+      ),
+      index("idx_local_browser_command_audit_created").on(table.createdAt),
+    ];
+  },
+);

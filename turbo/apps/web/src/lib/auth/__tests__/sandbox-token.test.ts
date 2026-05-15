@@ -365,6 +365,7 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).not.toContain("agent-run:write");
       expect(auth?.capabilities).not.toContain("computer-use:write");
       expect(auth?.capabilities).not.toContain("local-browser:read");
+      expect(auth?.capabilities).not.toContain("local-browser:write");
       expect(auth?.capabilities).not.toContain("host:read");
       expect(auth?.capabilities).not.toContain("host:write");
     });
@@ -377,6 +378,7 @@ describe("sandbox-token", () => {
 
       expect(auth?.capabilities).toContain("computer-use:write");
       expect(auth?.capabilities).toContain("local-browser:read");
+      expect(auth?.capabilities).toContain("local-browser:write");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
@@ -384,6 +386,7 @@ describe("sandbox-token", () => {
         "remote-agent:read",
         "remote-agent:write",
         "local-browser:read",
+        "local-browser:write",
         "schedule:read",
         "schedule:write",
         "slack:write",

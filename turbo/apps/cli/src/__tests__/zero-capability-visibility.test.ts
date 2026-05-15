@@ -456,7 +456,20 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide local-browser when local-browser:read capability is missing", () => {
+  it("should show local-browser when local-browser:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["local-browser:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("local-browser");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide local-browser when local-browser capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent-run:read", "agent-run:write"],
