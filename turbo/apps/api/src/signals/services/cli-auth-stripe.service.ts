@@ -14,7 +14,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray, lt, or } from "drizzle-orm";
+import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { safeAsync, safeJsonParse } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -35,6 +35,7 @@ const CLI_AUTH_STRIPE_TIMEOUT_MS = 15 * 60 * 1000;
 const CLI_AUTH_STRIPE_SESSION_TTL_SECONDS = 10 * 60;
 const CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS = 5;
 const CLI_AUTH_STRIPE_COMPLETE_TIMEOUT_SECONDS = 15;
+const CLI_AUTH_STRIPE_INITIALIZING_STALE_MS = 2 * 60 * 1000;
 const CLI_AUTH_STRIPE_COMPLETING_STALE_MS = 2 * 60 * 1000;
 const CLI_AUTH_STRIPE_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const CLI_AUTH_STRIPE_CONFIG_LIMIT_BYTES = 16 * 1024;
@@ -125,7 +126,23 @@ type CliAuthStripeErrorResult = Extract<
   CliAuthStripeCompleteResult,
   { readonly status: "error" }
 >;
+type CliAuthStripePendingResult = Extract<
+  CliAuthStripeCompleteResult,
+  { readonly status: "pending" }
+>;
 type ConnectorCliAuthSession = typeof connectorCliAuthSessions.$inferSelect;
+type ConnectorCliAuthSessionStatus = ConnectorCliAuthSession["status"];
+
+const CLI_AUTH_STRIPE_ACTIVE_STATUSES = [
+  "initializing",
+  "awaiting_user_approval",
+  "completing",
+] as const satisfies readonly ConnectorCliAuthSessionStatus[];
+
+const CLI_AUTH_STRIPE_SUPERSEDED_MESSAGE =
+  "CLI auth for Stripe session was superseded";
+const CLI_AUTH_STRIPE_CREDENTIALS_CHANGED_MESSAGE =
+  "CLI auth for Stripe session was cancelled because Stripe credentials changed";
 
 type PreparedCliAuthStripeCompletion =
   | {
@@ -137,6 +154,23 @@ type PreparedCliAuthStripeCompletion =
   | {
       readonly ok: false;
       readonly result: CliAuthStripeCompleteResult;
+    };
+
+type PreparedCliAuthStripeStart =
+  | {
+      readonly kind: "created";
+      readonly session: ConnectorCliAuthSession;
+      readonly cleanupSandboxes: readonly SandboxHandle[];
+    }
+  | {
+      readonly kind: "reuse";
+      readonly result: Extract<CliAuthStripeStartResult, { readonly ok: true }>;
+      readonly cleanupSandboxes: readonly SandboxHandle[];
+    }
+  | {
+      readonly kind: "busy";
+      readonly result: CliAuthStripeStartFailureResult;
+      readonly cleanupSandboxes: readonly SandboxHandle[];
     };
 
 function startCommandScript(): string {
@@ -280,20 +314,213 @@ function sanitizeSessionError(message: string): string {
   return redactStripeCliAuthText(message).slice(0, 500);
 }
 
+function remainingSessionTtlSeconds(expiresAt: Date, now: Date): number {
+  return Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / 1000));
+}
+
+function sandboxHandlesFromIds(
+  sandboxIds: readonly (string | null)[],
+): readonly SandboxHandle[] {
+  return sandboxIds.flatMap((sandboxId) => {
+    return sandboxId ? [{ sandboxId }] : [];
+  });
+}
+
+async function cleanupCliAuthStripeSandboxes(args: {
+  readonly client: SandboxClient;
+  readonly sandboxes: readonly SandboxHandle[];
+  readonly reason: string;
+}) {
+  for (const sandbox of args.sandboxes) {
+    await cleanupSandboxSafely({
+      client: args.client,
+      sandbox,
+      reason: args.reason,
+    });
+  }
+}
+
+/**
+ * Serialize lifecycle mutations for one user's Stripe CLI auth flow.
+ *
+ * This follows the existing transaction-scoped advisory lock pattern used by
+ * queue, credit, and Stripe customer writes. The connector type/source suffix
+ * keeps the lock scope ready for future CLI auth providers.
+ */
+async function lockCliAuthStripeOwner(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  await args.db.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('cli_auth_stripe:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${CLI_AUTH_STRIPE_CONNECTOR_TYPE} || ':' || ${CLI_AUTH_STRIPE_SOURCE}))`,
+  );
+}
+
+function cliAuthStripeOwnerWhere(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  return and(
+    eq(connectorCliAuthSessions.orgId, args.orgId),
+    eq(connectorCliAuthSessions.userId, args.userId),
+    eq(connectorCliAuthSessions.connectorType, CLI_AUTH_STRIPE_CONNECTOR_TYPE),
+    eq(connectorCliAuthSessions.source, CLI_AUTH_STRIPE_SOURCE),
+  );
+}
+
+function activeCliAuthStripeOwnerWhere(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  return and(
+    cliAuthStripeOwnerWhere(args),
+    inArray(connectorCliAuthSessions.status, [
+      ...CLI_AUTH_STRIPE_ACTIVE_STATUSES,
+    ]),
+  );
+}
+
+function terminalCliAuthStripeSessionSet(args: {
+  readonly status: Extract<
+    ConnectorCliAuthSessionStatus,
+    "cancelled" | "error" | "expired" | "imported"
+  >;
+  readonly now: Date;
+  readonly message?: string | null;
+}) {
+  return {
+    status: args.status,
+    approvalUrl: null,
+    verificationCode: null,
+    encryptedProviderState: null,
+    errorMessage: args.message ? sanitizeSessionError(args.message) : null,
+    completedAt: args.status === "imported" ? args.now : null,
+    cancelledAt: args.status === "cancelled" ? args.now : null,
+    updatedAt: args.now,
+  };
+}
+
+async function terminalizeCliAuthStripeSessions(args: {
+  readonly db: Db;
+  readonly sessionIds: readonly string[];
+  readonly status: Extract<
+    ConnectorCliAuthSessionStatus,
+    "cancelled" | "error" | "expired"
+  >;
+  readonly message?: string | null;
+  readonly now: Date;
+}): Promise<readonly SandboxHandle[]> {
+  if (args.sessionIds.length === 0) {
+    return [];
+  }
+  const rows = await args.db
+    .update(connectorCliAuthSessions)
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: args.status,
+        now: args.now,
+        message: args.message,
+      }),
+    )
+    .where(inArray(connectorCliAuthSessions.id, [...args.sessionIds]))
+    .returning({ sandboxId: connectorCliAuthSessions.sandboxId });
+  return sandboxHandlesFromIds(
+    rows.map((row) => {
+      return row.sandboxId;
+    }),
+  );
+}
+
+async function cancelActiveCliAuthStripeSessions(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly now: Date;
+  readonly message: string;
+}): Promise<readonly SandboxHandle[]> {
+  const rows = await args.db
+    .update(connectorCliAuthSessions)
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: "cancelled",
+        now: args.now,
+        message: args.message,
+      }),
+    )
+    .where(
+      activeCliAuthStripeOwnerWhere({
+        orgId: args.orgId,
+        userId: args.userId,
+      }),
+    )
+    .returning({ sandboxId: connectorCliAuthSessions.sandboxId });
+  return sandboxHandlesFromIds(
+    rows.map((row) => {
+      return row.sandboxId;
+    }),
+  );
+}
+
+export async function invalidateActiveCliAuthStripeSessions(args: {
+  readonly writeDb: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+  readonly message?: string;
+}) {
+  const client = getVercelSandboxClient();
+  const now = nowDate();
+  const sandboxes = await args.writeDb.transaction(async (tx) => {
+    await lockCliAuthStripeOwner({
+      db: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    return cancelActiveCliAuthStripeSessions({
+      db: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+      now,
+      message: args.message ?? CLI_AUTH_STRIPE_CREDENTIALS_CHANGED_MESSAGE,
+    });
+  });
+  args.signal.throwIfAborted();
+  await cleanupCliAuthStripeSandboxes({
+    client,
+    sandboxes,
+    reason: "stripe credentials changed",
+  });
+  args.signal.throwIfAborted();
+}
+
 async function markCliAuthStripeSessionError(args: {
   readonly writeDb: Db;
   readonly sessionId: string;
   readonly message: string;
+  readonly expectedStatus?: ConnectorCliAuthSessionStatus;
+  readonly expectedUpdatedAt?: Date;
 }) {
-  await args.writeDb
+  const where =
+    args.expectedStatus && args.expectedUpdatedAt
+      ? and(
+          eq(connectorCliAuthSessions.id, args.sessionId),
+          eq(connectorCliAuthSessions.status, args.expectedStatus),
+          eq(connectorCliAuthSessions.updatedAt, args.expectedUpdatedAt),
+        )
+      : eq(connectorCliAuthSessions.id, args.sessionId);
+  const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
-    .set({
-      status: "error",
-      errorMessage: sanitizeSessionError(args.message),
-      completedAt: null,
-      updatedAt: nowDate(),
-    })
-    .where(eq(connectorCliAuthSessions.id, args.sessionId));
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: "error",
+        now: nowDate(),
+        message: args.message,
+      }),
+    )
+    .where(where)
+    .returning({ id: connectorCliAuthSessions.id });
+  return Boolean(updated);
 }
 
 async function markCliAuthStripeSessionExpired(args: {
@@ -302,10 +529,12 @@ async function markCliAuthStripeSessionExpired(args: {
 }) {
   const [expired] = await args.writeDb
     .update(connectorCliAuthSessions)
-    .set({
-      status: "expired",
-      updatedAt: nowDate(),
-    })
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: "expired",
+        now: nowDate(),
+      }),
+    )
     .where(
       and(
         eq(connectorCliAuthSessions.id, args.session.id),
@@ -321,7 +550,6 @@ async function createCliAuthStripeSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly signal: AbortSignal;
   readonly expiresAt: Date;
 }) {
   const [session] = await args.writeDb
@@ -334,8 +562,7 @@ async function createCliAuthStripeSession(args: {
       status: "initializing",
       expiresAt: args.expiresAt,
     })
-    .returning({ id: connectorCliAuthSessions.id });
-  args.signal.throwIfAborted();
+    .returning();
   if (!session) {
     throw new Error("Failed to create CLI auth for Stripe session");
   }
@@ -345,10 +572,14 @@ async function createCliAuthStripeSession(args: {
 async function createCliAuthStripeSandbox(args: {
   readonly writeDb: Db;
   readonly client: SandboxClient;
-  readonly sessionId: string;
+  readonly session: ConnectorCliAuthSession;
   readonly signal: AbortSignal;
 }): Promise<
-  | { readonly ok: true; readonly sandbox: SandboxHandle }
+  | {
+      readonly ok: true;
+      readonly sandbox: SandboxHandle;
+      readonly session: ConnectorCliAuthSession;
+    }
   | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult }
 > {
   const createResult = await sandboxOperation("create", () => {
@@ -362,8 +593,10 @@ async function createCliAuthStripeSandbox(args: {
   if (!createResult.ok) {
     await markCliAuthStripeSessionError({
       writeDb: args.writeDb,
-      sessionId: args.sessionId,
+      sessionId: args.session.id,
       message: createResult.error.message,
+      expectedStatus: args.session.status,
+      expectedUpdatedAt: args.session.updatedAt,
     });
     args.signal.throwIfAborted();
     return {
@@ -384,15 +617,39 @@ async function createCliAuthStripeSandbox(args: {
         sandboxId: sandbox.sandboxId,
         updatedAt: nowDate(),
       })
-      .where(eq(connectorCliAuthSessions.id, args.sessionId));
+      .where(
+        and(
+          eq(connectorCliAuthSessions.id, args.session.id),
+          eq(connectorCliAuthSessions.status, "initializing"),
+          eq(connectorCliAuthSessions.updatedAt, args.session.updatedAt),
+        ),
+      )
+      .returning();
   });
   if ("error" in updateResult) {
     await cleanupSandbox(args.client, sandbox);
     throw updateResult.error;
   }
+  const updatedSession = updateResult.ok[0];
+  if (!updatedSession) {
+    await cleanupSandboxSafely({
+      client: args.client,
+      sandbox,
+      reason: "start session sandbox claim lost",
+    });
+    args.signal.throwIfAborted();
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        code: "CLI_AUTH_STRIPE_UNAVAILABLE",
+        message: CLI_AUTH_STRIPE_SUPERSEDED_MESSAGE,
+      },
+    };
+  }
   args.signal.throwIfAborted();
 
-  return { ok: true, sandbox };
+  return { ok: true, sandbox, session: updatedSession };
 }
 
 async function parseCliAuthStripeStartOutput(
@@ -421,7 +678,7 @@ async function runCliAuthStripeStartInSandbox(args: {
   readonly writeDb: Db;
   readonly client: SandboxClient;
   readonly sandbox: SandboxHandle;
-  readonly sessionId: string;
+  readonly session: ConnectorCliAuthSession;
   readonly signal: AbortSignal;
 }): Promise<
   | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
@@ -439,8 +696,10 @@ async function runCliAuthStripeStartInSandbox(args: {
   if (!runResult.ok) {
     await markCliAuthStripeSessionError({
       writeDb: args.writeDb,
-      sessionId: args.sessionId,
+      sessionId: args.session.id,
       message: runResult.error.message,
+      expectedStatus: args.session.status,
+      expectedUpdatedAt: args.session.updatedAt,
     });
     await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
@@ -461,8 +720,10 @@ async function runCliAuthStripeStartInSandbox(args: {
     );
     await markCliAuthStripeSessionError({
       writeDb: args.writeDb,
-      sessionId: args.sessionId,
+      sessionId: args.session.id,
       message,
+      expectedStatus: args.session.status,
+      expectedUpdatedAt: args.session.updatedAt,
     });
     await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
@@ -480,8 +741,10 @@ async function runCliAuthStripeStartInSandbox(args: {
   if (!parsedResult.ok) {
     await markCliAuthStripeSessionError({
       writeDb: args.writeDb,
-      sessionId: args.sessionId,
+      sessionId: args.session.id,
       message: parsedResult.message,
+      expectedStatus: args.session.status,
+      expectedUpdatedAt: args.session.updatedAt,
     });
     await cleanupSandbox(args.client, args.sandbox);
     args.signal.throwIfAborted();
@@ -500,11 +763,11 @@ async function runCliAuthStripeStartInSandbox(args: {
 
 async function markCliAuthStripeSessionAwaitingApproval(args: {
   readonly writeDb: Db;
-  readonly sessionId: string;
+  readonly session: ConnectorCliAuthSession;
   readonly output: StripeCliAuthStartOutput;
   readonly mode: StripeCliAuthMode;
 }) {
-  await args.writeDb
+  const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
     .set({
       status: "awaiting_user_approval",
@@ -519,7 +782,173 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
       errorMessage: null,
       updatedAt: nowDate(),
     })
-    .where(eq(connectorCliAuthSessions.id, args.sessionId));
+    .where(
+      and(
+        eq(connectorCliAuthSessions.id, args.session.id),
+        eq(connectorCliAuthSessions.status, "initializing"),
+        eq(connectorCliAuthSessions.updatedAt, args.session.updatedAt),
+      ),
+    )
+    .returning({ id: connectorCliAuthSessions.id });
+  return Boolean(updated);
+}
+
+function isFreshInitializingCliAuthStripeSession(
+  session: ConnectorCliAuthSession,
+  now: Date,
+): boolean {
+  return (
+    session.status === "initializing" &&
+    now.getTime() - session.updatedAt.getTime() <=
+      CLI_AUTH_STRIPE_INITIALIZING_STALE_MS &&
+    now <= session.expiresAt
+  );
+}
+
+function isFreshCompletingCliAuthStripeSession(
+  session: ConnectorCliAuthSession,
+  now: Date,
+): boolean {
+  return (
+    session.status === "completing" &&
+    !isStaleCompletingCliAuthStripeSession(session, now) &&
+    now <= session.expiresAt
+  );
+}
+
+async function reusableCliAuthStripeStartResult(args: {
+  readonly session: ConnectorCliAuthSession;
+  readonly mode: StripeCliAuthMode;
+  readonly now: Date;
+}): Promise<Extract<CliAuthStripeStartResult, { readonly ok: true }> | null> {
+  if (
+    args.session.status !== "awaiting_user_approval" ||
+    args.now > args.session.expiresAt ||
+    !args.session.sandboxId ||
+    !args.session.approvalUrl ||
+    !args.session.verificationCode
+  ) {
+    return null;
+  }
+  const providerState = await decodeProviderState(
+    args.session.encryptedProviderState,
+  );
+  if (!providerState || providerState.mode !== args.mode) {
+    return null;
+  }
+  return {
+    ok: true,
+    sessionToken: encodeSession({
+      version: 1,
+      sessionId: args.session.id,
+    }),
+    browserUrl: args.session.approvalUrl,
+    verificationCode: args.session.verificationCode,
+    mode: providerState.mode,
+    expiresIn: remainingSessionTtlSeconds(args.session.expiresAt, args.now),
+    interval: CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS,
+  };
+}
+
+function prepareCliAuthStripeStartSession(args: {
+  readonly writeDb: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly mode: StripeCliAuthMode;
+  readonly now: Date;
+}): Promise<PreparedCliAuthStripeStart> {
+  return args.writeDb.transaction(async (tx) => {
+    await lockCliAuthStripeOwner({
+      db: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+
+    const activeSessions = await tx
+      .select()
+      .from(connectorCliAuthSessions)
+      .where(
+        activeCliAuthStripeOwnerWhere({
+          orgId: args.orgId,
+          userId: args.userId,
+        }),
+      )
+      .orderBy(connectorCliAuthSessions.createdAt);
+
+    const expiredSessionIds: string[] = [];
+    const cancelSessionIds: string[] = [];
+    let reusableResult: Extract<
+      CliAuthStripeStartResult,
+      { readonly ok: true }
+    > | null = null;
+    let hasFreshInProgressSession = false;
+
+    for (const session of activeSessions) {
+      if (args.now > session.expiresAt) {
+        expiredSessionIds.push(session.id);
+        continue;
+      }
+
+      const reusable = await reusableCliAuthStripeStartResult({
+        session,
+        mode: args.mode,
+        now: args.now,
+      });
+      if (reusable && !reusableResult) {
+        reusableResult = reusable;
+        continue;
+      }
+
+      if (
+        isFreshInitializingCliAuthStripeSession(session, args.now) ||
+        isFreshCompletingCliAuthStripeSession(session, args.now)
+      ) {
+        hasFreshInProgressSession = true;
+        continue;
+      }
+
+      cancelSessionIds.push(session.id);
+    }
+
+    const expiredSandboxes = await terminalizeCliAuthStripeSessions({
+      db: tx,
+      sessionIds: expiredSessionIds,
+      status: "expired",
+      now: args.now,
+    });
+    const cancelledSandboxes = await terminalizeCliAuthStripeSessions({
+      db: tx,
+      sessionIds: cancelSessionIds,
+      status: "cancelled",
+      message: CLI_AUTH_STRIPE_SUPERSEDED_MESSAGE,
+      now: args.now,
+    });
+    const cleanupSandboxes = [...expiredSandboxes, ...cancelledSandboxes];
+
+    if (hasFreshInProgressSession) {
+      return {
+        kind: "busy",
+        cleanupSandboxes,
+        result: {
+          ok: false,
+          code: "CLI_AUTH_STRIPE_UNAVAILABLE",
+          message: "CLI auth for Stripe session is already starting",
+        },
+      };
+    }
+
+    if (reusableResult) {
+      return { kind: "reuse", cleanupSandboxes, result: reusableResult };
+    }
+
+    const session = await createCliAuthStripeSession({
+      writeDb: tx,
+      orgId: args.orgId,
+      userId: args.userId,
+      expiresAt: tokenExpiresAt(args.now),
+    });
+    return { kind: "created", cleanupSandboxes, session };
+  });
 }
 
 export async function startCliAuthStripe(args: {
@@ -530,18 +959,31 @@ export async function startCliAuthStripe(args: {
   readonly signal: AbortSignal;
   readonly now?: Date;
 }): Promise<CliAuthStripeStartResult> {
-  const session = await createCliAuthStripeSession({
+  const now = args.now ?? nowDate();
+  const client = getVercelSandboxClient();
+  const prepared = await prepareCliAuthStripeStartSession({
     writeDb: args.writeDb,
     orgId: args.orgId,
     userId: args.userId,
-    signal: args.signal,
-    expiresAt: tokenExpiresAt(args.now ?? nowDate()),
+    mode: args.mode,
+    now,
   });
-  const client = getVercelSandboxClient();
+  args.signal.throwIfAborted();
+  await cleanupCliAuthStripeSandboxes({
+    client,
+    sandboxes: prepared.cleanupSandboxes,
+    reason: "start session superseded active session",
+  });
+  args.signal.throwIfAborted();
+
+  if (prepared.kind === "reuse" || prepared.kind === "busy") {
+    return prepared.result;
+  }
+
   const sandboxResult = await createCliAuthStripeSandbox({
     writeDb: args.writeDb,
     client,
-    sessionId: session.id,
+    session: prepared.session,
     signal: args.signal,
   });
   if (!sandboxResult.ok) {
@@ -552,7 +994,7 @@ export async function startCliAuthStripe(args: {
     writeDb: args.writeDb,
     client,
     sandbox: sandboxResult.sandbox,
-    sessionId: session.id,
+    session: sandboxResult.session,
     signal: args.signal,
   });
   if (!startResult.ok) {
@@ -561,7 +1003,7 @@ export async function startCliAuthStripe(args: {
   const persistResult = await safeAsync(() => {
     return markCliAuthStripeSessionAwaitingApproval({
       writeDb: args.writeDb,
-      sessionId: session.id,
+      session: sandboxResult.session,
       output: startResult.output,
       mode: args.mode,
     });
@@ -574,13 +1016,25 @@ export async function startCliAuthStripe(args: {
     });
     throw persistResult.error;
   }
+  if (!persistResult.ok) {
+    await cleanupSandboxSafely({
+      client,
+      sandbox: sandboxResult.sandbox,
+      reason: "start session persist claim lost",
+    });
+    return {
+      ok: false,
+      code: "CLI_AUTH_STRIPE_UNAVAILABLE",
+      message: CLI_AUTH_STRIPE_SUPERSEDED_MESSAGE,
+    };
+  }
   args.signal.throwIfAborted();
 
   return {
     ok: true,
     sessionToken: encodeSession({
       version: 1,
-      sessionId: session.id,
+      sessionId: prepared.session.id,
     }),
     browserUrl: startResult.output.browserUrl,
     verificationCode: startResult.output.verificationCode,
@@ -649,12 +1103,12 @@ async function markCliAuthStripeSessionImported(args: {
 }) {
   const [updated] = await args.tx
     .update(connectorCliAuthSessions)
-    .set({
-      status: "imported",
-      errorMessage: null,
-      completedAt: args.updatedAt,
-      updatedAt: args.updatedAt,
-    })
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: "imported",
+        now: args.updatedAt,
+      }),
+    )
     .where(
       claimedCliAuthStripeSessionWhere({
         sessionId: args.sessionId,
@@ -965,13 +1419,18 @@ async function handleMissingCliAuthStripeProviderState(args: {
   readonly client: SandboxClient;
   readonly session: ConnectorCliAuthSession;
   readonly signal: AbortSignal;
-}): Promise<CliAuthStripeErrorResult> {
+}): Promise<CliAuthStripeErrorResult | CliAuthStripePendingResult> {
   const message = "CLI auth for Stripe session is missing provider state";
-  await markCliAuthStripeSessionError({
+  const marked = await markCliAuthStripeSessionError({
     writeDb: args.writeDb,
     sessionId: args.session.id,
     message,
+    expectedStatus: args.session.status,
+    expectedUpdatedAt: args.session.updatedAt,
   });
+  if (!marked) {
+    return { status: "pending", errorMessage: null };
+  }
   if (args.session.sandboxId) {
     await cleanupSandbox(args.client, { sandboxId: args.session.sandboxId });
   }
@@ -1124,12 +1583,13 @@ async function markClaimedCliAuthStripeSessionError(args: {
 }) {
   const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
-    .set({
-      status: "error",
-      errorMessage: sanitizeSessionError(args.message),
-      completedAt: null,
-      updatedAt: nowDate(),
-    })
+    .set(
+      terminalCliAuthStripeSessionSet({
+        status: "error",
+        now: nowDate(),
+        message: args.message,
+      }),
+    )
     .where(
       claimedCliAuthStripeSessionWhere({
         sessionId: args.sessionId,

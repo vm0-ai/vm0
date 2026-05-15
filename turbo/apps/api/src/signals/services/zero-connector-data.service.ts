@@ -40,6 +40,7 @@ import {
 import { publishUserSignal } from "../external/realtime";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -528,6 +529,15 @@ export const deleteZeroConnectorLocalState$ = command(
     const writeDb = set(writeDb$);
     let deleted = false;
 
+    await invalidateActiveCliAuthSessionsForConnectorType({
+      writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorType: args.type,
+      signal,
+    });
+    signal.throwIfAborted();
+
     const [existing] = await writeDb
       .select({ id: connectors.id, authMethod: connectors.authMethod })
       .from(connectors)
@@ -692,6 +702,15 @@ export const upsertOAuthConnector$ = command(
       type: args.type,
       expiresIn: args.expiresIn,
     });
+
+    await invalidateActiveCliAuthSessionsForConnectorType({
+      writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorType: args.type,
+      signal,
+    });
+    signal.throwIfAborted();
 
     await upsertConnectorSecret(writeDb, {
       orgId: args.orgId,

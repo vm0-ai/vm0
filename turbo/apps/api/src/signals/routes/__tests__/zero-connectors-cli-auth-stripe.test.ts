@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
+import {
+  zeroSecretsByNameContract,
+  zeroSecretsContract,
+} from "@vm0/api-contracts/contracts/zero-secrets";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { connectors } from "@vm0/db/schema/connector";
@@ -28,6 +33,7 @@ import {
 } from "../../external/sandbox";
 import { writeDb$ } from "../../external/db";
 import { decryptSecretValue } from "../../services/crypto.utils";
+import { upsertOAuthConnector$ } from "../../services/zero-connector-data.service";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -36,6 +42,18 @@ const mocks = createZeroRouteMocks(context);
 
 function client() {
   return setupApp({ context })(zeroCliAuthStripeContract);
+}
+
+function zeroSecretsClient() {
+  return setupApp({ context })(zeroSecretsContract);
+}
+
+function zeroSecretByNameClient() {
+  return setupApp({ context })(zeroSecretsByNameContract);
+}
+
+function zeroConnectorsByTypeClient() {
+  return setupApp({ context })(zeroConnectorsByTypeContract);
 }
 
 function textOutput(text: string): BoundedTextOutput {
@@ -126,12 +144,15 @@ function mockStripeCliSandbox(
     readonly startNextStep?: string;
     readonly startVerificationCode?: string;
     readonly startStderr?: string;
+    readonly startResults?: readonly CommandResultInput[];
     readonly completeExitCode?: number;
     readonly completeResults?: readonly CommandResultInput[];
     readonly configApiKey?: string;
   } = {},
 ) {
-  const handle = { sandboxId: "sandbox_stripe_cli_auth_test" };
+  const firstSandboxId = "sandbox_stripe_cli_auth_test";
+  let createdSandboxCount = 0;
+  const startResults = [...(args.startResults ?? [])];
   const completeResults = [...(args.completeResults ?? [])];
   const calls = {
     create: [] as CreateSandboxOptions[],
@@ -152,7 +173,12 @@ function mockStripeCliSandbox(
   mockSandboxClient({
     create(options = {}) {
       calls.create.push(options);
-      return Promise.resolve(handle);
+      const sandboxId =
+        createdSandboxCount === 0
+          ? firstSandboxId
+          : `${firstSandboxId}_${String(createdSandboxCount + 1)}`;
+      createdSandboxCount += 1;
+      return Promise.resolve({ sandboxId });
     },
     get(sandboxId) {
       return Promise.resolve({ sandboxId });
@@ -161,6 +187,10 @@ function mockStripeCliSandbox(
       calls.run.push({ handle: commandHandle, options });
       const script = options.args?.[1] ?? "";
       if (script.includes("--non-interactive")) {
+        const startResult = startResults.shift();
+        if (startResult) {
+          return Promise.resolve(resolveCommandResult(startResult));
+        }
         return Promise.resolve(
           commandResult({
             sandboxId: commandHandle.sandboxId,
@@ -285,6 +315,46 @@ async function onlyCliAuthStripeSession(userId: string, orgId: string) {
   const rows = await cliAuthStripeSessions(userId, orgId);
   expect(rows).toHaveLength(1);
   return rows[0]!;
+}
+
+async function stripeTokenSecret(userId: string, orgId: string) {
+  const [secret] = await store
+    .set(writeDb$)
+    .select({
+      encryptedValue: secrets.encryptedValue,
+      description: secrets.description,
+      type: secrets.type,
+    })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.orgId, orgId),
+        eq(secrets.userId, userId),
+        eq(secrets.name, "STRIPE_TOKEN"),
+        eq(secrets.type, "user"),
+      ),
+    )
+    .limit(1);
+  return secret ?? null;
+}
+
+async function stripeConnector(userId: string, orgId: string) {
+  const [connector] = await store
+    .set(writeDb$)
+    .select({
+      authMethod: connectors.authMethod,
+      externalId: connectors.externalId,
+    })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, orgId),
+        eq(connectors.userId, userId),
+        eq(connectors.type, "stripe"),
+      ),
+    )
+    .limit(1);
+  return connector ?? null;
 }
 
 describe("CLI auth for Stripe connector routes", () => {
@@ -421,6 +491,132 @@ describe("CLI auth for Stripe connector routes", () => {
     });
     expect(session.encryptedProviderState).toBeTruthy();
     expect(session.encryptedProviderState).not.toContain("poll-token");
+  });
+
+  it("reuses an active same-mode CLI auth session instead of starting another sandbox", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+
+    const firstStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    const secondStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    expect(secondStart.body).toMatchObject({
+      type: "stripe",
+      status: "pending",
+      mode: "test",
+      browserUrl: firstStart.body.browserUrl,
+      verificationCode: firstStart.body.verificationCode,
+    });
+    expect(calls.create).toHaveLength(1);
+    expect(calls.run).toHaveLength(1);
+    expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("awaiting_user_approval");
+  });
+
+  it("does not start another sandbox while the first start is still initializing", async () => {
+    const { userId, orgId } = await setupUser();
+    const startCommandStarted = deferred<void>();
+    const startCommandResult = deferred<SandboxCommandResult>();
+    const calls = mockStripeCliSandbox({
+      startResults: [
+        () => {
+          startCommandStarted.resolve();
+          return startCommandResult.promise;
+        },
+      ],
+    });
+
+    const firstStart = accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await startCommandStarted.promise;
+
+    const secondStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [503],
+    );
+
+    expect(secondStart.body.error.code).toBe("CLI_AUTH_STRIPE_UNAVAILABLE");
+    expect(secondStart.body.error.message).toBe(
+      "CLI auth for Stripe session is already starting",
+    );
+    startCommandResult.resolve(
+      commandResult({ exitCode: 0, stdout: startOutput() }),
+    );
+    await firstStart;
+
+    expect(calls.create).toHaveLength(1);
+    expect(calls.run).toHaveLength(1);
+    expect(calls.stop).toHaveLength(0);
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session.status).toBe("awaiting_user_approval");
+  });
+
+  it("supersedes an active CLI auth session when the requested mode changes", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox();
+
+    await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    const liveStart = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "live" },
+      }),
+      [200],
+    );
+
+    expect(liveStart.body.mode).toBe("live");
+    expect(calls.create).toHaveLength(2);
+    expect(calls.run).toHaveLength(2);
+    expect(calls.stop).toHaveLength(1);
+
+    const sessions = await cliAuthStripeSessions(userId, orgId);
+    expect(sessions).toHaveLength(2);
+    const cancelled = sessions.find((session) => {
+      return session.status === "cancelled";
+    });
+    const active = sessions.find((session) => {
+      return session.status === "awaiting_user_approval";
+    });
+    expect(cancelled).toMatchObject({
+      status: "cancelled",
+      errorMessage: "CLI auth for Stripe session was superseded",
+    });
+    expect(cancelled?.approvalUrl).toBeNull();
+    expect(cancelled?.verificationCode).toBeNull();
+    expect(cancelled?.encryptedProviderState).toBeNull();
+    expect(active).toMatchObject({
+      status: "awaiting_user_approval",
+      sandboxId: "sandbox_stripe_cli_auth_test_2",
+    });
   });
 
   it("stops the sandbox when Stripe returns an unexpected completion URL", async () => {
@@ -600,6 +796,210 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(session.status).toBe("imported");
     expect(session.completedAt).toBeInstanceOf(Date);
     expect(session.errorMessage).toBeNull();
+    expect(session.approvalUrl).toBeNull();
+    expect(session.verificationCode).toBeNull();
+    expect(session.encryptedProviderState).toBeNull();
+  });
+
+  it("keeps a stale CLI auth completion from overwriting a manually set STRIPE_TOKEN", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_stale" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await accept(
+      zeroSecretsClient().set({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "STRIPE_TOKEN",
+          value: "rk_test_manual",
+          description: "Manual Stripe token",
+        },
+      }),
+      [200],
+    );
+
+    expect(calls.stop).toHaveLength(1);
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "CLI auth for Stripe session is not active",
+    );
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
+
+    const secret = await stripeTokenSecret(userId, orgId);
+    expect(secret).toMatchObject({
+      description: "Manual Stripe token",
+      type: "user",
+    });
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe("rk_test_manual");
+
+    const session = await onlyCliAuthStripeSession(userId, orgId);
+    expect(session).toMatchObject({
+      status: "cancelled",
+      errorMessage:
+        "CLI auth for Stripe session was cancelled because Stripe credentials changed",
+    });
+    expect(session.approvalUrl).toBeNull();
+    expect(session.verificationCode).toBeNull();
+    expect(session.encryptedProviderState).toBeNull();
+  });
+
+  it("keeps a stale CLI auth completion from recreating a deleted STRIPE_TOKEN", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_stale" });
+
+    await accept(
+      zeroSecretsClient().set({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "STRIPE_TOKEN",
+          value: "rk_test_existing",
+        },
+      }),
+      [200],
+    );
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await accept(
+      zeroSecretByNameClient().delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { name: "STRIPE_TOKEN" },
+      }),
+      [204],
+    );
+
+    expect(calls.stop).toHaveLength(1);
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "CLI auth for Stripe session is not active",
+    );
+    await expect(stripeTokenSecret(userId, orgId)).resolves.toBeNull();
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
+  });
+
+  it("keeps a stale CLI auth completion from recreating STRIPE_TOKEN after connector disconnect", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_stale" });
+
+    await accept(
+      zeroSecretsClient().set({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "STRIPE_TOKEN",
+          value: "rk_test_existing",
+        },
+      }),
+      [200],
+    );
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await accept(
+      zeroConnectorsByTypeClient().delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "stripe" },
+      }),
+      [204],
+    );
+
+    expect(calls.stop).toHaveLength(1);
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "CLI auth for Stripe session is not active",
+    );
+    await expect(stripeTokenSecret(userId, orgId)).resolves.toBeNull();
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
+  });
+
+  it("keeps a stale CLI auth completion from replacing a Stripe OAuth reconnect", async () => {
+    const { userId, orgId } = await setupUser();
+    const calls = mockStripeCliSandbox({ configApiKey: "rk_test_stale" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await store.set(
+      upsertOAuthConnector$,
+      {
+        orgId,
+        userId,
+        type: "stripe",
+        accessToken: "oauth_access",
+        userInfo: {
+          id: "acct_oauth",
+          username: null,
+          email: null,
+        },
+        oauthScopes: ["read_write"],
+      },
+      context.signal,
+    );
+
+    expect(calls.stop).toHaveLength(1);
+    const complete = await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [400],
+    );
+
+    expect(complete.body.error.message).toBe(
+      "CLI auth for Stripe session is not active",
+    );
+    await expect(stripeConnector(userId, orgId)).resolves.toStrictEqual({
+      authMethod: "oauth",
+      externalId: "acct_oauth",
+    });
+    await expect(stripeTokenSecret(userId, orgId)).resolves.toBeNull();
+    expect(calls.run).toHaveLength(1);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.stop).toHaveLength(1);
   });
 
   it("replaces existing Stripe OAuth local state while importing STRIPE_TOKEN", async () => {

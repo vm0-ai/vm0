@@ -9,6 +9,10 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
+import {
+  hasCliAuthInvalidatorsForSecretName,
+  invalidateActiveCliAuthSessionsForSecretName,
+} from "../services/cli-auth-invalidation.service";
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -16,6 +20,35 @@ const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const writeDb = set(writeDb$);
+  if (hasCliAuthInvalidatorsForSecretName(params.name)) {
+    const [existing] = await writeDb
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, auth.orgId),
+          eq(secrets.userId, auth.userId),
+          eq(secrets.name, params.name),
+          eq(secrets.type, "user"),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!existing) {
+      return notFound(`Secret "${params.name}" not found`);
+    }
+
+    await invalidateActiveCliAuthSessionsForSecretName({
+      writeDb,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      secretName: params.name,
+      signal,
+    });
+    signal.throwIfAborted();
+  }
+
   // Match web's filter: only user-type secrets are deletable through this
   // route. Connector / model-provider secrets are managed via dedicated routes.
   const deleted = await writeDb

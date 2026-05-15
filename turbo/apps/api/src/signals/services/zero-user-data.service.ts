@@ -33,6 +33,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { encryptSecretValue } from "./crypto.utils";
+import { invalidateActiveCliAuthSessionsForSecretName } from "./cli-auth-invalidation.service";
 import { isValidTimeZone } from "../utils";
 
 const API_KEY_PREFIX_LENGTH = 12;
@@ -435,9 +436,18 @@ export const setUserSecret$ = command(
     args: SetUserSecretArgs,
     signal: AbortSignal,
   ): Promise<SecretResponse> => {
+    const writeDb = set(writeDb$);
+    await invalidateActiveCliAuthSessionsForSecretName({
+      writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      secretName: args.secret.name,
+      signal,
+    });
+    signal.throwIfAborted();
+
     const encryptedValue = encryptSecretValue(args.secret.value);
     const updatedAt = nowDate();
-    const writeDb = set(writeDb$);
     const [row] = await writeDb
       .insert(secrets)
       .values({
