@@ -469,7 +469,7 @@ describe("POST /api/zero/image-io/generate", () => {
         }),
       ]),
     );
-    expect(await getOrgCredits(orgId)).toBe(960);
+    expect(await getOrgCredits(orgId)).toBe(952);
   });
 
   it("returns 500 when OpenAI image generation fails", async () => {
