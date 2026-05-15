@@ -26,6 +26,7 @@ import {
   sttDailyDurationKey,
   sttDailyRateKey,
   TTS_CONTENT_TYPE,
+  TTS_MAX_TEXT_LENGTH,
   VOICE_IO_STT_MODEL,
   VOICE_IO_TTS_MODEL,
   type SpeechPricing,
@@ -372,6 +373,28 @@ describe("POST /api/zero/voice-io/*", () => {
     context.mocks.s3.send.mockResolvedValue({});
   });
 
+  it("returns 401 from /tts when unauthenticated", async () => {
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/tts", {
+      method: "POST",
+      body: JSON.stringify({ text: "Read this aloud" }),
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
   it("proxies /tts to OpenAI when audio output is enabled", async () => {
     const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -430,6 +453,59 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "Audio output is not enabled", code: "FORBIDDEN" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("rejects empty /tts text before OpenAI", async () => {
+    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/tts", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ text: "   " }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "text is required", code: "BAD_REQUEST" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("rejects oversized /tts text before OpenAI", async () => {
+    const fixture = await track(seedVoiceFixture({ audioOutputEnabled: true }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_SPEECH_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/tts", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ text: "x".repeat(TTS_MAX_TEXT_LENGTH + 1) }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: `text must be at most ${TTS_MAX_TEXT_LENGTH} characters`,
+        code: "BAD_REQUEST",
+      },
     });
     expect(calledOpenAi).toBeFalsy();
   });

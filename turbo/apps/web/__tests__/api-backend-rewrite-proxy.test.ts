@@ -143,7 +143,7 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
   });
 
-  it("matches the zero voice-io quota, speech, and stt rewrites exactly", () => {
+  it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(
       false,
@@ -158,7 +158,10 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/stt/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-io/tts/extra")).toBe(
+      false,
+    );
   });
 
   it("matches the usage insight rewrite path exactly", () => {
