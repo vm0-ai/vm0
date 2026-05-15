@@ -35,6 +35,10 @@ WITH orphan_agent_composes AS MATERIALIZED (
       WHERE i."default_compose_id" = c."id"
     )
     AND NOT EXISTS (
+      SELECT 1 FROM "org_metadata" m
+      WHERE m."default_agent_id" = c."id"
+    )
+    AND NOT EXISTS (
       SELECT 1 FROM "telegram_installations" i
       WHERE i."default_compose_id" = c."id"
     )
@@ -100,6 +104,10 @@ WITH orphan_agent_composes AS MATERIALIZED (
       WHERE i."default_compose_id" = c."id"
     )
     AND NOT EXISTS (
+      SELECT 1 FROM "org_metadata" m
+      WHERE m."default_agent_id" = c."id"
+    )
+    AND NOT EXISTS (
       SELECT 1 FROM "telegram_installations" i
       WHERE i."default_compose_id" = c."id"
     )
@@ -160,6 +168,10 @@ WHERE NOT EXISTS (
   AND NOT EXISTS (
     SELECT 1 FROM "github_installations" i
     WHERE i."default_compose_id" = c."id"
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM "org_metadata" m
+    WHERE m."default_agent_id" = c."id"
   )
   AND NOT EXISTS (
     SELECT 1 FROM "telegram_installations" i
