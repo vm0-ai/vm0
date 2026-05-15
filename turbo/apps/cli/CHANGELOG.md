@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.154.0](https://github.com/vm0-ai/vm0/compare/cli-v9.153.0...cli-v9.154.0) (2026-05-15)
+
+
+### Features
+
+* add presentation image model option ([#13436](https://github.com/vm0-ai/vm0/issues/13436)) ([b17f2a2](https://github.com/vm0-ai/vm0/commit/b17f2a2f823bb772010f159ec5e41967061a7eb1))
+
+
+### Bug Fixes
+
+* make built-in generation asynchronous ([#13416](https://github.com/vm0-ai/vm0/issues/13416)) ([11104c8](https://github.com/vm0-ai/vm0/commit/11104c8b0a1c77f95ea219171821905bc9e1d27b))
+
+
+### Refactoring
+
+* gate connector auth methods ([#13426](https://github.com/vm0-ai/vm0/issues/13426)) ([3d5fa56](https://github.com/vm0-ai/vm0/commit/3d5fa56f7ad3bf1f386a88a8006f6428e97eb7b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.28.0
+    * @vm0/connectors bumped to 1.12.1
+    * @vm0/core bumped to 8.278.1
+
 ## [9.153.0](https://github.com/vm0-ai/vm0/compare/cli-v9.152.0...cli-v9.153.0) (2026-05-15)
 
 

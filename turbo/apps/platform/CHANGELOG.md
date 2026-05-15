@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.357.3](https://github.com/vm0-ai/vm0/compare/app-v0.357.2...app-v0.357.3) (2026-05-15)
+
+
+### Refactoring
+
+* gate connector auth methods ([#13426](https://github.com/vm0-ai/vm0/issues/13426)) ([3d5fa56](https://github.com/vm0-ai/vm0/commit/3d5fa56f7ad3bf1f386a88a8006f6428e97eb7b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.28.0
+    * @vm0/connectors bumped to 1.12.1
+    * @vm0/core bumped to 8.278.1
+
 ## [0.357.2](https://github.com/vm0-ai/vm0/compare/app-v0.357.1...app-v0.357.2) (2026-05-15)
 
 

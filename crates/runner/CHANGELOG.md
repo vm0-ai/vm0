@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.101.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.45...runner-rs-v0.101.0) (2026-05-15)
+
+
+### Features
+
+* gate billable firewall auth on credits ([#13433](https://github.com/vm0-ai/vm0/issues/13433)) ([235587d](https://github.com/vm0-ai/vm0/commit/235587df8efd5539d87e3fddda72c9726e231a9e))
+
+
+### Bug Fixes
+
+* **runner:** supervise signal handler lifecycle ([#13390](https://github.com/vm0-ai/vm0/issues/13390)) ([1237dc6](https://github.com/vm0-ai/vm0/commit/1237dc6ab8e28f09ec283b45c33ecb96c3eeb5fb))
+
+
+### Refactoring
+
+* **runner:** encode idle park ownership state ([#13415](https://github.com/vm0-ai/vm0/issues/13415)) ([9613924](https://github.com/vm0-ai/vm0/commit/9613924249bd8f98536635cb3c04197a1c6886e6))
+
 ## [0.100.45](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.44...runner-rs-v0.100.45) (2026-05-15)
 
 
