@@ -27,9 +27,24 @@ export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),
 });
 
+const customConnectorPrefixSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => {
+      try {
+        new URL(value);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Invalid URL" },
+  );
+
 export const createCustomConnectorBodySchema = z.object({
   displayName: z.string().min(1).max(128),
-  prefixes: z.array(z.string().url()).min(1),
+  prefixes: z.array(customConnectorPrefixSchema).min(1),
   headerName: z.string().min(1).max(128),
   headerTemplate: z.string().min(1),
   slug: z.string().optional(),

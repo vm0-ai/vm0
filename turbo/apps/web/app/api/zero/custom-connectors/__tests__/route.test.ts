@@ -170,6 +170,19 @@ describe("POST /api/zero/custom-connectors", () => {
     expect(data.prefixes).toEqual(["https://api.example.com/v1/"]);
   });
 
+  it("accepts a host wildcard prefix and stores the user-facing value", async () => {
+    const userId = uniqueId("zcc-wildcard");
+    await setupAdminOrg(userId);
+
+    const res = await createSampleConnector({
+      prefixes: ["https://*.example.com/v1"],
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.slug).toMatch(/^example-com-/);
+    expect(data.prefixes).toEqual(["https://*.example.com/v1/"]);
+  });
+
   it("rejects non-admin members", async () => {
     const userId = uniqueId("zcc-member");
     await setupMemberOrg(userId);

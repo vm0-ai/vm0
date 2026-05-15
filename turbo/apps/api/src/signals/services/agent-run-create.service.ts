@@ -37,6 +37,7 @@ import {
 } from "@vm0/connectors/firewalls";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
+  expandHostWildcardsInBaseUrl,
   resolveFirewallBaseUrlVars,
   type ExpandedFirewallConfig,
   type FirewallPolicies,
@@ -1500,7 +1501,7 @@ async function loadCustomConnectorContext(
       description: row.displayName,
       apis: row.prefixes.map((prefix) => {
         return {
-          base: prefix,
+          base: expandHostWildcardsInBaseUrl(prefix),
           auth: {
             headers: {
               [row.headerName]: row.headerTemplate.replaceAll(

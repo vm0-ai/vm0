@@ -300,6 +300,57 @@ export function hasBaseUrlParams(base: string): boolean {
   return stripped.includes("{") && stripped.includes("}");
 }
 
+const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
+
+/**
+ * Convert user-facing `*` wildcards in a URL host into the existing
+ * parameterized host grammar understood by the firewall matcher.
+ *
+ * Examples:
+ *   - https://*.example.com/ -> https://{hostWildcard1}.example.com/
+ *   - https://api-*.example.com/ -> https://api-{hostWildcard1}.example.com/
+ *   - https://*.*.example.com/ -> https://{hostWildcard1}.{hostWildcard2}.example.com/
+ *
+ * Each `*` is a single host-label wildcard. Only the host is transformed.
+ * Path `*` characters remain literal.
+ */
+export function expandHostWildcardsInBaseUrl(base: string): string {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return base;
+  }
+
+  if (!url.hostname.includes("*")) {
+    return base;
+  }
+
+  let paramIndex = 0;
+  const host = url.hostname
+    .split(".")
+    .map((segment) => {
+      if (!segment.includes("*")) {
+        return segment;
+      }
+      let expanded = "";
+      for (let i = 0; i < segment.length; i++) {
+        const ch = segment[i]!;
+        if (ch === "*") {
+          paramIndex += 1;
+          expanded += `{${HOST_WILDCARD_PARAM_PREFIX}${paramIndex}}`;
+        } else {
+          expanded += ch;
+        }
+      }
+      return expanded;
+    })
+    .join(".");
+
+  const authority = url.port ? `${host}:${url.port}` : host;
+  return `${url.protocol}//${authority}${url.pathname}${url.search}${url.hash}`;
+}
+
 function errMsg(base: string, svc: string, detail: string): string {
   return `Invalid base URL "${base}" in firewall "${svc}": ${detail}`;
 }

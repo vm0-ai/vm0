@@ -106,6 +106,22 @@ describe("POST /api/zero/custom-connectors", () => {
     ]);
   });
 
+  it("accepts a host wildcard prefix and stores the user-facing value", async () => {
+    const { userId, orgId } = uniqueOrg("zcc-wildcard");
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroCustomConnectorsContract);
+    const response = await accept(
+      client.create({
+        body: { ...validBody(), prefixes: ["https://*.example.com/v1"] },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+    expect(response.body.slug).toMatch(/^example-com-/);
+    expect(response.body.prefixes).toStrictEqual(["https://*.example.com/v1/"]);
+  });
+
   it("rejects missing {{secret}} placeholder with 400", async () => {
     const { userId, orgId } = uniqueOrg("zcc-bad-template");
     mocks.clerk.session(userId, orgId, "org:admin");

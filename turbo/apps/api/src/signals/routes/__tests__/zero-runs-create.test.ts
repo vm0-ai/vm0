@@ -1202,7 +1202,7 @@ describe("POST /api/zero/runs", () => {
       orgId: fx.orgId,
       slug: "internal-api",
       displayName: "Internal API",
-      prefixes: ["https://internal.example.com/api/"],
+      prefixes: ["https://*.internal.example.com/api/"],
       headerName: "Authorization",
       headerTemplate: "Bearer {{secret}}",
       createdBy: fx.userId,
@@ -1237,6 +1237,7 @@ describe("POST /api/zero/runs", () => {
       readonly firewalls: readonly {
         readonly name: string;
         readonly apis: readonly {
+          readonly base: string;
           readonly auth?: { readonly headers?: Record<string, string> };
         }[];
       }[];
@@ -1248,6 +1249,9 @@ describe("POST /api/zero/runs", () => {
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "internal-api";
     });
+    expect(firewall?.apis[0]?.base).toBe(
+      "https://{hostWildcard1}.internal.example.com/api/",
+    );
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );

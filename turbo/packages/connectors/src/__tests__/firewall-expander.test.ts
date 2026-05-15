@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  expandHostWildcardsInBaseUrl,
   validateBaseUrl,
   hasBaseUrlParams,
   hasBaseUrlVars,
@@ -597,6 +598,28 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/v1-{version}", "fw");
     }).not.toThrow();
+  });
+});
+
+describe("expandHostWildcardsInBaseUrl", () => {
+  it("converts custom connector host wildcards to parameterized host segments", () => {
+    const expanded = expandHostWildcardsInBaseUrl("https://*.example.com/v1/");
+    expect(expanded).toBe("https://{hostWildcard1}.example.com/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).not.toThrow();
+  });
+
+  it("converts each host wildcard into one host segment parameter", () => {
+    expect(expandHostWildcardsInBaseUrl("https://*.*.example.com/")).toBe(
+      "https://{hostWildcard1}.{hostWildcard2}.example.com/",
+    );
+  });
+
+  it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
+    expect(
+      expandHostWildcardsInBaseUrl("https://api-*.example.com/files/*/"),
+    ).toBe("https://api-{hostWildcard1}.example.com/files/*/");
   });
 });
 

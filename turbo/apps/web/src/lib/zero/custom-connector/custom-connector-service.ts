@@ -3,6 +3,10 @@ import {
   getAllBuiltinConnectorHosts,
   getBuiltinConnectorDisplayName,
 } from "@vm0/connectors/firewalls";
+import {
+  expandHostWildcardsInBaseUrl,
+  validateBaseUrl,
+} from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { encryptSecretValue } from "../../shared/crypto";
@@ -63,7 +67,18 @@ function normalizePrefix(raw: string): string {
   const pathname = url.pathname.endsWith("/")
     ? url.pathname
     : `${url.pathname}/`;
-  return `${url.origin}${pathname}`;
+  const normalized = `${url.origin}${pathname}`;
+  const firewallBase = expandHostWildcardsInBaseUrl(normalized);
+  try {
+    validateBaseUrl(firewallBase, "custom connector");
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message.replace(firewallBase, normalized)
+        : "not a valid URL";
+    throw badRequest(`Invalid prefix URL: ${raw}: ${message}`);
+  }
+  return normalized;
 }
 
 function hostSlugFromPrefix(prefix: string): string {
