@@ -622,7 +622,7 @@ jobs:
             echo "::error::CF_ACCOUNT_ID must be configured as a GitHub Actions variable or secret"
             exit 1
           fi
-          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @vm0/host-worker deploy
+          CLOUDFLARE_API_TOKEN="$CF_ZERO_HOST_WORKER_DEPLOY_API_TOKEN" pnpm -F @vm0/host-worker run deploy
 
       - name: Calculate duration
         id: duration
