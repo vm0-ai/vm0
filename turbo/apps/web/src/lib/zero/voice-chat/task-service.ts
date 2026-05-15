@@ -226,47 +226,6 @@ export async function listSessionTasks(sessionId: string): Promise<TaskRow[]> {
 }
 
 /**
- * Trinity task-card feed: every still-running task in createdAt ASC order,
- * followed by up to the 3 most-recently-finished tasks in finishedAt DESC
- * order. The combined list is full-replaced by the client on every Ably
- * tick — there is no cursor.
- */
-export async function listSessionTasksForCard(
-  sessionId: string,
-  recentFinishedLimit = 3,
-): Promise<TaskRow[]> {
-  const db = globalThis.services.db;
-  const active = await db
-    .select()
-    .from(voiceChatTasks)
-    .where(
-      and(
-        eq(voiceChatTasks.sessionId, sessionId),
-        inArray(voiceChatTasks.status, ["pending", "queued", "running"]),
-      ),
-    )
-    .orderBy(voiceChatTasks.createdAt);
-
-  if (recentFinishedLimit <= 0) {
-    return active;
-  }
-
-  const finished = await db
-    .select()
-    .from(voiceChatTasks)
-    .where(
-      and(
-        eq(voiceChatTasks.sessionId, sessionId),
-        inArray(voiceChatTasks.status, ["done", "failed"]),
-      ),
-    )
-    .orderBy(desc(voiceChatTasks.finishedAt))
-    .limit(recentFinishedLimit);
-
-  return [...active, ...finished];
-}
-
-/**
  * Flip a task from pending/queued to running on the first event seen. No-op
  * when the task row is absent (not a voice-chat run) or already past the
  * running transition. Returns the session + user for Ably fan-out when a row

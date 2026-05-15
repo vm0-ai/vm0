@@ -356,6 +356,142 @@ describe("POST /api/zero/voice-chat/:id/items (appendItem)", () => {
 });
 
 describe("POST /api/zero/voice-chat/:id/tasks (createTask)", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const response = await accept(
+      client().createTask({
+        headers: {},
+        params: { id: randomUUID() },
+        body: { prompt: "do it", callId: "call-unauthenticated" },
+      }),
+      [401],
+    );
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 404 when Trinity is disabled", async () => {
+    const fixture = await track(
+      store.set(seedVoiceChatFixture$, { sessions: [{}] }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const sessionId = fixture.sessionIds[0]!;
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: { prompt: "do it", callId: "call-disabled" },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session is missing", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: randomUUID() },
+        body: { prompt: "do it", callId: "call-missing" },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session belongs to a different user", async () => {
+    const otherUserId = `user_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedVoiceChatFixture$,
+        {
+          trinityEnabled: true,
+          sessions: [{ userId: otherUserId }],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const otherSessionId = fixture.sessionIds[0]!;
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: otherSessionId },
+        body: { prompt: "do it", callId: "call-other-user" },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session belongs to a different org", async () => {
+    const otherOrgId = `org_${randomUUID()}`;
+    const fixture = await track(
+      store.set(
+        seedVoiceChatFixture$,
+        {
+          trinityEnabled: true,
+          sessions: [{ orgId: otherOrgId }],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const otherSessionId = fixture.sessionIds[0]!;
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: otherSessionId },
+        body: { prompt: "do it", callId: "call-other-org" },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when prompt is missing", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: { callId: "call-missing-prompt" } as never,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when callId is missing", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+
+    const response = await accept(
+      client().createTask({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: { prompt: "do it" } as never,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("creates a task, zero run, and voice-chat callback", async () => {
     const { fixture, agentId } = await seedEnabledFixture();
     const sessionId = await store.set(
@@ -374,6 +510,8 @@ describe("POST /api/zero/voice-chat/:id/tasks (createTask)", () => {
       [200],
     );
     expect(response.body.task.sessionId).toBe(sessionId);
+    expect(response.body.task.callId).toBe("call-1");
+    expect(response.body.task.prompt).toBe("summarize latest deploy");
     expect(response.body.task.runId).toBeTruthy();
     expect(response.body.task.status).toBe("pending");
 
