@@ -424,10 +424,12 @@ mod tests {
     #[test]
     fn close_with_reserved_operation_is_closed() {
         let tracker = NormalOperationTracker::new();
-        let _token = reserve(&tracker);
+        let token = reserve(&tracker);
 
         tracker.mark_closed();
 
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+        drop(token);
         assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
     }
 
@@ -515,5 +517,35 @@ mod tests {
             NormalOperationTransitionError::UnknownOperation { .. }
         ));
         assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
+    fn mark_possible_guest_write_after_close_returns_unknown_and_preserves_state() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+
+        tracker.mark_closed();
+
+        let err = token.mark_possible_guest_write_started().unwrap_err();
+        assert!(matches!(
+            err,
+            NormalOperationTransitionError::UnknownOperation { .. }
+        ));
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+    }
+
+    #[test]
+    fn complete_after_close_returns_unknown_and_preserves_state() {
+        let tracker = NormalOperationTracker::new();
+        let token = reserve(&tracker);
+
+        tracker.mark_closed();
+
+        let err = token.complete().unwrap_err();
+        assert!(matches!(
+            err,
+            NormalOperationTransitionError::UnknownOperation { .. }
+        ));
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
     }
 }
