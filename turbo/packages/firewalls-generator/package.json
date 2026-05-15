@@ -158,6 +158,7 @@
     "generate:similarweb": "tsx src/index.ts similarweb",
     "generate:slack": "tsx src/index.ts slack",
     "generate:slack-webhook": "tsx src/index.ts slack-webhook",
+    "generate:snowflake": "tsx src/index.ts snowflake",
     "generate:spotify": "tsx src/index.ts spotify",
     "generate:stability-ai": "tsx src/index.ts stability-ai",
     "generate:strava": "tsx src/index.ts strava",

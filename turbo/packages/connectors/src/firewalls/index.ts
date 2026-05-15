@@ -213,6 +213,7 @@ import { twilioFirewall } from "./twilio.generated";
 import { squareFirewall } from "./square.generated";
 import { gongFirewall } from "./gong.generated";
 import { ironcladFirewall } from "./ironclad.generated";
+import { snowflakeFirewall } from "./snowflake.generated";
 
 export * from "../firewall-types";
 
@@ -415,6 +416,7 @@ const CONNECTOR_FIREWALLS = {
   square: squareFirewall,
   gong: gongFirewall,
   ironclad: ironcladFirewall,
+  snowflake: snowflakeFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

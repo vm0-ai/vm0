@@ -183,6 +183,7 @@ import { generate as generateTwilio } from "./twilio";
 import { generate as generateSquare } from "./square";
 import { generate as generateGong } from "./gong";
 import { generate as generateIronclad } from "./ironclad";
+import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -363,6 +364,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   square: generateSquare,
   gong: generateGong,
   ironclad: generateIronclad,
+  snowflake: generateSnowflake,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

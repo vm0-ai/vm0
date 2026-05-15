@@ -190,6 +190,7 @@ import { twilio } from "./connectors/twilio";
 import { square } from "./connectors/square";
 import { gong } from "./connectors/gong";
 import { ironclad } from "./connectors/ironclad";
+import { snowflake } from "./connectors/snowflake";
 
 /**
  * Secret field configuration for connector auth methods
@@ -571,6 +572,7 @@ const CONNECTOR_TYPES_DEF = {
   ...square,
   ...gong,
   ...ironclad,
+  ...snowflake,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

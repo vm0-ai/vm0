@@ -195,6 +195,7 @@ import { twilioHandler } from "./providers/twilio-handler";
 import { squareHandler } from "./providers/square-handler";
 import { gongHandler } from "./providers/gong-handler";
 import { ironcladHandler } from "./providers/ironclad-handler";
+import { snowflakeHandler } from "./providers/snowflake-handler";
 
 export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
@@ -393,6 +394,7 @@ export const PROVIDER_HANDLERS: Record<
   square: squareHandler,
   gong: gongHandler,
   ironclad: ironcladHandler,
+  snowflake: snowflakeHandler,
 };
 
 /**

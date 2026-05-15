@@ -162,6 +162,7 @@ const CONNECTOR_ICON_COLORFUL = {
   similarweb: true,
   slack: true,
   "slack-webhook": true,
+  snowflake: true,
   spotify: true,
   "stability-ai": true,
   strapi: true,
