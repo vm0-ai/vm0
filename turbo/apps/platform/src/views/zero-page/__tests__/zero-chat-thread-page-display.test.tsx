@@ -11,10 +11,7 @@ import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
-import {
-  mockChatLifecycle,
-  PLACEHOLDER,
-} from "./chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 

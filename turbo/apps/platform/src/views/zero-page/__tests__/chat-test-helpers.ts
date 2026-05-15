@@ -33,7 +33,7 @@ export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
-export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
+const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 export function mockSubagentThread(threadId: string) {
   setMockTeam([
