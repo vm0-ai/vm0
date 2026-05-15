@@ -62,9 +62,9 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("file:write");
   });
 
-  it("should include remote-agent read and write capabilities", () => {
-    expect(ZERO_CAPABILITIES).toContain("remote-agent:read");
-    expect(ZERO_CAPABILITIES).toContain("remote-agent:write");
+  it("should include local-agent read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("local-agent:read");
+    expect(ZERO_CAPABILITIES).toContain("local-agent:write");
   });
 
   it("should include local-browser read and write capabilities", () => {

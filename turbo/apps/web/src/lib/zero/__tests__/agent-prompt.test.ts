@@ -16,7 +16,7 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("zero web upload-file");
     expect(prompt).not.toContain("zero official generate voice");
     expect(prompt).not.toContain("zero web voice");
-    expect(prompt).not.toContain("zero remote-agent -h");
+    expect(prompt).not.toContain("zero local-agent -h");
     expect(prompt).toContain("zero slack upload-file");
     expect(prompt).toContain("zero telegram message");
     expect(prompt).toContain("zero telegram bot list");

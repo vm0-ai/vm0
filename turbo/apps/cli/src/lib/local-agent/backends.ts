@@ -1,20 +1,20 @@
-import type { RemoteAgentBackend } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import type { LocalAgentBackend } from "@vm0/api-contracts/contracts/zero-local-agent";
 import { safeSpawn } from "../utils/spawn";
 
-interface RemoteAgentBackendProbe {
-  backend: RemoteAgentBackend;
+interface LocalAgentBackendProbe {
+  backend: LocalAgentBackend;
   command: string;
   available: boolean;
   version?: string;
 }
 
-interface RemoteAgentExecutionResult {
+interface LocalAgentExecutionResult {
   output: string;
   error?: string;
   exitCode: number;
 }
 
-export type RemoteAgentPermissionMode =
+export type LocalAgentPermissionMode =
   | "default"
   | "acceptEdits"
   | "auto"
@@ -26,7 +26,7 @@ export type RemoteAgentPermissionMode =
   | "danger-full-access";
 
 const BACKEND_COMMANDS: Array<{
-  backend: RemoteAgentBackend;
+  backend: LocalAgentBackend;
   command: string;
 }> = [
   { backend: "codex", command: "codex" },
@@ -48,9 +48,9 @@ function firstLine(output: string): string | undefined {
 }
 
 async function probeBackend(
-  backend: RemoteAgentBackend,
+  backend: LocalAgentBackend,
   command: string,
-): Promise<RemoteAgentBackendProbe> {
+): Promise<LocalAgentBackendProbe> {
   return new Promise((resolve) => {
     const child = safeSpawn(command, ["--version"], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -58,7 +58,7 @@ async function probeBackend(
 
     let output = "";
     let settled = false;
-    const finish = (probe: RemoteAgentBackendProbe) => {
+    const finish = (probe: LocalAgentBackendProbe) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -90,8 +90,8 @@ async function probeBackend(
   });
 }
 
-export async function detectRemoteAgentBackends(): Promise<
-  RemoteAgentBackendProbe[]
+export async function detectLocalAgentBackends(): Promise<
+  LocalAgentBackendProbe[]
 > {
   return Promise.all(
     BACKEND_COMMANDS.map(({ backend, command }) => {
@@ -100,7 +100,7 @@ export async function detectRemoteAgentBackends(): Promise<
   );
 }
 
-function claudePermissionArgs(mode: RemoteAgentPermissionMode): string[] {
+function claudePermissionArgs(mode: LocalAgentPermissionMode): string[] {
   if (mode === "default") {
     return [];
   }
@@ -116,7 +116,7 @@ function claudePermissionArgs(mode: RemoteAgentPermissionMode): string[] {
   throw new Error(`Unsupported Claude Code permission mode: ${mode}`);
 }
 
-function codexPermissionArgs(mode: RemoteAgentPermissionMode): string[] {
+function codexPermissionArgs(mode: LocalAgentPermissionMode): string[] {
   if (mode === "default") {
     return [];
   }
@@ -134,9 +134,9 @@ function codexPermissionArgs(mode: RemoteAgentPermissionMode): string[] {
 }
 
 function executionCommand(
-  backend: RemoteAgentBackend,
+  backend: LocalAgentBackend,
   prompt: string,
-  permissionMode: RemoteAgentPermissionMode,
+  permissionMode: LocalAgentPermissionMode,
 ): { command: string; args: string[] } {
   if (backend === "claude-code") {
     return {
@@ -158,12 +158,12 @@ function appendLimited(current: string, chunk: Buffer): string {
   return next.slice(-MAX_OUTPUT_BYTES);
 }
 
-export async function executeRemoteAgentBackend(params: {
-  backend: RemoteAgentBackend;
+export async function executeLocalAgentBackend(params: {
+  backend: LocalAgentBackend;
   prompt: string;
   workdir: string;
-  permissionMode: RemoteAgentPermissionMode;
-}): Promise<RemoteAgentExecutionResult> {
+  permissionMode: LocalAgentPermissionMode;
+}): Promise<LocalAgentExecutionResult> {
   const { command, args } = executionCommand(
     params.backend,
     params.prompt,
@@ -181,7 +181,7 @@ export async function executeRemoteAgentBackend(params: {
     let stderr = "";
     let settled = false;
 
-    const finish = (result: RemoteAgentExecutionResult) => {
+    const finish = (result: LocalAgentExecutionResult) => {
       if (settled) return;
       settled = true;
       resolve(result);

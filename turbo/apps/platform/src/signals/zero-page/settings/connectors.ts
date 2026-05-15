@@ -13,10 +13,10 @@ import {
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
 import {
-  zeroRemoteAgentHostsContract,
-  type RemoteAgentHost,
-  type RemoteAgentHostListResponse,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  zeroLocalAgentHostsContract,
+  type LocalAgentHost,
+  type LocalAgentHostListResponse,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import {
   zeroLocalBrowserDeviceClaimContract,
   zeroLocalBrowserHostsContract,
@@ -27,7 +27,7 @@ import {
   zeroConnectorScopeDiffContract,
   zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
-  zeroRemoteAgentConnectorContract,
+  zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroSecretsContract,
@@ -54,18 +54,18 @@ import { sanitizeTokenInputRecord } from "./token-input.ts";
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
-export const REMOTE_AGENT_CONNECTOR_TYPE =
-  "remote-agent" as const satisfies ConnectorType;
+export const LOCAL_AGENT_CONNECTOR_TYPE =
+  "local-agent" as const satisfies ConnectorType;
 export const LOCAL_BROWSER_CONNECTOR_TYPE =
   "local-browser" as const satisfies ConnectorType;
-const REMOTE_AGENT_HOSTS_CHANGED_TOPIC = "remote-agent:hosts-changed";
+const LOCAL_AGENT_HOSTS_CHANGED_TOPIC = "local-agent:hosts-changed";
 const LOCAL_BROWSER_HOSTS_CHANGED_TOPIC = "local-browser:hosts-changed";
 const LOCAL_BROWSER_WEB_MESSAGE_SOURCE = "vm0-local-browser-web";
 const LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE = "vm0-local-browser-extension";
 const LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS = 1000;
 const LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS = 10_000;
 const CONNECTOR_LIST_API_AUTH_METHOD_TYPES = [
-  REMOTE_AGENT_CONNECTOR_TYPE,
+  LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
 ] as const satisfies readonly ConnectorType[];
 
@@ -98,31 +98,31 @@ export interface ConnectorTypeWithStatus {
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
-  /** Online remote-agent hosts for the virtual remote-agent connector. */
-  remoteAgentHosts?: RemoteAgentHost[];
+  /** Online local-agent hosts for the virtual local-agent connector. */
+  localAgentHosts?: LocalAgentHost[];
   /** Online local browser hosts for the virtual local-browser connector. */
   localBrowserHosts?: LocalBrowserHost[];
 }
 
-const internalReloadRemoteAgentHosts$ = state(0);
+const internalReloadLocalAgentHosts$ = state(0);
 const internalReloadLocalBrowserHosts$ = state(0);
 
-export function getRemoteAgentOnlineHosts(
-  hosts: readonly RemoteAgentHost[],
-): RemoteAgentHost[] {
+export function getLocalAgentOnlineHosts(
+  hosts: readonly LocalAgentHost[],
+): LocalAgentHost[] {
   return hosts.filter((host) => {
     return host.status === "online";
   });
 }
 
-export const remoteAgentHosts$ = computed(
-  async (get): Promise<RemoteAgentHostListResponse> => {
-    get(internalReloadRemoteAgentHosts$);
+export const localAgentHosts$ = computed(
+  async (get): Promise<LocalAgentHostListResponse> => {
+    get(internalReloadLocalAgentHosts$);
 
     const createClient = get(zeroClient$);
-    const client = createClient(zeroRemoteAgentHostsContract);
+    const client = createClient(zeroLocalAgentHostsContract);
     const result = await accept(client.list(), [200]);
-    return result.body as RemoteAgentHostListResponse;
+    return result.body as LocalAgentHostListResponse;
   },
 );
 
@@ -149,8 +149,8 @@ export const localBrowserHosts$ = computed(
   },
 );
 
-const reloadRemoteAgentHosts$ = command(({ set }) => {
-  set(internalReloadRemoteAgentHosts$, (x) => {
+const reloadLocalAgentHosts$ = command(({ set }) => {
+  set(internalReloadLocalAgentHosts$, (x) => {
     return x + 1;
   });
 });
@@ -161,8 +161,8 @@ const reloadLocalBrowserHosts$ = command(({ set }) => {
   });
 });
 
-const reloadRemoteAgentHostsFromRealtime$ = command(({ set }) => {
-  set(reloadRemoteAgentHosts$);
+const reloadLocalAgentHostsFromRealtime$ = command(({ set }) => {
+  set(reloadLocalAgentHosts$);
   return false;
 });
 
@@ -171,12 +171,12 @@ const reloadLocalBrowserHostsFromRealtime$ = command(({ set }) => {
   return false;
 });
 
-const watchRemoteAgentHosts$ = command(async ({ set }, signal: AbortSignal) => {
-  set(reloadRemoteAgentHosts$);
+const watchLocalAgentHosts$ = command(async ({ set }, signal: AbortSignal) => {
+  set(reloadLocalAgentHosts$);
   await set(
     setAblyLoop$,
-    REMOTE_AGENT_HOSTS_CHANGED_TOPIC,
-    reloadRemoteAgentHostsFromRealtime$,
+    LOCAL_AGENT_HOSTS_CHANGED_TOPIC,
+    reloadLocalAgentHostsFromRealtime$,
     signal,
   );
 });
@@ -193,14 +193,14 @@ const watchLocalBrowserHosts$ = command(
   },
 );
 
-export const remoteAgentHostsWatcherRef$ = onRef(
+export const localAgentHostsWatcherRef$ = onRef(
   command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    await set(watchRemoteAgentHosts$, signal);
+    await set(watchLocalAgentHosts$, signal);
   }),
 );
 
-function isRemoteAgentConnector(type: ConnectorType): boolean {
-  return type === REMOTE_AGENT_CONNECTOR_TYPE;
+function isLocalAgentConnector(type: ConnectorType): boolean {
+  return type === LOCAL_AGENT_CONNECTOR_TYPE;
 }
 
 function isLocalBrowserConnector(type: ConnectorType): boolean {
@@ -208,18 +208,18 @@ function isLocalBrowserConnector(type: ConnectorType): boolean {
 }
 
 function isHostBackedConnector(type: ConnectorType): boolean {
-  return isRemoteAgentConnector(type) || isLocalBrowserConnector(type);
+  return isLocalAgentConnector(type) || isLocalBrowserConnector(type);
 }
 
 function buildConnectorTypeStatus(params: {
   readonly type: ConnectorType;
   readonly connector: ConnectorResponse | null;
   readonly features: Record<string, boolean> | null | undefined;
-  readonly remoteAgentOnlineHosts: RemoteAgentHost[];
+  readonly localAgentOnlineHosts: LocalAgentHost[];
   readonly localBrowserOnlineHosts: LocalBrowserHost[];
 }): ConnectorTypeWithStatus {
   const config = CONNECTOR_TYPES[params.type];
-  const isRemoteAgent = isRemoteAgentConnector(params.type);
+  const isLocalAgent = isLocalAgentConnector(params.type);
   const isLocalBrowser = isLocalBrowserConnector(params.type);
   const availableAuthMethods = getAvailableConnectorAuthMethods(
     params.type,
@@ -258,9 +258,7 @@ function buildConnectorTypeStatus(params: {
     needsReconnect:
       !isHostBackedConnector(params.type) &&
       (params.connector?.needsReconnect ?? false),
-    ...(isRemoteAgent
-      ? { remoteAgentHosts: params.remoteAgentOnlineHosts }
-      : {}),
+    ...(isLocalAgent ? { localAgentHosts: params.localAgentOnlineHosts } : {}),
     ...(isLocalBrowser
       ? { localBrowserHosts: params.localBrowserOnlineHosts }
       : {}),
@@ -311,12 +309,12 @@ export const allConnectorTypes$ = computed(async (get) => {
     }),
   );
   const features = await get(featureSwitch$);
-  const remoteAgentHostList = await get(remoteAgentHosts$);
+  const localAgentHostList = await get(localAgentHosts$);
   const localBrowserHostList = features?.[FeatureSwitchKey.LocalBrowserUse]
     ? await get(localBrowserHosts$)
     : { hosts: [] };
-  const remoteAgentOnlineHosts = getRemoteAgentOnlineHosts(
-    remoteAgentHostList.hosts,
+  const localAgentOnlineHosts = getLocalAgentOnlineHosts(
+    localAgentHostList.hosts,
   );
   const localBrowserOnlineHosts = getLocalBrowserOnlineHosts(
     localBrowserHostList.hosts,
@@ -337,7 +335,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         type,
         connector: connectorMap.get(type) ?? null,
         features,
-        remoteAgentOnlineHosts,
+        localAgentOnlineHosts,
         localBrowserOnlineHosts,
       });
     });
@@ -823,14 +821,14 @@ export const localBrowserConnectionRef$ = onRef(
   }),
 );
 
-export const connectRemoteAgentConnector$ = command(
+export const connectLocalAgentConnector$ = command(
   async (
     { get, set },
     options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroRemoteAgentConnectorContract, {
+    const client = createClient(zeroLocalAgentConnectorContract, {
       apiBase: "api",
     });
     await accept(
@@ -843,23 +841,23 @@ export const connectRemoteAgentConnector$ = command(
     signal.throwIfAborted();
 
     set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, REMOTE_AGENT_CONNECTOR_TYPE]);
+      return new Set([...prev, LOCAL_AGENT_CONNECTOR_TYPE]);
     });
     set(reloadConnectors$);
-    set(reloadRemoteAgentHosts$);
+    set(reloadLocalAgentHosts$);
 
     const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(REMOTE_AGENT_CONNECTOR_TYPE);
+    hidden.delete(LOCAL_AGENT_CONNECTOR_TYPE);
     set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
 
     toast.success(
-      `${CONNECTOR_TYPES[REMOTE_AGENT_CONNECTOR_TYPE].label} connected`,
+      `${CONNECTOR_TYPES[LOCAL_AGENT_CONNECTOR_TYPE].label} connected`,
       {
-        id: `connector-connected-${REMOTE_AGENT_CONNECTOR_TYPE}`,
+        id: `connector-connected-${LOCAL_AGENT_CONNECTOR_TYPE}`,
       },
     );
     if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, REMOTE_AGENT_CONNECTOR_TYPE);
+      set(internalPermissionDialogType$, LOCAL_AGENT_CONNECTOR_TYPE);
     }
   },
 );

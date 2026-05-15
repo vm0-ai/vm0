@@ -89,8 +89,8 @@ describe("connect modal - content by auth method", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
-  it("shows Remote Agent connector-specific API content", async () => {
-    await openConnectModal("remote-agent");
+  it("shows Local Agent connector-specific API content", async () => {
+    await openConnectModal("local-agent");
 
     await waitFor(() => {
       expect(screen.getByText("Online hosts")).toBeInTheDocument();
@@ -145,7 +145,7 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
     });
 
-    context.store.set(setSelectedConnectorType$, "remote-agent");
+    context.store.set(setSelectedConnectorType$, "local-agent");
 
     await waitFor(() => {
       expect(screen.getByText("Online hosts")).toBeInTheDocument();

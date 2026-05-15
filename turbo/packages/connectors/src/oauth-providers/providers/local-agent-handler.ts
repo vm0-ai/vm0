@@ -1,11 +1,11 @@
 import { type ProviderHandler } from "../provider-types";
 
-export const remoteAgentHandler: ProviderHandler = {
+export const localAgentHandler: ProviderHandler = {
   buildAuthUrl() {
-    throw new Error("Remote Agent does not support OAuth");
+    throw new Error("Local Agent does not support OAuth");
   },
   exchangeCode() {
-    throw new Error("Remote Agent does not support OAuth");
+    throw new Error("Local Agent does not support OAuth");
   },
   getClientId: () => {
     return undefined;
@@ -14,6 +14,6 @@ export const remoteAgentHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "REMOTE_AGENT";
+    return "LOCAL_AGENT";
   },
 };

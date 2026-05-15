@@ -54,7 +54,7 @@ import { mercury } from "./connectors/mercury";
 import { minimax } from "./connectors/minimax";
 import { reportei } from "./connectors/reportei";
 import { localBrowser } from "./connectors/local-browser";
-import { remoteAgent } from "./connectors/remote-agent";
+import { localAgent } from "./connectors/local-agent";
 import { serpapi } from "./connectors/serpapi";
 import { salesforce } from "./connectors/salesforce";
 import { reddit } from "./connectors/reddit";
@@ -473,7 +473,7 @@ const CONNECTOR_TYPES_DEF = {
   ...minimax,
   ...reportei,
   ...localBrowser,
-  ...remoteAgent,
+  ...localAgent,
   ...serpapi,
   ...salesforce,
   ...reddit,

@@ -40,7 +40,7 @@ import {
   setSelectedConnectorType$,
   pollingConnectorType$,
   justConnectedTypes$,
-  REMOTE_AGENT_CONNECTOR_TYPE,
+  LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
   getLocalBrowserOnlineHosts,
   scopeReviewType$,
@@ -307,9 +307,9 @@ type HostStatusInfo = {
 function getHostStatusInfo(
   connector: ConnectorTypeWithStatus,
 ): HostStatusInfo | null {
-  if (connector.type === REMOTE_AGENT_CONNECTOR_TYPE) {
+  if (connector.type === LOCAL_AGENT_CONNECTOR_TYPE) {
     return {
-      names: (connector.remoteAgentHosts ?? []).map((host) => {
+      names: (connector.localAgentHosts ?? []).map((host) => {
         return host.displayName;
       }),
       emptyLabel: "No online hosts",

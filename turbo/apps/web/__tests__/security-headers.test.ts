@@ -302,8 +302,8 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/presentation-io/generate",
         },
         {
-          source: "/api/zero/remote-agent/:path*",
-          destination: "https://api.example.test/api/zero/remote-agent/:path*",
+          source: "/api/zero/local-agent/:path*",
+          destination: "https://api.example.test/api/zero/local-agent/:path*",
         },
         {
           source: "/api/zero/usage/insight",

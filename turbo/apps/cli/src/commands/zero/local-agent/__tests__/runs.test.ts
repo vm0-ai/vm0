@@ -24,7 +24,7 @@ const runDetail = {
   error: null,
 };
 
-describe("remote-agent runs command", () => {
+describe("local-agent runs command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -43,9 +43,9 @@ describe("remote-agent runs command", () => {
     mockConsoleError.mockClear();
   });
 
-  it("lists remote-agent runs in table format", async () => {
+  it("lists local-agent runs in table format", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/runs", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/runs", () => {
         return HttpResponse.json({ runs: [runListItem] });
       }),
     );
@@ -64,7 +64,7 @@ describe("remote-agent runs command", () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/remote-agent/runs",
+        "http://localhost:3000/api/zero/local-agent/runs",
         ({ request }) => {
           capturedUrl = new URL(request.url);
           return HttpResponse.json({ runs: [] });
@@ -91,7 +91,7 @@ describe("remote-agent runs command", () => {
 
   it("prints list JSON", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/runs", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/runs", () => {
         return HttpResponse.json({ runs: [runListItem] });
       }),
     );
@@ -103,9 +103,9 @@ describe("remote-agent runs command", () => {
     );
   });
 
-  it("shows remote-agent run status", async () => {
+  it("shows local-agent run status", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/run/:id", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/run/:id", () => {
         return HttpResponse.json(runDetail);
       }),
     );
@@ -118,9 +118,9 @@ describe("remote-agent runs command", () => {
     expect(logCalls).toContain("Backend: codex");
   });
 
-  it("prints a succeeded remote-agent run result", async () => {
+  it("prints a succeeded local-agent run result", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/run/:id", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/run/:id", () => {
         return HttpResponse.json(runDetail);
       }),
     );
@@ -130,9 +130,9 @@ describe("remote-agent runs command", () => {
     expect(mockConsoleLog).toHaveBeenCalledWith("done");
   });
 
-  it("fails result lookup for an active remote-agent run", async () => {
+  it("fails result lookup for an active local-agent run", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/run/:id", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/run/:id", () => {
         return HttpResponse.json({
           ...runDetail,
           status: "running",
@@ -148,14 +148,14 @@ describe("remote-agent runs command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Remote-agent job is running"),
+      expect.stringContaining("Local-agent job is running"),
     );
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("prints failed result errors and sets exit code", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/remote-agent/run/:id", () => {
+      http.get("http://localhost:3000/api/zero/local-agent/run/:id", () => {
         return HttpResponse.json({
           ...runDetail,
           status: "failed",

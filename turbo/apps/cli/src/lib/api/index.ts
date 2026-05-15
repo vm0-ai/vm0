@@ -194,19 +194,19 @@ export {
   getComputerUseHost,
 } from "./domains/zero-computer-use";
 
-// Domain modules - Zero Remote Agent
+// Domain modules - Zero Local Agent
 export {
-  claimNextRemoteAgentHostJob,
-  completeRemoteAgentHostJob,
-  createRemoteAgentRun,
-  createRemoteAgentHostRealtimeSubscription,
-  deleteRemoteAgentHost,
-  getRemoteAgentRun,
-  listRemoteAgentRuns,
-  listRemoteAgentHosts,
-  startRemoteAgentHost,
-  sendRemoteAgentHeartbeat,
-} from "./domains/zero-remote-agent";
+  claimNextLocalAgentHostJob,
+  completeLocalAgentHostJob,
+  createLocalAgentRun,
+  createLocalAgentHostRealtimeSubscription,
+  deleteLocalAgentHost,
+  getLocalAgentRun,
+  listLocalAgentRuns,
+  listLocalAgentHosts,
+  startLocalAgentHost,
+  sendLocalAgentHeartbeat,
+} from "./domains/zero-local-agent";
 
 // Domain modules - Zero Local Browser
 export {

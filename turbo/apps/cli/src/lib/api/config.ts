@@ -5,7 +5,7 @@ import { existsSync } from "fs";
 import { decodeCliTokenPayload } from "./cli-token.js";
 import { decodeZeroTokenPayload } from "./zero-token.js";
 
-export interface RemoteAgentHostConfig {
+export interface LocalAgentHostConfig {
   id: string;
   token: string;
   apiUrl: string;
@@ -18,7 +18,7 @@ export interface RemoteAgentHostConfig {
 interface CliConfig {
   token?: string;
   apiUrl?: string;
-  remoteAgentHost?: RemoteAgentHostConfig;
+  localAgentHost?: LocalAgentHostConfig;
 }
 
 // Use functions for lazy evaluation (enables testing with mocked homedir)
@@ -112,20 +112,20 @@ export async function clearConfig(): Promise<void> {
   }
 }
 
-export async function saveRemoteAgentHost(
-  host: RemoteAgentHostConfig,
+export async function saveLocalAgentHost(
+  host: LocalAgentHostConfig,
 ): Promise<void> {
-  await saveConfig({ remoteAgentHost: host });
+  await saveConfig({ localAgentHost: host });
 }
 
-export async function clearRemoteAgentHost(hostId: string): Promise<void> {
+export async function clearLocalAgentHost(hostId: string): Promise<void> {
   const existing = await loadConfig();
-  if (existing.remoteAgentHost?.id !== hostId) {
+  if (existing.localAgentHost?.id !== hostId) {
     return;
   }
 
   const nextConfig: CliConfig = { ...existing };
-  delete nextConfig.remoteAgentHost;
+  delete nextConfig.localAgentHost;
 
   const configDir = getConfigDir();
   const configFile = getConfigFile();
@@ -133,9 +133,9 @@ export async function clearRemoteAgentHost(hostId: string): Promise<void> {
   await writeFile(configFile, JSON.stringify(nextConfig, null, 2), "utf8");
 }
 
-export async function getRemoteAgentHost(): Promise<
-  RemoteAgentHostConfig | undefined
+export async function getLocalAgentHost(): Promise<
+  LocalAgentHostConfig | undefined
 > {
   const config = await loadConfig();
-  return config.remoteAgentHost;
+  return config.localAgentHost;
 }

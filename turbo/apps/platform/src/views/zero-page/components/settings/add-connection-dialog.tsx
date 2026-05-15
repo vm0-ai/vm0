@@ -28,7 +28,7 @@ import {
   submitApiToken$,
   setTokenFormValue$,
   clearTokenForm$,
-  connectRemoteAgentConnector$,
+  connectLocalAgentConnector$,
   connectLocalBrowserConnector$,
   deleteLocalBrowserHost$,
   detectLocalBrowserExtension$,
@@ -36,15 +36,15 @@ import {
   tokenFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
-  REMOTE_AGENT_CONNECTOR_TYPE,
+  LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
-  getRemoteAgentOnlineHosts,
+  getLocalAgentOnlineHosts,
   getLocalBrowserOnlineHosts,
   localBrowserConnectionRef$,
   localBrowserExtensionStatus$,
   localBrowserHosts$,
-  remoteAgentHostsWatcherRef$,
-  remoteAgentHosts$,
+  localAgentHostsWatcherRef$,
+  localAgentHosts$,
   type LocalBrowserExtensionStatus,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
@@ -84,8 +84,8 @@ function renderMarkdown(text: string): string {
 // ---------------------------------------------------------------------------
 
 function connectedStatusText(item: ConnectorTypeWithStatus): string {
-  if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
-    const count = item.remoteAgentHosts?.length ?? 0;
+  if (item.type === LOCAL_AGENT_CONNECTOR_TYPE) {
+    const count = item.localAgentHosts?.length ?? 0;
     return count === 1 ? "1 host online" : `${count} hosts online`;
   }
   if (item.type === LOCAL_BROWSER_CONNECTOR_TYPE) {
@@ -104,7 +104,7 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
   return "Connected";
 }
 
-function formatRemoteAgentBackends(backends: readonly string[]): string {
+function formatLocalAgentBackends(backends: readonly string[]): string {
   return backends
     .map((backend) => {
       return backend === "claude-code" ? "Claude Code" : "Codex";
@@ -286,7 +286,7 @@ function ApiTokenForm({
   );
 }
 
-function RemoteAgentConnectContent({
+function LocalAgentConnectContent({
   item,
   onSuccess,
   showPermissionDialogOnConnect,
@@ -296,17 +296,17 @@ function RemoteAgentConnectContent({
   showPermissionDialogOnConnect: boolean;
 }) {
   const config = CONNECTOR_TYPES[item.type];
-  const remoteAgentConfig = config.authMethods.api;
-  const hostListLoadable = useLastLoadable(remoteAgentHosts$);
-  const watchHostsRef = useSet(remoteAgentHostsWatcherRef$);
-  const [connectLoadable, connectRemoteAgent] = useLoadableSet(
-    connectRemoteAgentConnector$,
+  const localAgentConfig = config.authMethods.api;
+  const hostListLoadable = useLastLoadable(localAgentHosts$);
+  const watchHostsRef = useSet(localAgentHostsWatcherRef$);
+  const [connectLoadable, connectLocalAgent] = useLoadableSet(
+    connectLocalAgentConnector$,
   );
   const pageSignal = useGet(pageSignal$);
   const hosts =
     hostListLoadable.state === "hasData"
-      ? getRemoteAgentOnlineHosts(hostListLoadable.data.hosts)
-      : (item.remoteAgentHosts ?? []);
+      ? getLocalAgentOnlineHosts(hostListLoadable.data.hosts)
+      : (item.localAgentHosts ?? []);
   const loading = hostListLoadable.state === "loading";
   const connecting = connectLoadable.state === "loading";
   const canConnect = !item.connected && hosts.length > 0 && !connecting;
@@ -315,7 +315,7 @@ function RemoteAgentConnectContent({
     if (!canConnect) {
       return;
     }
-    await connectRemoteAgent(
+    await connectLocalAgent(
       { showPermissionDialog: showPermissionDialogOnConnect },
       pageSignal,
     );
@@ -324,11 +324,11 @@ function RemoteAgentConnectContent({
 
   return (
     <div ref={watchHostsRef} className="flex flex-col gap-3">
-      {remoteAgentConfig?.helpText && (
+      {localAgentConfig?.helpText && (
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
-            __html: renderMarkdown(remoteAgentConfig.helpText),
+            __html: renderMarkdown(localAgentConfig.helpText),
           }}
         />
       )}
@@ -359,7 +359,7 @@ function RemoteAgentConnectContent({
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {formatRemoteAgentBackends(host.supportedBackends)}
+                  {formatLocalAgentBackends(host.supportedBackends)}
                 </span>
               </div>
             );
@@ -731,8 +731,8 @@ function getApiConnectContentComponent(
   type: ConnectorType,
 ): ApiConnectContentComponent | null {
   switch (type) {
-    case REMOTE_AGENT_CONNECTOR_TYPE: {
-      return RemoteAgentConnectContent;
+    case LOCAL_AGENT_CONNECTOR_TYPE: {
+      return LocalAgentConnectContent;
     }
     case LOCAL_BROWSER_CONNECTOR_TYPE: {
       return LocalBrowserConnectContent;

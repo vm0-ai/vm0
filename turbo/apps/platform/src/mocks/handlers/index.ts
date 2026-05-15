@@ -92,9 +92,9 @@ import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
 import { apiVoiceChatHandlers, resetMockVoiceChat } from "./api-voice-chat.ts";
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
 import {
-  apiRemoteAgentHandlers,
-  resetMockRemoteAgentHosts,
-} from "./api-remote-agent.ts";
+  apiLocalAgentHandlers,
+  resetMockLocalAgentHosts,
+} from "./api-local-agent.ts";
 import {
   apiLocalBrowserHandlers,
   resetMockLocalBrowserHosts,
@@ -133,7 +133,7 @@ export const handlers = [
   ...apiQueuePositionHandlers,
   ...apiVoiceChatHandlers,
   ...apiVoiceIoHandlers,
-  ...apiRemoteAgentHandlers,
+  ...apiLocalAgentHandlers,
   ...apiLocalBrowserHandlers,
 ];
 
@@ -165,6 +165,6 @@ export function resetAllMockHandlers(): void {
   resetMockTeam();
   resetMockOnboardingStatus();
   resetMockVoiceChat();
-  resetMockRemoteAgentHosts();
+  resetMockLocalAgentHosts();
   resetMockLocalBrowserHosts();
 }

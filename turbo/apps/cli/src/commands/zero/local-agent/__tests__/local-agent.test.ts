@@ -3,14 +3,14 @@ import { program } from "../../../../index";
 import { registerZeroCommands } from "../../../../zero";
 import { Command } from "commander";
 
-describe("remote-agent command registration", () => {
+describe("local-agent command registration", () => {
   it("registers under vm0", () => {
-    const remoteAgent = program.commands.find((command) => {
-      return command.name() === "remote-agent";
+    const localAgent = program.commands.find((command) => {
+      return command.name() === "local-agent";
     });
-    expect(remoteAgent).toBeDefined();
+    expect(localAgent).toBeDefined();
 
-    const subNames = remoteAgent!.commands.map((command) => {
+    const subNames = localAgent!.commands.map((command) => {
       return command.name();
     });
     expect(subNames).toContain("start");
@@ -27,12 +27,12 @@ describe("remote-agent command registration", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
-    const remoteAgent = prog.commands.find((command) => {
-      return command.name() === "remote-agent";
+    const localAgent = prog.commands.find((command) => {
+      return command.name() === "local-agent";
     });
-    expect(remoteAgent).toBeDefined();
+    expect(localAgent).toBeDefined();
 
-    const subNames = remoteAgent!.commands.map((command) => {
+    const subNames = localAgent!.commands.map((command) => {
       return command.name();
     });
     expect(subNames).toContain("list");

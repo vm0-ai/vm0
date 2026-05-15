@@ -1,14 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import type {
-  RemoteAgentJobStatus,
-  RemoteAgentRunListItem,
-  RemoteAgentRunResponse,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
-import { getRemoteAgentRun, listRemoteAgentRuns } from "../../../lib/api";
+  LocalAgentJobStatus,
+  LocalAgentRunListItem,
+  LocalAgentRunResponse,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
+import { getLocalAgentRun, listLocalAgentRuns } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
-const VALID_STATUSES: readonly RemoteAgentJobStatus[] = [
+const VALID_STATUSES: readonly LocalAgentJobStatus[] = [
   "queued",
   "running",
   "succeeded",
@@ -27,7 +27,7 @@ interface JsonOption {
   json?: boolean;
 }
 
-function formatStatus(status: RemoteAgentJobStatus): string {
+function formatStatus(status: LocalAgentJobStatus): string {
   switch (status) {
     case "queued":
       return chalk.yellow(status);
@@ -52,14 +52,14 @@ function truncate(value: string, maxLength: number): string {
 
 function parseStatus(
   value: string | undefined,
-): RemoteAgentJobStatus | undefined {
+): LocalAgentJobStatus | undefined {
   if (!value) return undefined;
-  if (!VALID_STATUSES.includes(value as RemoteAgentJobStatus)) {
+  if (!VALID_STATUSES.includes(value as LocalAgentJobStatus)) {
     throw new Error(
       `Invalid status "${value}". Valid values: ${VALID_STATUSES.join(",")}`,
     );
   }
-  return value as RemoteAgentJobStatus;
+  return value as LocalAgentJobStatus;
 }
 
 function parseLimit(value: string | undefined): number | undefined {
@@ -71,10 +71,10 @@ function parseLimit(value: string | undefined): number | undefined {
   return limit;
 }
 
-function printRunTable(runs: readonly RemoteAgentRunListItem[]): void {
+function printRunTable(runs: readonly LocalAgentRunListItem[]): void {
   if (runs.length === 0) {
-    console.log(chalk.dim("No remote-agent runs found"));
-    console.log(chalk.dim('  Run: zero remote-agent run "your prompt"'));
+    console.log(chalk.dim("No local-agent runs found"));
+    console.log(chalk.dim('  Run: zero local-agent run "your prompt"'));
     return;
   }
 
@@ -141,7 +141,7 @@ function printRunTable(runs: readonly RemoteAgentRunListItem[]): void {
   }
 }
 
-function printRunStatus(job: RemoteAgentRunResponse): void {
+function printRunStatus(job: LocalAgentRunResponse): void {
   console.log(`Job: ${job.id}`);
   console.log(`Status: ${formatStatus(job.status)}`);
   console.log(`Host: ${job.hostId ?? "-"}`);
@@ -153,14 +153,14 @@ function printRunStatus(job: RemoteAgentRunResponse): void {
 
   if (job.status === "succeeded" || job.status === "failed") {
     console.log();
-    console.log(chalk.dim(`  Run: zero remote-agent runs result ${job.id}`));
+    console.log(chalk.dim(`  Run: zero local-agent runs result ${job.id}`));
   }
 }
 
-function printRunResult(job: RemoteAgentRunResponse): void {
+function printRunResult(job: LocalAgentRunResponse): void {
   if (job.status === "queued" || job.status === "running") {
-    throw new Error(`Remote-agent job is ${job.status}`, {
-      cause: new Error(`Run: zero remote-agent runs status ${job.id}`),
+    throw new Error(`Local-agent job is ${job.status}`, {
+      cause: new Error(`Run: zero local-agent runs status ${job.id}`),
     });
   }
 
@@ -180,15 +180,15 @@ function printRunResult(job: RemoteAgentRunResponse): void {
 const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List remote-agent runs")
+  .description("List local-agent runs")
   .option("--status <status>", `Filter by status: ${VALID_STATUSES.join(",")}`)
-  .option("--host <name>", "Filter by remote-agent host name")
-  .option("--host-id <id>", "Filter by remote-agent host id")
+  .option("--host <name>", "Filter by local-agent host name")
+  .option("--host-id <id>", "Filter by local-agent host id")
   .option("--limit <n>", "Maximum number of results (default: 20, max: 100)")
   .option("--json", "Output JSON")
   .action(
     withErrorHandler(async (options: RunsListOptions) => {
-      const result = await listRemoteAgentRuns({
+      const result = await listLocalAgentRuns({
         status: parseStatus(options.status),
         hostName: options.host,
         hostId: options.hostId,
@@ -206,12 +206,12 @@ const listCommand = new Command()
 
 const statusCommand = new Command()
   .name("status")
-  .description("Show remote-agent run status")
-  .argument("<job-id>", "Remote-agent job id")
+  .description("Show local-agent run status")
+  .argument("<job-id>", "Local-agent job id")
   .option("--json", "Output JSON")
   .action(
     withErrorHandler(async (jobId: string, options: JsonOption) => {
-      const job = await getRemoteAgentRun(jobId);
+      const job = await getLocalAgentRun(jobId);
       if (options.json) {
         console.log(JSON.stringify(job));
         return;
@@ -223,12 +223,12 @@ const statusCommand = new Command()
 
 const resultCommand = new Command()
   .name("result")
-  .description("Print remote-agent run result")
-  .argument("<job-id>", "Remote-agent job id")
+  .description("Print local-agent run result")
+  .argument("<job-id>", "Local-agent job id")
   .option("--json", "Output JSON")
   .action(
     withErrorHandler(async (jobId: string, options: JsonOption) => {
-      const job = await getRemoteAgentRun(jobId);
+      const job = await getLocalAgentRun(jobId);
       if (options.json) {
         console.log(JSON.stringify(job));
         return;
@@ -240,7 +240,7 @@ const resultCommand = new Command()
 
 export const runsCommand = new Command()
   .name("runs")
-  .description("List and inspect remote-agent runs")
+  .description("List and inspect local-agent runs")
   .addCommand(listCommand)
   .addCommand(statusCommand)
   .addCommand(resultCommand);

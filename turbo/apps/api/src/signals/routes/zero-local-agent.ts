@@ -1,52 +1,52 @@
 import { command } from "ccstate";
 import {
-  zeroRemoteAgentDeviceClaimContract,
-  zeroRemoteAgentDevicePollContract,
-  zeroRemoteAgentDeviceStartContract,
-  zeroRemoteAgentHostJobsContract,
-  zeroRemoteAgentHostRealtimeContract,
-  zeroRemoteAgentHeartbeatContract,
-  zeroRemoteAgentHostsContract,
-  zeroRemoteAgentRunContract,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  zeroLocalAgentDeviceClaimContract,
+  zeroLocalAgentDevicePollContract,
+  zeroLocalAgentDeviceStartContract,
+  zeroLocalAgentHostJobsContract,
+  zeroLocalAgentHostRealtimeContract,
+  zeroLocalAgentHeartbeatContract,
+  zeroLocalAgentHostsContract,
+  zeroLocalAgentRunContract,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
-  claimRemoteAgentDeviceCode$,
-  claimNextRemoteAgentHostJob$,
-  completeRemoteAgentHostJob$,
-  createRemoteAgentDeviceCode$,
-  createRemoteAgentHostRealtimeToken$,
-  createRemoteAgentJob$,
-  deleteRemoteAgentHost$,
-  getRemoteAgentJob$,
-  heartbeatRemoteAgentHost$,
-  listRemoteAgentJobs$,
-  listRemoteAgentHosts$,
-  pollRemoteAgentDeviceCode$,
-  startRemoteAgentHost$,
-} from "../services/zero-remote-agent.service";
+  claimLocalAgentDeviceCode$,
+  claimNextLocalAgentHostJob$,
+  completeLocalAgentHostJob$,
+  createLocalAgentDeviceCode$,
+  createLocalAgentHostRealtimeToken$,
+  createLocalAgentJob$,
+  deleteLocalAgentHost$,
+  getLocalAgentJob$,
+  heartbeatLocalAgentHost$,
+  listLocalAgentJobs$,
+  listLocalAgentHosts$,
+  pollLocalAgentDeviceCode$,
+  startLocalAgentHost$,
+} from "../services/zero-local-agent.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 
-const unauthorizedRemoteAgent = Object.freeze({
+const unauthorizedLocalAgent = Object.freeze({
   status: 401 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Remote agent token required",
+      message: "Local agent token required",
       code: "UNAUTHORIZED",
     }),
   }),
 });
 
-const invalidRemoteAgentToken = Object.freeze({
+const invalidLocalAgentToken = Object.freeze({
   status: 401 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Invalid remote agent token",
+      message: "Invalid local agent token",
       code: "UNAUTHORIZED",
     }),
   }),
@@ -60,7 +60,7 @@ function parseBearerToken(authorization: string | undefined): string | null {
   return token.length > 0 ? token : null;
 }
 
-const startBody$ = bodyResultOf(zeroRemoteAgentDeviceStartContract.start);
+const startBody$ = bodyResultOf(zeroLocalAgentDeviceStartContract.start);
 const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(startBody$);
   signal.throwIfAborted();
@@ -69,7 +69,7 @@ const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const body = await set(
-    createRemoteAgentDeviceCode$,
+    createLocalAgentDeviceCode$,
     {
       hostName: bodyResult.data.hostName,
       supportedBackends: bodyResult.data.supportedBackends,
@@ -81,7 +81,7 @@ const startInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body };
 });
 
-const pollBody$ = bodyResultOf(zeroRemoteAgentDevicePollContract.poll);
+const pollBody$ = bodyResultOf(zeroLocalAgentDevicePollContract.poll);
 const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(pollBody$);
   signal.throwIfAborted();
@@ -90,7 +90,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    pollRemoteAgentDeviceCode$,
+    pollLocalAgentDeviceCode$,
     {
       deviceCode: bodyResult.data.deviceCode,
       pollToken: bodyResult.data.pollToken,
@@ -106,7 +106,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const claimBody$ = bodyResultOf(zeroRemoteAgentDeviceClaimContract.claim);
+const claimBody$ = bodyResultOf(zeroLocalAgentDeviceClaimContract.claim);
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -117,7 +117,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = await set(
-    claimRemoteAgentDeviceCode$,
+    claimLocalAgentDeviceCode$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -140,7 +140,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const heartbeatBody$ = bodyResultOf(zeroRemoteAgentHeartbeatContract.heartbeat);
+const heartbeatBody$ = bodyResultOf(zeroLocalAgentHeartbeatContract.heartbeat);
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(heartbeatBody$);
   signal.throwIfAborted();
@@ -150,11 +150,11 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const hostToken = parseBearerToken(get(authorization$));
   if (!hostToken) {
-    return unauthorizedRemoteAgent;
+    return unauthorizedLocalAgent;
   }
 
   const result = await set(
-    heartbeatRemoteAgentHost$,
+    heartbeatLocalAgentHost$,
     {
       hostToken,
       hostName: bodyResult.data.hostName,
@@ -165,7 +165,7 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!result) {
-    return invalidRemoteAgentToken;
+    return invalidLocalAgentToken;
   }
 
   return { status: 200 as const, body: { ok: true as const, ...result } };
@@ -175,18 +175,18 @@ const hostRealtimeInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const hostToken = parseBearerToken(get(authorization$));
     if (!hostToken) {
-      return unauthorizedRemoteAgent;
+      return unauthorizedLocalAgent;
     }
 
     const result = await set(
-      createRemoteAgentHostRealtimeToken$,
+      createLocalAgentHostRealtimeToken$,
       { hostToken },
       signal,
     );
     signal.throwIfAborted();
 
     if (!result) {
-      return invalidRemoteAgentToken;
+      return invalidLocalAgentToken;
     }
 
     return { status: 200 as const, body: result };
@@ -197,7 +197,7 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const result = await set(
-    listRemoteAgentHosts$,
+    listLocalAgentHosts$,
     { orgId: auth.orgId, userId: auth.userId },
     signal,
   );
@@ -206,7 +206,7 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const hostsStartBody$ = bodyResultOf(zeroRemoteAgentHostsContract.start);
+const hostsStartBody$ = bodyResultOf(zeroLocalAgentHostsContract.start);
 const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -223,11 +223,11 @@ const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     supportedBackends: bodyResult.data.supportedBackends,
     ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
   };
-  const result = await set(startRemoteAgentHost$, startParams, signal);
+  const result = await set(startLocalAgentHost$, startParams, signal);
   signal.throwIfAborted();
 
   if (result.status === "not_found") {
-    return notFound("Remote-agent host not found");
+    return notFound("Local-agent host not found");
   }
 
   return {
@@ -239,13 +239,13 @@ const hostsStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const hostsDeleteParams$ = pathParamsOf(zeroRemoteAgentHostsContract.delete);
+const hostsDeleteParams$ = pathParamsOf(zeroLocalAgentHostsContract.delete);
 const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const params = get(hostsDeleteParams$);
   const result = await set(
-    deleteRemoteAgentHost$,
+    deleteLocalAgentHost$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -256,19 +256,19 @@ const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (result.status === "not_found") {
-    return notFound("Remote-agent host not found");
+    return notFound("Local-agent host not found");
   }
 
   return { status: 200 as const, body: { ok: true as const } };
 });
 
-const runListQuery$ = queryOf(zeroRemoteAgentRunContract.list);
+const runListQuery$ = queryOf(zeroLocalAgentRunContract.list);
 const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const query = get(runListQuery$);
   const result = await set(
-    listRemoteAgentJobs$,
+    listLocalAgentJobs$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -284,7 +284,7 @@ const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
-const runCreateBody$ = bodyResultOf(zeroRemoteAgentRunContract.create);
+const runCreateBody$ = bodyResultOf(zeroLocalAgentRunContract.create);
 const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
@@ -300,23 +300,23 @@ const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     prompt: bodyResult.data.prompt,
     ...(bodyResult.data.hostName ? { hostName: bodyResult.data.hostName } : {}),
   };
-  const result = await set(createRemoteAgentJob$, jobParams, signal);
+  const result = await set(createLocalAgentJob$, jobParams, signal);
   signal.throwIfAborted();
 
   if (result.status === "no_host") {
     return notFound(
-      "No linked remote-agent host found. Start one with `vm0 remote-agent start --name <name>`.",
+      "No linked local-agent host found. Start one with `vm0 local-agent start --name <name>`.",
     );
   }
   if (result.status === "host_not_found") {
-    return notFound("Remote-agent host not found");
+    return notFound("Local-agent host not found");
   }
   if (result.status === "host_ambiguous") {
-    return conflict("Multiple remote-agent hosts have this name");
+    return conflict("Multiple local-agent hosts have this name");
   }
   if (result.status === "host_closed") {
     return conflict(
-      "No online remote-agent host. Start one with `vm0 remote-agent start --name <name>`.",
+      "No online local-agent host. Start one with `vm0 local-agent start --name <name>`.",
     );
   }
 
@@ -329,13 +329,13 @@ const runCreateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const runGetParams$ = pathParamsOf(zeroRemoteAgentRunContract.get);
+const runGetParams$ = pathParamsOf(zeroLocalAgentRunContract.get);
 const runGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const params = get(runGetParams$);
   const result = await set(
-    getRemoteAgentJob$,
+    getLocalAgentJob$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -346,13 +346,13 @@ const runGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (!result) {
-    return notFound("Remote-agent job not found");
+    return notFound("Local-agent job not found");
   }
 
   return { status: 200 as const, body: result };
 });
 
-const hostJobNextBody$ = bodyResultOf(zeroRemoteAgentHostJobsContract.next);
+const hostJobNextBody$ = bodyResultOf(zeroLocalAgentHostJobsContract.next);
 const hostJobNextInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(hostJobNextBody$);
   signal.throwIfAborted();
@@ -362,11 +362,11 @@ const hostJobNextInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const hostToken = parseBearerToken(get(authorization$));
   if (!hostToken) {
-    return unauthorizedRemoteAgent;
+    return unauthorizedLocalAgent;
   }
 
   const result = await set(
-    claimNextRemoteAgentHostJob$,
+    claimNextLocalAgentHostJob$,
     {
       hostToken,
       supportedBackends: bodyResult.data.supportedBackends,
@@ -376,7 +376,7 @@ const hostJobNextInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   if (result.status === "invalid_token") {
-    return invalidRemoteAgentToken;
+    return invalidLocalAgentToken;
   }
   if (result.status === "idle") {
     return { status: 200 as const, body: { status: "idle" as const } };
@@ -389,10 +389,10 @@ const hostJobNextInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const hostJobCompleteBody$ = bodyResultOf(
-  zeroRemoteAgentHostJobsContract.complete,
+  zeroLocalAgentHostJobsContract.complete,
 );
 const hostJobCompleteParams$ = pathParamsOf(
-  zeroRemoteAgentHostJobsContract.complete,
+  zeroLocalAgentHostJobsContract.complete,
 );
 const hostJobCompleteInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -404,12 +404,12 @@ const hostJobCompleteInner$ = command(
 
     const hostToken = parseBearerToken(get(authorization$));
     if (!hostToken) {
-      return unauthorizedRemoteAgent;
+      return unauthorizedLocalAgent;
     }
 
     const params = get(hostJobCompleteParams$);
     const result = await set(
-      completeRemoteAgentHostJob$,
+      completeLocalAgentHostJob$,
       {
         hostToken,
         jobId: params.jobId,
@@ -423,85 +423,85 @@ const hostJobCompleteInner$ = command(
     signal.throwIfAborted();
 
     if (result.status === "invalid_token") {
-      return invalidRemoteAgentToken;
+      return invalidLocalAgentToken;
     }
     if (result.status === "not_found") {
-      return notFound("Remote-agent job not found");
+      return notFound("Local-agent job not found");
     }
     if (result.status === "not_running") {
-      return conflict("Remote-agent job is not running");
+      return conflict("Local-agent job is not running");
     }
 
     return { status: 200 as const, body: { ok: true as const } };
   },
 );
 
-const remoteAgentAuthOptions = {
+const localAgentAuthOptions = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
 } as const;
 
-const remoteAgentReadAuthOptions = {
-  ...remoteAgentAuthOptions,
-  requiredCapability: "remote-agent:read",
+const localAgentReadAuthOptions = {
+  ...localAgentAuthOptions,
+  requiredCapability: "local-agent:read",
 } as const;
 
-const remoteAgentWriteAuthOptions = {
-  ...remoteAgentAuthOptions,
-  requiredCapability: "remote-agent:write",
+const localAgentWriteAuthOptions = {
+  ...localAgentAuthOptions,
+  requiredCapability: "local-agent:write",
 } as const;
 
-export const zeroRemoteAgentRoutes: readonly RouteEntry[] = [
+export const zeroLocalAgentRoutes: readonly RouteEntry[] = [
   {
-    route: zeroRemoteAgentDeviceStartContract.start,
+    route: zeroLocalAgentDeviceStartContract.start,
     handler: startInner$,
   },
   {
-    route: zeroRemoteAgentDevicePollContract.poll,
+    route: zeroLocalAgentDevicePollContract.poll,
     handler: pollInner$,
   },
   {
-    route: zeroRemoteAgentDeviceClaimContract.claim,
-    handler: authRoute(remoteAgentAuthOptions, claimInner$),
+    route: zeroLocalAgentDeviceClaimContract.claim,
+    handler: authRoute(localAgentAuthOptions, claimInner$),
   },
   {
-    route: zeroRemoteAgentHeartbeatContract.heartbeat,
+    route: zeroLocalAgentHeartbeatContract.heartbeat,
     handler: heartbeatInner$,
   },
   {
-    route: zeroRemoteAgentHostRealtimeContract.create,
+    route: zeroLocalAgentHostRealtimeContract.create,
     handler: hostRealtimeInner$,
   },
   {
-    route: zeroRemoteAgentHostsContract.start,
-    handler: authRoute(remoteAgentAuthOptions, hostsStartInner$),
+    route: zeroLocalAgentHostsContract.start,
+    handler: authRoute(localAgentAuthOptions, hostsStartInner$),
   },
   {
-    route: zeroRemoteAgentHostsContract.list,
-    handler: authRoute(remoteAgentReadAuthOptions, hostsListInner$),
+    route: zeroLocalAgentHostsContract.list,
+    handler: authRoute(localAgentReadAuthOptions, hostsListInner$),
   },
   {
-    route: zeroRemoteAgentHostsContract.delete,
-    handler: authRoute(remoteAgentAuthOptions, hostsDeleteInner$),
+    route: zeroLocalAgentHostsContract.delete,
+    handler: authRoute(localAgentAuthOptions, hostsDeleteInner$),
   },
   {
-    route: zeroRemoteAgentRunContract.list,
-    handler: authRoute(remoteAgentReadAuthOptions, runListInner$),
+    route: zeroLocalAgentRunContract.list,
+    handler: authRoute(localAgentReadAuthOptions, runListInner$),
   },
   {
-    route: zeroRemoteAgentRunContract.create,
-    handler: authRoute(remoteAgentWriteAuthOptions, runCreateInner$),
+    route: zeroLocalAgentRunContract.create,
+    handler: authRoute(localAgentWriteAuthOptions, runCreateInner$),
   },
   {
-    route: zeroRemoteAgentRunContract.get,
-    handler: authRoute(remoteAgentReadAuthOptions, runGetInner$),
+    route: zeroLocalAgentRunContract.get,
+    handler: authRoute(localAgentReadAuthOptions, runGetInner$),
   },
   {
-    route: zeroRemoteAgentHostJobsContract.next,
+    route: zeroLocalAgentHostJobsContract.next,
     handler: hostJobNextInner$,
   },
   {
-    route: zeroRemoteAgentHostJobsContract.complete,
+    route: zeroLocalAgentHostJobsContract.complete,
     handler: hostJobCompleteInner$,
   },
 ];

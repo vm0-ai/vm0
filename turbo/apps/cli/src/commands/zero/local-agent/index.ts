@@ -5,8 +5,8 @@ import { listCommand } from "./list";
 import { runCommand } from "./run";
 import { runsCommand } from "./runs";
 
-export const remoteAgentCommand = new Command()
-  .name("remote-agent")
+export const localAgentCommand = new Command()
+  .name("local-agent")
   .description("Run local Codex or Claude hosts for vm0")
   .addCommand(startCommand)
   .addCommand(listCommand)
@@ -14,9 +14,9 @@ export const remoteAgentCommand = new Command()
   .addCommand(runCommand)
   .addCommand(runsCommand);
 
-export const zeroRemoteAgentCommand = new Command()
-  .name("remote-agent")
-  .description("Run jobs on remote-agent hosts")
+export const zeroLocalAgentCommand = new Command()
+  .name("local-agent")
+  .description("Run jobs on local-agent hosts")
   .addCommand(listCommand)
   .addCommand(runCommand)
   .addCommand(runsCommand);

@@ -24,7 +24,7 @@ import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { zeroBuiltInCommand } from "./commands/zero/built-in";
 import { zeroWebCommand } from "./commands/zero/web";
-import { zeroRemoteAgentCommand } from "./commands/zero/remote-agent";
+import { zeroLocalAgentCommand } from "./commands/zero/local-agent";
 import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
 import { zeroHostCommand } from "./commands/zero/host";
 import {
@@ -61,7 +61,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "built-in": "file:write",
   web: null,
   host: "host:write",
-  "remote-agent": ["remote-agent:read", "remote-agent:write"],
+  "local-agent": ["local-agent:read", "local-agent:write"],
   "local-browser": ["local-browser:read", "local-browser:write"],
 };
 
@@ -88,7 +88,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroBuiltInCommand,
   zeroWebCommand,
   zeroHostCommand,
-  zeroRemoteAgentCommand,
+  zeroLocalAgentCommand,
   zeroLocalBrowserCommand,
 ];
 

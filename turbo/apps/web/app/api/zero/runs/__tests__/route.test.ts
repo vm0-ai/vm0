@@ -422,8 +422,8 @@ describe("POST /api/zero/runs", () => {
         expect.arrayContaining([
           "agent:read",
           "agent:write",
-          "remote-agent:read",
-          "remote-agent:write",
+          "local-agent:read",
+          "local-agent:write",
         ]),
       );
     });

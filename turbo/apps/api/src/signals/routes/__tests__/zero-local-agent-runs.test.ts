@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { RemoteAgentRunListResponse } from "@vm0/api-contracts/contracts/zero-remote-agent";
-import { remoteAgentHosts, remoteAgentJobs } from "@vm0/db/schema/remote-agent";
+import type { LocalAgentRunListResponse } from "@vm0/api-contracts/contracts/zero-local-agent";
+import { localAgentHosts, localAgentJobs } from "@vm0/db/schema/local-agent";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
@@ -22,7 +22,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-async function seedRemoteAgentHost(args: {
+async function seedLocalAgentHost(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly displayName: string;
@@ -30,7 +30,7 @@ async function seedRemoteAgentHost(args: {
   const writeDb = store.set(writeDb$);
   const now = nowDate();
   const [host] = await writeDb
-    .insert(remoteAgentHosts)
+    .insert(localAgentHosts)
     .values({
       orgId: args.orgId,
       userId: args.userId,
@@ -42,15 +42,15 @@ async function seedRemoteAgentHost(args: {
       createdAt: now,
       updatedAt: now,
     })
-    .returning({ id: remoteAgentHosts.id });
+    .returning({ id: localAgentHosts.id });
 
   if (!host) {
-    throw new Error("Failed to seed remote-agent host");
+    throw new Error("Failed to seed local-agent host");
   }
   return host.id;
 }
 
-async function seedRemoteAgentJob(args: {
+async function seedLocalAgentJob(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly hostId?: string;
@@ -60,7 +60,7 @@ async function seedRemoteAgentJob(args: {
   const writeDb = store.set(writeDb$);
   const now = nowDate();
   const [job] = await writeDb
-    .insert(remoteAgentJobs)
+    .insert(localAgentJobs)
     .values({
       orgId: args.orgId,
       userId: args.userId,
@@ -77,10 +77,10 @@ async function seedRemoteAgentJob(args: {
       createdAt: now,
       updatedAt: now,
     })
-    .returning({ id: remoteAgentJobs.id });
+    .returning({ id: localAgentJobs.id });
 
   if (!job) {
-    throw new Error("Failed to seed remote-agent job");
+    throw new Error("Failed to seed local-agent job");
   }
   return job.id;
 }
@@ -88,28 +88,28 @@ async function seedRemoteAgentJob(args: {
 async function cleanupFixture(fixture: OrgMembershipFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
-    .delete(remoteAgentJobs)
-    .where(eq(remoteAgentJobs.orgId, fixture.orgId));
+    .delete(localAgentJobs)
+    .where(eq(localAgentJobs.orgId, fixture.orgId));
   await writeDb
-    .delete(remoteAgentHosts)
-    .where(eq(remoteAgentHosts.orgId, fixture.orgId));
+    .delete(localAgentHosts)
+    .where(eq(localAgentHosts.orgId, fixture.orgId));
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
 async function listRuns(query = ""): Promise<{
   readonly status: number;
-  readonly body: RemoteAgentRunListResponse;
+  readonly body: LocalAgentRunListResponse;
 }> {
   const app = createApp({ signal: context.signal, routes: ROUTES });
-  const response = await app.request(`/api/zero/remote-agent/runs${query}`, {
+  const response = await app.request(`/api/zero/local-agent/runs${query}`, {
     method: "GET",
     headers: { authorization: "Bearer clerk-session" },
   });
-  const body = (await response.json()) as RemoteAgentRunListResponse;
+  const body = (await response.json()) as LocalAgentRunListResponse;
   return { status: response.status, body };
 }
 
-describe("GET /api/zero/remote-agent/runs", () => {
+describe("GET /api/zero/local-agent/runs", () => {
   const fixtures: OrgMembershipFixture[] = [];
 
   afterEach(async () => {
@@ -121,19 +121,19 @@ describe("GET /api/zero/remote-agent/runs", () => {
     }
   });
 
-  it("returns remote-agent runs for the current user", async () => {
+  it("returns local-agent runs for the current user", async () => {
     const fixture = await store.set(
       seedOrgMembership$,
       { orgId: `org_${randomUUID()}`, userId: `user_${randomUUID()}` },
       context.signal,
     );
     fixtures.push(fixture);
-    const hostId = await seedRemoteAgentHost({
+    const hostId = await seedLocalAgentHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       displayName: "laptop",
     });
-    const jobId = await seedRemoteAgentJob({
+    const jobId = await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostId,
@@ -165,19 +165,19 @@ describe("GET /api/zero/remote-agent/runs", () => {
       context.signal,
     );
     fixtures.push(fixture);
-    const failedJobId = await seedRemoteAgentJob({
+    const failedJobId = await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
       status: "failed",
       prompt: "failed prompt",
     });
-    await seedRemoteAgentJob({
+    await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
       status: "running",
       prompt: "running prompt",
     });
-    await seedRemoteAgentJob({
+    await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: `user_${randomUUID()}`,
       status: "failed",
@@ -202,24 +202,24 @@ describe("GET /api/zero/remote-agent/runs", () => {
       context.signal,
     );
     fixtures.push(fixture);
-    const laptopId = await seedRemoteAgentHost({
+    const laptopId = await seedLocalAgentHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       displayName: "laptop",
     });
-    const desktopId = await seedRemoteAgentHost({
+    const desktopId = await seedLocalAgentHost({
       orgId: fixture.orgId,
       userId: fixture.userId,
       displayName: "desktop",
     });
-    const desktopJobId = await seedRemoteAgentJob({
+    const desktopJobId = await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostId: desktopId,
       status: "succeeded",
       prompt: "desktop job",
     });
-    await seedRemoteAgentJob({
+    await seedLocalAgentJob({
       orgId: fixture.orgId,
       userId: fixture.userId,
       hostId: laptopId,

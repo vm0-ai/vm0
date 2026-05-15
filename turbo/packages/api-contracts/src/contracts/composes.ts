@@ -32,8 +32,8 @@ export const ZERO_CAPABILITIES = [
   "agent:delete",
   "agent-run:read",
   "agent-run:write",
-  "remote-agent:read",
-  "remote-agent:write",
+  "local-agent:read",
+  "local-agent:write",
   "local-browser:read",
   "local-browser:write",
   "schedule:read",
@@ -75,13 +75,13 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
     "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
-    "remote-agent:read": {
-      group: "Remote Agent",
-      label: "View remote-agent hosts and jobs",
+    "local-agent:read": {
+      group: "Local Agent",
+      label: "View local-agent hosts and jobs",
     },
-    "remote-agent:write": {
-      group: "Remote Agent",
-      label: "Create remote-agent jobs",
+    "local-agent:write": {
+      group: "Local Agent",
+      label: "Create local-agent jobs",
     },
     "local-browser:read": {
       group: "Local Browser",

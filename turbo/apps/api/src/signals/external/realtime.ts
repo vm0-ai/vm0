@@ -1,6 +1,6 @@
 import Ably from "ably";
 import type { LocalBrowserRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-local-browser";
-import type { RemoteAgentRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import type { LocalAgentRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-local-agent";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
@@ -24,12 +24,12 @@ function getBuiltInGenerationEventName(generationId: string): string {
   return `built-in-generation:${generationId}`;
 }
 
-function getRemoteAgentDeviceChannelName(deviceCodeId: string): string {
-  return `remote-agent-device:${deviceCodeId}`;
+function getLocalAgentDeviceChannelName(deviceCodeId: string): string {
+  return `local-agent-device:${deviceCodeId}`;
 }
 
-function getRemoteAgentHostChannelName(hostId: string): string {
-  return `remote-agent-host:${hostId}`;
+function getLocalAgentHostChannelName(hostId: string): string {
+  return `local-agent-host:${hostId}`;
 }
 
 function getLocalBrowserDeviceChannelName(deviceCodeId: string): string {
@@ -40,9 +40,9 @@ function getLocalBrowserHostChannelName(hostId: string): string {
   return `local-browser-host:${hostId}`;
 }
 
-const REMOTE_AGENT_DEVICE_APPROVED_EVENT = "approved";
-const REMOTE_AGENT_HOST_JOB_EVENT = "job";
-const REMOTE_AGENT_HOSTS_CHANGED_EVENT = "remote-agent:hosts-changed";
+const LOCAL_AGENT_DEVICE_APPROVED_EVENT = "approved";
+const LOCAL_AGENT_HOST_JOB_EVENT = "job";
+const LOCAL_AGENT_HOSTS_CHANGED_EVENT = "local-agent:hosts-changed";
 const LOCAL_BROWSER_DEVICE_APPROVED_EVENT = "approved";
 const LOCAL_BROWSER_HOST_COMMAND_EVENT = "command";
 const LOCAL_BROWSER_HOSTS_CHANGED_EVENT = "local-browser:hosts-changed";
@@ -200,10 +200,10 @@ export async function publishRunnerJobNotification(
   return false;
 }
 
-export async function createRemoteAgentDeviceRealtimeSubscription(
+export async function createLocalAgentDeviceRealtimeSubscription(
   deviceCodeId: string,
-): Promise<RemoteAgentRealtimeSubscription> {
-  const channelName = getRemoteAgentDeviceChannelName(deviceCodeId);
+): Promise<LocalAgentRealtimeSubscription> {
+  const channelName = getLocalAgentDeviceChannelName(deviceCodeId);
   const tokenRequest = await ablyClient().auth.createTokenRequest({
     capability: {
       [channelName]: ["subscribe"],
@@ -213,27 +213,27 @@ export async function createRemoteAgentDeviceRealtimeSubscription(
 
   return {
     channelName,
-    eventName: REMOTE_AGENT_DEVICE_APPROVED_EVENT,
+    eventName: LOCAL_AGENT_DEVICE_APPROVED_EVENT,
     tokenRequest,
   };
 }
 
-export async function publishRemoteAgentDeviceApproved(
+export async function publishLocalAgentDeviceApproved(
   deviceCodeId: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(
-    getRemoteAgentDeviceChannelName(deviceCodeId),
+    getLocalAgentDeviceChannelName(deviceCodeId),
   );
-  await channel.publish(REMOTE_AGENT_DEVICE_APPROVED_EVENT, {
+  await channel.publish(LOCAL_AGENT_DEVICE_APPROVED_EVENT, {
     status: "approved",
   });
-  L.debug(`Published remote-agent device approval ${deviceCodeId}`);
+  L.debug(`Published local-agent device approval ${deviceCodeId}`);
 }
 
-export async function createRemoteAgentHostRealtimeSubscription(
+export async function createLocalAgentHostRealtimeSubscription(
   hostId: string,
-): Promise<RemoteAgentRealtimeSubscription> {
-  const channelName = getRemoteAgentHostChannelName(hostId);
+): Promise<LocalAgentRealtimeSubscription> {
+  const channelName = getLocalAgentHostChannelName(hostId);
   const tokenRequest = await ablyClient().auth.createTokenRequest({
     capability: {
       [channelName]: ["subscribe"],
@@ -243,26 +243,26 @@ export async function createRemoteAgentHostRealtimeSubscription(
 
   return {
     channelName,
-    eventName: REMOTE_AGENT_HOST_JOB_EVENT,
+    eventName: LOCAL_AGENT_HOST_JOB_EVENT,
     tokenRequest,
   };
 }
 
-export async function publishRemoteAgentHostJobAvailable(
+export async function publishLocalAgentHostJobAvailable(
   hostId: string,
   jobId: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(
-    getRemoteAgentHostChannelName(hostId),
+    getLocalAgentHostChannelName(hostId),
   );
-  await channel.publish(REMOTE_AGENT_HOST_JOB_EVENT, { jobId });
-  L.debug(`Published remote-agent job ${jobId} to host ${hostId}`);
+  await channel.publish(LOCAL_AGENT_HOST_JOB_EVENT, { jobId });
+  L.debug(`Published local-agent job ${jobId} to host ${hostId}`);
 }
 
-export async function publishRemoteAgentHostsChanged(
+export async function publishLocalAgentHostsChanged(
   userId: string,
 ): Promise<void> {
-  await publishUserSignal([userId], REMOTE_AGENT_HOSTS_CHANGED_EVENT);
+  await publishUserSignal([userId], LOCAL_AGENT_HOSTS_CHANGED_EVENT);
 }
 
 export async function createLocalBrowserDeviceRealtimeSubscription(

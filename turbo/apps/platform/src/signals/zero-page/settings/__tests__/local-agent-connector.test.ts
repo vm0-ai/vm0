@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { setupPage } from "../../../../__tests__/page-helper.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
-import { setMockRemoteAgentHosts } from "../../../../mocks/handlers/api-remote-agent.ts";
+import { setMockLocalAgentHosts } from "../../../../mocks/handlers/api-local-agent.ts";
 import {
   allConnectorTypes$,
-  connectRemoteAgentConnector$,
+  connectLocalAgentConnector$,
   permissionDialogType$,
 } from "../connectors.ts";
 
 const context = testContext();
 
-describe("remote-agent connector", () => {
-  it("shows online remote-agent hosts without treating them as connected", async () => {
-    setMockRemoteAgentHosts([
+describe("local-agent connector", () => {
+  it("shows online local-agent hosts without treating them as connected", async () => {
+    setMockLocalAgentHosts([
       {
         id: "host-online",
         displayName: "Work laptop",
@@ -37,13 +37,13 @@ describe("remote-agent connector", () => {
     });
 
     const connectors = await context.store.get(allConnectorTypes$);
-    const remoteAgent = connectors.find((connector) => {
-      return connector.type === "remote-agent";
+    const localAgent = connectors.find((connector) => {
+      return connector.type === "local-agent";
     });
 
-    expect(remoteAgent?.availableAuthMethods).toStrictEqual(["api"]);
-    expect(remoteAgent?.connected).toBeFalsy();
-    expect(remoteAgent?.remoteAgentHosts).toStrictEqual([
+    expect(localAgent?.availableAuthMethods).toStrictEqual(["api"]);
+    expect(localAgent?.connected).toBeFalsy();
+    expect(localAgent?.localAgentHosts).toStrictEqual([
       expect.objectContaining({
         id: "host-online",
         displayName: "Work laptop",
@@ -52,7 +52,7 @@ describe("remote-agent connector", () => {
   });
 
   it("opens the agent auth dialog after connecting from settings", async () => {
-    setMockRemoteAgentHosts([
+    setMockLocalAgentHosts([
       {
         id: "host-online",
         displayName: "Work laptop",
@@ -69,11 +69,11 @@ describe("remote-agent connector", () => {
     });
 
     await context.store.set(
-      connectRemoteAgentConnector$,
+      connectLocalAgentConnector$,
       { showPermissionDialog: true },
       context.signal,
     );
 
-    expect(context.store.get(permissionDialogType$)).toBe("remote-agent");
+    expect(context.store.get(permissionDialogType$)).toBe("local-agent");
   });
 });

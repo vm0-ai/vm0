@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import type { RemoteAgentHost } from "@vm0/api-contracts/contracts/zero-remote-agent";
-import { listRemoteAgentHosts } from "../../../lib/api";
+import type { LocalAgentHost } from "@vm0/api-contracts/contracts/zero-local-agent";
+import { listLocalAgentHosts } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
 function formatAge(value: string): string {
@@ -24,17 +24,17 @@ function formatAge(value: string): string {
   return `${Math.floor(elapsedHours / 24)}d ago`;
 }
 
-function statusLabel(host: RemoteAgentHost): string {
+function statusLabel(host: LocalAgentHost): string {
   if (host.status === "online") {
     return chalk.green("online");
   }
   return chalk.yellow("closed");
 }
 
-function printHosts(hosts: RemoteAgentHost[]): void {
+function printHosts(hosts: LocalAgentHost[]): void {
   if (hosts.length === 0) {
-    console.log("No remote-agent hosts found.");
-    console.log(chalk.dim("  Run: vm0 remote-agent start --name <name>"));
+    console.log("No local-agent hosts found.");
+    console.log(chalk.dim("  Run: vm0 local-agent start --name <name>"));
     return;
   }
 
@@ -93,10 +93,10 @@ function printHosts(hosts: RemoteAgentHost[]): void {
 
 export const listCommand = new Command()
   .name("list")
-  .description("List remote-agent hosts")
+  .description("List local-agent hosts")
   .action(
     withErrorHandler(async () => {
-      const result = await listRemoteAgentHosts();
+      const result = await listLocalAgentHosts();
       printHosts(result.hosts);
     }),
   );

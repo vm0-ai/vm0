@@ -29,7 +29,7 @@ function buildCommands(): Command[] {
     new Command("built-in"),
     new Command("web"),
     new Command("host"),
-    new Command("remote-agent"),
+    new Command("local-agent"),
     new Command("local-browser"),
   ];
 }
@@ -154,7 +154,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "built-in",
       "host",
-      "remote-agent",
+      "local-agent",
       "local-browser",
     ]);
   });
@@ -381,29 +381,29 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show remote-agent when remote-agent:read capability is present", () => {
+  it("should show local-agent when local-agent:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["remote-agent:read"],
+      capabilities: ["local-agent:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("remote-agent");
+    expect(visibleCommandNames(prog)).toContain("local-agent");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show remote-agent when remote-agent:write capability is present", () => {
+  it("should show local-agent when local-agent:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["remote-agent:write"],
+      capabilities: ["local-agent:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toContain("remote-agent");
+    expect(visibleCommandNames(prog)).toContain("local-agent");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
@@ -431,7 +431,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("run");
   });
 
-  it("should hide remote-agent when remote-agent capabilities are missing", () => {
+  it("should hide local-agent when local-agent capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent-run:read", "agent-run:write"],
@@ -440,7 +440,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toContain("remote-agent");
+    expect(hiddenCommandNames(prog)).toContain("local-agent");
   });
 
   it("should show local-browser when local-browser:read capability is present", () => {

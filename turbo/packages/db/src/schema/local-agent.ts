@@ -9,7 +9,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const remoteAgentHosts = pgTable(
+export const localAgentHosts = pgTable(
   "remote_agent_hosts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -36,7 +36,7 @@ export const remoteAgentHosts = pgTable(
   },
 );
 
-export const remoteAgentDeviceCodes = pgTable(
+export const localAgentDeviceCodes = pgTable(
   "remote_agent_device_codes",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -51,7 +51,7 @@ export const remoteAgentDeviceCodes = pgTable(
       .notNull(),
     status: text("status").default("pending").notNull(),
     hostId: uuid("host_id").references(() => {
-      return remoteAgentHosts.id;
+      return localAgentHosts.id;
     }),
     claimedAt: timestamp("claimed_at"),
     consumedAt: timestamp("consumed_at"),
@@ -75,14 +75,14 @@ export const remoteAgentDeviceCodes = pgTable(
   },
 );
 
-export const remoteAgentJobs = pgTable(
+export const localAgentJobs = pgTable(
   "remote_agent_jobs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     hostId: uuid("host_id").references(() => {
-      return remoteAgentHosts.id;
+      return localAgentHosts.id;
     }),
     backend: text("backend"),
     prompt: text("prompt").notNull(),

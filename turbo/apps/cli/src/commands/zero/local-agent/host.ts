@@ -3,25 +3,25 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { Realtime, type AuthOptions, type InboundMessage } from "ably";
 import type {
-  RemoteAgentBackend,
-  RemoteAgentHost,
-  RemoteAgentRealtimeSubscription,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  LocalAgentBackend,
+  LocalAgentHost,
+  LocalAgentRealtimeSubscription,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   ApiRequestError,
-  claimNextRemoteAgentHostJob,
-  completeRemoteAgentHostJob,
-  createRemoteAgentHostRealtimeSubscription,
-  listRemoteAgentHosts,
-  sendRemoteAgentHeartbeat,
-  startRemoteAgentHost,
+  claimNextLocalAgentHostJob,
+  completeLocalAgentHostJob,
+  createLocalAgentHostRealtimeSubscription,
+  listLocalAgentHosts,
+  sendLocalAgentHeartbeat,
+  startLocalAgentHost,
 } from "../../../lib/api";
 import { getBaseUrl } from "../../../lib/api/core/client-factory";
 import {
-  getRemoteAgentHost,
-  saveRemoteAgentHost,
-  type RemoteAgentHostConfig,
+  getLocalAgentHost,
+  saveLocalAgentHost,
+  type LocalAgentHostConfig,
 } from "../../../lib/api/config";
 import {
   isInteractive,
@@ -29,10 +29,10 @@ import {
   promptText,
 } from "../../../lib/utils/prompt-utils";
 import {
-  detectRemoteAgentBackends,
-  executeRemoteAgentBackend,
-  type RemoteAgentPermissionMode,
-} from "../../../lib/remote-agent/backends";
+  detectLocalAgentBackends,
+  executeLocalAgentBackend,
+  type LocalAgentPermissionMode,
+} from "../../../lib/local-agent/backends";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const JOB_POLL_INTERVAL_MS = 2_000;
@@ -49,11 +49,11 @@ interface HostStartOptions {
 
 interface PermissionModeChoice {
   title: string;
-  value: RemoteAgentPermissionMode;
+  value: LocalAgentPermissionMode;
   description: string;
 }
 
-interface RemoteAgentJobNotifier {
+interface LocalAgentJobNotifier {
   wait(timeoutMs: number): Promise<void>;
   close(): void;
 }
@@ -61,7 +61,7 @@ interface RemoteAgentJobNotifier {
 interface StartHostSelection {
   hostId?: string;
   hostName: string;
-  restoredHost?: RemoteAgentHost;
+  restoredHost?: LocalAgentHost;
 }
 
 const NEW_HOST_SELECTION = "__new__";
@@ -82,9 +82,9 @@ function isInvalidHostTokenError(error: unknown): boolean {
 
 function createHostRealtime(
   hostToken: string,
-  initialSubscription: RemoteAgentRealtimeSubscription,
+  initialSubscription: LocalAgentRealtimeSubscription,
 ): Realtime {
-  let nextAuthSubscription: RemoteAgentRealtimeSubscription | null =
+  let nextAuthSubscription: LocalAgentRealtimeSubscription | null =
     initialSubscription;
   const authCallback: NonNullable<AuthOptions["authCallback"]> = (
     _params,
@@ -97,7 +97,7 @@ function createHostRealtime(
       return;
     }
 
-    createRemoteAgentHostRealtimeSubscription({ hostToken }).then(
+    createLocalAgentHostRealtimeSubscription({ hostToken }).then(
       (subscription) => {
         callback(null, subscription.tokenRequest);
       },
@@ -146,10 +146,10 @@ function waitForRealtimeConnected(
   });
 }
 
-async function createRemoteAgentJobNotifier(
+async function createLocalAgentJobNotifier(
   hostToken: string,
-): Promise<RemoteAgentJobNotifier> {
-  const subscription = await createRemoteAgentHostRealtimeSubscription({
+): Promise<LocalAgentJobNotifier> {
+  const subscription = await createLocalAgentHostRealtimeSubscription({
     hostToken,
   });
   const ably = createHostRealtime(hostToken, subscription);
@@ -213,12 +213,12 @@ async function createRemoteAgentJobNotifier(
   }
 }
 
-function backendLabel(backend: RemoteAgentBackend): string {
+function backendLabel(backend: LocalAgentBackend): string {
   if (backend === "claude-code") return "Claude Code";
   return "Codex";
 }
 
-function parseBackend(value: string): RemoteAgentBackend {
+function parseBackend(value: string): LocalAgentBackend {
   if (value === "codex") {
     return "codex";
   }
@@ -229,7 +229,7 @@ function parseBackend(value: string): RemoteAgentBackend {
 }
 
 function permissionModeChoices(
-  backend: RemoteAgentBackend,
+  backend: LocalAgentBackend,
 ): PermissionModeChoice[] {
   if (backend === "claude-code") {
     return [
@@ -295,7 +295,7 @@ function permissionModeChoices(
   ];
 }
 
-function permissionModeLabel(mode: RemoteAgentPermissionMode): string {
+function permissionModeLabel(mode: LocalAgentPermissionMode): string {
   if (mode === "default") return "Default";
   if (mode === "acceptEdits") return "Accept edits";
   if (mode === "auto") return "Auto";
@@ -320,7 +320,7 @@ function formatHostAge(value: string): string {
   return `${Math.floor(elapsedHours / 24)}d ago`;
 }
 
-function restoreHostSelection(host: RemoteAgentHost): StartHostSelection {
+function restoreHostSelection(host: LocalAgentHost): StartHostSelection {
   return {
     hostId: host.id,
     hostName: host.displayName,
@@ -329,14 +329,14 @@ function restoreHostSelection(host: RemoteAgentHost): StartHostSelection {
 }
 
 function formatSupportedBackends(
-  backends: readonly RemoteAgentBackend[],
+  backends: readonly LocalAgentBackend[],
 ): string {
   return backends.map(backendLabel).join(", ");
 }
 
 function assertHostNameAvailable(
   hostName: string,
-  hosts: readonly RemoteAgentHost[],
+  hosts: readonly LocalAgentHost[],
 ): void {
   const existingHost = hosts.find((host) => {
     return host.displayName === hostName;
@@ -346,13 +346,13 @@ function assertHostNameAvailable(
   }
 
   throw new Error(
-    `Remote-agent host name already exists: ${hostName}. Use --host-id ${existingHost.id} to reactivate it, or choose another --name.`,
+    `Local-agent host name already exists: ${hostName}. Use --host-id ${existingHost.id} to reactivate it, or choose another --name.`,
   );
 }
 
 async function promptNewHostName(params: {
   initialName: string;
-  existingHosts: readonly RemoteAgentHost[];
+  existingHosts: readonly LocalAgentHost[];
 }): Promise<string> {
   const selected = await promptText(
     "Host name:",
@@ -379,7 +379,7 @@ async function promptNewHostName(params: {
   }
   if (!isInteractive()) {
     throw new Error(
-      "Remote-agent start requires a host name in non-interactive mode. Use --name <name>.",
+      "Local-agent start requires a host name in non-interactive mode. Use --name <name>.",
     );
   }
   throw new Error("Host name selection cancelled");
@@ -395,7 +395,7 @@ async function chooseHostForStart(params: {
     throw new Error("Use either --host-id or --new, not both");
   }
 
-  const { hosts } = await listRemoteAgentHosts();
+  const { hosts } = await listLocalAgentHosts();
   const closedHosts = hosts.filter((host) => {
     return host.status === "closed";
   });
@@ -406,7 +406,7 @@ async function chooseHostForStart(params: {
       return item.id === params.requestedHostId;
     });
     if (!host) {
-      throw new Error("Remote-agent host not found");
+      throw new Error("Local-agent host not found");
     }
     return restoreHostSelection(host);
   }
@@ -428,7 +428,7 @@ async function chooseHostForStart(params: {
     });
     if (matchingNameHosts.length > 1) {
       throw new Error(
-        `Multiple remote-agent hosts are named ${requestedHostName}. Use --host-id <id> to choose one.`,
+        `Multiple local-agent hosts are named ${requestedHostName}. Use --host-id <id> to choose one.`,
       );
     }
     const [host] = matchingNameHosts;
@@ -439,13 +439,13 @@ async function chooseHostForStart(params: {
       return restoreHostSelection(host);
     }
     throw new Error(
-      `Remote-agent host is already online: ${requestedHostName}. Choose another --name or delete the existing host first.`,
+      `Local-agent host is already online: ${requestedHostName}. Choose another --name or delete the existing host first.`,
     );
   }
 
   if (!isInteractive()) {
     throw new Error(
-      "Remote-agent start requires a host name in non-interactive mode. Use --name <name> or --host-id <id>.",
+      "Local-agent start requires a host name in non-interactive mode. Use --name <name> or --host-id <id>.",
     );
   }
 
@@ -472,13 +472,13 @@ async function chooseHostForStart(params: {
       return host.id === params.savedHostId;
     });
     const selected = await promptSelect<string>(
-      "Start remote-agent host:",
+      "Start local-agent host:",
       choices,
       savedIndex >= 0 ? savedIndex + 1 : 0,
     );
 
     if (!selected) {
-      throw new Error("Remote-agent host selection cancelled");
+      throw new Error("Local-agent host selection cancelled");
     }
     if (selected === NEW_HOST_SELECTION) {
       return {
@@ -493,7 +493,7 @@ async function chooseHostForStart(params: {
       return item.id === selected;
     });
     if (!host) {
-      throw new Error("Remote-agent host not found");
+      throw new Error("Local-agent host not found");
     }
     return restoreHostSelection(host);
   }
@@ -507,9 +507,9 @@ async function chooseHostForStart(params: {
 }
 
 function parsePermissionMode(
-  backend: RemoteAgentBackend,
+  backend: LocalAgentBackend,
   value: string,
-): RemoteAgentPermissionMode {
+): LocalAgentPermissionMode {
   const choices = permissionModeChoices(backend);
   const mode = choices.find((choice) => {
     return choice.value === value;
@@ -529,16 +529,16 @@ function parsePermissionMode(
 }
 
 async function chooseBackend(
-  probes: Awaited<ReturnType<typeof detectRemoteAgentBackends>>,
+  probes: Awaited<ReturnType<typeof detectLocalAgentBackends>>,
   requestedBackend?: string,
-): Promise<RemoteAgentBackend> {
+): Promise<LocalAgentBackend> {
   const available = probes.filter((probe) => {
     return probe.available;
   });
 
   if (available.length === 0) {
     throw new Error(
-      "No supported agent CLI found. Install Codex CLI (`codex`) or Claude Code (`claude`) before starting remote-agent.",
+      "No supported agent CLI found. Install Codex CLI (`codex`) or Claude Code (`claude`) before starting local-agent.",
     );
   }
 
@@ -555,7 +555,7 @@ async function chooseBackend(
     return backend;
   }
 
-  const selected = await promptSelect<RemoteAgentBackend>(
+  const selected = await promptSelect<LocalAgentBackend>(
     "Select agent CLI:",
     available.map((probe) => {
       const version = probe.version ? ` (${probe.version})` : "";
@@ -571,7 +571,7 @@ async function chooseBackend(
   if (!selected) {
     if (!isInteractive()) {
       throw new Error(
-        "Remote-agent start requires a backend in non-interactive mode. Use --backend codex or --backend claude-code.",
+        "Local-agent start requires a backend in non-interactive mode. Use --backend codex or --backend claude-code.",
       );
     }
     throw new Error("Backend selection cancelled");
@@ -581,10 +581,10 @@ async function chooseBackend(
 }
 
 function chooseRestoredBackend(params: {
-  host: RemoteAgentHost;
-  probes: Awaited<ReturnType<typeof detectRemoteAgentBackends>>;
+  host: LocalAgentHost;
+  probes: Awaited<ReturnType<typeof detectLocalAgentBackends>>;
   requestedBackend?: string;
-}): RemoteAgentBackend {
+}): LocalAgentBackend {
   const available = params.probes.filter((probe) => {
     return probe.available;
   });
@@ -606,7 +606,7 @@ function chooseRestoredBackend(params: {
   }
   if (!params.host.supportedBackends.includes(backend)) {
     throw new Error(
-      `Remote-agent host "${params.host.displayName}" was configured for ${formatSupportedBackends(
+      `Local-agent host "${params.host.displayName}" was configured for ${formatSupportedBackends(
         params.host.supportedBackends,
       )}.`,
     );
@@ -625,14 +625,14 @@ function chooseRestoredBackend(params: {
 }
 
 async function choosePermissionMode(
-  backend: RemoteAgentBackend,
+  backend: LocalAgentBackend,
   requestedPermissionMode?: string,
-): Promise<RemoteAgentPermissionMode> {
+): Promise<LocalAgentPermissionMode> {
   if (requestedPermissionMode) {
     return parsePermissionMode(backend, requestedPermissionMode);
   }
 
-  const selected = await promptSelect<RemoteAgentPermissionMode>(
+  const selected = await promptSelect<LocalAgentPermissionMode>(
     "Select permission mode:",
     permissionModeChoices(backend),
     0,
@@ -641,7 +641,7 @@ async function choosePermissionMode(
   if (!selected) {
     if (!isInteractive()) {
       throw new Error(
-        "Remote-agent start requires a permission mode in non-interactive mode. Use --permission-mode default or another supported mode.",
+        "Local-agent start requires a permission mode in non-interactive mode. Use --permission-mode default or another supported mode.",
       );
     }
     throw new Error("Permission mode selection cancelled");
@@ -651,11 +651,11 @@ async function choosePermissionMode(
 }
 
 function chooseRestoredPermissionMode(params: {
-  backend: RemoteAgentBackend;
+  backend: LocalAgentBackend;
   requestedPermissionMode?: string;
-  savedHost?: RemoteAgentHostConfig;
+  savedHost?: LocalAgentHostConfig;
   hostId?: string;
-}): RemoteAgentPermissionMode {
+}): LocalAgentPermissionMode {
   if (params.requestedPermissionMode) {
     return parsePermissionMode(params.backend, params.requestedPermissionMode);
   }
@@ -678,14 +678,14 @@ function chooseRestoredPermissionMode(params: {
 async function runHostLoop(params: {
   hostToken: string;
   hostName: string;
-  supportedBackends: RemoteAgentBackend[];
-  permissionMode: RemoteAgentPermissionMode;
+  supportedBackends: LocalAgentBackend[];
+  permissionMode: LocalAgentPermissionMode;
   workdir: string;
 }): Promise<void> {
   let latestError: string | null = null;
   let stopped = false;
   let nextHeartbeatAt = 0;
-  let jobNotifier: RemoteAgentJobNotifier | null = null;
+  let jobNotifier: LocalAgentJobNotifier | null = null;
 
   const onStop = () => {
     stopped = true;
@@ -694,12 +694,12 @@ async function runHostLoop(params: {
 
   const sendHeartbeat = async (): Promise<void> => {
     try {
-      await sendRemoteAgentHeartbeat(params);
+      await sendLocalAgentHeartbeat(params);
       nextHeartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
       latestError = null;
     } catch (error) {
       if (isInvalidHostTokenError(error)) {
-        console.log(chalk.yellow("Remote-agent host was deleted; stopping."));
+        console.log(chalk.yellow("Local-agent host was deleted; stopping."));
         onStop();
         return;
       }
@@ -712,7 +712,7 @@ async function runHostLoop(params: {
   };
 
   try {
-    jobNotifier = await createRemoteAgentJobNotifier(params.hostToken);
+    jobNotifier = await createLocalAgentJobNotifier(params.hostToken);
   } catch (error) {
     console.log(
       chalk.yellow(
@@ -734,13 +734,13 @@ async function runHostLoop(params: {
 
       let nextJob;
       try {
-        nextJob = await claimNextRemoteAgentHostJob({
+        nextJob = await claimNextLocalAgentHostJob({
           hostToken: params.hostToken,
           supportedBackends: params.supportedBackends,
         });
       } catch (error) {
         if (isInvalidHostTokenError(error)) {
-          console.log(chalk.yellow("Remote-agent host was deleted; stopping."));
+          console.log(chalk.yellow("Local-agent host was deleted; stopping."));
           onStop();
           continue;
         }
@@ -765,14 +765,14 @@ async function runHostLoop(params: {
         ),
       );
 
-      const result = await executeRemoteAgentBackend({
+      const result = await executeLocalAgentBackend({
         backend: nextJob.job.backend,
         prompt: nextJob.job.prompt,
         workdir: params.workdir,
         permissionMode: params.permissionMode,
       });
 
-      await completeRemoteAgentHostJob({
+      await completeLocalAgentHostJob({
         hostToken: params.hostToken,
         jobId: nextJob.job.id,
         status: result.exitCode === 0 ? "succeeded" : "failed",
@@ -794,21 +794,21 @@ async function runHostLoop(params: {
 
 export const startCommand = new Command()
   .name("start")
-  .description("Start the remote-agent host daemon")
+  .description("Start the local-agent host daemon")
   .option("--name <name>", "New host name, or a closed host name to reactivate")
   .option("--workdir <path>", "Working directory for Codex/Claude jobs")
   .option("--backend <backend>", "codex or claude-code for a new host")
   .option("--permission-mode <mode>", "Permission mode for Codex/Claude jobs")
   .option(
     "--host-id <id>",
-    "Reactivate a closed host from vm0 remote-agent list",
+    "Reactivate a closed host from vm0 local-agent list",
   )
   .option("--new", "Create a new host registration")
   .action(
     withErrorHandler(async (options: HostStartOptions) => {
       const requestedHostName = options.name?.trim();
       const workdir = options.workdir?.trim() || process.cwd();
-      const savedHost = await getRemoteAgentHost();
+      const savedHost = await getLocalAgentHost();
       const selection = await chooseHostForStart({
         requestedHostName,
         requestedHostId: options.hostId?.trim(),
@@ -817,7 +817,7 @@ export const startCommand = new Command()
       });
 
       console.log(chalk.cyan("Detecting local agent CLIs..."));
-      const probes = await detectRemoteAgentBackends();
+      const probes = await detectLocalAgentBackends();
       const available = probes.filter((probe) => {
         return probe.available;
       });
@@ -855,15 +855,15 @@ export const startCommand = new Command()
       console.log(`Permission mode: ${permissionModeLabel(permissionMode)}`);
       const baseUrl = await getBaseUrl();
 
-      console.log(chalk.cyan("Starting remote-agent host..."));
+      console.log(chalk.cyan("Starting local-agent host..."));
       const startParams = {
         hostName: selection.hostName,
         supportedBackends,
         ...(selection.hostId ? { hostId: selection.hostId } : {}),
       };
-      const started = await startRemoteAgentHost(startParams);
+      const started = await startLocalAgentHost(startParams);
 
-      await saveRemoteAgentHost({
+      await saveLocalAgentHost({
         id: started.hostId,
         token: started.hostToken,
         apiUrl: baseUrl,
@@ -873,7 +873,7 @@ export const startCommand = new Command()
         linkedAt: new Date().toISOString(),
       });
 
-      console.log(chalk.green(`Remote-agent host active: ${started.hostId}`));
+      console.log(chalk.green(`Local-agent host active: ${started.hostId}`));
       console.log(`Workdir: ${workdir}`);
       console.log(chalk.dim("Press ^C to stop"));
       console.log();
@@ -887,6 +887,6 @@ export const startCommand = new Command()
       });
 
       console.log();
-      console.log(chalk.green("Remote-agent host stopped"));
+      console.log(chalk.green("Local-agent host stopped"));
     }),
   );

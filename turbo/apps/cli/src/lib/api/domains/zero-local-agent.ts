@@ -1,22 +1,22 @@
 import { initClient } from "@ts-rest/core";
 import type {
-  RemoteAgentBackend,
-  RemoteAgentHostJobNextResponse,
-  RemoteAgentHostListResponse,
-  RemoteAgentHostStartResponse,
-  RemoteAgentRealtimeSubscription,
-  RemoteAgentRunCreateResponse,
-  RemoteAgentRunListResponse,
-  RemoteAgentJobStatus,
-  RemoteAgentRunResponse,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  LocalAgentBackend,
+  LocalAgentHostJobNextResponse,
+  LocalAgentHostListResponse,
+  LocalAgentHostStartResponse,
+  LocalAgentRealtimeSubscription,
+  LocalAgentRunCreateResponse,
+  LocalAgentRunListResponse,
+  LocalAgentJobStatus,
+  LocalAgentRunResponse,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import {
-  zeroRemoteAgentHostJobsContract,
-  zeroRemoteAgentHostRealtimeContract,
-  zeroRemoteAgentHostsContract,
-  zeroRemoteAgentHeartbeatContract,
-  zeroRemoteAgentRunContract,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  zeroLocalAgentHostJobsContract,
+  zeroLocalAgentHostRealtimeContract,
+  zeroLocalAgentHostsContract,
+  zeroLocalAgentHeartbeatContract,
+  zeroLocalAgentRunContract,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -28,7 +28,7 @@ function normalizeConfiguredUrl(value: string): string {
   return value.startsWith("http") ? value : `https://${value}`;
 }
 
-function resolveRemoteAgentApiBaseUrl(baseUrl: string): string {
+function resolveLocalAgentApiBaseUrl(baseUrl: string): string {
   const override = process.env.VM0_API_BACKEND_URL;
   if (override) {
     return normalizeConfiguredUrl(override).replace(/\/$/, "");
@@ -53,8 +53,8 @@ function buildHeaders(token?: string): Record<string, string> {
   return headers;
 }
 
-async function getRemoteAgentClientConfig() {
-  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
+async function getLocalAgentClientConfig() {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
   const token = await getActiveToken();
   if (!token) {
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
@@ -70,13 +70,13 @@ function buildBearerHeaders(token: string): Record<string, string> {
   return buildHeaders(token);
 }
 
-export async function sendRemoteAgentHeartbeat(params: {
+export async function sendLocalAgentHeartbeat(params: {
   hostToken: string;
   hostName: string;
-  supportedBackends: RemoteAgentBackend[];
+  supportedBackends: LocalAgentBackend[];
 }): Promise<{ hostId: string }> {
-  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
-  const client = initClient(zeroRemoteAgentHeartbeatContract, {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroLocalAgentHeartbeatContract, {
     baseUrl,
     baseHeaders: buildBearerHeaders(params.hostToken),
     jsonQuery: false as const,
@@ -93,14 +93,14 @@ export async function sendRemoteAgentHeartbeat(params: {
     return { hostId: result.body.hostId };
   }
 
-  handleError(result, "Failed to send remote-agent heartbeat");
+  handleError(result, "Failed to send local-agent heartbeat");
 }
 
-export async function createRemoteAgentHostRealtimeSubscription(params: {
+export async function createLocalAgentHostRealtimeSubscription(params: {
   hostToken: string;
-}): Promise<RemoteAgentRealtimeSubscription> {
-  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
-  const client = initClient(zeroRemoteAgentHostRealtimeContract, {
+}): Promise<LocalAgentRealtimeSubscription> {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroLocalAgentHostRealtimeContract, {
     baseUrl,
     baseHeaders: buildBearerHeaders(params.hostToken),
     jsonQuery: false as const,
@@ -112,15 +112,15 @@ export async function createRemoteAgentHostRealtimeSubscription(params: {
     return result.body;
   }
 
-  handleError(result, "Failed to create remote-agent realtime subscription");
+  handleError(result, "Failed to create local-agent realtime subscription");
 }
 
-export async function createRemoteAgentRun(params: {
+export async function createLocalAgentRun(params: {
   prompt: string;
   hostName?: string;
-}): Promise<RemoteAgentRunCreateResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentRunContract, config);
+}): Promise<LocalAgentRunCreateResponse> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentRunContract, config);
 
   const result = await client.create({ body: params });
 
@@ -128,16 +128,16 @@ export async function createRemoteAgentRun(params: {
     return result.body;
   }
 
-  handleError(result, "Failed to create remote-agent run");
+  handleError(result, "Failed to create local-agent run");
 }
 
-export async function startRemoteAgentHost(params: {
+export async function startLocalAgentHost(params: {
   hostName: string;
-  supportedBackends: RemoteAgentBackend[];
+  supportedBackends: LocalAgentBackend[];
   hostId?: string;
-}): Promise<RemoteAgentHostStartResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentHostsContract, config);
+}): Promise<LocalAgentHostStartResponse> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentHostsContract, config);
 
   const result = await client.start({ body: params });
 
@@ -145,12 +145,12 @@ export async function startRemoteAgentHost(params: {
     return result.body;
   }
 
-  handleError(result, "Failed to start remote-agent host");
+  handleError(result, "Failed to start local-agent host");
 }
 
-export async function listRemoteAgentHosts(): Promise<RemoteAgentHostListResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentHostsContract, config);
+export async function listLocalAgentHosts(): Promise<LocalAgentHostListResponse> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentHostsContract, config);
 
   const result = await client.list({ headers: {} });
 
@@ -158,12 +158,12 @@ export async function listRemoteAgentHosts(): Promise<RemoteAgentHostListRespons
     return result.body;
   }
 
-  handleError(result, "Failed to list remote-agent hosts");
+  handleError(result, "Failed to list local-agent hosts");
 }
 
-export async function deleteRemoteAgentHost(hostId: string): Promise<void> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentHostsContract, config);
+export async function deleteLocalAgentHost(hostId: string): Promise<void> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentHostsContract, config);
 
   const result = await client.delete({
     params: { hostId },
@@ -173,14 +173,14 @@ export async function deleteRemoteAgentHost(hostId: string): Promise<void> {
     return;
   }
 
-  handleError(result, "Failed to delete remote-agent host");
+  handleError(result, "Failed to delete local-agent host");
 }
 
-export async function getRemoteAgentRun(
+export async function getLocalAgentRun(
   jobId: string,
-): Promise<RemoteAgentRunResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentRunContract, config);
+): Promise<LocalAgentRunResponse> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentRunContract, config);
 
   const result = await client.get({ params: { jobId } });
 
@@ -188,17 +188,17 @@ export async function getRemoteAgentRun(
     return result.body;
   }
 
-  handleError(result, "Failed to get remote-agent run");
+  handleError(result, "Failed to get local-agent run");
 }
 
-export async function listRemoteAgentRuns(params: {
-  status?: RemoteAgentJobStatus;
+export async function listLocalAgentRuns(params: {
+  status?: LocalAgentJobStatus;
   hostId?: string;
   hostName?: string;
   limit?: number;
-}): Promise<RemoteAgentRunListResponse> {
-  const config = await getRemoteAgentClientConfig();
-  const client = initClient(zeroRemoteAgentRunContract, config);
+}): Promise<LocalAgentRunListResponse> {
+  const config = await getLocalAgentClientConfig();
+  const client = initClient(zeroLocalAgentRunContract, config);
 
   const result = await client.list({
     headers: {},
@@ -212,15 +212,15 @@ export async function listRemoteAgentRuns(params: {
     return result.body;
   }
 
-  handleError(result, "Failed to list remote-agent runs");
+  handleError(result, "Failed to list local-agent runs");
 }
 
-export async function claimNextRemoteAgentHostJob(params: {
+export async function claimNextLocalAgentHostJob(params: {
   hostToken: string;
-  supportedBackends: RemoteAgentBackend[];
-}): Promise<RemoteAgentHostJobNextResponse> {
-  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
-  const client = initClient(zeroRemoteAgentHostJobsContract, {
+  supportedBackends: LocalAgentBackend[];
+}): Promise<LocalAgentHostJobNextResponse> {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroLocalAgentHostJobsContract, {
     baseUrl,
     baseHeaders: buildBearerHeaders(params.hostToken),
     jsonQuery: false as const,
@@ -234,10 +234,10 @@ export async function claimNextRemoteAgentHostJob(params: {
     return result.body;
   }
 
-  handleError(result, "Failed to claim remote-agent job");
+  handleError(result, "Failed to claim local-agent job");
 }
 
-export async function completeRemoteAgentHostJob(params: {
+export async function completeLocalAgentHostJob(params: {
   hostToken: string;
   jobId: string;
   status: "succeeded" | "failed";
@@ -245,8 +245,8 @@ export async function completeRemoteAgentHostJob(params: {
   error?: string;
   exitCode?: number;
 }): Promise<void> {
-  const baseUrl = resolveRemoteAgentApiBaseUrl(await getBaseUrl());
-  const client = initClient(zeroRemoteAgentHostJobsContract, {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroLocalAgentHostJobsContract, {
     baseUrl,
     baseHeaders: buildBearerHeaders(params.hostToken),
     jsonQuery: false as const,
@@ -266,5 +266,5 @@ export async function completeRemoteAgentHostJob(params: {
     return;
   }
 
-  handleError(result, "Failed to complete remote-agent job");
+  handleError(result, "Failed to complete local-agent job");
 }

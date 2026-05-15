@@ -3,38 +3,38 @@ import { command } from "ccstate";
 import { and, asc, desc, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
-  RemoteAgentBackend,
-  RemoteAgentHostStatus,
-} from "@vm0/api-contracts/contracts/zero-remote-agent";
+  LocalAgentBackend,
+  LocalAgentHostStatus,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import { connectors } from "@vm0/db/schema/connector";
 import {
-  remoteAgentDeviceCodes,
-  remoteAgentHosts,
-  remoteAgentJobs,
-} from "@vm0/db/schema/remote-agent";
+  localAgentDeviceCodes,
+  localAgentHosts,
+  localAgentJobs,
+} from "@vm0/db/schema/local-agent";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import {
-  createRemoteAgentDeviceRealtimeSubscription,
-  createRemoteAgentHostRealtimeSubscription,
-  publishRemoteAgentDeviceApproved,
-  publishRemoteAgentHostsChanged,
-  publishRemoteAgentHostJobAvailable,
+  createLocalAgentDeviceRealtimeSubscription,
+  createLocalAgentHostRealtimeSubscription,
+  publishLocalAgentDeviceApproved,
+  publishLocalAgentHostsChanged,
+  publishLocalAgentHostJobAvailable,
   publishUserSignal,
 } from "../external/realtime";
 import { safeAsync } from "../utils";
 import { logger } from "../../lib/log";
 
-const REMOTE_AGENT_DEVICE_CODE_TTL_SECONDS = 15 * 60;
-const REMOTE_AGENT_POLL_INTERVAL_SECONDS = 5;
-const REMOTE_AGENT_HOST_CLOSED_AFTER_MS = 90 * 1000;
-const REMOTE_AGENT_VERIFICATION_PATH = "/zero/connectors/remote-agent";
-const L = logger("ZeroRemoteAgent");
+const LOCAL_AGENT_DEVICE_CODE_TTL_SECONDS = 15 * 60;
+const LOCAL_AGENT_POLL_INTERVAL_SECONDS = 5;
+const LOCAL_AGENT_HOST_CLOSED_AFTER_MS = 90 * 1000;
+const LOCAL_AGENT_VERIFICATION_PATH = "/zero/connectors/local-agent";
+const L = logger("ZeroLocalAgent");
 
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-interface CreateRemoteAgentDeviceCodeResult {
+interface CreateLocalAgentDeviceCodeResult {
   readonly deviceCode: string;
   readonly userCode: string;
   readonly verificationPath: string;
@@ -42,17 +42,17 @@ interface CreateRemoteAgentDeviceCodeResult {
   readonly interval: number;
   readonly pollToken: string;
   readonly realtime?: Awaited<
-    ReturnType<typeof createRemoteAgentDeviceRealtimeSubscription>
+    ReturnType<typeof createLocalAgentDeviceRealtimeSubscription>
   >;
 }
 
-type ClaimRemoteAgentDeviceCodeResult =
+type ClaimLocalAgentDeviceCodeResult =
   | { readonly status: "approved" }
   | { readonly status: "not_found" }
   | { readonly status: "expired" }
   | { readonly status: "already_claimed" };
 
-type PollRemoteAgentDeviceCodeResult =
+type PollLocalAgentDeviceCodeResult =
   | { readonly status: "pending" }
   | {
       readonly status: "linked";
@@ -62,7 +62,7 @@ type PollRemoteAgentDeviceCodeResult =
   | { readonly status: "expired" }
   | { readonly status: "invalid" };
 
-type RemoteAgentJobStatus = "queued" | "running" | "succeeded" | "failed";
+type LocalAgentJobStatus = "queued" | "running" | "succeeded" | "failed";
 
 function generateCode(length = 8): string {
   let code = "";
@@ -88,8 +88,8 @@ function generateOpaqueToken(prefix: string): string {
 }
 
 function normalizeBackends(
-  backends: readonly RemoteAgentBackend[],
-): RemoteAgentBackend[] {
+  backends: readonly LocalAgentBackend[],
+): LocalAgentBackend[] {
   return [...new Set(backends)];
 }
 
@@ -101,13 +101,13 @@ function hasExpired(expiresAt: Date, now: Date): boolean {
   return expiresAt.getTime() <= now.getTime();
 }
 
-function serializeJob(row: typeof remoteAgentJobs.$inferSelect) {
+function serializeJob(row: typeof localAgentJobs.$inferSelect) {
   return {
     id: row.id,
     hostId: row.hostId,
-    backend: row.backend as RemoteAgentBackend | null,
+    backend: row.backend as LocalAgentBackend | null,
     prompt: row.prompt,
-    status: row.status as RemoteAgentJobStatus,
+    status: row.status as LocalAgentJobStatus,
     output: row.output,
     error: row.error,
     exitCode: row.exitCode,
@@ -118,16 +118,16 @@ function serializeJob(row: typeof remoteAgentJobs.$inferSelect) {
 }
 
 function serializeJobListItem(row: {
-  readonly job: typeof remoteAgentJobs.$inferSelect;
+  readonly job: typeof localAgentJobs.$inferSelect;
   readonly hostName: string | null;
 }) {
   return {
     id: row.job.id,
     hostId: row.job.hostId,
     hostName: row.hostName,
-    backend: row.job.backend as RemoteAgentBackend | null,
+    backend: row.job.backend as LocalAgentBackend | null,
     prompt: row.job.prompt,
-    status: row.job.status as RemoteAgentJobStatus,
+    status: row.job.status as LocalAgentJobStatus,
     exitCode: row.job.exitCode,
     createdAt: row.job.createdAt.toISOString(),
     startedAt: row.job.startedAt?.toISOString() ?? null,
@@ -135,37 +135,36 @@ function serializeJobListItem(row: {
   };
 }
 
-function remoteAgentHostStatus(
-  host: typeof remoteAgentHosts.$inferSelect,
+function localAgentHostStatus(
+  host: typeof localAgentHosts.$inferSelect,
   now: Date,
-): RemoteAgentHostStatus {
+): LocalAgentHostStatus {
   if (
     host.status !== "online" ||
-    now.getTime() - host.lastSeenAt.getTime() >
-      REMOTE_AGENT_HOST_CLOSED_AFTER_MS
+    now.getTime() - host.lastSeenAt.getTime() > LOCAL_AGENT_HOST_CLOSED_AFTER_MS
   ) {
     return "closed";
   }
   return "online";
 }
 
-function serializeHost(row: typeof remoteAgentHosts.$inferSelect, now: Date) {
+function serializeHost(row: typeof localAgentHosts.$inferSelect, now: Date) {
   return {
     id: row.id,
     displayName: row.displayName,
-    supportedBackends: row.supportedBackends as RemoteAgentBackend[],
-    status: remoteAgentHostStatus(row, now),
+    supportedBackends: row.supportedBackends as LocalAgentBackend[],
+    status: localAgentHostStatus(row, now),
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-function serializeRemoteAgentConnector(
+function serializeLocalAgentConnector(
   row: typeof connectors.$inferSelect,
 ): ConnectorResponse {
   return {
     id: row.id,
-    type: "remote-agent",
+    type: "local-agent",
     authMethod: row.authMethod,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
@@ -177,17 +176,17 @@ function serializeRemoteAgentConnector(
   };
 }
 
-async function publishRemoteAgentJobAvailableSafe(
+async function publishLocalAgentJobAvailableSafe(
   hostId: string,
   jobId: string,
   signal: AbortSignal,
 ): Promise<void> {
   const publishResult = await safeAsync(() => {
-    return publishRemoteAgentHostJobAvailable(hostId, jobId);
+    return publishLocalAgentHostJobAvailable(hostId, jobId);
   });
   signal.throwIfAborted();
   if ("error" in publishResult) {
-    L.warn("Failed to publish remote-agent job notification", {
+    L.warn("Failed to publish local-agent job notification", {
       hostId,
       jobId,
       error: publishResult.error,
@@ -195,16 +194,16 @@ async function publishRemoteAgentJobAvailableSafe(
   }
 }
 
-async function publishRemoteAgentHostsChangedSafe(
+async function publishLocalAgentHostsChangedSafe(
   userId: string,
   signal: AbortSignal,
 ): Promise<void> {
   const publishResult = await safeAsync(() => {
-    return publishRemoteAgentHostsChanged(userId);
+    return publishLocalAgentHostsChanged(userId);
   });
   signal.throwIfAborted();
   if ("error" in publishResult) {
-    L.warn("Failed to publish remote-agent host change", {
+    L.warn("Failed to publish local-agent host change", {
       userId,
       error: publishResult.error,
     });
@@ -229,34 +228,34 @@ async function publishConnectorChangedSafe(
 
 function chooseJobBackend(
   requestedBackend: string | null,
-  supportedBackends: readonly RemoteAgentBackend[],
-): RemoteAgentBackend | null {
+  supportedBackends: readonly LocalAgentBackend[],
+): LocalAgentBackend | null {
   if (requestedBackend) {
-    const backend = requestedBackend as RemoteAgentBackend;
+    const backend = requestedBackend as LocalAgentBackend;
     return supportedBackends.includes(backend) ? backend : null;
   }
   return supportedBackends[0] ?? null;
 }
 
-export const createRemoteAgentDeviceCode$ = command(
+export const createLocalAgentDeviceCode$ = command(
   async (
     { set },
     params: {
       readonly hostName: string;
-      readonly supportedBackends: readonly RemoteAgentBackend[];
+      readonly supportedBackends: readonly LocalAgentBackend[];
     },
     signal: AbortSignal,
-  ): Promise<CreateRemoteAgentDeviceCodeResult> => {
+  ): Promise<CreateLocalAgentDeviceCodeResult> => {
     const writeDb = set(writeDb$);
     const userCode = generateCode();
     const pollToken = generateOpaqueToken("vm0_remote_poll");
     const now = nowDate();
     const expiresAt = new Date(
-      now.getTime() + REMOTE_AGENT_DEVICE_CODE_TTL_SECONDS * 1000,
+      now.getTime() + LOCAL_AGENT_DEVICE_CODE_TTL_SECONDS * 1000,
     );
 
     const [row] = await writeDb
-      .insert(remoteAgentDeviceCodes)
+      .insert(localAgentDeviceCodes)
       .values({
         codeHash: hashSecret(normalizeDeviceCode(userCode)),
         pollTokenHash: hashSecret(pollToken),
@@ -267,25 +266,25 @@ export const createRemoteAgentDeviceCode$ = command(
         createdAt: now,
         updatedAt: now,
       })
-      .returning({ id: remoteAgentDeviceCodes.id });
+      .returning({ id: localAgentDeviceCodes.id });
     signal.throwIfAborted();
 
     if (!row) {
-      throw new Error("Failed to create remote-agent device code");
+      throw new Error("Failed to create local-agent device code");
     }
 
     let realtime:
-      | Awaited<ReturnType<typeof createRemoteAgentDeviceRealtimeSubscription>>
+      | Awaited<ReturnType<typeof createLocalAgentDeviceRealtimeSubscription>>
       | undefined;
     const realtimeResult = await safeAsync(() => {
-      return createRemoteAgentDeviceRealtimeSubscription(row.id);
+      return createLocalAgentDeviceRealtimeSubscription(row.id);
     });
     signal.throwIfAborted();
     if ("ok" in realtimeResult) {
       realtime = realtimeResult.ok;
     } else {
       L.warn(
-        "Failed to create remote-agent device realtime token",
+        "Failed to create local-agent device realtime token",
         realtimeResult.error,
       );
     }
@@ -293,16 +292,16 @@ export const createRemoteAgentDeviceCode$ = command(
     return {
       deviceCode: userCode,
       userCode,
-      verificationPath: REMOTE_AGENT_VERIFICATION_PATH,
-      expiresIn: REMOTE_AGENT_DEVICE_CODE_TTL_SECONDS,
-      interval: REMOTE_AGENT_POLL_INTERVAL_SECONDS,
+      verificationPath: LOCAL_AGENT_VERIFICATION_PATH,
+      expiresIn: LOCAL_AGENT_DEVICE_CODE_TTL_SECONDS,
+      interval: LOCAL_AGENT_POLL_INTERVAL_SECONDS,
       pollToken,
       realtime,
     };
   },
 );
 
-export const claimRemoteAgentDeviceCode$ = command(
+export const claimLocalAgentDeviceCode$ = command(
   async (
     { set },
     params: {
@@ -311,7 +310,7 @@ export const claimRemoteAgentDeviceCode$ = command(
       readonly deviceCode: string;
     },
     signal: AbortSignal,
-  ): Promise<ClaimRemoteAgentDeviceCodeResult> => {
+  ): Promise<ClaimLocalAgentDeviceCodeResult> => {
     const writeDb = set(writeDb$);
     const now = nowDate();
     const codeHash = hashSecret(normalizeDeviceCode(params.deviceCode));
@@ -319,8 +318,8 @@ export const claimRemoteAgentDeviceCode$ = command(
     const result = await writeDb.transaction(async (tx) => {
       const [row] = await tx
         .select()
-        .from(remoteAgentDeviceCodes)
-        .where(eq(remoteAgentDeviceCodes.codeHash, codeHash))
+        .from(localAgentDeviceCodes)
+        .where(eq(localAgentDeviceCodes.codeHash, codeHash))
         .for("update")
         .limit(1);
       signal.throwIfAborted();
@@ -338,9 +337,9 @@ export const claimRemoteAgentDeviceCode$ = command(
 
       if (hasExpired(row.expiresAt, now)) {
         await tx
-          .update(remoteAgentDeviceCodes)
+          .update(localAgentDeviceCodes)
           .set({ status: "expired", updatedAt: now })
-          .where(eq(remoteAgentDeviceCodes.id, row.id));
+          .where(eq(localAgentDeviceCodes.id, row.id));
         signal.throwIfAborted();
         return { status: "expired" as const };
       }
@@ -361,7 +360,7 @@ export const claimRemoteAgentDeviceCode$ = command(
       }
 
       await tx
-        .update(remoteAgentDeviceCodes)
+        .update(localAgentDeviceCodes)
         .set({
           orgId: params.orgId,
           userId: params.userId,
@@ -369,7 +368,7 @@ export const claimRemoteAgentDeviceCode$ = command(
           claimedAt: now,
           updatedAt: now,
         })
-        .where(eq(remoteAgentDeviceCodes.id, row.id));
+        .where(eq(localAgentDeviceCodes.id, row.id));
       signal.throwIfAborted();
 
       return {
@@ -380,7 +379,7 @@ export const claimRemoteAgentDeviceCode$ = command(
     signal.throwIfAborted();
 
     if (result.status === "approved") {
-      await publishRemoteAgentDeviceApproved(result.deviceCodeId);
+      await publishLocalAgentDeviceApproved(result.deviceCodeId);
       signal.throwIfAborted();
       return { status: "approved" as const };
     }
@@ -389,7 +388,7 @@ export const claimRemoteAgentDeviceCode$ = command(
   },
 );
 
-export const pollRemoteAgentDeviceCode$ = command(
+export const pollLocalAgentDeviceCode$ = command(
   async (
     { set },
     params: {
@@ -397,7 +396,7 @@ export const pollRemoteAgentDeviceCode$ = command(
       readonly pollToken: string;
     },
     signal: AbortSignal,
-  ): Promise<PollRemoteAgentDeviceCodeResult> => {
+  ): Promise<PollLocalAgentDeviceCodeResult> => {
     const writeDb = set(writeDb$);
     const now = nowDate();
     const codeHash = hashSecret(normalizeDeviceCode(params.deviceCode));
@@ -406,14 +405,14 @@ export const pollRemoteAgentDeviceCode$ = command(
     const result = await writeDb.transaction(
       async (
         tx,
-      ): Promise<PollRemoteAgentDeviceCodeResult & { userId?: string }> => {
+      ): Promise<PollLocalAgentDeviceCodeResult & { userId?: string }> => {
         const [row] = await tx
           .select()
-          .from(remoteAgentDeviceCodes)
+          .from(localAgentDeviceCodes)
           .where(
             and(
-              eq(remoteAgentDeviceCodes.codeHash, codeHash),
-              eq(remoteAgentDeviceCodes.pollTokenHash, pollTokenHash),
+              eq(localAgentDeviceCodes.codeHash, codeHash),
+              eq(localAgentDeviceCodes.pollTokenHash, pollTokenHash),
             ),
           )
           .for("update")
@@ -426,9 +425,9 @@ export const pollRemoteAgentDeviceCode$ = command(
 
         if (hasExpired(row.expiresAt, now) && row.status !== "consumed") {
           await tx
-            .update(remoteAgentDeviceCodes)
+            .update(localAgentDeviceCodes)
             .set({ status: "expired", updatedAt: now })
-            .where(eq(remoteAgentDeviceCodes.id, row.id));
+            .where(eq(localAgentDeviceCodes.id, row.id));
           signal.throwIfAborted();
           return { status: "expired" as const };
         }
@@ -455,7 +454,7 @@ export const pollRemoteAgentDeviceCode$ = command(
 
         const hostToken = generateOpaqueToken("vm0_remote_host");
         const [host] = await tx
-          .insert(remoteAgentHosts)
+          .insert(localAgentHosts)
           .values({
             orgId: row.orgId,
             userId: row.userId,
@@ -467,22 +466,22 @@ export const pollRemoteAgentDeviceCode$ = command(
             createdAt: now,
             updatedAt: now,
           })
-          .returning({ id: remoteAgentHosts.id });
+          .returning({ id: localAgentHosts.id });
         signal.throwIfAborted();
 
         if (!host) {
-          throw new Error("Failed to link remote-agent host");
+          throw new Error("Failed to link local-agent host");
         }
 
         await tx
-          .update(remoteAgentDeviceCodes)
+          .update(localAgentDeviceCodes)
           .set({
             status: "consumed",
             hostId: host.id,
             consumedAt: now,
             updatedAt: now,
           })
-          .where(eq(remoteAgentDeviceCodes.id, row.id));
+          .where(eq(localAgentDeviceCodes.id, row.id));
         signal.throwIfAborted();
 
         return {
@@ -496,7 +495,7 @@ export const pollRemoteAgentDeviceCode$ = command(
     signal.throwIfAborted();
 
     if (result.status === "linked" && result.userId) {
-      await publishRemoteAgentHostsChangedSafe(result.userId, signal);
+      await publishLocalAgentHostsChangedSafe(result.userId, signal);
       const { userId: _userId, ...publicResult } = result;
       return publicResult;
     }
@@ -505,13 +504,13 @@ export const pollRemoteAgentDeviceCode$ = command(
   },
 );
 
-export const heartbeatRemoteAgentHost$ = command(
+export const heartbeatLocalAgentHost$ = command(
   async (
     { set },
     params: {
       readonly hostToken: string;
       readonly hostName: string;
-      readonly supportedBackends: readonly RemoteAgentBackend[];
+      readonly supportedBackends: readonly LocalAgentBackend[];
     },
     signal: AbortSignal,
   ): Promise<{ readonly hostId: string } | null> => {
@@ -519,11 +518,11 @@ export const heartbeatRemoteAgentHost$ = command(
     const now = nowDate();
     const [existing] = await writeDb
       .select()
-      .from(remoteAgentHosts)
+      .from(localAgentHosts)
       .where(
         and(
-          eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
-          isNull(remoteAgentHosts.revokedAt),
+          eq(localAgentHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(localAgentHosts.revokedAt),
         ),
       )
       .limit(1);
@@ -533,9 +532,9 @@ export const heartbeatRemoteAgentHost$ = command(
       return null;
     }
 
-    const wasOnline = remoteAgentHostStatus(existing, now) === "online";
+    const wasOnline = localAgentHostStatus(existing, now) === "online";
     const [row] = await writeDb
-      .update(remoteAgentHosts)
+      .update(localAgentHosts)
       .set({
         displayName: normalizeHostName(params.hostName),
         supportedBackends: normalizeBackends(params.supportedBackends),
@@ -543,8 +542,8 @@ export const heartbeatRemoteAgentHost$ = command(
         lastSeenAt: now,
         updatedAt: now,
       })
-      .where(eq(remoteAgentHosts.id, existing.id))
-      .returning({ id: remoteAgentHosts.id, userId: remoteAgentHosts.userId });
+      .where(eq(localAgentHosts.id, existing.id))
+      .returning({ id: localAgentHosts.id, userId: localAgentHosts.userId });
     signal.throwIfAborted();
 
     if (!row) {
@@ -552,14 +551,14 @@ export const heartbeatRemoteAgentHost$ = command(
     }
 
     if (!wasOnline) {
-      await publishRemoteAgentHostsChangedSafe(row.userId, signal);
+      await publishLocalAgentHostsChangedSafe(row.userId, signal);
     }
 
     return { hostId: row.id };
   },
 );
 
-export const createRemoteAgentHostRealtimeToken$ = command(
+export const createLocalAgentHostRealtimeToken$ = command(
   async (
     { set },
     params: {
@@ -569,12 +568,12 @@ export const createRemoteAgentHostRealtimeToken$ = command(
   ) => {
     const writeDb = set(writeDb$);
     const [host] = await writeDb
-      .select({ id: remoteAgentHosts.id })
-      .from(remoteAgentHosts)
+      .select({ id: localAgentHosts.id })
+      .from(localAgentHosts)
       .where(
         and(
-          eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
-          isNull(remoteAgentHosts.revokedAt),
+          eq(localAgentHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(localAgentHosts.revokedAt),
         ),
       )
       .limit(1);
@@ -584,11 +583,11 @@ export const createRemoteAgentHostRealtimeToken$ = command(
       return null;
     }
 
-    return await createRemoteAgentHostRealtimeSubscription(host.id);
+    return await createLocalAgentHostRealtimeSubscription(host.id);
   },
 );
 
-export const listRemoteAgentHosts$ = command(
+export const listLocalAgentHosts$ = command(
   async (
     { set },
     params: {
@@ -601,15 +600,15 @@ export const listRemoteAgentHosts$ = command(
     const now = nowDate();
     const rows = await writeDb
       .select()
-      .from(remoteAgentHosts)
+      .from(localAgentHosts)
       .where(
         and(
-          eq(remoteAgentHosts.orgId, params.orgId),
-          eq(remoteAgentHosts.userId, params.userId),
-          isNull(remoteAgentHosts.revokedAt),
+          eq(localAgentHosts.orgId, params.orgId),
+          eq(localAgentHosts.userId, params.userId),
+          isNull(localAgentHosts.revokedAt),
         ),
       )
-      .orderBy(desc(remoteAgentHosts.lastSeenAt));
+      .orderBy(desc(localAgentHosts.lastSeenAt));
     signal.throwIfAborted();
 
     return {
@@ -620,7 +619,7 @@ export const listRemoteAgentHosts$ = command(
   },
 );
 
-export const connectRemoteAgentConnector$ = command(
+export const connectLocalAgentConnector$ = command(
   async (
     { set },
     params: {
@@ -636,18 +635,18 @@ export const connectRemoteAgentConnector$ = command(
     const now = nowDate();
     const hostRows = await writeDb
       .select()
-      .from(remoteAgentHosts)
+      .from(localAgentHosts)
       .where(
         and(
-          eq(remoteAgentHosts.orgId, params.orgId),
-          eq(remoteAgentHosts.userId, params.userId),
-          isNull(remoteAgentHosts.revokedAt),
+          eq(localAgentHosts.orgId, params.orgId),
+          eq(localAgentHosts.userId, params.userId),
+          isNull(localAgentHosts.revokedAt),
         ),
       );
     signal.throwIfAborted();
 
     const hasOnlineHost = hostRows.some((host) => {
-      return remoteAgentHostStatus(host, now) === "online";
+      return localAgentHostStatus(host, now) === "online";
     });
     if (!hasOnlineHost) {
       return { status: "no_online_host" as const };
@@ -656,7 +655,7 @@ export const connectRemoteAgentConnector$ = command(
     const [row] = await writeDb
       .insert(connectors)
       .values({
-        type: "remote-agent",
+        type: "local-agent",
         authMethod: "api",
         externalId: null,
         externalUsername: null,
@@ -686,26 +685,26 @@ export const connectRemoteAgentConnector$ = command(
     signal.throwIfAborted();
 
     if (!row) {
-      throw new Error("Failed to connect remote-agent connector");
+      throw new Error("Failed to connect local-agent connector");
     }
 
     await publishConnectorChangedSafe(params.userId, signal);
 
     return {
       status: "connected" as const,
-      connector: serializeRemoteAgentConnector(row),
+      connector: serializeLocalAgentConnector(row),
     };
   },
 );
 
-export const startRemoteAgentHost$ = command(
+export const startLocalAgentHost$ = command(
   async (
     { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
       readonly hostName: string;
-      readonly supportedBackends: readonly RemoteAgentBackend[];
+      readonly supportedBackends: readonly LocalAgentBackend[];
       readonly hostId?: string;
     },
     signal: AbortSignal,
@@ -724,24 +723,24 @@ export const startRemoteAgentHost$ = command(
 
     if (params.hostId) {
       const [host] = await writeDb
-        .update(remoteAgentHosts)
+        .update(localAgentHosts)
         .set(values)
         .where(
           and(
-            eq(remoteAgentHosts.id, params.hostId),
-            eq(remoteAgentHosts.orgId, params.orgId),
-            eq(remoteAgentHosts.userId, params.userId),
-            isNull(remoteAgentHosts.revokedAt),
+            eq(localAgentHosts.id, params.hostId),
+            eq(localAgentHosts.orgId, params.orgId),
+            eq(localAgentHosts.userId, params.userId),
+            isNull(localAgentHosts.revokedAt),
           ),
         )
-        .returning({ id: remoteAgentHosts.id });
+        .returning({ id: localAgentHosts.id });
       signal.throwIfAborted();
 
       if (!host) {
         return { status: "not_found" as const };
       }
 
-      await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+      await publishLocalAgentHostsChangedSafe(params.userId, signal);
 
       return {
         status: "started" as const,
@@ -751,21 +750,21 @@ export const startRemoteAgentHost$ = command(
     }
 
     const [host] = await writeDb
-      .insert(remoteAgentHosts)
+      .insert(localAgentHosts)
       .values({
         orgId: params.orgId,
         userId: params.userId,
         ...values,
         createdAt: now,
       })
-      .returning({ id: remoteAgentHosts.id });
+      .returning({ id: localAgentHosts.id });
     signal.throwIfAborted();
 
     if (!host) {
-      throw new Error("Failed to start remote-agent host");
+      throw new Error("Failed to start local-agent host");
     }
 
-    await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+    await publishLocalAgentHostsChangedSafe(params.userId, signal);
 
     return {
       status: "started" as const,
@@ -775,7 +774,7 @@ export const startRemoteAgentHost$ = command(
   },
 );
 
-export const deleteRemoteAgentHost$ = command(
+export const deleteLocalAgentHost$ = command(
   async (
     { set },
     params: {
@@ -790,7 +789,7 @@ export const deleteRemoteAgentHost$ = command(
 
     const result = await writeDb.transaction(async (tx) => {
       const [host] = await tx
-        .update(remoteAgentHosts)
+        .update(localAgentHosts)
         .set({
           status: "offline",
           revokedAt: now,
@@ -798,13 +797,13 @@ export const deleteRemoteAgentHost$ = command(
         })
         .where(
           and(
-            eq(remoteAgentHosts.id, params.hostId),
-            eq(remoteAgentHosts.orgId, params.orgId),
-            eq(remoteAgentHosts.userId, params.userId),
-            isNull(remoteAgentHosts.revokedAt),
+            eq(localAgentHosts.id, params.hostId),
+            eq(localAgentHosts.orgId, params.orgId),
+            eq(localAgentHosts.userId, params.userId),
+            isNull(localAgentHosts.revokedAt),
           ),
         )
-        .returning({ id: remoteAgentHosts.id });
+        .returning({ id: localAgentHosts.id });
       signal.throwIfAborted();
 
       if (!host) {
@@ -812,18 +811,18 @@ export const deleteRemoteAgentHost$ = command(
       }
 
       await tx
-        .update(remoteAgentJobs)
+        .update(localAgentJobs)
         .set({
           status: "failed",
-          error: "Remote-agent host was deleted",
+          error: "Local-agent host was deleted",
           exitCode: 1,
           completedAt: now,
           updatedAt: now,
         })
         .where(
           and(
-            eq(remoteAgentJobs.hostId, host.id),
-            inArray(remoteAgentJobs.status, ["queued", "running"]),
+            eq(localAgentJobs.hostId, host.id),
+            inArray(localAgentJobs.status, ["queued", "running"]),
           ),
         );
       signal.throwIfAborted();
@@ -833,14 +832,14 @@ export const deleteRemoteAgentHost$ = command(
     signal.throwIfAborted();
 
     if (result.status === "deleted") {
-      await publishRemoteAgentHostsChangedSafe(params.userId, signal);
+      await publishLocalAgentHostsChangedSafe(params.userId, signal);
     }
 
     return result;
   },
 );
 
-export const createRemoteAgentJob$ = command(
+export const createLocalAgentJob$ = command(
   async (
     { set },
     params: {
@@ -854,15 +853,15 @@ export const createRemoteAgentJob$ = command(
     const writeDb = set(writeDb$);
     const hosts = await writeDb
       .select()
-      .from(remoteAgentHosts)
+      .from(localAgentHosts)
       .where(
         and(
-          eq(remoteAgentHosts.orgId, params.orgId),
-          eq(remoteAgentHosts.userId, params.userId),
-          isNull(remoteAgentHosts.revokedAt),
+          eq(localAgentHosts.orgId, params.orgId),
+          eq(localAgentHosts.userId, params.userId),
+          isNull(localAgentHosts.revokedAt),
         ),
       )
-      .orderBy(desc(remoteAgentHosts.lastSeenAt));
+      .orderBy(desc(localAgentHosts.lastSeenAt));
     signal.throwIfAborted();
 
     if (hosts.length === 0) {
@@ -880,13 +879,13 @@ export const createRemoteAgentJob$ = command(
       if (!host) {
         return { status: "host_not_found" as const };
       }
-      if (remoteAgentHostStatus(host, nowDate()) !== "online") {
+      if (localAgentHostStatus(host, nowDate()) !== "online") {
         return { status: "host_closed" as const };
       }
 
       const now = nowDate();
       const [job] = await writeDb
-        .insert(remoteAgentJobs)
+        .insert(localAgentJobs)
         .values({
           orgId: params.orgId,
           userId: params.userId,
@@ -897,16 +896,16 @@ export const createRemoteAgentJob$ = command(
           updatedAt: now,
         })
         .returning({
-          id: remoteAgentJobs.id,
-          status: remoteAgentJobs.status,
+          id: localAgentJobs.id,
+          status: localAgentJobs.status,
         });
       signal.throwIfAborted();
 
       if (!job) {
-        throw new Error("Failed to create remote-agent job");
+        throw new Error("Failed to create local-agent job");
       }
 
-      await publishRemoteAgentJobAvailableSafe(host.id, job.id, signal);
+      await publishLocalAgentJobAvailableSafe(host.id, job.id, signal);
 
       return {
         status: "created" as const,
@@ -917,14 +916,14 @@ export const createRemoteAgentJob$ = command(
 
     const now = nowDate();
     const onlineHosts = hosts.filter((host) => {
-      return remoteAgentHostStatus(host, now) === "online";
+      return localAgentHostStatus(host, now) === "online";
     });
     if (onlineHosts.length === 0) {
       return { status: "host_closed" as const };
     }
 
     const [job] = await writeDb
-      .insert(remoteAgentJobs)
+      .insert(localAgentJobs)
       .values({
         orgId: params.orgId,
         userId: params.userId,
@@ -934,17 +933,17 @@ export const createRemoteAgentJob$ = command(
         updatedAt: now,
       })
       .returning({
-        id: remoteAgentJobs.id,
-        status: remoteAgentJobs.status,
+        id: localAgentJobs.id,
+        status: localAgentJobs.status,
       });
     signal.throwIfAborted();
 
     if (!job) {
-      throw new Error("Failed to create remote-agent job");
+      throw new Error("Failed to create local-agent job");
     }
 
     for (const host of onlineHosts) {
-      await publishRemoteAgentJobAvailableSafe(host.id, job.id, signal);
+      await publishLocalAgentJobAvailableSafe(host.id, job.id, signal);
     }
 
     return {
@@ -955,7 +954,7 @@ export const createRemoteAgentJob$ = command(
   },
 );
 
-export const getRemoteAgentJob$ = command(
+export const getLocalAgentJob$ = command(
   async (
     { set },
     params: {
@@ -968,12 +967,12 @@ export const getRemoteAgentJob$ = command(
     const writeDb = set(writeDb$);
     const [row] = await writeDb
       .select()
-      .from(remoteAgentJobs)
+      .from(localAgentJobs)
       .where(
         and(
-          eq(remoteAgentJobs.id, params.jobId),
-          eq(remoteAgentJobs.orgId, params.orgId),
-          eq(remoteAgentJobs.userId, params.userId),
+          eq(localAgentJobs.id, params.jobId),
+          eq(localAgentJobs.orgId, params.orgId),
+          eq(localAgentJobs.userId, params.userId),
         ),
       )
       .limit(1);
@@ -983,13 +982,13 @@ export const getRemoteAgentJob$ = command(
   },
 );
 
-export const listRemoteAgentJobs$ = command(
+export const listLocalAgentJobs$ = command(
   async (
     { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
-      readonly status?: RemoteAgentJobStatus;
+      readonly status?: LocalAgentJobStatus;
       readonly hostId?: string;
       readonly hostName?: string;
       readonly limit: number;
@@ -998,32 +997,29 @@ export const listRemoteAgentJobs$ = command(
   ) => {
     const writeDb = set(writeDb$);
     const conditions: SQL[] = [
-      eq(remoteAgentJobs.orgId, params.orgId),
-      eq(remoteAgentJobs.userId, params.userId),
+      eq(localAgentJobs.orgId, params.orgId),
+      eq(localAgentJobs.userId, params.userId),
     ];
 
     if (params.status) {
-      conditions.push(eq(remoteAgentJobs.status, params.status));
+      conditions.push(eq(localAgentJobs.status, params.status));
     }
     if (params.hostId) {
-      conditions.push(eq(remoteAgentJobs.hostId, params.hostId));
+      conditions.push(eq(localAgentJobs.hostId, params.hostId));
     }
     if (params.hostName) {
-      conditions.push(eq(remoteAgentHosts.displayName, params.hostName));
+      conditions.push(eq(localAgentHosts.displayName, params.hostName));
     }
 
     const rows = await writeDb
       .select({
-        job: remoteAgentJobs,
-        hostName: remoteAgentHosts.displayName,
+        job: localAgentJobs,
+        hostName: localAgentHosts.displayName,
       })
-      .from(remoteAgentJobs)
-      .leftJoin(
-        remoteAgentHosts,
-        eq(remoteAgentJobs.hostId, remoteAgentHosts.id),
-      )
+      .from(localAgentJobs)
+      .leftJoin(localAgentHosts, eq(localAgentJobs.hostId, localAgentHosts.id))
       .where(and(...conditions))
-      .orderBy(desc(remoteAgentJobs.createdAt))
+      .orderBy(desc(localAgentJobs.createdAt))
       .limit(params.limit);
     signal.throwIfAborted();
 
@@ -1035,12 +1031,12 @@ export const listRemoteAgentJobs$ = command(
   },
 );
 
-export const claimNextRemoteAgentHostJob$ = command(
+export const claimNextLocalAgentHostJob$ = command(
   async (
     { set },
     params: {
       readonly hostToken: string;
-      readonly supportedBackends: readonly RemoteAgentBackend[];
+      readonly supportedBackends: readonly LocalAgentBackend[];
     },
     signal: AbortSignal,
   ) => {
@@ -1050,11 +1046,11 @@ export const claimNextRemoteAgentHostJob$ = command(
     return await writeDb.transaction(async (tx) => {
       const [host] = await tx
         .select()
-        .from(remoteAgentHosts)
+        .from(localAgentHosts)
         .where(
           and(
-            eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
-            isNull(remoteAgentHosts.revokedAt),
+            eq(localAgentHosts.tokenHash, hashSecret(params.hostToken)),
+            isNull(localAgentHosts.revokedAt),
           ),
         )
         .limit(1);
@@ -1065,35 +1061,35 @@ export const claimNextRemoteAgentHostJob$ = command(
       }
 
       await tx
-        .update(remoteAgentHosts)
+        .update(localAgentHosts)
         .set({
           supportedBackends,
           status: "online",
           lastSeenAt: now,
           updatedAt: now,
         })
-        .where(eq(remoteAgentHosts.id, host.id));
+        .where(eq(localAgentHosts.id, host.id));
       signal.throwIfAborted();
 
       const rows = await tx
         .select()
-        .from(remoteAgentJobs)
+        .from(localAgentJobs)
         .where(
           and(
-            eq(remoteAgentJobs.orgId, host.orgId),
-            eq(remoteAgentJobs.userId, host.userId),
-            eq(remoteAgentJobs.status, "queued"),
+            eq(localAgentJobs.orgId, host.orgId),
+            eq(localAgentJobs.userId, host.userId),
+            eq(localAgentJobs.status, "queued"),
             or(
-              isNull(remoteAgentJobs.hostId),
-              eq(remoteAgentJobs.hostId, host.id),
+              isNull(localAgentJobs.hostId),
+              eq(localAgentJobs.hostId, host.id),
             ),
             or(
-              isNull(remoteAgentJobs.backend),
-              inArray(remoteAgentJobs.backend, supportedBackends),
+              isNull(localAgentJobs.backend),
+              inArray(localAgentJobs.backend, supportedBackends),
             ),
           ),
         )
-        .orderBy(asc(remoteAgentJobs.createdAt))
+        .orderBy(asc(localAgentJobs.createdAt))
         .for("update")
         .limit(1);
       signal.throwIfAborted();
@@ -1109,7 +1105,7 @@ export const claimNextRemoteAgentHostJob$ = command(
       }
 
       const [claimedJob] = await tx
-        .update(remoteAgentJobs)
+        .update(localAgentJobs)
         .set({
           hostId: host.id,
           backend,
@@ -1119,17 +1115,17 @@ export const claimNextRemoteAgentHostJob$ = command(
         })
         .where(
           and(
-            eq(remoteAgentJobs.id, job.id),
-            eq(remoteAgentJobs.status, "queued"),
+            eq(localAgentJobs.id, job.id),
+            eq(localAgentJobs.status, "queued"),
             or(
-              isNull(remoteAgentJobs.hostId),
-              eq(remoteAgentJobs.hostId, host.id),
+              isNull(localAgentJobs.hostId),
+              eq(localAgentJobs.hostId, host.id),
             ),
           ),
         )
         .returning({
-          id: remoteAgentJobs.id,
-          prompt: remoteAgentJobs.prompt,
+          id: localAgentJobs.id,
+          prompt: localAgentJobs.prompt,
         });
       signal.throwIfAborted();
 
@@ -1149,7 +1145,7 @@ export const claimNextRemoteAgentHostJob$ = command(
   },
 );
 
-export const completeRemoteAgentHostJob$ = command(
+export const completeLocalAgentHostJob$ = command(
   async (
     { set },
     params: {
@@ -1167,11 +1163,11 @@ export const completeRemoteAgentHostJob$ = command(
     return await writeDb.transaction(async (tx) => {
       const [host] = await tx
         .select()
-        .from(remoteAgentHosts)
+        .from(localAgentHosts)
         .where(
           and(
-            eq(remoteAgentHosts.tokenHash, hashSecret(params.hostToken)),
-            isNull(remoteAgentHosts.revokedAt),
+            eq(localAgentHosts.tokenHash, hashSecret(params.hostToken)),
+            isNull(localAgentHosts.revokedAt),
           ),
         )
         .limit(1);
@@ -1183,11 +1179,11 @@ export const completeRemoteAgentHostJob$ = command(
 
       const [job] = await tx
         .select()
-        .from(remoteAgentJobs)
+        .from(localAgentJobs)
         .where(
           and(
-            eq(remoteAgentJobs.id, params.jobId),
-            eq(remoteAgentJobs.hostId, host.id),
+            eq(localAgentJobs.id, params.jobId),
+            eq(localAgentJobs.hostId, host.id),
           ),
         )
         .for("update")
@@ -1202,7 +1198,7 @@ export const completeRemoteAgentHostJob$ = command(
       }
 
       await tx
-        .update(remoteAgentJobs)
+        .update(localAgentJobs)
         .set({
           status: params.status,
           output: params.output,
@@ -1211,7 +1207,7 @@ export const completeRemoteAgentHostJob$ = command(
           completedAt: now,
           updatedAt: now,
         })
-        .where(eq(remoteAgentJobs.id, job.id));
+        .where(eq(localAgentJobs.id, job.id));
       signal.throwIfAborted();
 
       return { status: "completed" as const };

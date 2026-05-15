@@ -12,7 +12,7 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
   zeroLocalBrowserConnectorContract,
-  zeroRemoteAgentConnectorContract,
+  zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   getConnectorAuthMethods,
@@ -52,7 +52,7 @@ import {
 } from "../services/zero-connector-data.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.service";
-import { connectRemoteAgentConnector$ } from "../services/zero-remote-agent.service";
+import { connectLocalAgentConnector$ } from "../services/zero-local-agent.service";
 import { createComputerConnector$ } from "../services/zero-computer-connector.service";
 import type { RouteEntry } from "../route";
 
@@ -453,18 +453,18 @@ const searchConnectorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
 
-const connectRemoteAgentConnectorInner$ = command(
+const connectLocalAgentConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const result = await set(
-      connectRemoteAgentConnector$,
+      connectLocalAgentConnector$,
       { orgId: auth.orgId, userId: auth.userId },
       signal,
     );
     signal.throwIfAborted();
 
     if (result.status === "no_online_host") {
-      return conflict("Start an online remote-agent host before connecting");
+      return conflict("Start an online local-agent host before connecting");
     }
 
     return { status: 200 as const, body: result.connector };
@@ -734,8 +734,8 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
     handler: authRoute(connectorWriteAuth, deleteComputerConnectorInner$),
   },
   {
-    route: zeroRemoteAgentConnectorContract.create,
-    handler: authRoute(connectorWriteAuth, connectRemoteAgentConnectorInner$),
+    route: zeroLocalAgentConnectorContract.create,
+    handler: authRoute(connectorWriteAuth, connectLocalAgentConnectorInner$),
   },
   {
     route: zeroLocalBrowserConnectorContract.create,

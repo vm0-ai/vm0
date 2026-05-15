@@ -35,7 +35,7 @@ describe("zero CLI program", () => {
       "built-in",
       "web",
       "host",
-      "remote-agent",
+      "local-agent",
       "local-browser",
     ];
     for (const name of expectedCommands) {
