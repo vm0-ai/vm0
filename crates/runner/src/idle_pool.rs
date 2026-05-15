@@ -945,6 +945,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn idle_park_request_success_preserves_reuse_metadata() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "session-metadata";
+        let profile_name = "vm0/large";
+        let source_ip = "10.99.0.42";
+        let budget_lease = make_budget_lease(2, 2048);
+        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
+            MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        ));
+        let sandbox = factory
+            .create(SandboxConfig {
+                id: sandbox_id,
+                resources: ResourceLimits {
+                    cpu_count: budget_lease.vcpu(),
+                    memory_mb: budget_lease.memory_mb(),
+                },
+            })
+            .await
+            .expect("create sandbox");
+        let storage_fingerprints = StorageFingerprints {
+            storages: HashMap::from([(
+                "/mnt/storage".into(),
+                ("storage-a".into(), "storage-version-2".into()),
+            )]),
+            artifacts: HashMap::from([(
+                "/workspace".into(),
+                ("artifact-a".into(), "artifact-version-3".into()),
+            )]),
+        };
+        let expected_storage_fingerprints = storage_fingerprints.clone();
+        let request = IdleParkRequest::new(
+            sandbox,
+            factory,
+            session_id.into(),
+            sandbox_id,
+            profile_name.into(),
+            budget_lease,
+            source_ip.into(),
+            storage_fingerprints,
+        );
+
+        let candidate = match request.park_for_idle().await {
+            Ok(candidate) => candidate,
+            Err(_) => panic!("park should succeed"),
+        };
+
+        assert_eq!(overrides.park_call_count(), 1);
+        assert_eq!(candidate.session_id(), session_id);
+        assert_eq!(candidate.sandbox_id(), sandbox_id);
+        assert_eq!(candidate.profile_name, profile_name);
+
+        let mut pool = IdlePool::new(pool_config(0));
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let entry = pool.take(session_id).expect("idle entry should be parked");
+        assert_eq!(entry.profile_name(), profile_name);
+
+        let IdleUnparkResult::Reused {
+            sandbox,
+            budget_lease,
+        } = entry.try_unpark().await
+        else {
+            panic!("unpark should succeed");
+        };
+        assert_eq!(sandbox.sandbox_id(), sandbox_id);
+        let reused_parts = sandbox.into_parts();
+        assert_eq!(reused_parts.source_ip, source_ip);
+        assert_eq!(
+            reused_parts.storage_fingerprints.storages,
+            expected_storage_fingerprints.storages
+        );
+        assert_eq!(
+            reused_parts.storage_fingerprints.artifacts,
+            expected_storage_fingerprints.artifacts
+        );
+        assert_eq!(budget_lease.vcpu(), 2);
+        assert_eq!(budget_lease.memory_mb(), 2048);
+    }
+
+    #[tokio::test]
     async fn idle_park_request_error_returns_owned_failure_parts() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
