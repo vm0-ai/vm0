@@ -49,6 +49,9 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-storages";
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
+const AUDIO_INPUT_FREE_QUOTA = 10;
+const PRO_DAILY_RATE_LIMIT = 300;
+const PRO_DAILY_DURATION_LIMIT_SECONDS = 200 * 60;
 
 interface VoiceFixture {
   readonly orgId: string;
@@ -308,6 +311,55 @@ function expectedCredits(
   return Math.ceil((durationSeconds * pricing.unitPrice) / pricing.unitSize);
 }
 
+function sttFile(
+  body: BlobPart = wavBytes(1),
+  type = "audio/wav",
+  name = "speech.wav",
+): File {
+  return new File([body], name, { type });
+}
+
+function sttForm(file?: File): FormData {
+  const form = new FormData();
+  if (file) {
+    form.append("file", file);
+  }
+  return form;
+}
+
+async function readBehaviorCount(
+  fixture: Pick<VoiceFixture, "orgId" | "userId">,
+  behaviorKey: string,
+): Promise<number> {
+  const [row] = await store
+    .set(writeDb$)
+    .select({ count: userBehaviorCount.count })
+    .from(userBehaviorCount)
+    .where(
+      and(
+        eq(userBehaviorCount.orgId, fixture.orgId),
+        eq(userBehaviorCount.userId, fixture.userId),
+        eq(userBehaviorCount.behaviorKey, behaviorKey),
+      ),
+    )
+    .limit(1);
+
+  return row?.count ?? 0;
+}
+
+async function seedBehaviorCount(
+  fixture: Pick<VoiceFixture, "orgId" | "userId">,
+  behaviorKey: string,
+  count: number,
+): Promise<void> {
+  await store.set(writeDb$).insert(userBehaviorCount).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    behaviorKey,
+    count,
+  });
+}
+
 describe("POST /api/zero/voice-io/*", () => {
   const track = createFixtureTracker<VoiceFixture>(deleteVoiceFixture);
 
@@ -411,22 +463,139 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("returns 401 from /stt when unauthenticated", async () => {
-    const form = new FormData();
-    form.append(
-      "file",
-      new File([wavBytes(1)], "speech.wav", { type: "audio/wav" }),
-    );
-
     const app = createApp({ signal: context.signal });
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
-      body: form,
+      body: sttForm(),
     });
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
+  });
+
+  it("rejects /stt requests without a multipart file before OpenAI", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "No audio file provided", code: "BAD_REQUEST" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("rejects unsupported /stt MIME types before OpenAI", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(
+        sttFile(new Uint8Array([1, 2, 3]), "text/plain", "notes.txt"),
+      ),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message:
+          "Unsupported audio format: text/plain. Supported: webm, wav, mp3, m4a, mp4, mpeg, mpga",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("rejects /stt files larger than 25 MB before OpenAI", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(
+        sttFile(
+          new Uint8Array(25 * 1024 * 1024 + 1),
+          "audio/webm",
+          "large.webm",
+        ),
+      ),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "File too large (max 25 MB)", code: "BAD_REQUEST" },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("accepts /stt MIME types with codec suffixes", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedFileType: string | undefined;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
+        const form = await request.formData();
+        const file = form.get("file");
+        if (file instanceof File) {
+          observedFileType = file.type;
+        }
+        return HttpResponse.json({ text: "hello from codec test" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(
+        sttFile(
+          new Uint8Array([1, 2, 3]),
+          "audio/webm;codecs=opus",
+          "recording.webm",
+        ),
+      ),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      text: "hello from codec test",
+    });
+    expect(observedFileType).toBe("audio/webm;codecs=opus");
   });
 
   it("transcribes /stt multipart audio and records quota counters", async () => {
@@ -457,16 +626,11 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const form = new FormData();
-    form.append(
-      "file",
-      new File([wavBytes(2)], "speech.wav", { type: "audio/wav" }),
-    );
     const app = createApp({ signal: context.signal });
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
-      body: form,
+      body: sttForm(sttFile(wavBytes(2))),
     });
 
     expect(response.status).toBe(200);
@@ -502,15 +666,61 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(sttDailyDurationKey())).toBe(2);
   });
 
+  it("does not increment the legacy /stt free-tier counter for pro orgs", async () => {
+    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "pro transcript" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await app.request("/api/zero/voice-io/stt", {
+        method: "POST",
+        headers: authHeaders(),
+        body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
+      });
+      expect(response.status).toBe(200);
+    }
+
+    await expect(
+      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
+    ).resolves.toBe(0);
+  });
+
+  it("increments the /stt free-tier audio input counter up to quota", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json({ text: "free transcript" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
+      const response = await app.request("/api/zero/voice-io/stt", {
+        method: "POST",
+        headers: authHeaders(),
+        body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
+      });
+      expect(response.status).toBe(200);
+      await expect(
+        readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
+      ).resolves.toBe(attempt);
+    }
+  });
+
   it("blocks /stt before OpenAI when the free audio quota is exhausted", async () => {
     const fixture = await track(seedVoiceFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    await store.set(writeDb$).insert(userBehaviorCount).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      behaviorKey: AUDIO_INPUT_BEHAVIOR_KEY,
-      count: 10,
-    });
+    await seedBehaviorCount(
+      fixture,
+      AUDIO_INPUT_BEHAVIOR_KEY,
+      AUDIO_INPUT_FREE_QUOTA,
+    );
 
     let calledOpenAi = false;
     server.use(
@@ -519,17 +729,11 @@ describe("POST /api/zero/voice-io/*", () => {
         return HttpResponse.json({ text: "should not run" });
       }),
     );
-    const form = new FormData();
-    form.append(
-      "file",
-      new File([wavBytes(1)], "speech.wav", { type: "audio/wav" }),
-    );
-
     const app = createApp({ signal: context.signal });
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
-      body: form,
+      body: sttForm(sttFile()),
     });
 
     expect(response.status).toBe(402);
@@ -539,7 +743,113 @@ describe("POST /api/zero/voice-io/*", () => {
           "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
         code: "AUDIO_INPUT_QUOTA_EXCEEDED",
       },
-      quota: { count: 10, limit: 10 },
+      quota: { count: AUDIO_INPUT_FREE_QUOTA, limit: AUDIO_INPUT_FREE_QUOTA },
+    });
+    expect(calledOpenAi).toBeFalsy();
+    await expect(
+      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
+    ).resolves.toBe(AUDIO_INPUT_FREE_QUOTA);
+  });
+
+  it("does not increment /stt counters when OpenAI transcription fails", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        return HttpResponse.json(
+          { error: { message: "rate limit exceeded" } },
+          { status: 429 },
+        );
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(3))),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Transcription failed", code: "INTERNAL_SERVER_ERROR" },
+    });
+    await expect(
+      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
+    ).resolves.toBe(0);
+    await expect(readBehaviorCount(fixture, sttDailyRateKey())).resolves.toBe(
+      0,
+    );
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(0);
+  });
+
+  it("blocks /stt before OpenAI when the daily request limit is exhausted", async () => {
+    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await seedBehaviorCount(fixture, sttDailyRateKey(), PRO_DAILY_RATE_LIMIT);
+
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
+    });
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Daily request rate limit exceeded",
+        code: "DAILY_RATE_LIMIT_EXCEEDED",
+      },
+      quota: { count: PRO_DAILY_RATE_LIMIT, limit: PRO_DAILY_RATE_LIMIT },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("blocks /stt before OpenAI when the daily duration limit is exhausted", async () => {
+    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await seedBehaviorCount(
+      fixture,
+      sttDailyDurationKey(),
+      PRO_DAILY_DURATION_LIMIT_SECONDS,
+    );
+
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({ text: "should not run" });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(1))),
+    });
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Daily audio duration limit exceeded",
+        code: "DAILY_DURATION_LIMIT_EXCEEDED",
+      },
+      quota: {
+        count: PRO_DAILY_DURATION_LIMIT_SECONDS,
+        limit: PRO_DAILY_DURATION_LIMIT_SECONDS,
+      },
     });
     expect(calledOpenAi).toBeFalsy();
   });
