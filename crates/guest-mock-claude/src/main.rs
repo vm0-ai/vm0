@@ -31,19 +31,22 @@
 //!                               happy path
 
 use serde_json::{Value, json};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Parsed command-line arguments.
 struct ParsedArgs {
     output_format: String,
+    settings: Option<String>,
     prompt: String,
 }
 
 /// Parse command-line arguments (matching the real Claude CLI interface).
 fn parse_args(args: &[String]) -> ParsedArgs {
     let mut output_format = "text".to_string();
+    let mut settings = None;
     let mut remaining: Vec<String> = Vec::new();
 
     let mut i = 0;
@@ -81,7 +84,8 @@ fn parse_args(args: &[String]) -> ParsedArgs {
             }
             "--settings" => {
                 // Skip the flag and its single JSON value argument
-                if args.get(i + 1).is_some() {
+                if let Some(value) = args.get(i + 1) {
+                    settings = Some(value.clone());
                     i += 2;
                 } else {
                     i += 1;
@@ -111,6 +115,7 @@ fn parse_args(args: &[String]) -> ParsedArgs {
 
     ParsedArgs {
         output_format,
+        settings,
         prompt,
     }
 }
@@ -142,6 +147,200 @@ fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option
 fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
     build_session_history_path(session_id, cwd, &home)
+}
+
+fn hook_commands(settings: Option<&str>, event: &str) -> Vec<String> {
+    let Some(settings) = settings else {
+        return Vec::new();
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(settings) else {
+        return Vec::new();
+    };
+    let Some(entries) = parsed
+        .get("hooks")
+        .and_then(|hooks| hooks.get(event))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+
+    let mut commands = Vec::new();
+    for entry in entries {
+        let Some(hooks) = entry.get("hooks").and_then(Value::as_array) else {
+            continue;
+        };
+        for hook in hooks {
+            if hook.get("type").and_then(Value::as_str) != Some("command") {
+                continue;
+            }
+            if let Some(command) = hook.get("command").and_then(Value::as_str) {
+                commands.push(command.to_string());
+            }
+        }
+    }
+    commands
+}
+
+fn run_hook_commands(settings: Option<&str>, event: &str, payload: &Value) {
+    let payload = payload.to_string();
+    for command in hook_commands(settings, event) {
+        let Ok(mut child) = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            continue;
+        };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(payload.as_bytes());
+        }
+        let _ = child.wait();
+    }
+}
+
+fn read_interactive_prompt(timeout_ms: i32) -> String {
+    let stdin = std::io::stdin();
+    let fd = stdin.as_raw_fd();
+    let mut pollfd = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+    if ready <= 0 {
+        return String::new();
+    }
+
+    let mut stdin = stdin.lock();
+    let mut bytes = Vec::new();
+    let mut byte = [0u8; 1];
+    while let Ok(1) = stdin.read(&mut byte) {
+        if byte[0] == b'\r' || byte[0] == b'\n' {
+            break;
+        }
+        bytes.push(byte[0]);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn write_event(file: &mut std::fs::File, event: &Value) {
+    let _ = writeln!(file, "{event}");
+    let _ = file.flush();
+}
+
+fn run_interactive_mode(settings: Option<&str>, session_id: &str) -> ExitCode {
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "/".to_string());
+    let Some(session_history_file) = create_session_history(session_id, &cwd) else {
+        return ExitCode::from(1);
+    };
+
+    let session_start = json!({
+        "hook_event_name": "SessionStart",
+        "session_id": session_id,
+        "transcript_path": session_history_file,
+        "cwd": cwd,
+    });
+    run_hook_commands(settings, "SessionStart", &session_start);
+
+    let prompt = read_interactive_prompt(1000);
+    let Ok(mut file) = std::fs::File::create(&session_history_file) else {
+        return ExitCode::from(1);
+    };
+
+    let init_event = json!({
+        "type": "system",
+        "subtype": "init",
+        "cwd": cwd,
+        "sessionId": session_id,
+        "tools": ["Bash"],
+        "model": "mock-claude"
+    });
+    write_event(&mut file, &init_event);
+
+    let text_event = json!({
+        "type": "assistant",
+        "sessionId": session_id,
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Executing command..."}]
+        }
+    });
+    write_event(&mut file, &text_event);
+
+    let tool_use_event = json!({
+        "type": "assistant",
+        "sessionId": session_id,
+        "message": {
+            "role": "assistant",
+            "content": [{
+                "type": "tool_use",
+                "id": "toolu_mock_001",
+                "name": "Bash",
+                "input": {"command": prompt}
+            }]
+        }
+    });
+    write_event(&mut file, &tool_use_event);
+
+    let (output, exit_code) = match Command::new("bash")
+        .args(["-c", &prompt])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(result) => {
+            let mut combined = String::from_utf8_lossy(&result.stdout).into_owned();
+            if !result.status.success() {
+                combined.push_str(&String::from_utf8_lossy(&result.stderr));
+            }
+            (combined, result.status.code().unwrap_or(1))
+        }
+        Err(_) => (String::new(), 1),
+    };
+    let is_error = exit_code != 0;
+
+    let tool_result_event = json!({
+        "type": "user",
+        "sessionId": session_id,
+        "message": {
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "toolu_mock_001",
+                "content": output,
+                "is_error": is_error
+            }]
+        }
+    });
+    write_event(&mut file, &tool_result_event);
+
+    let assistant_event = json!({
+        "type": "assistant",
+        "sessionId": session_id,
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": output}],
+            "usage": {"input_tokens": 1, "output_tokens": 1}
+        }
+    });
+    write_event(&mut file, &assistant_event);
+
+    let stop = json!({
+        "hook_event_name": "Stop",
+        "session_id": session_id,
+        "transcript_path": session_history_file,
+        "cwd": cwd,
+        "last_assistant_message": output,
+    });
+    run_hook_commands(settings, "Stop", &stop);
+
+    ExitCode::from(exit_code as u8)
 }
 
 /// Emit the init + result JSONL pair shared by post-result mock test
@@ -481,6 +680,8 @@ fn main() -> ExitCode {
 
     if parsed.output_format == "stream-json" {
         run_stream_json_mode(&parsed.prompt, &session_id)
+    } else if parsed.prompt.is_empty() && parsed.settings.is_some() {
+        run_interactive_mode(parsed.settings.as_deref(), &session_id)
     } else {
         run_text_mode(&parsed.prompt)
     }

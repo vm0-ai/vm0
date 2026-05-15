@@ -20,6 +20,7 @@ pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::Executio
         secret_connector_map: None,
         secret_connector_metadata_map: None,
         cli_agent_type: String::new(),
+        claude_driver: None,
         debug_no_mock_claude: None,
         debug_no_mock_codex: None,
         api_start_time: None,

@@ -1096,6 +1096,7 @@ export async function buildZeroExecutionContext(
       additionalVolumes,
       environment: runtimeEnvironment,
       userTimezone,
+      resolvedModelProvider,
       featureSwitchOverrides: params.featureSwitchOverrides,
       firewalls: permissionResult?.firewalls,
       networkPolicies: permissionResult?.networkPolicies,

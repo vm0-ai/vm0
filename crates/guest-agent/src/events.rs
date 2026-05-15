@@ -294,7 +294,10 @@ fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
     if event_type != "system" || subtype != "init" {
         return None;
     }
-    let session_id = event.get("session_id").and_then(|v| v.as_str())?;
+    let session_id = event
+        .get("session_id")
+        .or_else(|| event.get("sessionId"))
+        .and_then(|v| v.as_str())?;
     if session_id.is_empty() {
         return None;
     }

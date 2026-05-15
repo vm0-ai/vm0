@@ -49,6 +49,25 @@ static FRAMEWORK: LazyLock<Framework> = LazyLock::new(|| match cli_agent_type() 
     }
 });
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaudeDriver {
+    Print,
+    Interactive,
+}
+
+static CLAUDE_DRIVER: LazyLock<ClaudeDriver> =
+    LazyLock::new(|| match env_or_empty("VM0_CLAUDE_DRIVER").as_str() {
+        "" | "print" => ClaudeDriver::Print,
+        "interactive" => ClaudeDriver::Interactive,
+        other => {
+            log_warn!(
+                LOG_TAG,
+                "Unknown VM0_CLAUDE_DRIVER={other:?}, defaulting to print"
+            );
+            ClaudeDriver::Print
+        }
+    });
+
 // ---------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------
@@ -291,6 +310,10 @@ pub fn tools() -> &'static str {
 /// override.
 pub fn settings() -> &'static str {
     &SETTINGS
+}
+/// Claude Code driver selector from `VM0_CLAUDE_DRIVER`; defaults to print.
+pub fn claude_driver() -> ClaudeDriver {
+    *CLAUDE_DRIVER
 }
 /// Whether `USE_MOCK_CLAUDE` is exactly `"true"`; unset or any other value is
 /// false.

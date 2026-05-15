@@ -94,6 +94,24 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(false);
   });
+
+  it("should enable Claude interactive driver for staff orgs only by default", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.ClaudeInteractiveDriver, {})).toBe(
+      false,
+    );
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ClaudeInteractiveDriver, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ClaudeInteractiveDriver, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("getAllFeatureStates", () => {

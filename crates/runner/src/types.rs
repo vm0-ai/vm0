@@ -70,6 +70,8 @@ pub struct ExecutionContext {
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
     #[serde(default)]
+    pub claude_driver: Option<String>,
+    #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
     pub debug_no_mock_codex: Option<bool>,
@@ -443,6 +445,7 @@ mod tests {
                     "metadataKey": "codex-oauth-token"
                 }
             },
+            "claudeDriver": "interactive",
             "debugNoMockClaude": true,
             "debugNoMockCodex": true,
             "apiStartTime": 1700000000000.0,
@@ -471,6 +474,7 @@ mod tests {
             metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
             Some("user-123")
         );
+        assert_eq!(ctx.claude_driver.as_deref(), Some("interactive"));
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");

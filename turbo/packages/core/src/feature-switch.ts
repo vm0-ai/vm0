@@ -355,6 +355,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ClaudeInteractiveDriver]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable the interactive Claude Code sandbox driver for claude-code-oauth-token model-provider runs. Staff-only during rollout.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

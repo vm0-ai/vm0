@@ -404,6 +404,7 @@ const router = tsr.router(runsMainContract, {
           additionalVolumes: finalAdditionalVolumes,
           environment: resolved.environment,
           userTimezone: resolved.userTimezone,
+          resolvedModelProvider: resolved.resolvedModelProvider,
           featureSwitchOverrides: resolved.featureSwitchOverrides,
           firewalls: resolved.firewalls,
           networkPolicies: resolved.networkPolicies,

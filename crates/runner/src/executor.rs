@@ -1431,6 +1431,7 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_WORKING_DIR",
     "VM0_API_START_TIME",
     "CLI_AGENT_TYPE",
+    "VM0_CLAUDE_DRIVER",
     "VM0_ARTIFACTS",
     "VM0_RESUME_SESSION_ID",
     "VM0_SECRET_VALUES",
@@ -1483,6 +1484,10 @@ fn insert_claude_code_env(
         && !settings.is_empty()
     {
         env.insert("VM0_SETTINGS".into(), settings.clone());
+    }
+
+    if context.claude_driver.as_deref() == Some("interactive") {
+        env.insert("VM0_CLAUDE_DRIVER".into(), "interactive".into());
     }
 }
 
@@ -1609,6 +1614,7 @@ mod tests {
             secret_connector_map: None,
             secret_connector_metadata_map: None,
             cli_agent_type: String::new(),
+            claude_driver: None,
             debug_no_mock_claude: None,
             debug_no_mock_codex: None,
             api_start_time: None,
@@ -1773,6 +1779,7 @@ mod tests {
             ("VM0_API_TOKEN".into(), "stolen".into()),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             ("CLI_AGENT_TYPE".into(), "claude-code".into()),
+            ("VM0_CLAUDE_DRIVER".into(), "interactive".into()),
             ("USE_MOCK_CLAUDE".into(), "true".into()),
             ("USE_MOCK_CODEX".into(), "1".into()),
             ("VERCEL_PROTECTION_BYPASS".into(), "user-bypass".into()),
@@ -1789,6 +1796,7 @@ mod tests {
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert!(!env.contains_key("VM0_CLAUDE_DRIVER"));
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
         assert!(!env.contains_key("USE_MOCK_CLAUDE"));
         assert!(!env.contains_key("USE_MOCK_CODEX"));
@@ -2364,6 +2372,31 @@ mod tests {
         ctx.settings = Some(r#"{"hooks":{}}"#.into());
         let env = build_env_for_test(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_SETTINGS").unwrap(), r#"{"hooks":{}}"#);
+    }
+
+    #[test]
+    fn build_env_json_with_interactive_claude_driver() {
+        let mut ctx = minimal_context();
+        ctx.claude_driver = Some("interactive".into());
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_CLAUDE_DRIVER").unwrap(), "interactive");
+    }
+
+    #[test]
+    fn build_env_json_non_interactive_claude_driver_omitted() {
+        let mut ctx = minimal_context();
+        ctx.claude_driver = Some("print".into());
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_CLAUDE_DRIVER"));
+    }
+
+    #[test]
+    fn build_env_json_codex_ignores_claude_driver() {
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        ctx.claude_driver = Some("interactive".into());
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_CLAUDE_DRIVER"));
     }
 
     #[test]

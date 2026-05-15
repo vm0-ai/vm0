@@ -233,6 +233,8 @@ function buildStoredContext(
     secretConnectorMap: context.secretConnectorMap,
     secretConnectorMetadataMap: context.secretConnectorMetadataMap,
     cliAgentType: context.cliAgentType,
+    claudeDriver:
+      context.claudeDriver === "interactive" ? context.claudeDriver : undefined,
     firewalls: context.firewalls ?? undefined,
     networkPolicies: context.networkPolicies ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,

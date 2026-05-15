@@ -5,6 +5,7 @@ import type {
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import type { ClaudeDriver } from "../utils/resolve-claude-driver";
 
 /**
  * Prepared execution context for executors
@@ -82,6 +83,8 @@ export interface PreparedContext {
 
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: Record<string, boolean> | null;
+
+  claudeDriver: ClaudeDriver;
 
   billableFirewalls: string[];
 

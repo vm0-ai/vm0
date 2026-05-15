@@ -60,4 +60,5 @@ export enum FeatureSwitchKey {
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
   PrivateAgents = "privateAgents",
   HostedSites = "hostedSites",
+  ClaudeInteractiveDriver = "claudeInteractiveDriver",
 }

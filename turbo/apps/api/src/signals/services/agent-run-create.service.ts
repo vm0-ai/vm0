@@ -51,8 +51,10 @@ import {
 import {
   isSupportedFramework,
   MOUNT_PATH_TEMPLATE,
+  getAllFeatureStates,
   type SupportedFramework,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -255,6 +257,8 @@ interface BuiltStoredExecutionContext {
   readonly secretNames: readonly string[];
   readonly secretValues: readonly string[];
 }
+
+type ClaudeDriver = "print" | "interactive";
 
 type RunContextSnapshot = Omit<RunContextResponse, "vars"> & {
   readonly userId: string;
@@ -466,6 +470,32 @@ function modelProviderFramework(
   modelProvider: ResolvedModelProviderEnvironment,
 ): SupportedFramework {
   return getFrameworkForType(modelProvider.concreteType ?? modelProvider.type);
+}
+
+function resolveClaudeDriver(args: {
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly featureFlags: Record<string, boolean>;
+}): ClaudeDriver {
+  if (
+    args.modelProvider?.type === "claude-code-oauth-token" &&
+    args.featureFlags[FeatureSwitchKey.ClaudeInteractiveDriver] === true
+  ) {
+    return "interactive";
+  }
+  return "print";
+}
+
+function featureSwitchOverridesForCore(
+  overrides: Record<string, boolean>,
+): Partial<Record<FeatureSwitchKey, boolean>> {
+  const result: Partial<Record<FeatureSwitchKey, boolean>> = {};
+  for (const key of Object.values(FeatureSwitchKey)) {
+    const value = overrides[key];
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 function frameworkForProviderSelection(
@@ -2279,6 +2309,7 @@ function buildStoredExecutionContext(args: {
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
+  readonly featureFlags: Record<string, boolean>;
 }): BuiltStoredExecutionContext {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
@@ -2328,7 +2359,14 @@ function buildStoredExecutionContext(args: {
       tools: args.body.tools,
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
-      featureFlags: {},
+      featureFlags: args.featureFlags,
+      claudeDriver:
+        resolveClaudeDriver({
+          modelProvider: args.modelProvider,
+          featureFlags: args.featureFlags,
+        }) === "interactive"
+          ? "interactive"
+          : undefined,
       billableFirewalls: billableFirewallsForPermissions({
         modelProvider: args.modelProvider,
         permissions,
@@ -2559,9 +2597,14 @@ async function buildRunnerJobPayload(
   }
 
   const profile = runnerProfile(args.resolved.content);
-  const featureSwitchOverrides = args.includeZeroTokenSecret
-    ? await get(userFeatureSwitchOverrides(args.orgId, args.userId))
-    : undefined;
+  const featureSwitchOverrides = await get(
+    userFeatureSwitchOverrides(args.orgId, args.userId),
+  );
+  const featureFlags = getAllFeatureStates({
+    userId: args.userId,
+    orgId: args.orgId,
+    overrides: featureSwitchOverridesForCore(featureSwitchOverrides),
+  });
   const body = args.includeZeroTokenSecret
     ? withZeroTokenSecret(
         args.body,
@@ -2591,6 +2634,7 @@ async function buildRunnerJobPayload(
     body,
     runId: args.run.id,
     storageManifest,
+    featureFlags,
   });
   ingestRunContextSnapshot({
     runId: args.run.id,

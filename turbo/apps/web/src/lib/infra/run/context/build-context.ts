@@ -12,6 +12,7 @@ import type {
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 interface BuildInfraContextParams {
   runId: string;
@@ -32,6 +33,7 @@ interface BuildInfraContextParams {
   additionalVolumes?: AdditionalVolume[];
   environment?: Record<string, string>;
   userTimezone?: string;
+  resolvedModelProvider?: ModelProviderType;
   featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;
   firewalls?: Firewalls;
   networkPolicies?: NetworkPolicies;
@@ -92,6 +94,7 @@ export function buildInfraExecutionContext(
     additionalVolumes: params.additionalVolumes,
     environment,
     userTimezone: params.userTimezone,
+    resolvedModelProvider: params.resolvedModelProvider,
     featureSwitchOverrides: params.featureSwitchOverrides,
     firewalls: params.firewalls,
     networkPolicies: params.networkPolicies,

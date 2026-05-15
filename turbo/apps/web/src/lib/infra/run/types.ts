@@ -6,6 +6,7 @@ import type {
   NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 /**
  * Artifact entry on an ExecutionContext: a name, optional version
@@ -96,6 +97,10 @@ export interface ExecutionContext {
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone?: string;
+
+  // Resolved model provider for host-side runtime decisions. This is dispatch
+  // metadata only; the runner receives an already-computed driver selector.
+  resolvedModelProvider?: ModelProviderType;
 
   // Per-user Lab feature switch overrides loaded by the caller.
   featureSwitchOverrides?: Partial<Record<FeatureSwitchKey, boolean>>;

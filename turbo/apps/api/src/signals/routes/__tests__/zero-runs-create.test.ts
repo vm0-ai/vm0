@@ -5,6 +5,7 @@ import type {
   FirewallPolicyValue,
   RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   agentComposes,
   agentComposeVersions,
@@ -22,6 +23,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -29,7 +31,7 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command, createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -191,6 +193,20 @@ const trackModelProviders = createFixtureTracker<{ readonly orgId: string }>(
     );
   },
 );
+const trackFeatureSwitches = createFixtureTracker<{
+  readonly orgId: string;
+  readonly userId: string;
+}>(async (fixture) => {
+  const db = store.set(writeDb$);
+  await db
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, fixture.orgId),
+        eq(userFeatureSwitches.userId, fixture.userId),
+      ),
+    );
+});
 const trackVm0ApiKey = createFixtureTracker<string>(async (label) => {
   const db = store.set(writeDb$);
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, label));
@@ -847,6 +863,116 @@ describe("POST /api/zero/runs", () => {
     expect(zeroRun).toStrictEqual({
       modelProvider: "anthropic-api-key",
       selectedModel: "claude-sonnet-4-6",
+    });
+  });
+
+  it("sets the interactive Claude driver only for Claude Code OAuth runs", async () => {
+    const fx = await fixture();
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+    await trackFeatureSwitches(
+      Promise.resolve({ orgId: fx.orgId, userId: fx.userId }),
+    );
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.ClaudeInteractiveDriver]: true },
+    });
+    await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fx.orgId,
+        type: "claude-code-oauth-token",
+        isDefault: true,
+        selectedModel: "claude-opus-4-6",
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      },
+      context.signal,
+    );
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
+    const oauthResponse = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "use interactive claude driver",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    const [oauthJob] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, oauthResponse.body.runId));
+    const oauthContext = oauthJob?.executionContext as {
+      readonly claudeDriver?: string;
+      readonly cliAgentType: string;
+      readonly environment: Record<string, string>;
+    };
+    expect(oauthContext.cliAgentType).toBe("claude-code");
+    expect(oauthContext.claudeDriver).toBe("interactive");
+    expect(oauthContext.environment).toMatchObject({
+      CLAUDE_CODE_OAUTH_TOKEN: "test-secret-value",
+    });
+
+    const anthropicFx = await fixture();
+    await trackModelProviders(Promise.resolve({ orgId: anthropicFx.orgId }));
+    await trackFeatureSwitches(
+      Promise.resolve({
+        orgId: anthropicFx.orgId,
+        userId: anthropicFx.userId,
+      }),
+    );
+    await db.insert(userFeatureSwitches).values({
+      orgId: anthropicFx.orgId,
+      userId: anthropicFx.userId,
+      switches: { [FeatureSwitchKey.ClaudeInteractiveDriver]: true },
+    });
+    await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: anthropicFx.orgId,
+        type: "anthropic-api-key",
+        isDefault: true,
+        selectedModel: "claude-sonnet-4-6",
+        secretName: "ANTHROPIC_API_KEY",
+      },
+      context.signal,
+    );
+    const anthropicAgent = await seedRunnableZeroAgent({
+      fixture: anthropicFx,
+      environment: {},
+    });
+    const anthropicResponse = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "keep print driver for anthropic",
+          agentId: anthropicAgent.agentId,
+          modelProvider: "anthropic-api-key",
+        },
+      }),
+      [201],
+    );
+
+    const [anthropicJob] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, anthropicResponse.body.runId));
+    const anthropicContext = anthropicJob?.executionContext as {
+      readonly claudeDriver?: string;
+      readonly cliAgentType: string;
+      readonly environment: Record<string, string>;
+    };
+
+    expect(anthropicContext.cliAgentType).toBe("claude-code");
+    expect(anthropicContext.claudeDriver).toBeUndefined();
+    expect(anthropicContext.environment).toMatchObject({
+      ANTHROPIC_API_KEY: "test-secret-value",
     });
   });
 

@@ -117,6 +117,8 @@ export const secretConnectorMetadataMapSchema = z.record(
   secretConnectorMetadataSchema,
 );
 
+export const claudeDriverSchema = z.enum(["print", "interactive"]);
+
 /**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
@@ -135,6 +137,7 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
+  claudeDriver: claudeDriverSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
   // Debug flag to force real Codex in mock environments (internal use only)
@@ -191,6 +194,7 @@ export const executionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
+  claudeDriver: claudeDriverSchema.optional(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
   // Debug flag to force real Codex in mock environments (internal use only)

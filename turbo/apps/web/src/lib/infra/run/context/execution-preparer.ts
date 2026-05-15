@@ -12,6 +12,7 @@ import { DEFAULT_PROFILE } from "@vm0/api-contracts/contracts/runners";
 import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
+import { resolveClaudeDriver } from "../utils/resolve-claude-driver";
 import {
   agentComposes,
   agentComposeVersions,
@@ -201,6 +202,11 @@ function buildPreparedContext(
   storageManifest: StorageManifest,
 ): PreparedContext {
   const metadata = extractMetadata(context);
+  const featureFlags = getAllFeatureStates({
+    userId: context.userId,
+    orgId: context.orgId,
+    overrides: context.featureSwitchOverrides,
+  });
 
   return {
     // Identity
@@ -249,10 +255,11 @@ function buildPreparedContext(
     runnerGroup,
 
     // Feature flags (evaluated once at preparation time)
-    featureFlags: getAllFeatureStates({
-      userId: context.userId,
-      orgId: context.orgId,
-      overrides: context.featureSwitchOverrides,
+    featureFlags,
+
+    claudeDriver: resolveClaudeDriver({
+      resolvedModelProvider: context.resolvedModelProvider,
+      featureFlags,
     }),
 
     // Metadata
