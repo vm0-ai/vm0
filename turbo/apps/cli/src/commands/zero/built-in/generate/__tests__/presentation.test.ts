@@ -15,6 +15,8 @@ import { zeroBuiltInCommand } from "../../index";
 
 const PRESENTATION_URL =
   "http://localhost:3000/api/zero/presentation-io/generate";
+const PRESENTATION_GENERATION_ID = "11111111-1111-4111-8111-111111111111";
+const PRESENTATION_STATUS_URL = `http://localhost:3000/api/zero/built-in-generations/${PRESENTATION_GENERATION_ID}`;
 const PRESENTATION_RESULT = {
   id: "presentation-file-id",
   filename: "presentation-present.html",
@@ -118,6 +120,60 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain("Text credits: 24");
     expect(stdout).toContain("Image credits: 7");
     expect(stdout).toContain("Model: gpt-5.5");
+  });
+
+  it("should wait for an accepted presentation even when the proxy returns 200", async () => {
+    let statusRequested = false;
+    server.use(
+      http.post(PRESENTATION_URL, () => {
+        return HttpResponse.json({
+          generationId: PRESENTATION_GENERATION_ID,
+          type: "presentation",
+          status: "queued",
+          realtime: {
+            channelName: "user:user-1",
+            eventName: `built-in-generation:${PRESENTATION_GENERATION_ID}`,
+            tokenRequest: {
+              keyName: "test-key",
+              timestamp: 1_700_000_000_000,
+              capability: '{"user:user-1":["subscribe"]}',
+              clientId: "user-1",
+              nonce: "test-nonce",
+              mac: "test-mac",
+            },
+          },
+        });
+      }),
+      http.get(PRESENTATION_STATUS_URL, ({ request }) => {
+        statusRequested = true;
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        return HttpResponse.json({
+          generationId: PRESENTATION_GENERATION_ID,
+          type: "presentation",
+          status: "completed",
+          result: PRESENTATION_RESULT,
+          createdAt: "2026-05-15T00:00:00.000Z",
+          startedAt: "2026-05-15T00:00:01.000Z",
+          completedAt: "2026-05-15T00:00:02.000Z",
+        });
+      }),
+    );
+
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "presentation",
+      "--prompt",
+      "Async please",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(statusRequested).toBe(true);
+    expect(stdout).toContain(
+      `Presentation generated: ${PRESENTATION_RESULT.url}`,
+    );
+    expect(stdout).not.toContain("undefined");
   });
 
   it("should print JSON metadata when --json is provided", async () => {

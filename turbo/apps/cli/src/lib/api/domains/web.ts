@@ -12,7 +12,14 @@ import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 
 const BUILT_IN_GENERATION_POLL_INTERVAL_MS = 2_000;
-const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
+const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE = {
+  image: 15 * 60 * 1000,
+  video: 30 * 60 * 1000,
+  presentation: 60 * 60 * 1000,
+} as const satisfies Record<
+  ZeroBuiltInGenerationAcceptedResponse["type"],
+  number
+>;
 const ABLY_CONNECT_TIMEOUT_MS = 10_000;
 
 /**
@@ -367,6 +374,26 @@ function authenticatedJsonHeaders(token: string): Record<string, string> {
   return headers;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isBuiltInGenerationAcceptedResponse(
+  value: unknown,
+): value is ZeroBuiltInGenerationAcceptedResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.generationId === "string" &&
+    value.status === "queued" &&
+    (value.type === "image" ||
+      value.type === "video" ||
+      value.type === "presentation") &&
+    isRecord(value.realtime)
+  );
+}
+
 interface BuiltInGenerationNotifier {
   wait(timeoutMs: number): Promise<void>;
   close(): void;
@@ -564,9 +591,11 @@ async function waitForBuiltInGenerationResult<T>(args: {
   let notifier: BuiltInGenerationNotifier | null = null;
   let notifierCreated = false;
   const startedAt = Date.now();
+  const timeoutMs =
+    BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE[args.accepted.type];
 
   try {
-    while (Date.now() - startedAt < BUILT_IN_GENERATION_WAIT_TIMEOUT_MS) {
+    while (Date.now() - startedAt < timeoutMs) {
       const status = await getBuiltInGenerationStatus(
         args.baseUrl,
         args.token,
@@ -578,7 +607,7 @@ async function waitForBuiltInGenerationResult<T>(args: {
       }
 
       const elapsed = Date.now() - startedAt;
-      const remaining = BUILT_IN_GENERATION_WAIT_TIMEOUT_MS - elapsed;
+      const remaining = timeoutMs - elapsed;
       const waitMs = Math.min(BUILT_IN_GENERATION_POLL_INTERVAL_MS, remaining);
       if (!notifierCreated) {
         notifier = await createBuiltInGenerationNotifier(args.accepted);
@@ -595,10 +624,35 @@ async function waitForBuiltInGenerationResult<T>(args: {
   }
 
   throw new ApiRequestError(
-    `${args.fallback} timed out`,
+    `${args.fallback} timed out (generationId: ${args.accepted.generationId})`,
     "GENERATION_TIMEOUT",
     504,
   );
+}
+
+async function readBuiltInGenerationResponse<T>(args: {
+  readonly response: Response;
+  readonly baseUrl: string;
+  readonly token: string;
+  readonly fallback: string;
+}): Promise<T> {
+  const body: unknown = await args.response.json();
+  if (isBuiltInGenerationAcceptedResponse(body)) {
+    return waitForBuiltInGenerationResult<T>({
+      accepted: body,
+      baseUrl: args.baseUrl,
+      token: args.token,
+      fallback: args.fallback,
+    });
+  }
+  if (args.response.status === 202) {
+    throw new ApiRequestError(
+      `${args.fallback} returned an invalid generation response`,
+      "INVALID_GENERATION_RESPONSE",
+      502,
+    );
+  }
+  return body as T;
 }
 
 /**
@@ -809,18 +863,12 @@ export async function generateWebImage(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  if (response.status === 202) {
-    const accepted =
-      (await response.json()) as ZeroBuiltInGenerationAcceptedResponse;
-    return waitForBuiltInGenerationResult<GenerateWebImageResult>({
-      accepted,
-      baseUrl,
-      token,
-      fallback: "Failed to generate image",
-    });
-  }
-
-  return (await response.json()) as GenerateWebImageResult;
+  return readBuiltInGenerationResponse<GenerateWebImageResult>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate image",
+  });
 }
 
 /**
@@ -880,18 +928,12 @@ export async function generateWebVideo(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  if (response.status === 202) {
-    const accepted =
-      (await response.json()) as ZeroBuiltInGenerationAcceptedResponse;
-    return waitForBuiltInGenerationResult<GenerateWebVideoResult>({
-      accepted,
-      baseUrl,
-      token,
-      fallback: "Failed to generate video",
-    });
-  }
-
-  return (await response.json()) as GenerateWebVideoResult;
+  return readBuiltInGenerationResponse<GenerateWebVideoResult>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate video",
+  });
 }
 
 /**
@@ -947,16 +989,10 @@ export async function generateWebPresentation(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  if (response.status === 202) {
-    const accepted =
-      (await response.json()) as ZeroBuiltInGenerationAcceptedResponse;
-    return waitForBuiltInGenerationResult<GenerateWebPresentationResult>({
-      accepted,
-      baseUrl,
-      token,
-      fallback: "Failed to generate presentation",
-    });
-  }
-
-  return (await response.json()) as GenerateWebPresentationResult;
+  return readBuiltInGenerationResponse<GenerateWebPresentationResult>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate presentation",
+  });
 }
