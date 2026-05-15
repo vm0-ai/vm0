@@ -2626,6 +2626,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ready_for_park_boundary_complete_prepare_failure_marks_dirty_without_pause() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+        let quiesce_state = coordinator.clone();
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                quiesce_state.mark_dirty(DirtyReason::new("operation dropped during quiesce"));
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+    }
+
+    #[tokio::test]
     async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
@@ -2657,6 +2687,99 @@ mod tests {
             logged_events(&events),
             vec!["guest_quiesce", "firecracker_park"]
         );
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_mark_parked_failure_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+        let park_state = coordinator.clone();
+
+        let result = park_with_ready_for_park(
+            &coordinator,
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                park_state.mark_dirty(DirtyReason::new("mark parked race"));
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(
+            logged_events(&events),
+            vec!["guest_quiesce", "firecracker_park"]
+        );
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_cancel_during_guest_quiesce_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let (quiesce_started_tx, quiesce_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let park = park_with_ready_for_park(
+                &coordinator,
+                || async move {
+                    let _ = quiesce_started_tx.send(());
+                    std::future::pending::<io::Result<()>>().await
+                },
+                || async { Ok(()) },
+            );
+            tokio::pin!(park);
+
+            tokio::select! {
+                result = &mut park => panic!("park completed unexpectedly: {result:?}"),
+                result = quiesce_started_rx => result.unwrap(),
+            }
+        }
+
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_cancel_after_ready_for_park_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let (park_started_tx, park_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let park = park_with_ready_for_park(
+                &coordinator,
+                || async { Ok(()) },
+                || async move {
+                    let _ = park_started_tx.send(());
+                    std::future::pending::<sandbox::Result<()>>().await
+                },
+            );
+            tokio::pin!(park);
+
+            tokio::select! {
+                result = &mut park => panic!("park completed unexpectedly: {result:?}"),
+                result = park_started_rx => result.unwrap(),
+            }
+            assert!(matches!(
+                coordinator.state(),
+                CoordinatorState::ReadyForPark { .. }
+            ));
+        }
+
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
     }
 
     #[tokio::test]
@@ -2790,6 +2913,35 @@ mod tests {
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
         assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_cancel_after_firecracker_resume_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let (resume_started_tx, resume_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let unpark = unpark_with_ready_for_operations(
+                &coordinator,
+                || async { Ok(()) },
+                || async move {
+                    let _ = resume_started_tx.send(());
+                    std::future::pending::<io::Result<()>>().await
+                },
+            );
+            tokio::pin!(unpark);
+
+            tokio::select! {
+                result = &mut unpark => panic!("unpark completed unexpectedly: {result:?}"),
+                result = resume_started_rx => result.unwrap(),
+            }
+        }
+
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
