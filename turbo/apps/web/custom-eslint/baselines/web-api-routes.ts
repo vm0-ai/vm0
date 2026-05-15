@@ -5,7 +5,8 @@ import { createHash } from "node:crypto";
  * frozen. New API routes should be implemented in apps/api instead.
  *
  * When a route is migrated out of apps/web, remove its entry here as part of
- * the same change. Do not add new entries without an intentional exception.
+ * the same change. Do not add new entries; the no-new-api-routes rule checks
+ * that this baseline only shrinks relative to the branch's git base.
  *
  * Intentional exception: model policy and user model preference routes live in
  * apps/web while the rest of Zero's bearer-token web API still authenticates

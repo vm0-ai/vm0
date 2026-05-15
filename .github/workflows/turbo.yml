@@ -342,6 +342,8 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
       - name: Validate oxlintrc.json react allowImportNames
         working-directory: turbo
