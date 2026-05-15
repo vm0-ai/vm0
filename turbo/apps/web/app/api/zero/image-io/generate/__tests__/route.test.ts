@@ -35,7 +35,7 @@ const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
 const FAL_QWEN_IMAGE_URL = "https://fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
-const MODEL = "gpt-image-2";
+const MODEL = "gpt-image-1";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 
 type ImageResponse = {
@@ -187,6 +187,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const response = await POST(
       imageRequest({
         prompt: "a transparent badge",
+        model: "gpt-image-2",
         background: "transparent",
         outputFormat: "webp",
       }),
@@ -251,7 +252,7 @@ describe("POST /api/zero/image-io/generate", () => {
           model: MODEL,
           prompt: "a small robot painting a sunflower",
           n: 1,
-          size: "2048x1152",
+          size: "1024x1024",
           quality: "auto",
           background: "opaque",
           output_format: "webp",
@@ -268,7 +269,7 @@ describe("POST /api/zero/image-io/generate", () => {
             },
           ],
           output_format: "webp",
-          size: "2048x1152",
+          size: "1024x1024",
           quality: "auto",
           background: "opaque",
           usage: {
@@ -288,7 +289,7 @@ describe("POST /api/zero/image-io/generate", () => {
       imageRequest(
         {
           prompt: "a small robot painting a sunflower",
-          size: "2048x1152",
+          size: "1024x1024",
           quality: "auto",
           background: "opaque",
           outputFormat: "webp",
@@ -308,7 +309,7 @@ describe("POST /api/zero/image-io/generate", () => {
       creditsCharged: 78,
       model: MODEL,
       provider: "openai",
-      imageSize: "2048x1152",
+      imageSize: "1024x1024",
       quality: "auto",
       background: "opaque",
       outputFormat: "webp",
@@ -351,7 +352,7 @@ describe("POST /api/zero/image-io/generate", () => {
         model: MODEL,
         provider: "openai",
         s3Key: `uploads/${userId}/${body.id}/${body.filename}`,
-        imageSize: "2048x1152",
+        imageSize: "1024x1024",
         quality: "auto",
         background: "opaque",
         outputFormat: "webp",

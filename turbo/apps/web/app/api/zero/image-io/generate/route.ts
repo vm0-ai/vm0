@@ -25,7 +25,7 @@ const log = logger("api:zero:image-io:generate");
 
 const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
 const FAL_IMAGE_RUN_URL_PREFIX = "https://fal.run";
-const DEFAULT_MODEL = "gpt-image-2";
+const DEFAULT_MODEL = "gpt-image-1";
 const USAGE_KIND = "image";
 const TEXT_INPUT_CATEGORY = "tokens.input.text";
 const IMAGE_INPUT_CATEGORY = "tokens.input.image";

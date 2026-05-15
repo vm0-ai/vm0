@@ -72,8 +72,8 @@ export function createImageGenerateCommand(
     .option("--prompt <text>", "Image prompt; can also be piped via stdin")
     .option(
       "--model <model>",
-      "Model: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
-      "gpt-image-2",
+      "Model: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
+      "gpt-image-1",
     )
     .option(
       "--size <size>",
@@ -116,7 +116,7 @@ Notes:
   - Uses OpenAI for GPT Image models and fal.ai for non-OpenAI models
 
 Models:
-  - OpenAI: gpt-image-2 (default), gpt-image-1.5, gpt-image-1,
+  - OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
     gpt-image-1-mini. OpenAI generations bill returned text/image/output
     token usage.
   - fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4.

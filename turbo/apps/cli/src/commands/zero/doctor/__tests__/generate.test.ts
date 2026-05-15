@@ -114,7 +114,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("vm0");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
-      "Models: OpenAI: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "Models: OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
     );
     expect(text).toContain("Use: zero built-in generate image -h");
     expect(text).not.toContain("Use: zero built-in generate image --model");
@@ -192,8 +192,8 @@ describe("zero doctor generate command", () => {
     expect(json).toMatchObject({
       builtInProvider: {
         label: "Built-in OpenAI",
-        model: "gpt-image-2",
-        command: "zero built-in generate image --model gpt-image-2 -h",
+        model: "gpt-image-1",
+        command: "zero built-in generate image --model gpt-image-1 -h",
       },
     });
     expect(json).toMatchObject({

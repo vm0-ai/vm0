@@ -518,6 +518,7 @@ describe("POST /api/zero/image-io/generate", () => {
       headers: authHeaders(),
       body: JSON.stringify({
         prompt: "a transparent badge",
+        model: "gpt-image-2",
         background: "transparent",
         outputFormat: "webp",
       }),
@@ -696,7 +697,7 @@ describe("POST /api/zero/image-io/generate", () => {
             },
           ],
           output_format: "webp",
-          size: "2048x1152",
+          size: "1024x1024",
           quality: "auto",
           background: "opaque",
           usage: {
@@ -723,7 +724,7 @@ describe("POST /api/zero/image-io/generate", () => {
       headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({
         prompt: "a small robot painting a sunflower",
-        size: "2048x1152",
+        size: "1024x1024",
         quality: "auto",
         background: "opaque",
         outputFormat: "webp",
@@ -766,7 +767,7 @@ describe("POST /api/zero/image-io/generate", () => {
       size: IMAGE_BYTES.byteLength,
       creditsCharged,
       model: IMAGE_IO_MODEL,
-      imageSize: "2048x1152",
+      imageSize: "1024x1024",
       quality: "auto",
       background: "opaque",
       outputFormat: "webp",
@@ -780,7 +781,7 @@ describe("POST /api/zero/image-io/generate", () => {
       model: IMAGE_IO_MODEL,
       prompt: "a small robot painting a sunflower",
       n: 1,
-      size: "2048x1152",
+      size: "1024x1024",
       quality: "auto",
       background: "opaque",
       output_format: "webp",
@@ -842,7 +843,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(uploadRows[0]?.metadata).toMatchObject({
       generatedBy: "zero-official-image",
       model: IMAGE_IO_MODEL,
-      imageSize: "2048x1152",
+      imageSize: "1024x1024",
       quality: "auto",
       background: "opaque",
       outputFormat: "webp",

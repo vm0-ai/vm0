@@ -21,7 +21,7 @@ import {
 export const OPENAI_IMAGE_GENERATION_URL =
   "https://api.openai.com/v1/images/generations";
 const FAL_IMAGE_RUN_URL_PREFIX = "https://fal.run";
-export const IMAGE_IO_MODEL = "gpt-image-2";
+export const IMAGE_IO_MODEL = "gpt-image-1";
 const IMAGE_IO_MAX_PROMPT_LENGTH = 32_000;
 const IMAGE_IO_MIN_PIXELS = 655_360;
 const IMAGE_IO_MAX_PIXELS = 8_294_400;

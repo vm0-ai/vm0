@@ -91,7 +91,7 @@ export function createPresentationGenerateCommand(
     )
     .option(
       "--image-model <model>",
-      "Image model for generated visuals: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
+      "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
     )
     .option(
       "--theme <theme>",

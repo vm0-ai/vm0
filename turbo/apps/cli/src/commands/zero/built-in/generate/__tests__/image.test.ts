@@ -24,7 +24,7 @@ const IMAGE_RESULT = {
   size: 19,
   url: "http://localhost:3000/f/user-1/image-file-id/image-image-fi.png",
   creditsCharged: 65,
-  model: "gpt-image-2",
+  model: "gpt-image-1",
   provider: "openai",
   imageSize: "1024x1024",
   quality: "medium",
@@ -71,7 +71,7 @@ describe("zero built-in generate image command", () => {
 
         return HttpResponse.json({
           ...IMAGE_RESULT,
-          imageSize: "2048x1152",
+          imageSize: "1024x1024",
           quality: "auto",
           background: "opaque",
           outputFormat: "webp",
@@ -88,8 +88,6 @@ describe("zero built-in generate image command", () => {
       "image",
       "--prompt",
       "A watercolor fox",
-      "--size",
-      "2048x1152",
       "--quality",
       "auto",
       "--background",
@@ -104,8 +102,8 @@ describe("zero built-in generate image command", () => {
 
     expect(capturedBody).toEqual({
       prompt: "A watercolor fox",
-      model: "gpt-image-2",
-      size: "2048x1152",
+      model: "gpt-image-1",
+      size: "1024x1024",
       quality: "auto",
       background: "opaque",
       outputFormat: "webp",
@@ -116,13 +114,13 @@ describe("zero built-in generate image command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
     expect(stdout).toContain(`File: ${IMAGE_RESULT.filename}`);
-    expect(stdout).toContain("Size: 2048x1152");
+    expect(stdout).toContain("Size: 1024x1024");
     expect(stdout).toContain("Quality: auto");
     expect(stdout).toContain("Format: webp");
     expect(stdout).toContain("Compression: 50");
     expect(stdout).toContain("Moderation: low");
     expect(stdout).toContain("Credits charged: 65");
-    expect(stdout).toContain("Model: gpt-image-2");
+    expect(stdout).toContain("Model: gpt-image-1");
     expect(stdout).toContain("Provider: openai");
   });
 
@@ -209,7 +207,7 @@ describe("zero built-in generate image command", () => {
       size: IMAGE_RESULT.size,
       url: IMAGE_RESULT.url,
       creditsCharged: 65,
-      model: "gpt-image-2",
+      model: IMAGE_RESULT.model,
       provider: "openai",
       imageSize: "1024x1024",
       quality: "medium",
@@ -283,6 +281,7 @@ describe("zero built-in generate image command", () => {
     imageCommand.outputHelp();
 
     expect(helpOutput).toContain("gpt-image-1.5");
+    expect(helpOutput).toContain("gpt-image-1 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
     expect(helpOutput).toContain("support varies");

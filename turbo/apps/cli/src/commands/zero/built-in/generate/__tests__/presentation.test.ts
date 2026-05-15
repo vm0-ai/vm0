@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import chalk from "chalk";
 import { server } from "../../../../../mocks/server";
 import { zeroBuiltInCommand } from "../../index";
+import { presentationCommand } from "../presentation";
 
 const PRESENTATION_URL =
   "http://localhost:3000/api/zero/presentation-io/generate";
@@ -213,6 +214,20 @@ describe("zero built-in generate presentation command", () => {
       textCreditsCharged: 24,
       title: "API Migration Plan",
     });
+  });
+
+  it("should describe the default image model in help", () => {
+    let helpOutput = "";
+    presentationCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    presentationCommand.outputHelp();
+
+    expect(helpOutput).toContain("Image model for generated visuals (default:");
+    expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
   });
 
   it("should surface API errors", async () => {
