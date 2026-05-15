@@ -2227,7 +2227,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wait_exit_rejects_consumed_spawn_handle() {
+    async fn wait_exit_rejects_consumed_guest_process_handle() {
         let runtime = MockSandboxRuntime::new();
         let factory = runtime.create_factory(test_factory_config()).await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
