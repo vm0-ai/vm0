@@ -95,6 +95,10 @@ import {
   apiRemoteAgentHandlers,
   resetMockRemoteAgentHosts,
 } from "./api-remote-agent.ts";
+import {
+  apiLocalBrowserHandlers,
+  resetMockLocalBrowserHosts,
+} from "./api-local-browser.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -130,6 +134,7 @@ export const handlers = [
   ...apiVoiceChatHandlers,
   ...apiVoiceIoHandlers,
   ...apiRemoteAgentHandlers,
+  ...apiLocalBrowserHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -161,4 +166,5 @@ export function resetAllMockHandlers(): void {
   resetMockOnboardingStatus();
   resetMockVoiceChat();
   resetMockRemoteAgentHosts();
+  resetMockLocalBrowserHosts();
 }

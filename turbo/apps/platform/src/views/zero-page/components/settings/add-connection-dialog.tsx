@@ -17,6 +17,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
 import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
@@ -26,13 +27,23 @@ import {
   setTokenFormValue$,
   clearTokenForm$,
   connectRemoteAgentConnector$,
+  connectLocalBrowserConnector$,
+  deleteLocalBrowserHost$,
+  detectLocalBrowserExtension$,
+  pairLocalBrowserExtension$,
   tokenFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
   REMOTE_AGENT_CONNECTOR_TYPE,
+  LOCAL_BROWSER_CONNECTOR_TYPE,
   getRemoteAgentOnlineHosts,
+  getLocalBrowserOnlineHosts,
+  localBrowserConnectionRef$,
+  localBrowserExtensionStatus$,
+  localBrowserHosts$,
   remoteAgentHostsWatcherRef$,
   remoteAgentHosts$,
+  type LocalBrowserExtensionStatus,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
@@ -75,6 +86,10 @@ function connectedStatusText(item: ConnectorTypeWithStatus): string {
     const count = item.remoteAgentHosts?.length ?? 0;
     return count === 1 ? "1 host online" : `${count} hosts online`;
   }
+  if (item.type === LOCAL_BROWSER_CONNECTOR_TYPE) {
+    const count = item.localBrowserHosts?.length ?? 0;
+    return count === 1 ? "1 browser online" : `${count} browsers online`;
+  }
   if (item.needsReconnect) {
     return "Connection expired";
   }
@@ -93,6 +108,42 @@ function formatRemoteAgentBackends(backends: readonly string[]): string {
       return backend === "claude-code" ? "Claude Code" : "Codex";
     })
     .join(", ");
+}
+
+function formatLocalBrowserCapabilities(
+  capabilities: readonly string[],
+): string {
+  if (capabilities.length === 0) {
+    return "Browser automation";
+  }
+  return capabilities.slice(0, 3).join(", ");
+}
+
+function localBrowserExtensionStatusText(
+  status: LocalBrowserExtensionStatus,
+): string {
+  switch (status.status) {
+    case "checking": {
+      return "Checking extension...";
+    }
+    case "available": {
+      return status.browser
+        ? `${status.browser} extension ready`
+        : "Extension ready";
+    }
+    case "pairing": {
+      return "Pairing extension...";
+    }
+    case "missing": {
+      return "Extension not detected";
+    }
+    case "error": {
+      return status.message;
+    }
+    case "unknown": {
+      return "Extension status unknown";
+    }
+  }
 }
 
 type PostConnectOptions = {
@@ -295,6 +346,238 @@ function RemoteAgentConnectContent({
   );
 }
 
+function LocalBrowserExtensionPanel({
+  status,
+  checking,
+  pairing,
+  onDetect,
+  onPair,
+}: {
+  status: LocalBrowserExtensionStatus;
+  checking: boolean;
+  pairing: boolean;
+  onDetect: (event: unknown) => void;
+  onPair: (event: unknown) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border/60 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-foreground">
+          Browser extension
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {localBrowserExtensionStatusText(status)}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onDetect}
+          disabled={checking}
+          className="h-8 flex-1"
+        >
+          {checking ? "Checking..." : "Check extension"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onPair}
+          disabled={checking || pairing}
+          className="h-8 flex-1"
+        >
+          {pairing ? "Pairing..." : "Pair extension"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LocalBrowserHostList({
+  hosts,
+  loading,
+  deletingHost,
+  onDeleteHost,
+}: {
+  hosts: readonly LocalBrowserHost[];
+  loading: boolean;
+  deletingHost: boolean;
+  onDeleteHost: (hostId: string) => void;
+}) {
+  if (loading && hosts.length === 0) {
+    return <p className="text-sm text-muted-foreground">Loading browsers...</p>;
+  }
+
+  if (hosts.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No paired browsers yet. Pair the extension above; this list updates
+        automatically.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col divide-y divide-border/50 rounded-lg border border-border/60">
+      {hosts.map((host) => {
+        const isOnline = host.status === "online";
+        return (
+          <div
+            key={host.id}
+            className="flex items-center justify-between gap-3 px-3 py-2"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  }`}
+                />
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                  {host.displayName}
+                </span>
+              </div>
+              <span className="block truncate text-xs text-muted-foreground">
+                {host.browser} {host.extensionVersion} -{" "}
+                {formatLocalBrowserCapabilities(host.supportedCapabilities)}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={deletingHost}
+              onClick={() => {
+                onDeleteHost(host.id);
+              }}
+              className="h-8 shrink-0 px-2 text-xs"
+            >
+              Revoke
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LocalBrowserConnectContent({
+  item,
+  onSuccess,
+  showPermissionDialogOnConnect,
+}: {
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
+}) {
+  const config = CONNECTOR_TYPES[item.type];
+  const localBrowserConfig = config.authMethods.api;
+  const hostListLoadable = useLastLoadable(localBrowserHosts$);
+  const watchConnectionRef = useSet(localBrowserConnectionRef$);
+  const extensionStatus = useGet(localBrowserExtensionStatus$);
+  const [detectLoadable, detectExtension] = useLoadableSet(
+    detectLocalBrowserExtension$,
+  );
+  const [pairLoadable, pairExtension] = useLoadableSet(
+    pairLocalBrowserExtension$,
+  );
+  const [deleteHostLoadable, deleteHost] = useLoadableSet(
+    deleteLocalBrowserHost$,
+  );
+  const [connectLoadable, connectLocalBrowser] = useLoadableSet(
+    connectLocalBrowserConnector$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const hosts =
+    hostListLoadable.state === "hasData"
+      ? hostListLoadable.data.hosts
+      : (item.localBrowserHosts ?? []);
+  const onlineHosts = getLocalBrowserOnlineHosts(hosts);
+  const loadingHosts = hostListLoadable.state === "loading";
+  const checkingExtension =
+    extensionStatus.status === "checking" || detectLoadable.state === "loading";
+  const pairingExtension =
+    extensionStatus.status === "pairing" || pairLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const deletingHost = deleteHostLoadable.state === "loading";
+  const canConnect = !item.connected && onlineHosts.length > 0 && !connecting;
+
+  const handleDetect = onDomEventFn(async () => {
+    if (checkingExtension) {
+      return;
+    }
+    await detectExtension(pageSignal);
+  });
+
+  const handlePair = onDomEventFn(async () => {
+    if (pairingExtension || checkingExtension) {
+      return;
+    }
+    await pairExtension(pageSignal);
+  });
+
+  const handleConnect = onDomEventFn(async () => {
+    if (!canConnect) {
+      return;
+    }
+    await connectLocalBrowser(
+      { showPermissionDialog: showPermissionDialogOnConnect },
+      pageSignal,
+    );
+    await onSuccess();
+  });
+
+  const handleDeleteHost = (hostId: string) => {
+    detach(deleteHost(hostId, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div ref={watchConnectionRef} className="flex flex-col gap-3">
+      {localBrowserConfig?.helpText && (
+        <div
+          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdown(localBrowserConfig.helpText),
+          }}
+        />
+      )}
+
+      <LocalBrowserExtensionPanel
+        status={extensionStatus}
+        checking={checkingExtension}
+        pairing={pairingExtension}
+        onDetect={handleDetect}
+        onPair={handlePair}
+      />
+
+      <div className="mt-1 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium text-foreground">Browser hosts</h3>
+        <span className="text-xs text-muted-foreground">
+          {loadingHosts ? "Checking..." : "Updates automatically"}
+        </span>
+      </div>
+
+      <LocalBrowserHostList
+        hosts={hosts}
+        loading={loadingHosts}
+        deletingHost={deletingHost}
+        onDeleteHost={handleDeleteHost}
+      />
+
+      {!item.connected && (
+        <Button
+          type="button"
+          onClick={handleConnect}
+          disabled={!canConnect}
+          className="w-full"
+        >
+          {connecting ? "Connecting..." : "Connect"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
@@ -323,6 +606,16 @@ function ConnectModalContent({
   if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
     return (
       <RemoteAgentConnectContent
+        item={item}
+        onSuccess={onSuccess}
+        showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+      />
+    );
+  }
+
+  if (item.type === LOCAL_BROWSER_CONNECTOR_TYPE) {
+    return (
+      <LocalBrowserConnectContent
         item={item}
         onSuccess={onSuccess}
         showPermissionDialogOnConnect={showPermissionDialogOnConnect}

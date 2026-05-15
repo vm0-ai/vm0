@@ -14,7 +14,14 @@ import {
   type RemoteAgentHostListResponse,
 } from "@vm0/api-contracts/contracts/zero-remote-agent";
 import {
+  zeroLocalBrowserDeviceClaimContract,
+  zeroLocalBrowserHostsContract,
+  type LocalBrowserHost,
+  type LocalBrowserHostListResponse,
+} from "@vm0/api-contracts/contracts/zero-local-browser";
+import {
   zeroConnectorScopeDiffContract,
+  zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
   zeroRemoteAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -45,7 +52,14 @@ const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 export const REMOTE_AGENT_CONNECTOR_TYPE =
   "remote-agent" as const satisfies ConnectorType;
+export const LOCAL_BROWSER_CONNECTOR_TYPE =
+  "local-browser" as const satisfies ConnectorType;
 const REMOTE_AGENT_HOSTS_CHANGED_TOPIC = "remote-agent:hosts-changed";
+const LOCAL_BROWSER_HOSTS_CHANGED_TOPIC = "local-browser:hosts-changed";
+const LOCAL_BROWSER_WEB_MESSAGE_SOURCE = "vm0-local-browser-web";
+const LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE = "vm0-local-browser-extension";
+const LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS = 1000;
+const LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS = 10_000;
 
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
@@ -78,9 +92,12 @@ export interface ConnectorTypeWithStatus {
   needsReconnect: boolean;
   /** Online remote-agent hosts for the virtual remote-agent connector. */
   remoteAgentHosts?: RemoteAgentHost[];
+  /** Online local browser hosts for the virtual local-browser connector. */
+  localBrowserHosts?: LocalBrowserHost[];
 }
 
 const internalReloadRemoteAgentHosts$ = state(0);
+const internalReloadLocalBrowserHosts$ = state(0);
 
 export function getRemoteAgentOnlineHosts(
   hosts: readonly RemoteAgentHost[],
@@ -105,14 +122,48 @@ export const remoteAgentHosts$ = computed(
   },
 );
 
+export function getLocalBrowserOnlineHosts(
+  hosts: readonly LocalBrowserHost[],
+): LocalBrowserHost[] {
+  return hosts.filter((host) => {
+    return host.status === "online";
+  });
+}
+
+export const localBrowserHosts$ = computed(
+  async (get): Promise<LocalBrowserHostListResponse> => {
+    get(internalReloadLocalBrowserHosts$);
+    const features = await get(featureSwitch$);
+    if (!features?.[FeatureSwitchKey.LocalBrowserUse]) {
+      return { hosts: [] };
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroLocalBrowserHostsContract);
+    const result = await accept(client.list(), [200]);
+    return result.body as LocalBrowserHostListResponse;
+  },
+);
+
 const reloadRemoteAgentHosts$ = command(({ set }) => {
   set(internalReloadRemoteAgentHosts$, (x) => {
     return x + 1;
   });
 });
 
+const reloadLocalBrowserHosts$ = command(({ set }) => {
+  set(internalReloadLocalBrowserHosts$, (x) => {
+    return x + 1;
+  });
+});
+
 const reloadRemoteAgentHostsFromRealtime$ = command(({ set }) => {
   set(reloadRemoteAgentHosts$);
+  return false;
+});
+
+const reloadLocalBrowserHostsFromRealtime$ = command(({ set }) => {
+  set(reloadLocalBrowserHosts$);
   return false;
 });
 
@@ -126,6 +177,18 @@ const watchRemoteAgentHosts$ = command(async ({ set }, signal: AbortSignal) => {
   );
 });
 
+const watchLocalBrowserHosts$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(reloadLocalBrowserHosts$);
+    await set(
+      setAblyLoop$,
+      LOCAL_BROWSER_HOSTS_CHANGED_TOPIC,
+      reloadLocalBrowserHostsFromRealtime$,
+      signal,
+    );
+  },
+);
+
 export const remoteAgentHostsWatcherRef$ = onRef(
   command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
     await set(watchRemoteAgentHosts$, signal);
@@ -134,6 +197,14 @@ export const remoteAgentHostsWatcherRef$ = onRef(
 
 function isRemoteAgentConnector(type: ConnectorType): boolean {
   return type === REMOTE_AGENT_CONNECTOR_TYPE;
+}
+
+function isLocalBrowserConnector(type: ConnectorType): boolean {
+  return type === LOCAL_BROWSER_CONNECTOR_TYPE;
+}
+
+function isHostBackedConnector(type: ConnectorType): boolean {
+  return isRemoteAgentConnector(type) || isLocalBrowserConnector(type);
 }
 
 function isConnectorFlagEnabled(
@@ -158,7 +229,7 @@ function getAvailableAuthMethodsForConnector(
   if ("api-token" in methods && (flagEnabled || !config.strictFeatureFlag)) {
     availableAuthMethods.push("api-token");
   }
-  if (isRemoteAgentConnector(type) && flagEnabled && "api" in methods) {
+  if (isHostBackedConnector(type) && flagEnabled && "api" in methods) {
     availableAuthMethods.push("api");
   }
 
@@ -170,10 +241,12 @@ function buildConnectorTypeStatus(params: {
   readonly connector: ConnectorResponse | null;
   readonly features: Record<string, boolean> | null | undefined;
   readonly remoteAgentOnlineHosts: RemoteAgentHost[];
+  readonly localBrowserOnlineHosts: LocalBrowserHost[];
 }): ConnectorTypeWithStatus {
   const config = CONNECTOR_TYPES[params.type];
   const flag = config.featureFlag;
   const isRemoteAgent = isRemoteAgentConnector(params.type);
+  const isLocalBrowser = isLocalBrowserConnector(params.type);
   const availableAuthMethods = getAvailableAuthMethodsForConnector(
     params.type,
     isConnectorFlagEnabled(params.type, params.features),
@@ -184,7 +257,7 @@ function buildConnectorTypeStatus(params: {
   return {
     type: params.type,
     label:
-      flag && !hasApiToken && !isRemoteAgent
+      flag && !hasApiToken && !isRemoteAgent && !isLocalBrowser
         ? `[Experimental] ${config.label}`
         : config.label,
     helpText: config.helpText,
@@ -194,14 +267,18 @@ function buildConnectorTypeStatus(params: {
     connector: params.connector,
     availableAuthMethods,
     scopeMismatch:
-      !isRemoteAgent &&
+      !isHostBackedConnector(params.type) &&
       params.connector !== null &&
       params.connector.authMethod === "oauth" &&
       !hasRequiredScopes(params.type, params.connector.oauthScopes),
     needsReconnect:
-      !isRemoteAgent && (params.connector?.needsReconnect ?? false),
+      !isHostBackedConnector(params.type) &&
+      (params.connector?.needsReconnect ?? false),
     ...(isRemoteAgent
       ? { remoteAgentHosts: params.remoteAgentOnlineHosts }
+      : {}),
+    ...(isLocalBrowser
+      ? { localBrowserHosts: params.localBrowserOnlineHosts }
       : {}),
   };
 }
@@ -253,8 +330,14 @@ export const allConnectorTypes$ = computed(async (get) => {
   const remoteAgentHostList = features?.[FeatureSwitchKey.RemoteAgent]
     ? await get(remoteAgentHosts$)
     : { hosts: [] };
+  const localBrowserHostList = features?.[FeatureSwitchKey.LocalBrowserUse]
+    ? await get(localBrowserHosts$)
+    : { hosts: [] };
   const remoteAgentOnlineHosts = getRemoteAgentOnlineHosts(
     remoteAgentHostList.hosts,
+  );
+  const localBrowserOnlineHosts = getLocalBrowserOnlineHosts(
+    localBrowserHostList.hosts,
   );
 
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
@@ -272,6 +355,7 @@ export const allConnectorTypes$ = computed(async (get) => {
         connector: connectorMap.get(type) ?? null,
         features,
         remoteAgentOnlineHosts,
+        localBrowserOnlineHosts,
       });
     });
 
@@ -470,6 +554,292 @@ export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
 
+export type LocalBrowserExtensionStatus =
+  | { readonly status: "unknown" }
+  | { readonly status: "checking" }
+  | {
+      readonly status: "available";
+      readonly browser?: string;
+      readonly extensionVersion?: string;
+    }
+  | { readonly status: "missing" }
+  | { readonly status: "pairing" }
+  | { readonly status: "error"; readonly message: string };
+
+type LocalBrowserExtensionResponse =
+  | {
+      readonly type: "detected";
+      readonly browser?: string;
+      readonly extensionVersion?: string;
+    }
+  | {
+      readonly type: "pairingStarted";
+      readonly deviceCode: string;
+      readonly userCode?: string;
+    }
+  | { readonly type: "error"; readonly message: string };
+
+const internalLocalBrowserExtensionStatus$ = state<LocalBrowserExtensionStatus>(
+  { status: "unknown" },
+);
+
+export const localBrowserExtensionStatus$ = computed((get) => {
+  return get(internalLocalBrowserExtensionStatus$);
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function parseLocalBrowserExtensionResponse(
+  data: unknown,
+  requestId: string,
+): LocalBrowserExtensionResponse | null {
+  if (!isRecord(data)) {
+    return null;
+  }
+  if (data.source !== LOCAL_BROWSER_EXTENSION_MESSAGE_SOURCE) {
+    return null;
+  }
+  if (data.requestId !== requestId) {
+    return null;
+  }
+
+  if (data.type === "vm0.localBrowser.detected") {
+    return {
+      type: "detected",
+      browser: stringValue(data.browser),
+      extensionVersion: stringValue(data.extensionVersion),
+    };
+  }
+
+  if (data.type === "vm0.localBrowser.pairingStarted") {
+    const deviceCode = stringValue(data.deviceCode);
+    if (!deviceCode) {
+      return {
+        type: "error",
+        message: "Local browser extension did not return a device code",
+      };
+    }
+    return {
+      type: "pairingStarted",
+      deviceCode,
+      userCode: stringValue(data.userCode),
+    };
+  }
+
+  if (data.type === "vm0.localBrowser.error") {
+    return {
+      type: "error",
+      message: stringValue(data.message) ?? "Local browser extension failed",
+    };
+  }
+
+  return null;
+}
+
+function createLocalBrowserRequestId(): string {
+  return `local-browser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function sendLocalBrowserExtensionRequest(
+  type: "detect" | "pair",
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<LocalBrowserExtensionResponse> {
+  signal.throwIfAborted();
+
+  const requestId = createLocalBrowserRequestId();
+  const deferred = Promise.withResolvers<LocalBrowserExtensionResponse>();
+  let settled = false;
+  let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+
+  function cleanup() {
+    window.removeEventListener("message", onMessage);
+    signal.removeEventListener("abort", onAbort);
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+  }
+
+  function resolve(response: LocalBrowserExtensionResponse) {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    if (response.type === "error") {
+      deferred.reject(new Error(response.message));
+      return;
+    }
+    deferred.resolve(response);
+  }
+
+  function reject(error: unknown) {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    deferred.reject(error);
+  }
+
+  function onAbort() {
+    reject(signal.reason);
+  }
+
+  function onMessage(event: MessageEvent<unknown>) {
+    if (event.source && event.source !== window) {
+      return;
+    }
+    if (event.origin && event.origin !== window.location.origin) {
+      return;
+    }
+    const response = parseLocalBrowserExtensionResponse(event.data, requestId);
+    if (!response) {
+      return;
+    }
+    resolve(response);
+  }
+
+  window.addEventListener("message", onMessage);
+  signal.addEventListener("abort", onAbort, { once: true });
+  timeoutId = window.setTimeout(() => {
+    reject(new Error("Local browser extension did not respond"));
+  }, timeoutMs);
+  window.postMessage(
+    {
+      source: LOCAL_BROWSER_WEB_MESSAGE_SOURCE,
+      type: `vm0.localBrowser.${type}`,
+      requestId,
+    },
+    window.location.origin,
+  );
+
+  return deferred.promise;
+}
+
+function localBrowserErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Local browser extension pairing failed";
+}
+
+export const detectLocalBrowserExtension$ = command(
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    set(internalLocalBrowserExtensionStatus$, { status: "checking" });
+    const [result] = await Promise.allSettled([
+      sendLocalBrowserExtensionRequest(
+        "detect",
+        LOCAL_BROWSER_EXTENSION_DETECT_TIMEOUT_MS,
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+    if (result.status === "rejected") {
+      set(internalLocalBrowserExtensionStatus$, {
+        status: "missing",
+      });
+      return;
+    }
+
+    const response = result.value;
+    if (response.type !== "detected") {
+      set(internalLocalBrowserExtensionStatus$, {
+        status: "error",
+        message: "Unexpected local browser extension response",
+      });
+      return;
+    }
+    set(internalLocalBrowserExtensionStatus$, {
+      status: "available",
+      browser: response.browser,
+      extensionVersion: response.extensionVersion,
+    });
+  },
+);
+
+export const pairLocalBrowserExtension$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    set(internalLocalBrowserExtensionStatus$, { status: "pairing" });
+    const [result] = await Promise.allSettled([
+      sendLocalBrowserExtensionRequest(
+        "pair",
+        LOCAL_BROWSER_EXTENSION_PAIR_TIMEOUT_MS,
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+    if (result.status === "rejected") {
+      const message = localBrowserErrorMessage(result.reason);
+      if (message.includes("did not respond")) {
+        set(internalLocalBrowserExtensionStatus$, { status: "missing" });
+      } else {
+        set(internalLocalBrowserExtensionStatus$, {
+          status: "error",
+          message,
+        });
+      }
+      toast.error(message, { id: "local-browser-extension-pair-error" });
+      throw result.reason;
+    }
+
+    const response = result.value;
+    if (response.type !== "pairingStarted") {
+      const message = "Unexpected local browser extension response";
+      set(internalLocalBrowserExtensionStatus$, {
+        status: "error",
+        message,
+      });
+      toast.error(message, { id: "local-browser-extension-pair-error" });
+      throw new Error(message);
+    }
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroLocalBrowserDeviceClaimContract, {
+      apiBase: "api",
+    });
+    const [claimResult] = await Promise.allSettled([
+      accept(
+        client.claim({
+          body: { deviceCode: response.deviceCode },
+          fetchOptions: { signal },
+        }),
+        [200],
+      ),
+    ]);
+    signal.throwIfAborted();
+    if (claimResult.status === "rejected") {
+      const message = localBrowserErrorMessage(claimResult.reason);
+      set(internalLocalBrowserExtensionStatus$, {
+        status: "error",
+        message,
+      });
+      toast.error(message, { id: "local-browser-extension-pair-error" });
+      throw claimResult.reason;
+    }
+
+    set(reloadLocalBrowserHosts$);
+    set(internalLocalBrowserExtensionStatus$, { status: "available" });
+    toast.success("Browser extension paired", {
+      id: "local-browser-extension-paired",
+    });
+  },
+);
+
+export const localBrowserConnectionRef$ = onRef(
+  command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+    set(reloadLocalBrowserHosts$);
+    await set(detectLocalBrowserExtension$, signal);
+    await set(watchLocalBrowserHosts$, signal);
+  }),
+);
+
 export const connectRemoteAgentConnector$ = command(
   async (
     { get, set },
@@ -508,6 +878,66 @@ export const connectRemoteAgentConnector$ = command(
     if (options.showPermissionDialog) {
       set(internalPermissionDialogType$, REMOTE_AGENT_CONNECTOR_TYPE);
     }
+  },
+);
+
+export const connectLocalBrowserConnector$ = command(
+  async (
+    { get, set },
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroLocalBrowserConnectorContract, {
+      apiBase: "api",
+    });
+    await accept(
+      client.create({
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, LOCAL_BROWSER_CONNECTOR_TYPE]);
+    });
+    set(reloadConnectors$);
+    set(reloadLocalBrowserHosts$);
+
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(LOCAL_BROWSER_CONNECTOR_TYPE);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+
+    toast.success(
+      `${CONNECTOR_TYPES[LOCAL_BROWSER_CONNECTOR_TYPE].label} connected`,
+      {
+        id: `connector-connected-${LOCAL_BROWSER_CONNECTOR_TYPE}`,
+      },
+    );
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, LOCAL_BROWSER_CONNECTOR_TYPE);
+    }
+  },
+);
+
+export const deleteLocalBrowserHost$ = command(
+  async ({ get, set }, hostId: string, signal: AbortSignal): Promise<void> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroLocalBrowserHostsContract);
+    await accept(
+      client.delete({
+        params: { hostId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadLocalBrowserHosts$);
+    toast.success("Browser host removed", {
+      id: `local-browser-host-removed-${hostId}`,
+    });
   },
 );
 
