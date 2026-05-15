@@ -1437,6 +1437,7 @@ impl Sandbox for FirecrackerSandbox {
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
         park_with_ready_for_park(
+            &id,
             &coordinator,
             || async move {
                 let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
@@ -1470,6 +1471,7 @@ impl Sandbox for FirecrackerSandbox {
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
         unpark_with_ready_for_operations(
+            &id,
             &coordinator,
             || {
                 unpark_inner(
@@ -1715,7 +1717,7 @@ impl ParkBoundaryGuard {
         self.state = ParkBoundaryGuardState::Disarmed;
     }
 
-    fn mark_parked(mut self) -> sandbox::Result<()> {
+    fn mark_parked(mut self) -> Result<(), PrepareParkError> {
         match self.coordinator.mark_parked(&self.attempt) {
             Ok(()) => {
                 self.state = ParkBoundaryGuardState::Disarmed;
@@ -1729,7 +1731,7 @@ impl ParkBoundaryGuard {
                 self.coordinator
                     .mark_dirty(DirtyReason::new(message.clone()));
                 self.state = ParkBoundaryGuardState::Disarmed;
-                Err(idle_transition_error(SandboxIdleTransition::Park, message))
+                Err(error)
             }
         }
     }
@@ -1807,6 +1809,7 @@ impl Drop for UnparkBoundaryGuard {
 }
 
 async fn park_with_ready_for_park<Q, QF, P, PF>(
+    log_id: &str,
     coordinator: &ParkCoordinator,
     quiesce_guest: Q,
     park_firecracker: P,
@@ -1817,50 +1820,129 @@ where
     P: FnOnce() -> PF,
     PF: Future<Output = sandbox::Result<()>>,
 {
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "prepare",
+        "sandbox park lifecycle prepare started"
+    );
     let attempt = match coordinator.begin_prepare_park() {
         Ok(attempt) => attempt,
         Err(error) => {
+            let reason_kind = prepare_park_error_reason_kind(&error);
+            let error_message = prepare_park_error_message(&error);
             if matches!(
                 error,
                 PrepareParkError::InvalidState { .. } | PrepareParkError::StaleAttempt { .. }
             ) {
                 coordinator.mark_dirty(DirtyReason::new(format!(
                     "operation gate failed to start park prepare: {}",
-                    prepare_park_error_message(&error)
+                    error_message
                 )));
             }
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "prepare",
+                reason_kind = reason_kind,
+                error = %error_message,
+                "sandbox park lifecycle prepare rejected"
+            );
             return Err(prepare_park_error(SandboxIdleTransition::Park, error));
         }
     };
     let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
 
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "guest_quiesce",
+        "sandbox park lifecycle guest quiesce started"
+    );
     guard.mark_guest_quiesce_started();
     if let Err(error) = quiesce_guest().await {
         let message = format!("guest quiesce failed during park: {error}");
-        guard.mark_dirty(message.clone());
-        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
-    }
-
-    if let Err(error) = guard.complete_prepare() {
-        let message = format!(
-            "operation gate failed to enter ReadyForPark: {}",
-            prepare_park_error_message(&error)
+        warn!(
+            id = %log_id,
+            transition = "park",
+            phase = "guest_quiesce",
+            reason_kind = "protocol_or_transport",
+            error = %error,
+            "sandbox park lifecycle guest quiesce failed"
         );
         guard.mark_dirty(message.clone());
         return Err(idle_transition_error(SandboxIdleTransition::Park, message));
     }
 
+    if let Err(error) = guard.complete_prepare() {
+        let reason_kind = prepare_park_error_reason_kind(&error);
+        let error_message = prepare_park_error_message(&error);
+        let message = format!(
+            "operation gate failed to enter ReadyForPark: {}",
+            error_message
+        );
+        warn!(
+            id = %log_id,
+            transition = "park",
+            phase = "ready_for_park",
+            reason_kind = reason_kind,
+            error = %error_message,
+            "sandbox park lifecycle failed to enter ReadyForPark"
+        );
+        guard.mark_dirty(message.clone());
+        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+    }
+
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "ready_for_park",
+        "sandbox park lifecycle ReadyForPark reached"
+    );
     if let Err(error) = park_firecracker().await {
+        warn!(
+            id = %log_id,
+            transition = "park",
+            phase = "firecracker_park",
+            reason_kind = "firecracker",
+            error = %error,
+            "sandbox park lifecycle Firecracker park failed after ReadyForPark"
+        );
         guard.mark_dirty(format!(
             "Firecracker park failed after ReadyForPark: {error}"
         ));
         return Err(error);
     }
 
-    guard.mark_parked()
+    if let Err(error) = guard.mark_parked() {
+        let reason_kind = prepare_park_error_reason_kind(&error);
+        let error_message = prepare_park_error_message(&error);
+        let message = format!(
+            "operation gate failed to mark parked after Firecracker park: {}",
+            error_message
+        );
+        warn!(
+            id = %log_id,
+            transition = "park",
+            phase = "parked",
+            reason_kind = reason_kind,
+            error = %error_message,
+            "sandbox park lifecycle failed to mark parked"
+        );
+        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+    }
+
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "parked",
+        "sandbox park lifecycle marked parked"
+    );
+    Ok(())
 }
 
 async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+    log_id: &str,
     coordinator: &ParkCoordinator,
     unpark_firecracker: U,
     resume_guest: R,
@@ -1871,17 +1953,60 @@ where
     R: FnOnce() -> RF,
     RF: Future<Output = io::Result<()>>,
 {
-    ensure_parked_before_unpark(coordinator)?;
+    info!(
+        id = %log_id,
+        transition = "unpark",
+        phase = "start",
+        "sandbox unpark lifecycle started"
+    );
+    let pre_unpark_state = coordinator.state();
+    if let Err(error) = ensure_parked_before_unpark(coordinator) {
+        let reason_kind = match pre_unpark_state {
+            CoordinatorState::Dirty { .. } => "dirty",
+            _ => "invalid_state",
+        };
+        warn!(
+            id = %log_id,
+            transition = "unpark",
+            phase = "start",
+            reason_kind = reason_kind,
+            error = %error,
+            "sandbox unpark lifecycle rejected before Firecracker resume"
+        );
+        return Err(error);
+    }
 
     let mut guard = UnparkBoundaryGuard::new(coordinator.clone());
     if let Err(error) = unpark_firecracker().await {
+        warn!(
+            id = %log_id,
+            transition = "unpark",
+            phase = "firecracker_unpark",
+            reason_kind = "firecracker",
+            error = %error,
+            "sandbox unpark lifecycle Firecracker unpark failed"
+        );
         guard.disarm();
         return Err(error);
     }
     guard.mark_firecracker_resumed();
 
+    info!(
+        id = %log_id,
+        transition = "unpark",
+        phase = "firecracker_resumed",
+        "sandbox unpark lifecycle Firecracker resumed"
+    );
     if let Err(error) = resume_guest().await {
         let message = format!("guest resume failed during unpark: {error}");
+        warn!(
+            id = %log_id,
+            transition = "unpark",
+            phase = "guest_resume",
+            reason_kind = "protocol_or_transport",
+            error = %error,
+            "sandbox unpark lifecycle guest resume failed"
+        );
         guard.mark_dirty(message.clone());
         return Err(idle_transition_error(
             SandboxIdleTransition::Unpark,
@@ -1890,9 +2015,19 @@ where
     }
 
     if let Err(error) = coordinator.reopen_after_unpark() {
+        let reason_kind = prepare_park_error_reason_kind(&error);
+        let error_message = prepare_park_error_message(&error);
         let message = format!(
             "operation gate failed to reopen after unpark: {}",
-            prepare_park_error_message(&error)
+            error_message
+        );
+        warn!(
+            id = %log_id,
+            transition = "unpark",
+            phase = "ready_for_operations",
+            reason_kind = reason_kind,
+            error = %error_message,
+            "sandbox unpark lifecycle failed to enter ReadyForOperations"
         );
         guard.mark_dirty(message.clone());
         return Err(idle_transition_error(
@@ -1902,6 +2037,12 @@ where
     }
 
     guard.disarm();
+    info!(
+        id = %log_id,
+        transition = "unpark",
+        phase = "ready_for_operations",
+        "sandbox unpark lifecycle ReadyForOperations reached"
+    );
     Ok(())
 }
 
@@ -1970,6 +2111,15 @@ fn prepare_park_error_message(error: &PrepareParkError) -> String {
         PrepareParkError::StaleAttempt { attempt_id, state } => {
             format!("stale park attempt {attempt_id:?} while operation gate is {state:?}")
         }
+    }
+}
+
+fn prepare_park_error_reason_kind(error: &PrepareParkError) -> &'static str {
+    match error {
+        PrepareParkError::Busy => "busy",
+        PrepareParkError::Dirty { .. } => "dirty",
+        PrepareParkError::InvalidState { .. } => "invalid_state",
+        PrepareParkError::StaleAttempt { .. } => "stale_attempt",
     }
 }
 
@@ -2513,6 +2663,7 @@ mod tests {
         let park_state = coordinator.clone();
 
         park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2546,6 +2697,7 @@ mod tests {
         let park_events = Arc::clone(&events);
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2572,6 +2724,7 @@ mod tests {
         let park_events = Arc::clone(&events);
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2601,6 +2754,7 @@ mod tests {
         let park_events = Arc::clone(&events);
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2629,6 +2783,7 @@ mod tests {
         let park_events = Arc::clone(&events);
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2658,6 +2813,7 @@ mod tests {
         let quiesce_state = coordinator.clone();
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2687,6 +2843,7 @@ mod tests {
         let park_events = Arc::clone(&events);
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2722,6 +2879,7 @@ mod tests {
         let park_state = coordinator.clone();
 
         let result = park_with_ready_for_park(
+            "test-sandbox",
             &coordinator,
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
@@ -2753,6 +2911,7 @@ mod tests {
 
         {
             let park = park_with_ready_for_park(
+                "test-sandbox",
                 &coordinator,
                 || async move {
                     let _ = quiesce_started_tx.send(());
@@ -2781,6 +2940,7 @@ mod tests {
 
         {
             let park = park_with_ready_for_park(
+                "test-sandbox",
                 &coordinator,
                 || async { Ok(()) },
                 || async move {
@@ -2816,6 +2976,7 @@ mod tests {
         let resume_state = coordinator.clone();
 
         unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
@@ -2849,6 +3010,7 @@ mod tests {
         let resume_events = Arc::clone(&events);
 
         let result = unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
@@ -2881,6 +3043,7 @@ mod tests {
         let resume_events = Arc::clone(&events);
 
         let result = unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
@@ -2920,6 +3083,7 @@ mod tests {
         let resume_events = Arc::clone(&events);
 
         let result = unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
@@ -2951,6 +3115,7 @@ mod tests {
 
         {
             let unpark = unpark_with_ready_for_operations(
+                "test-sandbox",
                 &coordinator,
                 || async { Ok(()) },
                 || async move {
@@ -2983,6 +3148,7 @@ mod tests {
 
         {
             let unpark = unpark_with_ready_for_operations(
+                "test-sandbox",
                 &coordinator,
                 || async move {
                     firecracker_events
@@ -3020,6 +3186,7 @@ mod tests {
         let resume_events = Arc::clone(&events);
 
         let result = unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
@@ -3053,6 +3220,7 @@ mod tests {
         let resume_state = coordinator.clone();
 
         let result = unpark_with_ready_for_operations(
+            "test-sandbox",
             &coordinator,
             || async move {
                 firecracker_events
