@@ -302,7 +302,7 @@ async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
         .await
         .unwrap();
     let err = handle
-        .control("message-4", b"payload", Duration::from_millis(1))
+        .control("message-4", b"payload", Duration::ZERO)
         .await
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
