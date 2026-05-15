@@ -161,6 +161,13 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the usage members rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/usage/members")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/usage/members/extra")).toBe(
+      false,
+    );
+  });
+
   it("matches the usage runs rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/usage/runs")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/usage/runs/extra")).toBe(

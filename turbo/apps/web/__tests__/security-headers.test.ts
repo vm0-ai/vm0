@@ -248,6 +248,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/usage/insight",
         },
         {
+          source: "/api/zero/usage/members",
+          destination: "https://api.example.test/api/zero/usage/members",
+        },
+        {
           source: "/api/zero/usage/runs",
           destination: "https://api.example.test/api/zero/usage/runs",
         },
@@ -384,5 +388,12 @@ describe("API backend rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/web/download-file/extra"),
     ).toBe(false);
+  });
+
+  it("should match the usage members route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath("/api/zero/usage/members")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/usage/members/extra")).toBe(
+      false,
+    );
   });
 });

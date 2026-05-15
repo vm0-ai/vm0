@@ -1,4 +1,3 @@
-export const MODEL_USAGE_KIND = "model";
 export const TOKEN_CATEGORY_INPUT = "tokens.input";
 export const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 export const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
@@ -8,8 +7,7 @@ export const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
 // (gpt-4o-mini-transcribe) provider/category constants. The Realtime relay
 // emits per-modality token counts (text/audio/cached_*) instead of the four
 // flat buckets used by chat-completion-style models, so they need their own
-// category set. Reporting rolls these into the flat buckets — see
-// `usage-reporting-ledger.ts` for the mapping.
+// category set. Usage reporting rolls these into the flat buckets.
 export const REALTIME_PROVIDER = "gpt-realtime-2";
 export const TRANSCRIPTION_PROVIDER = "gpt-4o-mini-transcribe";
 
