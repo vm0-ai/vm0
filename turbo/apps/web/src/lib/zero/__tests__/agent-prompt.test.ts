@@ -30,8 +30,15 @@ describe("buildAgentPrompt", () => {
       "When the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website)",
     );
     expect(prompt).toContain("run `zero doctor generate -h`");
+    expect(prompt).toContain("zero doctor generate <type>");
     expect(prompt).toContain(
-      "After selecting a Zero generation command, wait for it to complete",
+      "do not claim support for other generated content",
+    );
+    expect(prompt).toContain(
+      "wait for it to finish and use its returned artifact",
+    );
+    expect(prompt).toContain(
+      "Do not abandon it, switch to your own generation approach, or recreate the output yourself just because generation takes a long time",
     );
     expect(prompt).toContain("zero built-in generate image --prompt");
     expect(prompt).toContain(
