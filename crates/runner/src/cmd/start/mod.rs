@@ -89,7 +89,7 @@ use mitm_restart::{
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
 };
-use signals::{EarlySignals, SignalController, recv_handler_task};
+use signals::{EarlySignals, SignalController, handle_stopping_signal, recv_handler_task};
 
 struct TeardownTimer {
     start: Instant,
@@ -1039,7 +1039,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     Ok(()) => warn!("signal handler task exited unexpectedly"),
                     Err(error) => warn!(error = %error, "signal handler task failed"),
                 }
-                lifecycle.hard_stop();
+                handle_stopping_signal(
+                    "signal-handler-task",
+                    &cancel,
+                    &cancel_tokens,
+                    &lifecycle,
+                ).await;
             }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and
