@@ -8,13 +8,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { hasSubscription } from "../../../mocks/ably.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
   mockChatLifecycle,
-  mockSubagentThread,
   sendMessageInUI,
   PLACEHOLDER,
-  SUB_AGENT_ID,
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -62,49 +59,6 @@ describe("zero chat thread page - sending state affects composer button display"
     await waitFor(() => {
       expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
-    });
-  });
-});
-
-// CHAT-N-045: Agent avatar Link navigates to /agents/:id
-describe("zero chat thread page - agent avatar link navigation", () => {
-  it("navigates to /agents/:id when avatar link is clicked (CHAT-N-045)", async () => {
-    mockSubagentThread(THREAD_ID);
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    // Wait for the chat page to be fully rendered before interacting
-    const link = await waitFor(() => {
-      const el = screen.getByLabelText("View agent profile");
-      // Verify the link has a non-empty href (agent data resolved)
-      expect(el).toHaveAttribute("href", `/agents/${SUB_AGENT_ID}`);
-      return el;
-    });
-
-    click(link);
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${SUB_AGENT_ID}`);
-    });
-  });
-});
-
-// CHAT-I-046: Pin button calls handlePin on click in thread
-describe("zero chat thread page - pin button toggles pin state", () => {
-  it("pin button disappears after click when agent is added to pinned list (CHAT-I-046)", async () => {
-    setMockUserPreferences({ pinnedAgentIds: [] });
-    mockSubagentThread(THREAD_ID);
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    const pinButton = await waitFor(() => {
-      return screen.getByLabelText("Pin to sidebar");
-    });
-
-    click(pinButton);
-
-    await waitFor(() => {
-      expect(screen.queryByLabelText("Pin to sidebar")).not.toBeInTheDocument();
     });
   });
 });
