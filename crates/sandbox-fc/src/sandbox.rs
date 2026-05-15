@@ -1411,19 +1411,21 @@ impl Sandbox for FirecrackerSandbox {
     // memory again. Ordering: resume before deflate — the guest needs
     // running vCPUs to process the deflate.
     //
-    // Both methods propagate PATCH failures as `IdleTransition(Park|Unpark)` errors —
-    // on failure the caller (runner) destroys the sandbox and falls
-    // through to fresh-create. Firecracker's pause/resume returns 400
-    // when the VM is already in the target state; within park/unpark
-    // this only happens after a partial retry, so 400 is treated as
-    // success (idempotent).
+    // Both methods propagate guest lifecycle, operation-gate, and Firecracker
+    // PATCH failures as `IdleTransition(Park|Unpark)` errors. On failure the
+    // caller (runner) destroys the sandbox and falls through to fresh-create.
+    // Firecracker's pause/resume returns 400 when the VM is already in the
+    // target state; within park/unpark this only happens after a partial retry,
+    // so 400 is treated as success (idempotent).
     //
     // For profiles where `memory_mb <= MIN_GUEST_MIB` there is no memory
     // to reclaim (balloon is skipped), but vCPUs are still paused — timer
     // ticks waste CPU regardless of memory size.
     //
-    // The `is_parked` flag makes both methods idempotent and lets unpark
-    // skip the abort+respawn dance when park was a no-op.
+    // The `is_parked` flag handles healthy idempotent calls and lets unpark
+    // skip the abort+respawn dance when park was a no-op. The operation
+    // coordinator is still checked on no-op paths so Dirty/desynchronised gates
+    // cannot be silently reused.
 
     async fn park(&mut self) -> sandbox::Result<()> {
         if self.is_parked {

@@ -147,12 +147,15 @@ pub trait Sandbox: Send + Sync + Any {
     /// implementations must tolerate this — skipping graceful shutdown is
     /// still correct because the sandbox was idle with no user workload.
     ///
-    /// Must be idempotent: calling `park()` on an already-parked sandbox
-    /// returns `Ok(())` without side effects.
+    /// Must be idempotent for a healthy already-parked sandbox: calling
+    /// `park()` again returns `Ok(())` without side effects. Implementations
+    /// may still return `Err` if lifecycle guards detect that the sandbox is
+    /// internally dirty or otherwise not safe to reuse.
     ///
-    /// On `Err`, the sandbox is left in a consistent "not parked" state
-    /// (internal flags unchanged); the caller should destroy it (or
-    /// retry) rather than attempt to use it for further work.
+    /// On `Err`, the caller must not dispatch further work to the sandbox.
+    /// The sandbox may be partially parked or marked internally dirty; the
+    /// lifecycle owner should destroy it, or perform an explicit retry only
+    /// when the implementation documents that retry as safe.
     async fn park(&mut self) -> Result<()> {
         Ok(())
     }
@@ -164,13 +167,17 @@ pub trait Sandbox: Send + Sync + Any {
     /// should restore whatever state `park()` altered (resume vCPUs,
     /// balloon deflate, respawn background tickers, etc).
     ///
-    /// Must be idempotent: calling `unpark()` on a sandbox that was
-    /// never parked — or calling it repeatedly — returns `Ok(())`
-    /// without side effects.
+    /// Must be idempotent for a healthy active sandbox: calling `unpark()`
+    /// on a sandbox that was never parked — or calling it repeatedly —
+    /// returns `Ok(())` without side effects. Implementations may still
+    /// return `Err` if lifecycle guards detect that the sandbox is internally
+    /// dirty or otherwise not safe to reuse.
     ///
-    /// On `Err`, the sandbox is left in a consistent "still parked"
-    /// state; the caller should destroy it (or retry) rather than
-    /// attempt to use it for further work.
+    /// On `Err`, the caller must not dispatch further work to the sandbox.
+    /// The sandbox may still be parked, partially unparked, or marked
+    /// internally dirty; the lifecycle owner should destroy it, or perform an
+    /// explicit retry only when the implementation documents that retry as
+    /// safe.
     async fn unpark(&mut self) -> Result<()> {
         Ok(())
     }
