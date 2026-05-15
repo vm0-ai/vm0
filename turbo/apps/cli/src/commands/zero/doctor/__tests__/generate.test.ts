@@ -113,6 +113,9 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("vm0");
     expect(text).toContain("Built-in image generation");
+    expect(text).toContain(
+      "Models: OpenAI: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+    );
     expect(text).toContain("Use: zero built-in generate image -h");
     expect(text).not.toContain("Use: zero built-in generate image --model");
     expect(text).not.toContain("Model: gpt-image-1.5");
@@ -219,6 +222,9 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("No ready video generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
+    expect(text).toContain(
+      "Models: veo3.1-fast, veo3.1, kling-o3-standard, kling-v3-4k, seedance2.0, seedance2.0-fast",
+    );
     expect(text).toContain("Use: zero built-in generate video -h");
     expect(text).not.toContain("Use: zero built-in generate video --model");
     expect(text).not.toContain("Model: fal-ai/veo3.1/fast");
@@ -247,6 +253,7 @@ describe("zero doctor generate command", () => {
     );
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
+    expect(text).toContain("Models: gpt-5.5");
     expect(text).toContain("Use: zero built-in generate presentation -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
@@ -270,6 +277,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("No ready voice generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
+    expect(text).toContain("Models: gpt-4o-mini-tts");
     expect(text).toContain("Use: zero built-in generate voice -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
     expect(text).not.toContain("Fallback option:");
@@ -296,6 +304,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("@openai-user");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
+    expect(text).toContain("Models: gpt-4o-mini-tts");
     expect(text).toContain("Use: zero built-in generate voice -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
   });

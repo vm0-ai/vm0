@@ -25,6 +25,7 @@ interface BuiltInGenerationProvider {
 interface BuiltInGenerationCommand {
   label: string;
   command: string;
+  models: string;
 }
 
 const BUILT_IN_GENERATION_PROVIDERS: Partial<
@@ -142,18 +143,24 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
   image: {
     label: "Built-in image generation",
     command: "zero built-in generate image -h",
+    models:
+      "OpenAI: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
   },
   video: {
     label: "Built-in video generation",
     command: "zero built-in generate video -h",
+    models:
+      "veo3.1-fast, veo3.1, kling-o3-standard, kling-v3-4k, seedance2.0, seedance2.0-fast",
   },
   presentation: {
     label: "Built-in presentation generation",
     command: "zero built-in generate presentation -h",
+    models: "gpt-5.5",
   },
   voice: {
     label: "Built-in voice generation",
     command: "zero built-in generate voice -h",
+    models: "gpt-4o-mini-tts",
   },
 };
 
@@ -416,6 +423,7 @@ function renderBuiltInProvider(generationType: DoctorGenerationType): void {
     console.log("");
     console.log("Built-in command:");
     console.log(`  vm0  ${command.label}`);
+    console.log(`  Models: ${command.models}`);
     console.log(`  Use: ${command.command}`);
     return;
   }
