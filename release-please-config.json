@@ -30,6 +30,9 @@
         "turbo/apps/platform": {
             "release-type": "node"
         },
+        "turbo/apps/host-worker": {
+            "release-type": "node"
+        },
         "turbo/packages/api-contracts": {
             "release-type": "node",
             "skip-changelog": true

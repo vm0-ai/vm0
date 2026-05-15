@@ -28,6 +28,7 @@ jobs:
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
+      host_worker_release_created: ${{ steps.release.outputs['turbo/apps/host-worker--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
@@ -516,22 +517,21 @@ jobs:
                   type: mrkdwn
                   text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  detect-host-worker-production:
+  detect-host-worker-deploy-inputs:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     outputs:
-      should_deploy: ${{ steps.detect.outputs.should-deploy }}
-      base_ref: ${{ steps.detect.outputs.base-ref }}
-      head_sha: ${{ steps.detect.outputs.head-sha }}
+      ci_changed: ${{ steps.detect.outputs.ci-changed }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Detect Host Worker release changes
+      - name: Detect Host Worker deploy input changes
         id: detect
         shell: bash
         run: |
@@ -550,32 +550,29 @@ jobs:
           fi
 
           BASE_REF=$(git tag --merged "${HEAD_SHA}^" --sort=-creatordate \
-            | grep -E '^(web|api|platform|cli|runner-rs)-v' \
+            | grep -E '^[[:alnum:]._-]+-v[0-9]' \
             | head -1 || true)
           if [[ -z "$BASE_REF" ]]; then
             BASE_REF="${HEAD_SHA}^"
           fi
 
-          echo "Comparing $BASE_REF..$HEAD_SHA for host worker deploy inputs"
-          git diff --name-only "$BASE_REF" "$HEAD_SHA" | tee /tmp/host-worker-release-changes.txt
+          echo "Comparing $BASE_REF..$HEAD_SHA for Host Worker deploy inputs"
+          git diff --name-only "$BASE_REF" "$HEAD_SHA" | tee /tmp/host-worker-deploy-inputs.txt
 
-          if grep -qE '^turbo/apps/host-worker/|^\.github/workflows/(turbo|crates|runner-image|release-please)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision)/|^\.github/scripts/|^ansible/' /tmp/host-worker-release-changes.txt; then
-            echo "Host worker deploy inputs changed"
-            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+          if grep -qE '^\.github/workflows/(turbo|crates|runner-image|release-please)\.yml$|^\.github/actions/(setup-ssh-tunnel|provision|toolchain-init)/|^\.github/scripts/|^ansible/' /tmp/host-worker-deploy-inputs.txt; then
+            echo "Host Worker deploy CI inputs changed"
+            echo "ci-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No host worker deploy inputs changed"
-            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
+            echo "No Host Worker deploy CI input changes"
+            echo "ci-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "base-ref=$BASE_REF" >> "$GITHUB_OUTPUT"
-          echo "head-sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-
   deploy-host-worker-production:
-    needs: [release-please, detect-host-worker-production]
+    needs: [release-please, detect-host-worker-deploy-inputs]
     if: >-
       ${{
-        needs.release-please.outputs.releases_created == 'true' &&
-        needs.detect-host-worker-production.outputs.should_deploy == 'true'
+        needs.release-please.outputs.host_worker_release_created == 'true' ||
+        needs.detect-host-worker-deploy-inputs.outputs.ci_changed == 'true'
       }}
     runs-on: ubuntu-latest
     concurrency:
@@ -685,8 +682,6 @@ jobs:
       - build-e2b-template-production
       - sbom
       - resolve-image-cache
-      - detect-host-worker-production
-      - deploy-host-worker-production
     # Use always() so this job runs even when upstream build jobs are skipped.
     # !cancelled() is insufficient — it still propagates "skipped" from needs
     # dependencies, which causes builds-complete (and transitively

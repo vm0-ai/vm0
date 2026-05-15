@@ -77,7 +77,6 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
-      host-worker-changed: ${{ steps.detect-host-worker.outputs.host-worker-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
@@ -136,18 +135,6 @@ jobs:
               echo "${app}-changed=false" >> "$GITHUB_OUTPUT"
             fi
           done
-
-      - name: Detect host worker changes
-        id: detect-host-worker
-        run: |
-          BASE_REF="${{ steps.detect.outputs.base-ref }}"
-          if git diff --name-only "$BASE_REF" HEAD | grep -q "^turbo/apps/host-worker/"; then
-            echo "Host worker changes detected"
-            echo "host-worker-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No host worker changes"
-            echo "host-worker-changed=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Detect E2B template changes
         id: detect-e2b

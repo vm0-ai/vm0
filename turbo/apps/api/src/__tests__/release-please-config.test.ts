@@ -22,6 +22,19 @@ function readJson<T>(path: string): T {
 }
 
 describe("release-please API deployment graph", () => {
+  it("keeps every release package in the manifest", () => {
+    const releaseConfig = readJson<ReleasePleaseConfig>(
+      "release-please-config.json",
+    );
+    const manifest = readJson<Record<string, string>>(
+      ".release-please-manifest.json",
+    );
+
+    for (const packagePath of Object.keys(releaseConfig.packages)) {
+      expect(manifest).toHaveProperty(packagePath);
+    }
+  });
+
   it("tracks every API runtime workspace dependency", () => {
     const apiPackage = readJson<PackageJson>("turbo/apps/api/package.json");
     const releaseConfig = readJson<ReleasePleaseConfig>(
