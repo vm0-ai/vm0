@@ -787,9 +787,9 @@ jobs:
               neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
             fi
 
-            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
             if [ -z "$DATABASE_URL" ]; then
-              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb)
+              DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
             fi
             echo "$DATABASE_URL" > /tmp/neon-database-url
 

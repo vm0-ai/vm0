@@ -19,6 +19,10 @@ inputs:
     description: "Database name for connection string"
     required: false
     default: "neondb"
+  role-name:
+    description: "Database role name for connection string"
+    required: false
+    default: "neondb_owner"
   github-token:
     description: "GitHub token for deployment tracking"
     required: false
@@ -64,6 +68,7 @@ runs:
         NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
         INPUT_BRANCH_NAME: ${{ inputs.branch-name }}
         INPUT_DATABASE_NAME: ${{ inputs.database-name }}
+        INPUT_ROLE_NAME: ${{ inputs.role-name }}
       run: |
         BRANCH_NAME="preview/$INPUT_BRANCH_NAME"
 
@@ -92,11 +97,11 @@ runs:
           exit 1
         fi
 
-        DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --pooled)
+        DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME" --pooled)
         if [ -z "$DATABASE_URL" ]; then
           echo "Error: Failed to get database URL from neonctl"
           echo "Attempting without --pooled flag..."
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME")
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name "$INPUT_DATABASE_NAME" --role-name "$INPUT_ROLE_NAME")
         fi
         echo "DATABASE_URL value: $DATABASE_URL"
         echo "database-url=$DATABASE_URL" >> $GITHUB_OUTPUT

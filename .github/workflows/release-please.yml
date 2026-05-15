@@ -156,7 +156,7 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
         run: |
           echo "Getting pooled database URL for smoke branch $BRANCH_NAME"
-          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --pooled)
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
 
           echo "Running production migration smoke test on $BRANCH_NAME"
           cd turbo
@@ -185,7 +185,7 @@ jobs:
         id: get-db-url
         run: |
           # Get the production branch database URL.
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -317,7 +317,7 @@ jobs:
         id: get-db-url
         run: |
           # Get the main branch database URL (production)
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -436,7 +436,7 @@ jobs:
       - name: Get Production Database URL
         id: get-db-url
         run: |
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
           echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
