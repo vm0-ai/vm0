@@ -1664,6 +1664,44 @@ fn process_control_rejects_nonce_mismatch() {
 }
 
 #[test]
+fn process_control_duplicate_spawn_seq_returns_error_without_replacing_active_nonce() {
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+    const DUPLICATE_NONCE: vsock_proto::ProcessControlNonce = *b"fedcba9876543210";
+
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 39, "sleep 60", NONCE);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 39);
+
+    send_spawn_process_with_control_nonce(
+        &mut host_stream,
+        39,
+        "printf duplicate",
+        DUPLICATE_NONCE,
+    );
+    let duplicate = read_message(&mut host_stream);
+    assert_eq!(duplicate.msg_type, MSG_ERROR);
+    assert_eq!(duplicate.seq, 39);
+    let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
+    assert!(error.contains("already active"));
+
+    send_process_control(&mut host_stream, 40, 39, NONCE, "message-duplicate");
+    assert_process_control_result(
+        &mut host_stream,
+        40,
+        39,
+        NONCE,
+        "message-duplicate",
+        ProcessControlStatus::Unsupported,
+        "process control sink is not configured",
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn process_control_without_registered_nonce_returns_inactive() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 

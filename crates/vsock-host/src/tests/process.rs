@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::support::{
-    host_from_stream, make_pair, mock_handshake, read_guest_message, send_exec_result,
+    host_from_stream, make_pair, mock_handshake, read_guest_message, read_guest_messages,
+    send_exec_result,
 };
 use crate::{ConnectionState, GuestProcessHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -52,6 +53,14 @@ async fn send_process_control_result(
     .unwrap();
     let response = vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request_seq, &payload).unwrap();
     guest.write_all(&response).await.unwrap();
+}
+
+struct SeenProcessControl {
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: vsock_proto::ProcessControlNonce,
+    message_id: String,
+    payload: Vec<u8>,
 }
 
 #[tokio::test]
@@ -153,6 +162,88 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
         .await
         .unwrap();
     assert_eq!(ack.message_id, "message-1");
+
+    let event = wait_spawn(handle).await.unwrap();
+    assert_eq!(event.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_spawn_process_concurrent_controls_route_by_request_seq() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(52);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let controls = read_guest_messages(&mut guest, &mut decoder, 2).await;
+        let mut seen = Vec::new();
+        for control in controls {
+            assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+            let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+            assert_eq!(decoded_control.target_seq, spawn.seq);
+            assert_eq!(decoded_control.control_nonce, control_nonce);
+            seen.push(SeenProcessControl {
+                request_seq: control.seq,
+                target_seq: decoded_control.target_seq,
+                control_nonce: decoded_control.control_nonce,
+                message_id: decoded_control.message_id.to_owned(),
+                payload: decoded_control.payload.to_vec(),
+            });
+        }
+
+        let first_index = seen
+            .iter()
+            .position(|control| control.message_id == "message-a")
+            .unwrap();
+        let second_index = seen
+            .iter()
+            .position(|control| control.message_id == "message-b")
+            .unwrap();
+        assert_eq!(seen[first_index].payload, b"payload-a");
+        assert_eq!(seen[second_index].payload, b"payload-b");
+
+        for control in [&seen[second_index], &seen[first_index]] {
+            send_process_control_result(
+                &mut guest,
+                control.request_seq,
+                control.target_seq,
+                control.control_nonce,
+                &control.message_id,
+                ProcessControlStatus::Delivered,
+                "",
+            )
+            .await;
+        }
+
+        let exit_payload = vsock_proto::encode_process_exit(52, 0, b"done", b"");
+        let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+        guest.write_all(&exit_msg).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+
+    let first = handle.control("message-a", b"payload-a", Duration::from_secs(5));
+    let second = handle.control("message-b", b"payload-b", Duration::from_secs(5));
+    let (first_ack, second_ack) = tokio::join!(first, second);
+
+    assert_eq!(first_ack.unwrap().message_id, "message-a");
+    assert_eq!(second_ack.unwrap().message_id, "message-b");
 
     let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.exit_code, 0);

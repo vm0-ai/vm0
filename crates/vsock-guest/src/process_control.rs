@@ -24,16 +24,17 @@ impl ProcessControlRegistry {
         &self,
         seq: u32,
         control_nonce: ProcessControlNonce,
-    ) -> ProcessControlGuard {
-        self.inner
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(seq, control_nonce);
-        ProcessControlGuard {
+    ) -> Result<ProcessControlGuard, ()> {
+        let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if active.contains_key(&seq) {
+            return Err(());
+        }
+        active.insert(seq, control_nonce);
+        Ok(ProcessControlGuard {
             registry: self.clone(),
             seq,
             released: AtomicBool::new(false),
-        }
+        })
     }
 
     fn remove(&self, seq: u32) {
@@ -122,7 +123,7 @@ mod tests {
     #[test]
     fn registered_operation_rejects_nonce_mismatch() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, NONCE);
+        let _guard = registry.register(7, NONCE).unwrap();
         let wrong_nonce = *b"fedcba9876543210";
 
         let (status, diagnostic) = registry.status_for(7, wrong_nonce);
@@ -134,7 +135,7 @@ mod tests {
     #[test]
     fn released_operation_is_inactive() {
         let registry = ProcessControlRegistry::default();
-        let guard = registry.register(7, NONCE);
+        let guard = registry.register(7, NONCE).unwrap();
 
         guard.release();
         let (status, diagnostic) = registry.status_for(7, NONCE);
@@ -146,11 +147,25 @@ mod tests {
     #[test]
     fn valid_operation_is_currently_unsupported_until_sink_is_wired() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, NONCE);
+        let _guard = registry.register(7, NONCE).unwrap();
 
         let (status, diagnostic) = registry.status_for(7, NONCE);
 
         assert_eq!(status, ProcessControlStatus::Unsupported);
         assert_eq!(diagnostic, "process control sink is not configured");
+    }
+
+    #[test]
+    fn duplicate_active_sequence_is_rejected_until_guard_releases() {
+        let registry = ProcessControlRegistry::default();
+        let first = registry.register(7, NONCE).unwrap();
+
+        assert!(registry.register(7, *b"fedcba9876543210").is_err());
+        let (status, diagnostic) = registry.status_for(7, NONCE);
+        assert_eq!(status, ProcessControlStatus::Unsupported);
+        assert_eq!(diagnostic, "process control sink is not configured");
+
+        first.release();
+        assert!(registry.register(7, *b"fedcba9876543210").is_ok());
     }
 }
