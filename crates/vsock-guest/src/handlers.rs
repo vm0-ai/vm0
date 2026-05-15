@@ -92,7 +92,7 @@ where
     // After the child exits, the drain thread either reaches EOF naturally or
     // — if a grandchild somehow still holds stderr — is cut at the deadline so
     // its last write returns EPIPE.
-    // Defensive: same invariant as the exec drain helper — reap the child if
+    // Defensive: same invariant as the shared drain helper — reap the child if
     // its stderr is somehow already gone, so we don't leave a zombie.
     let stderr_pipe = match child.stderr.take() {
         Some(p) => p,
