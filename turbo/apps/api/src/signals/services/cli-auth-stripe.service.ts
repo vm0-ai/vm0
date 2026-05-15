@@ -501,14 +501,15 @@ async function markCliAuthStripeSessionError(args: {
   readonly expectedStatus?: ConnectorCliAuthSessionStatus;
   readonly expectedUpdatedAt?: Date;
 }) {
-  const where =
-    args.expectedStatus && args.expectedUpdatedAt
-      ? and(
-          eq(connectorCliAuthSessions.id, args.sessionId),
-          eq(connectorCliAuthSessions.status, args.expectedStatus),
-          eq(connectorCliAuthSessions.updatedAt, args.expectedUpdatedAt),
-        )
-      : eq(connectorCliAuthSessions.id, args.sessionId);
+  const predicates = [eq(connectorCliAuthSessions.id, args.sessionId)];
+  if (args.expectedStatus) {
+    predicates.push(eq(connectorCliAuthSessions.status, args.expectedStatus));
+  }
+  if (args.expectedUpdatedAt) {
+    predicates.push(
+      eq(connectorCliAuthSessions.updatedAt, args.expectedUpdatedAt),
+    );
+  }
   const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
     .set(
@@ -518,7 +519,7 @@ async function markCliAuthStripeSessionError(args: {
         message: args.message,
       }),
     )
-    .where(where)
+    .where(and(...predicates))
     .returning({ id: connectorCliAuthSessions.id });
   return Boolean(updated);
 }
@@ -539,7 +540,6 @@ async function markCliAuthStripeSessionExpired(args: {
       and(
         eq(connectorCliAuthSessions.id, args.session.id),
         eq(connectorCliAuthSessions.status, args.session.status),
-        eq(connectorCliAuthSessions.updatedAt, args.session.updatedAt),
       ),
     )
     .returning({ id: connectorCliAuthSessions.id });
@@ -596,7 +596,6 @@ async function createCliAuthStripeSandbox(args: {
       sessionId: args.session.id,
       message: createResult.error.message,
       expectedStatus: args.session.status,
-      expectedUpdatedAt: args.session.updatedAt,
     });
     args.signal.throwIfAborted();
     return {
@@ -621,7 +620,6 @@ async function createCliAuthStripeSandbox(args: {
         and(
           eq(connectorCliAuthSessions.id, args.session.id),
           eq(connectorCliAuthSessions.status, "initializing"),
-          eq(connectorCliAuthSessions.updatedAt, args.session.updatedAt),
         ),
       )
       .returning();
