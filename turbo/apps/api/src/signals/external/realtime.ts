@@ -1,6 +1,7 @@
 import Ably from "ably";
 import type { LocalBrowserRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-local-browser";
 import type { RemoteAgentRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-remote-agent";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -17,6 +18,10 @@ const ablyClient = singleton((): Ably.Rest => {
 
 function getUserChannelName(userId: string): string {
   return `user:${userId}`;
+}
+
+function getBuiltInGenerationEventName(generationId: string): string {
+  return `built-in-generation:${generationId}`;
 }
 
 function getRemoteAgentDeviceChannelName(deviceCodeId: string): string {
@@ -55,6 +60,17 @@ export async function createPlatformUserRealtimeToken(
   });
   L.debug(`Generated platform realtime token for user:${userId}`);
   return tokenRequest;
+}
+
+export async function createBuiltInGenerationRealtimeSubscription(
+  userId: string,
+  generationId: string,
+): Promise<ZeroBuiltInGenerationRealtimeSubscription> {
+  return {
+    channelName: getUserChannelName(userId),
+    eventName: getBuiltInGenerationEventName(generationId),
+    tokenRequest: await createPlatformUserRealtimeToken(userId),
+  };
 }
 
 export async function createRunnerGroupRealtimeToken(
@@ -118,6 +134,18 @@ export async function publishRunChangedForUserSafely(
  */
 export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
+}
+
+export async function publishBuiltInGenerationChanged(
+  userId: string,
+  generationId: string,
+  payload: unknown,
+): Promise<void> {
+  await publishUserSignal(
+    [userId],
+    getBuiltInGenerationEventName(generationId),
+    payload,
+  );
 }
 
 /**

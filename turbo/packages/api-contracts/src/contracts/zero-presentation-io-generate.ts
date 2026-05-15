@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
 
@@ -60,6 +61,7 @@ export const zeroPresentationIoGenerateContract = c.router({
     body: zeroPresentationIoGenerateRequestSchema,
     responses: {
       200: zeroPresentationIoGenerateResponseSchema,
+      202: zeroBuiltInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,

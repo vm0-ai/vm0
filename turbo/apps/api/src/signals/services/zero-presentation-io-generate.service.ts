@@ -28,6 +28,10 @@ import {
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { safeAsync, safeJsonParse } from "../utils";
+import {
+  builtInGenerationUsageIdempotencyKey,
+  type BuiltInGenerationUsageIdempotency,
+} from "./built-in-generation-usage-idempotency";
 
 export const OPENAI_PRESENTATION_GENERATION_URL =
   "https://api.openai.com/v1/responses";
@@ -40,7 +44,6 @@ const PRESENTATION_IO_DEFAULT_IMAGE_COUNT = 2;
 const PRESENTATION_IO_MAX_IMAGES = 8;
 const PRESENTATION_CONTENT_TYPE = "text/html";
 const PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS = 120_000;
-export const PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS = 90_000;
 const PRESENTATION_IO_RECORD_PRESENTATION_RESERVE_MS = 10_000;
 
 const L = logger("ZeroPresentationIoGenerate");
@@ -95,7 +98,7 @@ export type PresentationPricing = ReadonlyMap<
   PresentationPricingRow
 >;
 
-interface PresentationOptions {
+export interface PresentationOptions {
   readonly prompt: string;
   readonly style: PresentationStyle;
   readonly slideCount: number;
@@ -364,13 +367,6 @@ function errorBody(message: string, code: string): ErrorBody {
 
 function badRequest(message: string, code = "BAD_REQUEST") {
   return { status: 400 as const, body: errorBody(message, code) };
-}
-
-export function presentationInternalError(message: string) {
-  return {
-    status: 500 as const,
-    body: errorBody(message, "INTERNAL_SERVER_ERROR"),
-  };
 }
 
 function badGateway(message: string, code: string) {
@@ -1540,6 +1536,7 @@ export const generatePresentationVisuals$ = command(
       readonly generation: ParsedPresentationGeneration;
       readonly options: PresentationOptions;
       readonly deadlineAtMs?: number;
+      readonly generationId: string;
     },
     signal: AbortSignal,
   ): Promise<readonly PresentationVisual[] | ErrorResponse> => {
@@ -1598,6 +1595,10 @@ export const generatePresentationVisuals$ = command(
             pricing: params.imagePricing,
             generation: image.generation,
             recordArtifact: false,
+            usageIdempotency: {
+              generationId: params.generationId,
+              scope: `presentation-visual:${image.slideIndex}`,
+            },
           },
           signal,
         );
@@ -1659,6 +1660,7 @@ export const recordGeneratedPresentation$ = command(
       readonly generation: ParsedPresentationGeneration;
       readonly options: PresentationOptions;
       readonly visuals: readonly PresentationVisual[];
+      readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
     },
     signal: AbortSignal,
   ): Promise<RecordedPresentation> => {
@@ -1728,20 +1730,26 @@ export const recordGeneratedPresentation$ = command(
       return row.quantity > 0;
     });
 
-    await writeDb.insert(usageEvent).values(
-      usageRows.map((row) => {
-        return {
-          runId: params.runId ?? null,
-          idempotencyKey: randomUUID(),
-          orgId: params.orgId,
-          userId: params.userId,
-          kind: USAGE_KIND,
-          provider: USAGE_PROVIDER,
-          category: row.category,
-          quantity: row.quantity,
-        };
-      }),
-    );
+    await writeDb
+      .insert(usageEvent)
+      .values(
+        usageRows.map((row) => {
+          return {
+            runId: params.runId ?? null,
+            idempotencyKey: builtInGenerationUsageIdempotencyKey({
+              ...params.usageIdempotency,
+              category: row.category,
+            }),
+            orgId: params.orgId,
+            userId: params.userId,
+            kind: USAGE_KIND,
+            provider: USAGE_PROVIDER,
+            category: row.category,
+            quantity: row.quantity,
+          };
+        }),
+      )
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, params.orgId, signal);

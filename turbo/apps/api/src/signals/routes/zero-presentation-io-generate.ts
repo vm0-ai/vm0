@@ -1,38 +1,246 @@
+import { randomUUID } from "node:crypto";
+
 import { command } from "ccstate";
 import { zeroPresentationIoGenerateContract } from "@vm0/api-contracts/contracts/zero-presentation-io-generate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
-import { now } from "../../lib/time";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import {
   getMissingImagePricing,
   imagePricing$,
+  type ImagePricing,
 } from "../services/zero-image-io-generate.service";
+import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
+import { safeAsync } from "../utils";
 import {
   checkPresentationCredits$,
   createOpenAiPresentationRequest,
   generatePresentationVisuals$,
   OPENAI_PRESENTATION_GENERATION_URL,
-  PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS,
   parsePresentationGenerationResult,
   parsePresentationOptions,
   presentationInsufficientCredits,
-  presentationInternalError,
+  type PresentationOptions,
+  type PresentationPricing,
   presentationPricing$,
   presentationServiceUnavailable,
   recordGeneratedPresentation$,
 } from "../services/zero-presentation-io-generate.service";
+import {
+  completeBuiltInGenerationJob$,
+  createBuiltInGenerationJob$,
+  failBuiltInGenerationJob$,
+  markBuiltInGenerationRunning$,
+} from "../services/zero-built-in-generation.service";
 
 const L = logger("ZeroPresentationIoGenerate");
 const presentationBody$ = bodyResultOf(zeroPresentationIoGenerateContract.post);
 
+interface GenerationError {
+  readonly message: string;
+  readonly code: string;
+}
+
+interface GenerationErrorResponse {
+  readonly status: number;
+  readonly body: {
+    readonly error: GenerationError;
+  };
+}
+
+interface PresentationJobArgs {
+  readonly generationId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string | undefined;
+  readonly options: PresentationOptions;
+  readonly pricing: PresentationPricing;
+  readonly imagePricing: ImagePricing | null;
+}
+
+function isGenerationError(value: unknown): value is GenerationError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    "code" in value
+  );
+}
+
+function isErrorResponse(value: unknown): value is GenerationErrorResponse {
+  if (typeof value !== "object" || value === null || !("body" in value)) {
+    return false;
+  }
+  const body = value.body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "error" in body &&
+    isGenerationError(body.error)
+  );
+}
+
+function presentationRequestRecord(
+  options: PresentationOptions,
+): Record<string, unknown> {
+  return {
+    prompt: options.prompt,
+    style: options.style,
+    slideCount: options.slideCount,
+    imageCount: options.imageCount,
+    theme: options.theme,
+    ...(options.audience ? { audience: options.audience } : {}),
+    ...(options.title ? { title: options.title } : {}),
+  };
+}
+
+const runPresentationGenerationJob$ = command(
+  async (
+    { set },
+    args: PresentationJobArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(markBuiltInGenerationRunning$, args.generationId, signal);
+
+    const openaiResponse = await fetch(OPENAI_PRESENTATION_GENERATION_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(createOpenAiPresentationRequest(args.options)),
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      signal.throwIfAborted();
+      L.error("OpenAI presentation request failed", {
+        status: openaiResponse.status,
+        body: errorBody,
+      });
+      await set(
+        failBuiltInGenerationJob$,
+        {
+          generationId: args.generationId,
+          error: {
+            message: "Presentation generation failed",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        },
+        signal,
+      );
+      return;
+    }
+
+    const responseBody: unknown = await openaiResponse.json();
+    signal.throwIfAborted();
+    const generation = parsePresentationGenerationResult(
+      responseBody,
+      args.options,
+    );
+    if (isErrorResponse(generation)) {
+      if (generation.body.error.code === "USAGE_UNKNOWN") {
+        L.error("OpenAI presentation response missing usage", {
+          responseBody,
+        });
+      }
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: generation.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const visuals =
+      args.options.imageCount > 0 && args.imagePricing
+        ? await set(
+            generatePresentationVisuals$,
+            {
+              orgId: args.orgId,
+              userId: args.userId,
+              runId: args.runId,
+              imagePricing: args.imagePricing,
+              generation,
+              options: args.options,
+              generationId: args.generationId,
+            },
+            signal,
+          )
+        : [];
+    if (isErrorResponse(visuals)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: visuals.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const result = await set(
+      recordGeneratedPresentation$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        pricing: args.pricing,
+        generation,
+        options: args.options,
+        visuals,
+        usageIdempotency: {
+          generationId: args.generationId,
+          scope: "presentation-text",
+        },
+      },
+      signal,
+    );
+
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.generationId, result },
+      signal,
+    );
+  },
+);
+
+const runPresentationGenerationJobSafely$ = command(
+  async (
+    { set },
+    args: PresentationJobArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const result = await safeAsync(async () => {
+      await set(runPresentationGenerationJob$, args, signal);
+    });
+    signal.throwIfAborted();
+    if ("ok" in result) {
+      return;
+    }
+
+    L.error("Built-in presentation generation job failed", result.error);
+    await set(
+      failBuiltInGenerationJob$,
+      {
+        generationId: args.generationId,
+        error: {
+          message: "Presentation generation failed",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      },
+      signal,
+    );
+  },
+);
+
 const postPresentationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const deadlineAtMs = now() + PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS;
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(presentationBody$);
     signal.throwIfAborted();
@@ -76,78 +284,53 @@ const postPresentationInner$ = command(
       );
     }
 
-    const openaiResponse = await fetch(OPENAI_PRESENTATION_GENERATION_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(createOpenAiPresentationRequest(options)),
-      signal,
-    });
+    const generationId = randomUUID();
+    const realtime = await createBuiltInGenerationRealtimeSubscription(
+      auth.userId,
+      generationId,
+    );
     signal.throwIfAborted();
-
-    if (!openaiResponse.ok) {
-      const errorBody = await openaiResponse.text();
-      signal.throwIfAborted();
-      L.error("OpenAI presentation request failed", {
-        status: openaiResponse.status,
-        body: errorBody,
-      });
-      return presentationInternalError("Presentation generation failed");
-    }
-
-    const responseBody: unknown = await openaiResponse.json();
-    signal.throwIfAborted();
-    const generation = parsePresentationGenerationResult(responseBody, options);
-    if ("status" in generation) {
-      if (generation.body.error.code === "USAGE_UNKNOWN") {
-        L.error("OpenAI presentation response missing usage", {
-          responseBody,
-        });
-      }
-      return generation;
-    }
-
     const runId =
       auth.tokenType === "zero" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
-    const visuals =
-      options.imageCount > 0 && imagePricing
-        ? await set(
-            generatePresentationVisuals$,
-            {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              runId,
-              imagePricing,
-              generation,
-              options,
-              deadlineAtMs,
-            },
-            signal,
-          )
-        : [];
-    if ("status" in visuals) {
-      return visuals;
-    }
-
-    const result = await set(
-      recordGeneratedPresentation$,
+    await set(
+      createBuiltInGenerationJob$,
       {
+        generationId,
+        type: "presentation",
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
-        pricing,
-        generation,
-        options,
-        visuals,
+        request: presentationRequestRecord(options),
       },
       signal,
     );
+    waitUntil(
+      set(
+        runPresentationGenerationJobSafely$,
+        {
+          generationId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+          runId,
+          options,
+          pricing,
+          imagePricing,
+        },
+        signal,
+      ),
+    );
 
-    return { status: 200 as const, body: result };
+    return {
+      status: 202 as const,
+      body: {
+        generationId,
+        type: "presentation" as const,
+        status: "queued" as const,
+        realtime,
+      },
+    };
   },
 );
 

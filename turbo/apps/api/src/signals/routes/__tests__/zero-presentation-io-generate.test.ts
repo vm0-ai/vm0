@@ -6,6 +6,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
+import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -28,6 +29,7 @@ import {
   PRESENTATION_IO_MODEL,
   type PresentationPricing,
 } from "../../services/zero-presentation-io-generate.service";
+import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -41,6 +43,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { clearAllDetached } from "../../utils";
 
 const context = testContext();
 const store = createStore();
@@ -57,6 +60,15 @@ const IMAGE_PRICING_CATEGORIES = [
   "tokens.output.image",
 ] as const;
 const SELECTED_IMAGE_MODEL = "gpt-image-1.5" satisfies ImageModel;
+
+const tokenRequest = Object.freeze({
+  keyName: "test-key",
+  timestamp: 1_700_000_000_000,
+  capability: '{"user:test-user":["subscribe"]}',
+  clientId: "test-user",
+  nonce: "test-nonce",
+  mac: "test-mac",
+});
 
 type PresentationPricingCategory =
   (typeof PRESENTATION_PRICING_CATEGORIES)[number];
@@ -112,6 +124,39 @@ function commandInput(command: unknown): Record<string, unknown> {
     return command.input as Record<string, unknown>;
   }
   return {};
+}
+
+function readAcceptedGenerationId(
+  body: unknown,
+  type: "presentation",
+  userId: string,
+): string {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("generationId" in body) ||
+    typeof body.generationId !== "string"
+  ) {
+    throw new Error("Expected accepted generation response");
+  }
+  expect(body).toMatchObject({
+    generationId: body.generationId,
+    type,
+    status: "queued",
+    realtime: {
+      channelName: `user:${userId}`,
+      eventName: `built-in-generation:${body.generationId}`,
+      tokenRequest,
+    },
+  });
+  return body.generationId;
+}
+
+function readGenerationResult(body: unknown): unknown {
+  if (typeof body === "object" && body !== null && "result" in body) {
+    return body.result;
+  }
+  throw new Error("Expected completed generation result");
 }
 
 function zeroToken(args: {
@@ -430,6 +475,9 @@ async function deletePresentationFixture(
 ): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
+    .delete(builtInGenerationJobs)
+    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+  await writeDb
     .delete(runUploadedFiles)
     .where(
       and(
@@ -553,6 +601,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
     });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -717,8 +766,35 @@ describe("POST /api/zero/presentation-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "presentation",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "presentation",
+        status: "completed",
+      }),
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    expect(statusBody).toMatchObject({
+      generationId,
+      type: "presentation",
+      status: "completed",
+    });
+    const body = readGenerationResult(statusBody);
     expect(body).toMatchObject({
       contentType: "text/html",
       creditsCharged,
@@ -884,6 +960,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
       expect.arrayContaining([
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "presentation-text",
+            category: "tokens.input",
+          }),
           category: "tokens.input",
           quantity: usage.inputTokens,
           status: "processed",
@@ -891,6 +972,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
         }),
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "presentation-text",
+            category: "tokens.output",
+          }),
           category: "tokens.output",
           quantity: usage.outputTokens,
           status: "processed",
@@ -920,6 +1006,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
       expect.arrayContaining([
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "presentation-visual:0",
+            category: "tokens.input.text",
+          }),
           category: "tokens.input.text",
           quantity: imageUsage.textInputTokens,
           status: "processed",
@@ -927,6 +1018,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
         }),
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "presentation-visual:0",
+            category: "tokens.input.image",
+          }),
           category: "tokens.input.image",
           quantity: imageUsage.imageInputTokens,
           status: "processed",
@@ -934,6 +1030,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
         }),
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "presentation-visual:0",
+            category: "tokens.output.image",
+          }),
           category: "tokens.output.image",
           quantity: imageUsage.imageOutputTokens,
           status: "processed",

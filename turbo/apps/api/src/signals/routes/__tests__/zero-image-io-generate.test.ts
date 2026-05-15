@@ -6,6 +6,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
+import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -22,6 +23,7 @@ import {
   OPENAI_IMAGE_GENERATION_URL,
   type ImageUsage,
 } from "../../services/zero-image-io-generate.service";
+import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -35,6 +37,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { clearAllDetached } from "../../utils";
 
 const context = testContext();
 const store = createStore();
@@ -48,6 +51,15 @@ const IMAGE_PRICING_CATEGORIES = [
   "tokens.input.image",
   "tokens.output.image",
 ] as const;
+
+const tokenRequest = Object.freeze({
+  keyName: "test-key",
+  timestamp: 1_700_000_000_000,
+  capability: '{"user:test-user":["subscribe"]}',
+  clientId: "test-user",
+  nonce: "test-nonce",
+  mac: "test-mac",
+});
 
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 
@@ -82,6 +94,39 @@ function commandInput(command: unknown): Record<string, unknown> {
     return command.input as Record<string, unknown>;
   }
   return {};
+}
+
+function readAcceptedGenerationId(
+  body: unknown,
+  type: "image",
+  userId: string,
+): string {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("generationId" in body) ||
+    typeof body.generationId !== "string"
+  ) {
+    throw new Error("Expected accepted generation response");
+  }
+  expect(body).toMatchObject({
+    generationId: body.generationId,
+    type,
+    status: "queued",
+    realtime: {
+      channelName: `user:${userId}`,
+      eventName: `built-in-generation:${body.generationId}`,
+      tokenRequest,
+    },
+  });
+  return body.generationId;
+}
+
+function readGenerationResult(body: unknown): unknown {
+  if (typeof body === "object" && body !== null && "result" in body) {
+    return body.result;
+  }
+  throw new Error("Expected completed generation result");
 }
 
 function zeroToken(args: {
@@ -311,6 +356,9 @@ async function seedImageFixture(options: {
 async function deleteImageFixture(fixture: ImageFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
+    .delete(builtInGenerationJobs)
+    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+  await writeDb
     .delete(runUploadedFiles)
     .where(
       and(
@@ -357,6 +405,7 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -577,8 +626,35 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "image",
+        status: "completed",
+      }),
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    expect(statusBody).toMatchObject({
+      generationId,
+      type: "image",
+      status: "completed",
+    });
+    const body = readGenerationResult(statusBody);
     expect(body).toMatchObject({
       contentType: "image/webp",
       size: IMAGE_BYTES.byteLength,
@@ -686,6 +762,11 @@ describe("POST /api/zero/image-io/generate", () => {
       expect.arrayContaining([
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "image",
+            category: "tokens.input.text",
+          }),
           category: "tokens.input.text",
           quantity: usage.textInputTokens,
           status: "processed",
@@ -693,6 +774,11 @@ describe("POST /api/zero/image-io/generate", () => {
         }),
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "image",
+            category: "tokens.input.image",
+          }),
           category: "tokens.input.image",
           quantity: usage.imageInputTokens,
           status: "processed",
@@ -700,6 +786,11 @@ describe("POST /api/zero/image-io/generate", () => {
         }),
         expect.objectContaining({
           runId,
+          idempotencyKey: builtInGenerationUsageIdempotencyKey({
+            generationId,
+            scope: "image",
+            category: "tokens.output.image",
+          }),
           category: "tokens.output.image",
           quantity: usage.imageOutputTokens,
           status: "processed",
@@ -713,7 +804,7 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(totalCredits).toBe(creditsCharged);
   });
 
-  it("generates fal image files and settles megapixel usage inline", async () => {
+  it("generates fal image files and settles megapixel usage asynchronously", async () => {
     const fixture = await track(seedImageFixture({ credits: 1000 }));
     await upsertFalImagePricing();
     const { composeId } = await store.set(
@@ -775,8 +866,21 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
       contentType: "image/jpeg",
       size: IMAGE_BYTES.byteLength,
@@ -835,6 +939,11 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "image",
+        category: "output_megapixel",
+      }),
       category: "output_megapixel",
       quantity: 2,
       status: "processed",
@@ -843,7 +952,7 @@ describe("POST /api/zero/image-io/generate", () => {
     });
   });
 
-  it("returns 500 when OpenAI image generation fails", async () => {
+  it("records a failed job when OpenAI image generation fails", async () => {
     const fixture = await track(
       seedImageFixture({ credits: 1000, withPricing: true }),
     );
@@ -864,13 +973,37 @@ describe("POST /api/zero/image-io/generate", () => {
       body: JSON.stringify({ prompt: "a cat" }),
     });
 
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "image",
+      status: "failed",
       error: {
         message: "Image generation failed",
         code: "INTERNAL_SERVER_ERROR",
       },
     });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "image",
+        status: "failed",
+      }),
+    );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
     const usageRows = await store
       .set(writeDb$)

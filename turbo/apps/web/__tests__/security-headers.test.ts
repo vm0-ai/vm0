@@ -191,6 +191,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
         },
         {
+          source: "/api/zero/built-in-generations/:path*",
+          destination:
+            "https://api.example.test/api/zero/built-in-generations/:path*",
+        },
+        {
           source: "/api/zero/image-io/generate",
           destination: "https://api.example.test/api/zero/image-io/generate",
         },

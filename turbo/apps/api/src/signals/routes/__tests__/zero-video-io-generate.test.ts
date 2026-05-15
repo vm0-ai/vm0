@@ -6,6 +6,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
+import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -20,6 +21,7 @@ import {
   FAL_VIDEO_QUEUE_URL,
   VIDEO_IO_MODEL,
 } from "../../services/zero-video-io-generate.service";
+import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -33,6 +35,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { clearAllDetached } from "../../utils";
 
 const context = testContext();
 const store = createStore();
@@ -68,6 +71,15 @@ const VIDEO_PRICING_CATEGORIES = [
   ...VIDEO_SECOND_PRICING_CATEGORIES,
   "output_video_tokens",
 ] as const;
+
+const tokenRequest = Object.freeze({
+  keyName: "test-key",
+  timestamp: 1_700_000_000_000,
+  capability: '{"user:test-user":["subscribe"]}',
+  clientId: "test-user",
+  nonce: "test-nonce",
+  mac: "test-mac",
+});
 
 type VideoPricingCategory = (typeof VIDEO_PRICING_CATEGORIES)[number];
 
@@ -107,6 +119,39 @@ function commandInput(command: unknown): Record<string, unknown> {
     return command.input as Record<string, unknown>;
   }
   return {};
+}
+
+function readAcceptedGenerationId(
+  body: unknown,
+  type: "video",
+  userId: string,
+): string {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("generationId" in body) ||
+    typeof body.generationId !== "string"
+  ) {
+    throw new Error("Expected accepted generation response");
+  }
+  expect(body).toMatchObject({
+    generationId: body.generationId,
+    type,
+    status: "queued",
+    realtime: {
+      channelName: `user:${userId}`,
+      eventName: `built-in-generation:${body.generationId}`,
+      tokenRequest,
+    },
+  });
+  return body.generationId;
+}
+
+function readGenerationResult(body: unknown): unknown {
+  if (typeof body === "object" && body !== null && "result" in body) {
+    return body.result;
+  }
+  throw new Error("Expected completed generation result");
 }
 
 function zeroToken(args: {
@@ -384,6 +429,9 @@ async function seedVideoFixture(options: {
 async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb
+    .delete(builtInGenerationJobs)
+    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+  await writeDb
     .delete(runUploadedFiles)
     .where(
       and(
@@ -433,6 +481,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
     context.mocks.s3.send.mockReset();
     context.mocks.s3.send.mockResolvedValue({});
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -598,8 +647,35 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "video",
+        status: "completed",
+      }),
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    expect(statusBody).toMatchObject({
+      generationId,
+      type: "video",
+      status: "completed",
+    });
+    const body = readGenerationResult(statusBody);
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
@@ -703,6 +779,11 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "video",
+        category: "output_video_seconds.audio",
+      }),
       category: "output_video_seconds.audio",
       quantity: 8,
       creditsCharged: 1440,
@@ -789,8 +870,21 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
@@ -826,6 +920,11 @@ describe("POST /api/zero/video-io/generate", () => {
       );
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "video",
+        category: "output_video_seconds.audio.4k",
+      }),
       category: "output_video_seconds.audio.4k",
       quantity: 5,
       creditsCharged: 2520,
@@ -913,8 +1012,21 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
     expect(body).toMatchObject({
       contentType: "video/mp4",
       size: VIDEO_BYTES.byteLength,
@@ -951,6 +1063,11 @@ describe("POST /api/zero/video-io/generate", () => {
       );
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "video",
+        category: "output_video_tokens",
+      }),
       category: "output_video_tokens",
       quantity: 80_352,
       creditsCharged: 1080,
@@ -959,7 +1076,7 @@ describe("POST /api/zero/video-io/generate", () => {
     });
   });
 
-  it("returns 500 when fal video generation fails", async () => {
+  it("records a failed job when fal video generation fails", async () => {
     const fixture = await track(
       seedVideoFixture({ credits: 1000, withPricing: true }),
     );
@@ -980,13 +1097,37 @@ describe("POST /api/zero/video-io/generate", () => {
       body: JSON.stringify({ prompt: "a city" }),
     });
 
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toStrictEqual({
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "video",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
+      type: "video",
+      status: "failed",
       error: {
         message: "Video generation failed",
         code: "INTERNAL_SERVER_ERROR",
       },
     });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "video",
+        status: "failed",
+      }),
+    );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 });

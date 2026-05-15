@@ -34,6 +34,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
     "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
   ],
+  [
+    "/api/zero/built-in-generations/:path*",
+    "/api/zero/built-in-generations/:path*",
+  ],
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
   ["/api/zero/local-browser/:path*", "/api/zero/local-browser/:path*"],
   ["/api/zero/presentation-io/generate", "/api/zero/presentation-io/generate"],

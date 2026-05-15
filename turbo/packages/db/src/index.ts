@@ -72,6 +72,7 @@ import * as chatMessageSchema from "./schema/chat-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as hostedSiteSchema from "./schema/hosted-site";
+import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 
 export const schema = {
   ...userSchema,
@@ -148,4 +149,5 @@ export const schema = {
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorSecretSchema,
   ...hostedSiteSchema,
+  ...builtInGenerationJobSchema,
 };

@@ -1407,6 +1407,20 @@ export {
   type ZeroPresentationIoGenerateResponse,
 } from "./zero-presentation-io-generate";
 export {
+  zeroBuiltInGenerationContract,
+  zeroBuiltInGenerationTypeSchema,
+  zeroBuiltInGenerationStatusSchema,
+  zeroBuiltInGenerationRealtimeSubscriptionSchema,
+  zeroBuiltInGenerationAcceptedResponseSchema,
+  zeroBuiltInGenerationResponseSchema,
+  type ZeroBuiltInGenerationContract,
+  type ZeroBuiltInGenerationType,
+  type ZeroBuiltInGenerationStatus,
+  type ZeroBuiltInGenerationRealtimeSubscription,
+  type ZeroBuiltInGenerationAcceptedResponse,
+  type ZeroBuiltInGenerationResponse,
+} from "./zero-built-in-generation";
+export {
   internalCallbacksAgentContract,
   type InternalCallbacksAgentContract,
 } from "./internal-callbacks-agent";

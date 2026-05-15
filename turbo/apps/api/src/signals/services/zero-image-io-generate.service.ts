@@ -13,6 +13,10 @@ import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import {
+  builtInGenerationUsageIdempotencyKey,
+  type BuiltInGenerationUsageIdempotency,
+} from "./built-in-generation-usage-idempotency";
 
 export const OPENAI_IMAGE_GENERATION_URL =
   "https://api.openai.com/v1/images/generations";
@@ -1411,6 +1415,7 @@ export const recordGeneratedImage$ = command(
       readonly pricing: ImagePricing;
       readonly generation: ParsedImageGeneration;
       readonly recordArtifact?: boolean;
+      readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
     },
     signal: AbortSignal,
   ): Promise<RecordedImage> => {
@@ -1471,20 +1476,26 @@ export const recordGeneratedImage$ = command(
       return row.quantity > 0;
     });
 
-    await writeDb.insert(usageEvent).values(
-      usageRows.map((row) => {
-        return {
-          runId: params.runId ?? null,
-          idempotencyKey: randomUUID(),
-          orgId: params.orgId,
-          userId: params.userId,
-          kind: USAGE_KIND,
-          provider: params.generation.model,
-          category: row.category,
-          quantity: row.quantity,
-        };
-      }),
-    );
+    await writeDb
+      .insert(usageEvent)
+      .values(
+        usageRows.map((row) => {
+          return {
+            runId: params.runId ?? null,
+            idempotencyKey: builtInGenerationUsageIdempotencyKey({
+              ...params.usageIdempotency,
+              category: row.category,
+            }),
+            orgId: params.orgId,
+            userId: params.userId,
+            kind: USAGE_KIND,
+            provider: params.generation.model,
+            category: row.category,
+            quantity: row.quantity,
+          };
+        }),
+      )
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, params.orgId, signal);

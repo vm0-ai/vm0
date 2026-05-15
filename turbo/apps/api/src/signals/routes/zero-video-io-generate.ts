@@ -1,11 +1,17 @@
+import { randomUUID } from "node:crypto";
+
 import { command } from "ccstate";
 import { zeroVideoIoGenerateContract } from "@vm0/api-contracts/contracts/zero-video-io-generate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { waitUntil } from "../context/wait-until";
+import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
+import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
+import { safeAsync } from "../utils";
 import {
   checkVideoCredits$,
   downloadFalVideo,
@@ -13,6 +19,8 @@ import {
   parseVideoOptions,
   recordGeneratedVideo$,
   submitFalVideoGeneration,
+  type VideoOptions,
+  type VideoPricingRow,
   videoInsufficientCredits,
   videoPricing$,
   videoPricingCategoryForOptions,
@@ -20,12 +28,180 @@ import {
   videoServiceUnavailable,
   waitForFalVideoResult,
 } from "../services/zero-video-io-generate.service";
+import {
+  completeBuiltInGenerationJob$,
+  createBuiltInGenerationJob$,
+  failBuiltInGenerationJob$,
+  markBuiltInGenerationRunning$,
+} from "../services/zero-built-in-generation.service";
 
+const L = logger("ZeroVideoIoGenerate");
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
 
-function isErrorResponse(value: unknown): value is { readonly status: number } {
-  return typeof value === "object" && value !== null && "status" in value;
+interface GenerationError {
+  readonly message: string;
+  readonly code: string;
 }
+
+interface GenerationErrorResponse {
+  readonly status: number;
+  readonly body: {
+    readonly error: GenerationError;
+  };
+}
+
+interface VideoJobArgs {
+  readonly generationId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string | undefined;
+  readonly options: VideoOptions;
+  readonly pricing: VideoPricingRow;
+  readonly falKey: string;
+}
+
+function isGenerationError(value: unknown): value is GenerationError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    "code" in value
+  );
+}
+
+function isErrorResponse(value: unknown): value is GenerationErrorResponse {
+  if (typeof value !== "object" || value === null || !("body" in value)) {
+    return false;
+  }
+  const body = value.body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "error" in body &&
+    isGenerationError(body.error)
+  );
+}
+
+function videoRequestRecord(options: VideoOptions): Record<string, unknown> {
+  return {
+    model: options.model,
+    prompt: options.prompt,
+    aspectRatio: options.aspectRatio,
+    duration: options.duration,
+    resolution: options.resolution,
+    generateAudio: options.generateAudio,
+    ...(options.negativePrompt
+      ? { negativePrompt: options.negativePrompt }
+      : {}),
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
+    autoFix: options.autoFix,
+    safetyTolerance: options.safetyTolerance,
+  };
+}
+
+const runVideoGenerationJob$ = command(
+  async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
+    await set(markBuiltInGenerationRunning$, args.generationId, signal);
+
+    const queueHandle = await submitFalVideoGeneration(
+      args.options,
+      args.falKey,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(queueHandle)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: queueHandle.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const resultBody = await waitForFalVideoResult(
+      queueHandle,
+      args.falKey,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (isErrorResponse(resultBody)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: resultBody.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const falResult = parseFalVideoResult(resultBody, queueHandle.requestId);
+    if (isErrorResponse(falResult)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: falResult.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const generation = await downloadFalVideo(falResult, args.options, signal);
+    signal.throwIfAborted();
+    if (isErrorResponse(generation)) {
+      await set(
+        failBuiltInGenerationJob$,
+        { generationId: args.generationId, error: generation.body.error },
+        signal,
+      );
+      return;
+    }
+
+    const result = await set(
+      recordGeneratedVideo$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        pricing: args.pricing,
+        generation,
+        usageIdempotency: {
+          generationId: args.generationId,
+          scope: "video",
+        },
+      },
+      signal,
+    );
+
+    await set(
+      completeBuiltInGenerationJob$,
+      { generationId: args.generationId, result },
+      signal,
+    );
+  },
+);
+
+const runVideoGenerationJobSafely$ = command(
+  async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
+    const result = await safeAsync(async () => {
+      await set(runVideoGenerationJob$, args, signal);
+    });
+    signal.throwIfAborted();
+    if ("ok" in result) {
+      return;
+    }
+
+    L.error("Built-in video generation job failed", result.error);
+    await set(
+      failBuiltInGenerationJob$,
+      {
+        generationId: args.generationId,
+        error: {
+          message: "Video generation failed",
+          code: "INTERNAL_SERVER_ERROR",
+        },
+      },
+      signal,
+    );
+  },
+);
 
 const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -70,46 +246,53 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const queueHandle = await submitFalVideoGeneration(options, falKey, signal);
+  const generationId = randomUUID();
+  const realtime = await createBuiltInGenerationRealtimeSubscription(
+    auth.userId,
+    generationId,
+  );
   signal.throwIfAborted();
-  if ("status" in queueHandle) {
-    return queueHandle;
-  }
-
-  const resultBody = await waitForFalVideoResult(queueHandle, falKey, signal);
-  signal.throwIfAborted();
-  if (isErrorResponse(resultBody)) {
-    return resultBody;
-  }
-
-  const falResult = parseFalVideoResult(resultBody, queueHandle.requestId);
-  if ("status" in falResult) {
-    return falResult;
-  }
-
-  const generation = await downloadFalVideo(falResult, options, signal);
-  signal.throwIfAborted();
-  if ("status" in generation) {
-    return generation;
-  }
-
   const runId =
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const result = await set(
-    recordGeneratedVideo$,
+  await set(
+    createBuiltInGenerationJob$,
     {
+      generationId,
+      type: "video",
       orgId: auth.orgId,
       userId: auth.userId,
       runId,
-      pricing: pricingRow,
-      generation,
+      request: videoRequestRecord(options),
     },
     signal,
   );
+  waitUntil(
+    set(
+      runVideoGenerationJobSafely$,
+      {
+        generationId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        runId,
+        options,
+        pricing: pricingRow,
+        falKey,
+      },
+      signal,
+    ),
+  );
 
-  return { status: 200 as const, body: result };
+  return {
+    status: 202 as const,
+    body: {
+      generationId,
+      type: "video" as const,
+      status: "queued" as const,
+      realtime,
+    },
+  };
 });
 
 export const zeroVideoIoGenerateRoutes: readonly RouteEntry[] = [

@@ -13,6 +13,10 @@ import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import {
+  builtInGenerationUsageIdempotencyKey,
+  type BuiltInGenerationUsageIdempotency,
+} from "./built-in-generation-usage-idempotency";
 
 export const VIDEO_IO_MODEL = "fal-ai/veo3.1/fast";
 export const FAL_VIDEO_QUEUE_URL = `https://queue.fal.run/${VIDEO_IO_MODEL}`;
@@ -241,7 +245,7 @@ type VideoErrorResponse = {
   readonly body: ErrorBody;
 };
 
-interface VideoPricingRow {
+export interface VideoPricingRow {
   readonly provider: VideoModel;
   readonly category: VideoPricingCategory;
   readonly unitPrice: number;
@@ -250,7 +254,7 @@ interface VideoPricingRow {
 
 type VideoPricing = ReadonlyMap<string, VideoPricingRow>;
 
-interface VideoOptions {
+export interface VideoOptions {
   readonly model: VideoModel;
   readonly prompt: string;
   readonly aspectRatio: VideoAspectRatio;
@@ -932,6 +936,7 @@ export const recordGeneratedVideo$ = command(
       readonly runId: string | undefined;
       readonly pricing: VideoPricingRow;
       readonly generation: ParsedVideoGeneration;
+      readonly usageIdempotency: BuiltInGenerationUsageIdempotency;
     },
     signal: AbortSignal,
   ): Promise<RecordedVideo> => {
@@ -984,16 +989,22 @@ export const recordGeneratedVideo$ = command(
     );
     signal.throwIfAborted();
 
-    await writeDb.insert(usageEvent).values({
-      runId: params.runId ?? null,
-      idempotencyKey: randomUUID(),
-      orgId: params.orgId,
-      userId: params.userId,
-      kind: USAGE_KIND,
-      provider: params.generation.model,
-      category: params.pricing.category,
-      quantity: videoBillingQuantityForOptions(params.generation),
-    });
+    await writeDb
+      .insert(usageEvent)
+      .values({
+        runId: params.runId ?? null,
+        idempotencyKey: builtInGenerationUsageIdempotencyKey({
+          ...params.usageIdempotency,
+          category: params.pricing.category,
+        }),
+        orgId: params.orgId,
+        userId: params.userId,
+        kind: USAGE_KIND,
+        provider: params.generation.model,
+        category: params.pricing.category,
+        quantity: videoBillingQuantityForOptions(params.generation),
+      })
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
     signal.throwIfAborted();
 
     await set(processOrgUsageEvents$, params.orgId, signal);

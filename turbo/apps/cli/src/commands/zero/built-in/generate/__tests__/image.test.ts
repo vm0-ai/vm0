@@ -15,6 +15,8 @@ import { zeroBuiltInCommand } from "../../index";
 import { imageCommand } from "../image";
 
 const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
+const IMAGE_GENERATION_ID = "00000000-0000-4000-8000-000000000001";
+const IMAGE_STATUS_URL = `http://localhost:3000/api/zero/built-in-generations/${IMAGE_GENERATION_ID}`;
 const IMAGE_RESULT = {
   id: "image-file-id",
   filename: "image-image-fi.png",
@@ -214,6 +216,60 @@ describe("zero built-in generate image command", () => {
       outputFormat: "png",
       moderation: "auto",
     });
+  });
+
+  it("should wait for an accepted async generation result", async () => {
+    let statusRequested = false;
+    server.use(
+      http.post(IMAGE_URL, () => {
+        return HttpResponse.json(
+          {
+            generationId: IMAGE_GENERATION_ID,
+            type: "image",
+            status: "queued",
+            realtime: {
+              channelName: "user:user-1",
+              eventName: `built-in-generation:${IMAGE_GENERATION_ID}`,
+              tokenRequest: {
+                keyName: "test-key",
+                timestamp: 1_700_000_000_000,
+                capability: '{"user:user-1":["subscribe"]}',
+                clientId: "user-1",
+                nonce: "test-nonce",
+                mac: "test-mac",
+              },
+            },
+          },
+          { status: 202 },
+        );
+      }),
+      http.get(IMAGE_STATUS_URL, ({ request }) => {
+        statusRequested = true;
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        return HttpResponse.json({
+          generationId: IMAGE_GENERATION_ID,
+          type: "image",
+          status: "completed",
+          result: IMAGE_RESULT,
+          createdAt: "2026-05-15T00:00:00.000Z",
+          startedAt: "2026-05-15T00:00:01.000Z",
+          completedAt: "2026-05-15T00:00:02.000Z",
+        });
+      }),
+    );
+
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "image",
+      "--prompt",
+      "Async please",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(statusRequested).toBe(true);
+    expect(stdout).toContain(`Image generated: ${IMAGE_RESULT.url}`);
   });
 
   it("should describe image generation model capabilities in help", () => {
