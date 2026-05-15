@@ -73,14 +73,21 @@ impl NormalOperationTracker {
 
     pub(crate) fn mark_not_parkable(&self) {
         let mut inner = self.inner();
-        if !matches!(inner.state, TrackerState::Closed) {
-            inner.state = TrackerState::NotParkable;
-            inner.operations.clear();
-        }
+        inner.state = TrackerState::NotParkable;
+        inner.operations.clear();
     }
 
     pub(crate) fn mark_closed(&self) {
         let mut inner = self.inner();
+        if inner
+            .operations
+            .values()
+            .any(|phase| *phase == OperationPhase::PossibleGuestWrite)
+        {
+            inner.state = TrackerState::NotParkable;
+            inner.operations.clear();
+            return;
+        }
         if matches!(
             inner.state,
             TrackerState::Open | TrackerState::Fenced { .. }
@@ -395,11 +402,44 @@ mod tests {
     }
 
     #[test]
+    fn close_with_reserved_operation_is_closed() {
+        let tracker = NormalOperationTracker::new();
+        let _token = reserve(&tracker);
+
+        tracker.mark_closed();
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+    }
+
+    #[test]
+    fn close_with_possible_guest_write_is_not_parkable() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        tracker.mark_closed();
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
     fn not_parkable_state_survives_later_close() {
         let tracker = NormalOperationTracker::new();
 
         tracker.mark_not_parkable();
         tracker.mark_closed();
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
+    fn not_parkable_state_overrides_prior_close() {
+        let tracker = NormalOperationTracker::new();
+
+        tracker.mark_closed();
+        tracker.mark_not_parkable();
 
         assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
     }
