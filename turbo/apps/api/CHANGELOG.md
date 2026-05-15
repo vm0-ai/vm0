@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.52.3](https://github.com/vm0-ai/vm0/compare/api-v1.52.2...api-v1.52.3) (2026-05-15)
+
+
+### Refactoring
+
+* rename remote-agent to local-agent across cli + platform ([#13511](https://github.com/vm0-ai/vm0/issues/13511)) ([fc419a4](https://github.com/vm0-ai/vm0/commit/fc419a41ad6d046c04b4bf641ad8cb076064c054))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.28.1
+    * @vm0/connectors bumped to 1.12.2
+    * @vm0/core bumped to 8.278.2
+    * @vm0/db bumped to 1.14.3
+
 ## [1.52.2](https://github.com/vm0-ai/vm0/compare/api-v1.52.1...api-v1.52.2) (2026-05-15)
 
 

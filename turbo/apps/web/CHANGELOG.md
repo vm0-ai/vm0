@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.369.5](https://github.com/vm0-ai/vm0/compare/web-v12.369.4...web-v12.369.5) (2026-05-15)
+
+
+### Refactoring
+
+* rename remote-agent to local-agent across cli + platform ([#13511](https://github.com/vm0-ai/vm0/issues/13511)) ([fc419a4](https://github.com/vm0-ai/vm0/commit/fc419a41ad6d046c04b4bf641ad8cb076064c054))
+
+
+### Performance Improvements
+
+* reduce redundant chat load requests ([#13504](https://github.com/vm0-ai/vm0/issues/13504)) ([0f8966d](https://github.com/vm0-ai/vm0/commit/0f8966d1982d6bc6118c308628c3aaa04eec0570))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.28.1
+    * @vm0/connectors bumped to 1.12.2
+    * @vm0/core bumped to 8.278.2
+    * @vm0/db bumped to 1.14.3
+
 ## [12.369.4](https://github.com/vm0-ai/vm0/compare/web-v12.369.3...web-v12.369.4) (2026-05-15)
 
 
