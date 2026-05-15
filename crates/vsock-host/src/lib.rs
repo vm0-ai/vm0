@@ -103,7 +103,7 @@ struct Shared {
     /// Single source of truth for connection liveness plus all per-connection
     /// registration tables. See [`ConnectionState`].
     state: std::sync::Mutex<ConnectionState>,
-    /// Authoritative lifecycle tracker for logical normal guest operations.
+    /// Connection-local tracker for logical normal guest operations.
     ///
     /// Routing maps stay inside [`ConnectionState`]; this tracker records the
     /// neutral operation-readiness facts that sandbox policy can consume later.

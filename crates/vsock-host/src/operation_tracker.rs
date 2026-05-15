@@ -61,7 +61,6 @@ impl NormalOperationTracker {
                 Ok(NormalOperationFence {
                     id,
                     inner: Arc::clone(&self.inner),
-                    released: false,
                 })
             }
             TrackerState::Open => Err(NormalOperationFenceRejection::Busy),
@@ -244,19 +243,14 @@ impl Drop for NormalOperationToken {
 pub(crate) struct NormalOperationFence {
     id: NormalOperationFenceId,
     inner: Arc<Mutex<Inner>>,
-    released: bool,
 }
 
 impl Drop for NormalOperationFence {
     fn drop(&mut self) {
-        if self.released {
-            return;
-        }
         let mut inner = lock_inner(&self.inner);
         if matches!(inner.state, TrackerState::Fenced { id } if id == self.id) {
             inner.state = TrackerState::Open;
         }
-        self.released = true;
     }
 }
 
