@@ -53,6 +53,28 @@ describe("GET /api/zero/voice-io/quota", () => {
     });
   });
 
+  it("allows free tier users with no lifetime audio input usage", async () => {
+    const fixture = await track(
+      store.set(seedVoiceIoQuotaOrg$, { tier: "free" }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroVoiceIoQuotaContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      allowed: true,
+      count: 0,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
+  });
+
   it("allows free tier users with partial lifetime audio input usage", async () => {
     const fixture = await track(
       store.set(seedVoiceIoQuotaOrg$, { count: 2 }, context.signal),
