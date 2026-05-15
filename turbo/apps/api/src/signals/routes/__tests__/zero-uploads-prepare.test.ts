@@ -156,6 +156,32 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("normalizes parameterized content types before signing", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroUploadsContract);
+    const response = await client.prepare({
+      body: {
+        filename: "notes.txt",
+        contentType: "Text/Plain; Charset=UTF-8",
+        size: 13,
+      },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.contentType).toBe("text/plain");
+
+    const command = context.mocks.s3.getSignedUrl.mock.calls[0]?.[1] as {
+      input: { ContentType: string };
+    };
+    expect(command.input.ContentType).toBe("text/plain");
+  });
+
   it("uses the public S3 endpoint for externally consumed upload URLs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

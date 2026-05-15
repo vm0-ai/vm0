@@ -217,6 +217,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/phone/:path*",
         },
         {
+          source: "/api/zero/uploads/prepare",
+          destination: "https://api.example.test/api/zero/uploads/prepare",
+        },
+        {
           source: "/api/zero/user-preferences",
           destination: "https://api.example.test/api/zero/user-preferences",
         },
