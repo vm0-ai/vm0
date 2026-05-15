@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
-import {
-  voiceChatItems,
-  voiceChatSessions,
-  voiceChatTasks,
-} from "@vm0/db/schema/voice-chat";
+import { voiceChatItems, voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
@@ -26,28 +22,8 @@ export const voiceChatTokenBodySchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
 
-type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
 type TaskRow = typeof voiceChatTasks.$inferSelect;
-
-export function serializeVoiceChatSession(session: SessionRow) {
-  return {
-    id: session.id,
-    orgId: session.orgId,
-    userId: session.userId,
-    agentId: session.agentId,
-    mode: "chat" as const,
-    conversationSummary: session.conversationSummary,
-    workingTasksSummary: session.workingTasksSummary,
-    finishedTasksSummary: session.finishedTasksSummary,
-    summarySeq: session.summarySeq,
-    summaryVersion: session.summaryVersion,
-    lastSummaryAt: session.lastSummaryAt
-      ? session.lastSummaryAt.toISOString()
-      : null,
-    createdAt: session.createdAt.toISOString(),
-  };
-}
 
 export function serializeVoiceChatItem(item: ItemRow) {
   return {
