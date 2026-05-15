@@ -9,6 +9,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { now } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import {
@@ -20,7 +21,7 @@ import {
 } from "./zero-image-io-generate.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
-import { safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse } from "../utils";
 
 export const OPENAI_PRESENTATION_GENERATION_URL =
   "https://api.openai.com/v1/responses";
@@ -1417,11 +1418,17 @@ function presentationVisualImageTimeoutMs(deadlineAtMs: number | undefined) {
     return PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS;
   }
   const remainingMs =
-    deadlineAtMs - Date.now() - PRESENTATION_IO_RECORD_PRESENTATION_RESERVE_MS;
+    deadlineAtMs - now() - PRESENTATION_IO_RECORD_PRESENTATION_RESERVE_MS;
   return Math.min(
     PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS,
     Math.max(0, remainingMs),
   );
+}
+
+function loggableError(error: unknown): unknown {
+  return error instanceof Error
+    ? { name: error.name, message: error.message }
+    : String(error);
 }
 
 async function generatePresentationVisualImage(
@@ -1434,8 +1441,8 @@ async function generatePresentationVisualImage(
   signal: AbortSignal,
 ): Promise<GeneratedPresentationVisualImage | null> {
   const imageOptions = createVisualImageOptions(params.prompt);
-  const startedAt = Date.now();
-  try {
+  const startedAt = now();
+  const result = await safeAsync(async () => {
     const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
       method: "POST",
       headers: {
@@ -1459,7 +1466,7 @@ async function generatePresentationVisualImage(
       L.warn("Presentation visual image request failed", {
         slideIndex: params.slideIndex,
         status: response.status,
-        durationMs: Date.now() - startedAt,
+        durationMs: now() - startedAt,
       });
       return null;
     }
@@ -1471,7 +1478,7 @@ async function generatePresentationVisualImage(
       L.warn("Presentation visual image response could not be used", {
         slideIndex: params.slideIndex,
         code: generation.body.error.code,
-        durationMs: Date.now() - startedAt,
+        durationMs: now() - startedAt,
       });
       return null;
     }
@@ -1482,19 +1489,20 @@ async function generatePresentationVisualImage(
       prompt: params.prompt,
       generation,
     };
-  } catch (error) {
+  });
+
+  if ("error" in result) {
     signal.throwIfAborted();
     L.warn("Presentation visual image request skipped", {
       slideIndex: params.slideIndex,
-      error:
-        error instanceof Error
-          ? { name: error.name, message: error.message }
-          : String(error),
-      durationMs: Date.now() - startedAt,
+      error: loggableError(result.error),
+      durationMs: now() - startedAt,
       timeoutMs: params.timeoutMs,
     });
     return null;
   }
+
+  return result.ok;
 }
 
 export const generatePresentationVisuals$ = command(
@@ -1555,9 +1563,8 @@ export const generatePresentationVisuals$ = command(
         continue;
       }
 
-      let recordedImage;
-      try {
-        recordedImage = await set(
+      const recordedImageResult = await safeAsync(() => {
+        return set(
           recordGeneratedImage$,
           {
             orgId: params.orgId,
@@ -1569,11 +1576,17 @@ export const generatePresentationVisuals$ = command(
           },
           signal,
         );
-      } catch {
+      });
+      signal.throwIfAborted();
+      if ("error" in recordedImageResult) {
+        L.warn("Presentation visual image record skipped", {
+          slideIndex: image.slideIndex,
+          error: loggableError(recordedImageResult.error),
+        });
         signal.throwIfAborted();
         continue;
       }
-      signal.throwIfAborted();
+      const recordedImage = recordedImageResult.ok;
       visuals.push({
         slideIndex: image.slideIndex,
         url: recordedImage.url,

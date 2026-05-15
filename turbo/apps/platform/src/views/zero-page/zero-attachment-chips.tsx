@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent, type ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -287,27 +287,40 @@ async function copyAttachmentLinkToClipboard(url: string): Promise<void> {
   toast.error("Failed to copy link");
 }
 
-function useLightboxBodyScrollLock(): void {
-  useEffect(() => {
-    const bodyOverflow = document.body.style.overflow;
-    const bodyOverscrollBehavior = document.body.style.overscrollBehavior;
-    const rootOverflow = document.documentElement.style.overflow;
-    const rootOverscrollBehavior =
-      document.documentElement.style.overscrollBehavior;
+function LightboxBodyScrollLock() {
+  let restore: (() => void) | null = null;
 
-    document.body.style.overflow = "hidden";
-    document.body.style.overscrollBehavior = "contain";
-    document.documentElement.style.overflow = "hidden";
-    document.documentElement.style.overscrollBehavior = "contain";
+  return (
+    <span
+      ref={(node) => {
+        if (node === null) {
+          restore?.();
+          restore = null;
+          return;
+        }
 
-    return () => {
-      document.body.style.overflow = bodyOverflow;
-      document.body.style.overscrollBehavior = bodyOverscrollBehavior;
-      document.documentElement.style.overflow = rootOverflow;
-      document.documentElement.style.overscrollBehavior =
-        rootOverscrollBehavior;
-    };
-  }, []);
+        const bodyOverflow = document.body.style.overflow;
+        const bodyOverscrollBehavior = document.body.style.overscrollBehavior;
+        const rootOverflow = document.documentElement.style.overflow;
+        const rootOverscrollBehavior =
+          document.documentElement.style.overscrollBehavior;
+
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "contain";
+        document.documentElement.style.overflow = "hidden";
+        document.documentElement.style.overscrollBehavior = "contain";
+
+        restore = () => {
+          document.body.style.overflow = bodyOverflow;
+          document.body.style.overscrollBehavior = bodyOverscrollBehavior;
+          document.documentElement.style.overflow = rootOverflow;
+          document.documentElement.style.overscrollBehavior =
+            rootOverscrollBehavior;
+        };
+      }}
+      hidden
+    />
+  );
 }
 
 function isImageLightboxZoomAtReset(zoom: number): boolean {
@@ -506,6 +519,7 @@ function ImageLightbox({ url }: { url: string }) {
       aria-modal="true"
       data-testid="attachment-lightbox"
     >
+      <LightboxBodyScrollLock />
       <ImageLightboxContent
         closeLightbox={closeLightbox}
         pageSignal={pageSignal}
@@ -521,7 +535,6 @@ export function AttachmentLightbox() {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
   const pageSignal = useGet(pageSignal$);
-  useLightboxBodyScrollLock();
 
   if (!preview) {
     return null;
@@ -548,6 +561,7 @@ export function AttachmentLightbox() {
       aria-modal="true"
       data-testid="attachment-lightbox"
     >
+      <LightboxBodyScrollLock />
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <button
           type="button"
