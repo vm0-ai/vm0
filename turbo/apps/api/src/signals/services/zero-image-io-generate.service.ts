@@ -1319,6 +1319,7 @@ export const recordGeneratedImage$ = command(
       readonly runId: string | undefined;
       readonly pricing: ImagePricing;
       readonly generation: ParsedImageGeneration;
+      readonly recordArtifact?: boolean;
     },
     signal: AbortSignal,
   ): Promise<RecordedImage> => {
@@ -1340,38 +1341,40 @@ export const recordGeneratedImage$ = command(
     signal.throwIfAborted();
 
     const url = buildFileUrl(params.userId, fileId, filename);
-    await set(
-      recordWebUploadedFile$,
-      {
-        runId: params.runId,
-        externalId: fileId,
-        userId: params.userId,
-        orgId: params.orgId,
-        filename,
-        contentType,
-        sizeBytes: params.generation.imageBytes.byteLength,
-        url,
-        s3Key,
-        metadata: {
-          generatedBy: "zero-official-image",
-          model: params.generation.model,
-          provider: params.generation.provider,
-          imageSize: params.generation.imageSize,
-          quality: params.generation.quality,
-          background: params.generation.background,
-          outputFormat: params.generation.outputFormat,
-          ...(params.generation.outputCompression !== undefined
-            ? { outputCompression: params.generation.outputCompression }
-            : {}),
-          moderation: params.generation.moderation,
-          safetyTolerance: params.generation.safetyTolerance,
-          sourceUrl: params.generation.sourceUrl,
-          seed: params.generation.seed,
+    if (params.recordArtifact !== false) {
+      await set(
+        recordWebUploadedFile$,
+        {
+          runId: params.runId,
+          externalId: fileId,
+          userId: params.userId,
+          orgId: params.orgId,
+          filename,
+          contentType,
+          sizeBytes: params.generation.imageBytes.byteLength,
+          url,
+          s3Key,
+          metadata: {
+            generatedBy: "zero-official-image",
+            model: params.generation.model,
+            provider: params.generation.provider,
+            imageSize: params.generation.imageSize,
+            quality: params.generation.quality,
+            background: params.generation.background,
+            outputFormat: params.generation.outputFormat,
+            ...(params.generation.outputCompression !== undefined
+              ? { outputCompression: params.generation.outputCompression }
+              : {}),
+            moderation: params.generation.moderation,
+            safetyTolerance: params.generation.safetyTolerance,
+            sourceUrl: params.generation.sourceUrl,
+            seed: params.generation.seed,
+          },
         },
-      },
-      signal,
-    );
-    signal.throwIfAborted();
+        signal,
+      );
+      signal.throwIfAborted();
+    }
 
     const usageRows = params.generation.billing.filter((row) => {
       return row.quantity > 0;

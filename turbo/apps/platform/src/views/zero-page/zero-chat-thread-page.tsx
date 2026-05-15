@@ -626,23 +626,34 @@ function ArtifactPreviewOpenOverlay({
   filename: string;
   onOpen: () => void;
 }) {
+  const lightboxOpen = useGet(attachmentLightboxUrl$) !== null;
+
   return (
     <div className="group/artifact-preview relative h-full w-full">
       {children}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100">
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`Open preview for ${filename}`}
-          className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-lg text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-        >
+      <button
+        type="button"
+        onClick={(event) => {
+          event.currentTarget.blur();
+          onOpen();
+        }}
+        disabled={lightboxOpen}
+        aria-label={`Open preview for ${filename}`}
+        className={cn(
+          "absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80",
+          lightboxOpen
+            ? "pointer-events-none"
+            : "group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100",
+        )}
+      >
+        <span className="flex h-16 w-16 items-center justify-center rounded-lg text-white">
           <IconFile
             size={24}
             stroke={1.8}
             className="drop-shadow transition-opacity"
           />
-        </button>
-      </div>
+        </span>
+      </button>
     </div>
   );
 }

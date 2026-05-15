@@ -8,6 +8,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
+import { now } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import {
@@ -20,7 +22,7 @@ import {
 } from "./zero-image-io-generate.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
-import { safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse } from "../utils";
 
 export const OPENAI_PRESENTATION_GENERATION_URL =
   "https://api.openai.com/v1/responses";
@@ -32,6 +34,11 @@ const PRESENTATION_IO_MAX_SLIDES = 20;
 const PRESENTATION_IO_DEFAULT_IMAGE_COUNT = 2;
 const PRESENTATION_IO_MAX_IMAGES = 8;
 const PRESENTATION_CONTENT_TYPE = "text/html";
+const PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS = 120_000;
+export const PRESENTATION_IO_SYNC_RESPONSE_BUDGET_MS = 90_000;
+const PRESENTATION_IO_RECORD_PRESENTATION_RESERVE_MS = 10_000;
+
+const L = logger("ZeroPresentationIoGenerate");
 
 const USAGE_KIND = "model";
 const USAGE_PROVIDER = PRESENTATION_IO_MODEL;
@@ -154,6 +161,18 @@ interface PresentationVisual {
   readonly imageId: string;
   readonly filename: string;
   readonly creditsCharged: number;
+}
+
+type ParsedPresentationVisualImageGeneration = Exclude<
+  ReturnType<typeof parseImageGenerationResult>,
+  { readonly status: number }
+>;
+
+interface GeneratedPresentationVisualImage {
+  readonly slideIndex: number;
+  readonly slide: SlideSpec;
+  readonly prompt: string;
+  readonly generation: ParsedPresentationVisualImageGeneration;
 }
 
 interface RecordedPresentation {
@@ -953,7 +972,8 @@ const DECK_BASE_STYLE = `
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       background: var(--bg);
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -972,7 +992,8 @@ const DECK_BASE_STYLE = `
     .viewport {
       width: 100vw;
       height: 100vh;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
     .deck {
       display: flex;
@@ -1398,6 +1419,98 @@ function createVisualImageOptions(prompt: string): ImageOptions {
   };
 }
 
+function presentationVisualImageTimeoutMs(deadlineAtMs: number | undefined) {
+  if (deadlineAtMs === undefined) {
+    return PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS;
+  }
+  const remainingMs =
+    deadlineAtMs - now() - PRESENTATION_IO_RECORD_PRESENTATION_RESERVE_MS;
+  return Math.min(
+    PRESENTATION_VISUAL_IMAGE_TIMEOUT_MS,
+    Math.max(0, remainingMs),
+  );
+}
+
+function loggableError(error: unknown): unknown {
+  return error instanceof Error
+    ? { name: error.name, message: error.message }
+    : String(error);
+}
+
+async function generatePresentationVisualImage(
+  params: {
+    readonly slideIndex: number;
+    readonly slide: SlideSpec;
+    readonly prompt: string;
+    readonly timeoutMs: number;
+  },
+  signal: AbortSignal,
+): Promise<GeneratedPresentationVisualImage | null> {
+  const imageOptions = createVisualImageOptions(params.prompt);
+  const startedAt = now();
+  const result = await safeAsync(async () => {
+    const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: IMAGE_IO_MODEL,
+        prompt: imageOptions.prompt,
+        n: 1,
+        size: imageOptions.size,
+        quality: imageOptions.quality,
+        background: imageOptions.background,
+        output_format: imageOptions.outputFormat,
+        moderation: imageOptions.moderation,
+      }),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(params.timeoutMs)]),
+    });
+    signal.throwIfAborted();
+    if (!response.ok) {
+      L.warn("Presentation visual image request failed", {
+        slideIndex: params.slideIndex,
+        status: response.status,
+        durationMs: now() - startedAt,
+      });
+      return null;
+    }
+
+    const responseBody: unknown = await response.json();
+    signal.throwIfAborted();
+    const generation = parseImageGenerationResult(responseBody, imageOptions);
+    if ("status" in generation) {
+      L.warn("Presentation visual image response could not be used", {
+        slideIndex: params.slideIndex,
+        code: generation.body.error.code,
+        durationMs: now() - startedAt,
+      });
+      return null;
+    }
+
+    return {
+      slideIndex: params.slideIndex,
+      slide: params.slide,
+      prompt: params.prompt,
+      generation,
+    };
+  });
+
+  if ("error" in result) {
+    signal.throwIfAborted();
+    L.warn("Presentation visual image request skipped", {
+      slideIndex: params.slideIndex,
+      error: loggableError(result.error),
+      durationMs: now() - startedAt,
+      timeoutMs: params.timeoutMs,
+    });
+    return null;
+  }
+
+  return result.ok;
+}
+
 export const generatePresentationVisuals$ = command(
   async (
     { set },
@@ -1408,6 +1521,7 @@ export const generatePresentationVisuals$ = command(
       readonly imagePricing: ImagePricing;
       readonly generation: ParsedPresentationGeneration;
       readonly options: PresentationOptions;
+      readonly deadlineAtMs?: number;
     },
     signal: AbortSignal,
   ): Promise<readonly PresentationVisual[] | ErrorResponse> => {
@@ -1419,78 +1533,75 @@ export const generatePresentationVisuals$ = command(
       return [];
     }
 
+    const imageTimeoutMs = presentationVisualImageTimeoutMs(
+      params.deadlineAtMs,
+    );
+    if (imageTimeoutMs <= 0) {
+      L.warn("Skipping presentation visual images to avoid request timeout", {
+        candidateCount: candidates.length,
+        deadlineAtMs: params.deadlineAtMs,
+      });
+      return [];
+    }
+
+    const generatedImages = await Promise.all(
+      candidates.map(([slideIndex, slide]) => {
+        return generatePresentationVisualImage(
+          {
+            slideIndex,
+            slide,
+            timeoutMs: imageTimeoutMs,
+            prompt: visualPromptForSlide({
+              deck: params.generation.deck,
+              slide,
+              options: params.options,
+            }),
+          },
+          signal,
+        );
+      }),
+    );
+    signal.throwIfAborted();
+
     const visuals: PresentationVisual[] = [];
-    let failedAttempts = 0;
-    for (const [slideIndex, slide] of candidates) {
-      const prompt = visualPromptForSlide({
-        deck: params.generation.deck,
-        slide,
-        options: params.options,
-      });
-      const imageOptions = createVisualImageOptions(prompt);
-      const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: IMAGE_IO_MODEL,
-          prompt: imageOptions.prompt,
-          n: 1,
-          size: imageOptions.size,
-          quality: imageOptions.quality,
-          background: imageOptions.background,
-          output_format: imageOptions.outputFormat,
-          moderation: imageOptions.moderation,
-        }),
-        signal,
-      });
-      signal.throwIfAborted();
-      if (!response.ok) {
-        failedAttempts += 1;
+    for (const image of generatedImages) {
+      if (!image) {
         continue;
       }
 
-      const responseBody: unknown = await response.json();
+      const recordedImageResult = await safeAsync(() => {
+        return set(
+          recordGeneratedImage$,
+          {
+            orgId: params.orgId,
+            userId: params.userId,
+            runId: params.runId,
+            pricing: params.imagePricing,
+            generation: image.generation,
+            recordArtifact: false,
+          },
+          signal,
+        );
+      });
       signal.throwIfAborted();
-      const imageGeneration = parseImageGenerationResult(
-        responseBody,
-        imageOptions,
-      );
-      if ("status" in imageGeneration) {
-        failedAttempts += 1;
+      if ("error" in recordedImageResult) {
+        L.warn("Presentation visual image record skipped", {
+          slideIndex: image.slideIndex,
+          error: loggableError(recordedImageResult.error),
+        });
+        signal.throwIfAborted();
         continue;
       }
-
-      const recordedImage = await set(
-        recordGeneratedImage$,
-        {
-          orgId: params.orgId,
-          userId: params.userId,
-          runId: params.runId,
-          pricing: params.imagePricing,
-          generation: imageGeneration,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
+      const recordedImage = recordedImageResult.ok;
       visuals.push({
-        slideIndex,
+        slideIndex: image.slideIndex,
         url: recordedImage.url,
-        alt: visualAltText(slide),
-        prompt,
+        alt: visualAltText(image.slide),
+        prompt: image.prompt,
         imageId: recordedImage.id,
         filename: recordedImage.filename,
         creditsCharged: recordedImage.creditsCharged,
       });
-    }
-
-    if (visuals.length === 0 && failedAttempts > 0) {
-      return badGateway(
-        "Presentation image generation failed",
-        "IMAGE_GENERATION_FAILED",
-      );
     }
 
     return visuals;
