@@ -150,6 +150,7 @@ impl Default for ParkingGate {
 
 /// One-shot request to transition an active sandbox into same-session idle
 /// ownership.
+#[must_use = "idle park requests own active sandbox and budget; call park_for_idle"]
 pub(crate) struct IdleParkRequest {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
@@ -166,6 +167,7 @@ pub(crate) struct IdleParkRequest {
 ///
 /// This state proves only same-session idle park. It does not imply clean
 /// cross-run reuse, snapshot readiness, or any broader VM correctness.
+#[must_use = "parked idle candidates must be accepted by the idle pool or explicitly destroyed"]
 pub struct ParkedIdleCandidate {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
@@ -202,12 +204,14 @@ pub(crate) struct IdleParkFailure {
     error: String,
 }
 
+#[must_use = "active idle-park parts still own a sandbox and budget lease"]
 pub(crate) struct IdleParkActiveParts {
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
     pub(crate) budget_lease: BudgetLease,
 }
 
+#[must_use = "idle park failure parts must be logged and cleaned up"]
 pub(crate) struct IdleParkFailureParts {
     pub(crate) active: IdleParkActiveParts,
     pub(crate) error: String,
@@ -305,7 +309,7 @@ impl ParkedIdleCandidate {
     }
 
     #[cfg(test)]
-    pub fn sandbox_id(&self) -> SandboxId {
+    pub(crate) fn sandbox_id(&self) -> SandboxId {
         self.sandbox_id
     }
 
