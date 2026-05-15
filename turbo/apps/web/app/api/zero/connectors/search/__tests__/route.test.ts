@@ -3,6 +3,7 @@ import { GET } from "../route";
 import {
   createTestRequest,
   clearOrgMembersCacheEntry,
+  seedUserFeatureSwitches,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -14,6 +15,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -135,6 +137,26 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon.authMethods).toContain("api-token");
     // oauth should NOT be included since its feature flag is disabled.
     expect(neon.authMethods).not.toContain("oauth");
+  });
+
+  it("should show Stripe CLI auth when the feature switch is enabled", async () => {
+    const userId = "test-user-connectors-search-stripe-cli-auth";
+    const orgId = "org_test_connectors_search_stripe_cli_auth";
+    mockClerk({ userId, orgId });
+    await seedUserFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.CliAuthStripe]: true,
+      [FeatureSwitchKey.StripeConnector]: false,
+    });
+
+    const response = await searchConnectors("stripe");
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    const stripe = data.connectors.find((c: { id: string }) => {
+      return c.id === "stripe";
+    });
+    expect(stripe).toBeDefined();
+    expect(stripe.authMethods).toEqual(["api-token", "cli-auth"]);
   });
 
   it("should hide feature-flagged connector when feature is disabled", async () => {

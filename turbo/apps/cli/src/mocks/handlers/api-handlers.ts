@@ -3,22 +3,23 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
 
 function defaultAvailableConnectors() {
   return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
-    .filter((type) => {
-      const config = CONNECTOR_TYPES[type];
-      return Object.values(config.authMethods).some((method) => {
-        return !method.featureFlag;
-      });
-    })
     .map((type) => {
-      const config = CONNECTOR_TYPES[type];
+      const authMethods = getAvailableConnectorAuthMethods(type, {});
+      return { type, authMethods };
+    })
+    .filter((item) => {
+      return item.authMethods.length > 0;
+    })
+    .map(({ type, authMethods }) => {
       return {
         id: type,
-        label: config.label,
-        description: config.helpText,
-        authMethods: Object.keys(config.authMethods),
+        label: CONNECTOR_TYPES[type].label,
+        description: CONNECTOR_TYPES[type].helpText,
+        authMethods,
       };
     });
 }
