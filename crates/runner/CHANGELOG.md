@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.45](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.44...runner-rs-v0.100.45) (2026-05-15)
+
+
+### Refactoring
+
+* rename spawn watch to spawn process ([#13369](https://github.com/vm0-ai/vm0/issues/13369)) ([e007f30](https://github.com/vm0-ai/vm0/commit/e007f30a2610056a6905e4a38bcc2d894895ffa4))
+
 ## [0.100.44](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.43...runner-rs-v0.100.44) (2026-05-15)
 
 ## [0.100.43](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.42...runner-rs-v0.100.43) (2026-05-14)

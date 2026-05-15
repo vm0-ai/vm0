@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.357.1](https://github.com/vm0-ai/vm0/compare/app-v0.357.0...app-v0.357.1) (2026-05-15)
+
+
+### Refactoring
+
+* **web:** proxy user preferences to API backend ([#13380](https://github.com/vm0-ai/vm0/issues/13380)) ([2f86d82](https://github.com/vm0-ai/vm0/commit/2f86d82198cf2d1fcdebc13a8ccb3dcecf55ce6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.26.0
+    * @vm0/core bumped to 8.277.1
+
 ## [0.357.0](https://github.com/vm0-ai/vm0/compare/app-v0.356.5...app-v0.357.0) (2026-05-15)
 
 

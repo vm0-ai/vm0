@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.38](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.37...vsock-test-v0.9.38) (2026-05-15)
+
+
+### Refactoring
+
+* rename spawn watch to spawn process ([#13369](https://github.com/vm0-ai/vm0/issues/13369)) ([e007f30](https://github.com/vm0-ai/vm0/commit/e007f30a2610056a6905e4a38bcc2d894895ffa4))
+
 ## [0.9.37](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.36...vsock-test-v0.9.37) (2026-05-14)
 
 ## [0.9.36](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.35...vsock-test-v0.9.36) (2026-05-14)

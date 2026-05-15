@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.33.0...sandbox-fc-v0.33.1) (2026-05-15)
+
+
+### Refactoring
+
+* rename spawn watch to spawn process ([#13369](https://github.com/vm0-ai/vm0/issues/13369)) ([e007f30](https://github.com/vm0-ai/vm0/commit/e007f30a2610056a6905e4a38bcc2d894895ffa4))
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.32.1...sandbox-fc-v0.33.0) (2026-05-15)
 
 
