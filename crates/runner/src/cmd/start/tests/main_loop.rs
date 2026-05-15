@@ -6,7 +6,7 @@ use super::support::{
     wait_discover_entered, wait_parking_state, wait_status_mode,
 };
 
-use super::super::signals::{SignalController, handle_resume_signal};
+use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
 use crate::idle_pool::ParkingState;
 
 // -----------------------------------------------------------------------
@@ -598,7 +598,7 @@ async fn signal_handler_exit_cancels_active_jobs() {
     config.signal_source = SignalSource::Override(SignalController {
         mode_rx: env.mode_tx.subscribe(),
         lifecycle: env.lifecycle.clone(),
-        handler_task: Some(handler_task),
+        handler_task: Some(SignalHandlerTask::new(handler_task)),
     });
     let run_handle = tokio::spawn(run(config));
 

@@ -1218,8 +1218,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
     teardown.phase_complete("finish_mitm_restart", phase);
     if let Some(handler_task) = signal_handler_task.take() {
-        handler_task.abort();
-        match handler_task.await {
+        match handler_task.abort_and_wait().await {
             Err(error) if error.is_cancelled() => {
                 teardown.event("signal_handler_aborted");
             }
