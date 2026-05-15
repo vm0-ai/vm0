@@ -1649,6 +1649,30 @@ function estimatePresentationCredits(
   }, 0);
 }
 
+function presentationArtifactMetadata(params: {
+  readonly generation: ParsedPresentationGeneration;
+  readonly options: PresentationOptions;
+  readonly visuals: readonly PresentationVisual[];
+}): Record<string, unknown> {
+  return {
+    generatedBy: "zero-official-presentation",
+    model: PRESENTATION_IO_MODEL,
+    style: params.generation.style,
+    theme: params.generation.theme,
+    slideCount: params.generation.slideCount,
+    imageCount: params.visuals.length,
+    imageModel: params.options.imageModel,
+    imageIds: params.visuals.map((visual) => {
+      return visual.imageId;
+    }),
+    imageUrls: params.visuals.map((visual) => {
+      return visual.url;
+    }),
+    title: params.generation.title,
+    responseId: params.generation.responseId,
+  };
+}
+
 export const recordGeneratedPresentation$ = command(
   async (
     { get, set },
@@ -1695,23 +1719,7 @@ export const recordGeneratedPresentation$ = command(
         sizeBytes: htmlBytes.byteLength,
         url,
         s3Key,
-        metadata: {
-          generatedBy: "zero-official-presentation",
-          model: PRESENTATION_IO_MODEL,
-          style: params.generation.style,
-          theme: params.generation.theme,
-          slideCount: params.generation.slideCount,
-          imageCount: params.visuals.length,
-          imageModel: params.options.imageModel,
-          imageIds: params.visuals.map((visual) => {
-            return visual.imageId;
-          }),
-          imageUrls: params.visuals.map((visual) => {
-            return visual.url;
-          }),
-          title: params.generation.title,
-          responseId: params.generation.responseId,
-        },
+        metadata: presentationArtifactMetadata(params),
       },
       signal,
     );

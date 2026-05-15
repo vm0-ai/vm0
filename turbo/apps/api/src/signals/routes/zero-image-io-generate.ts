@@ -14,17 +14,13 @@ import { createBuiltInGenerationRealtimeSubscription } from "../external/realtim
 import { safeAsync } from "../utils";
 import {
   checkImageCredits$,
-  downloadFalImage,
+  generateImageWithProvider,
   getMissingImagePricing,
   imagePricing$,
   insufficientCredits,
-  OPENAI_IMAGE_GENERATION_URL,
-  parseImageGenerationResult,
-  parseFalImageResult,
   parseImageOptions,
   recordGeneratedImage$,
   serviceUnavailable,
-  submitFalImageGeneration,
   type ImageOptions,
   type ImagePricing,
 } from "../services/zero-image-io-generate.service";
@@ -101,90 +97,11 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
   };
 }
 
-async function generateOpenAiImage(options: ImageOptions, signal: AbortSignal) {
-  const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: options.model,
-      prompt: options.prompt,
-      n: 1,
-      size: options.size,
-      quality: options.quality,
-      background: options.background,
-      output_format: options.outputFormat,
-      ...(options.outputCompression !== undefined
-        ? { output_compression: options.outputCompression }
-        : {}),
-      moderation: options.moderation,
-    }),
-    signal,
-  });
-  signal.throwIfAborted();
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    signal.throwIfAborted();
-    L.error("OpenAI image request failed", {
-      status: response.status,
-      body: errorBody,
-    });
-    return {
-      status: 500 as const,
-      body: {
-        error: {
-          message: "Image generation failed",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      },
-    };
-  }
-
-  const responseBody: unknown = await response.json();
-  signal.throwIfAborted();
-  const generation = parseImageGenerationResult(responseBody, options);
-  if (
-    "status" in generation &&
-    generation.body.error.code === "USAGE_UNKNOWN"
-  ) {
-    L.error("OpenAI image response missing usage", { responseBody });
-  }
-  return generation;
-}
-
-async function generateFalImage(options: ImageOptions, signal: AbortSignal) {
-  const falKey = env("FAL_KEY");
-  if (!falKey) {
-    return serviceUnavailable(
-      "Fal image generation is not configured",
-      "NOT_CONFIGURED",
-    );
-  }
-
-  const responseBody = await submitFalImageGeneration(options, falKey, signal);
-  signal.throwIfAborted();
-  if (isErrorResponse(responseBody)) {
-    return responseBody;
-  }
-
-  const falResult = parseFalImageResult(responseBody);
-  if ("status" in falResult) {
-    return falResult;
-  }
-  return await downloadFalImage(falResult, options, signal);
-}
-
 const runImageGenerationJob$ = command(
   async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
 
-    const generation =
-      args.options.provider === "fal"
-        ? await generateFalImage(args.options, signal)
-        : await generateOpenAiImage(args.options, signal);
+    const generation = await generateImageWithProvider(args.options, signal);
     signal.throwIfAborted();
     if (isErrorResponse(generation)) {
       await set(
