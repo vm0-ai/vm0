@@ -152,14 +152,19 @@ impl Default for ParkingGate {
 /// ownership.
 #[must_use = "idle park requests own active sandbox and budget; call park_for_idle"]
 pub(crate) struct IdleParkRequest {
-    sandbox: Box<dyn Sandbox>,
-    factory: Arc<Box<dyn SandboxFactory>>,
-    session_id: String,
-    sandbox_id: SandboxId,
-    profile_name: String,
-    budget_lease: BudgetLease,
-    source_ip: String,
-    storage_fingerprints: StorageFingerprints,
+    parts: IdleParkRequestParts,
+}
+
+#[must_use = "idle park request parts own active sandbox and budget"]
+pub(crate) struct IdleParkRequestParts {
+    pub(crate) sandbox: Box<dyn Sandbox>,
+    pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
+    pub(crate) session_id: String,
+    pub(crate) sandbox_id: SandboxId,
+    pub(crate) profile_name: String,
+    pub(crate) budget_lease: BudgetLease,
+    pub(crate) source_ip: String,
+    pub(crate) storage_fingerprints: StorageFingerprints,
 }
 
 /// Active-owned sandbox after `Sandbox::park()` succeeds, before idle-pool
@@ -218,19 +223,13 @@ pub(crate) struct IdleParkFailureParts {
 }
 
 impl IdleParkRequest {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
-        sandbox: Box<dyn Sandbox>,
-        factory: Arc<Box<dyn SandboxFactory>>,
-        session_id: String,
-        sandbox_id: SandboxId,
-        profile_name: String,
-        budget_lease: BudgetLease,
-        source_ip: String,
-        storage_fingerprints: StorageFingerprints,
-    ) -> Self {
-        Self {
-            sandbox,
+    pub(crate) fn new(parts: IdleParkRequestParts) -> Self {
+        Self { parts }
+    }
+
+    pub(crate) async fn park_for_idle(self) -> Result<ParkedIdleCandidate, IdleParkFailure> {
+        let IdleParkRequestParts {
+            mut sandbox,
             factory,
             session_id,
             sandbox_id,
@@ -238,32 +237,31 @@ impl IdleParkRequest {
             budget_lease,
             source_ip,
             storage_fingerprints,
-        }
-    }
+        } = self.parts;
 
-    pub(crate) async fn park_for_idle(mut self) -> Result<ParkedIdleCandidate, IdleParkFailure> {
-        match AssertUnwindSafe(self.sandbox.park()).catch_unwind().await {
+        match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
             Ok(Ok(())) => Ok(ParkedIdleCandidate {
-                sandbox: self.sandbox,
-                factory: self.factory,
-                session_id: self.session_id,
-                sandbox_id: self.sandbox_id,
-                profile_name: self.profile_name,
-                budget_lease: self.budget_lease,
-                source_ip: self.source_ip,
-                storage_fingerprints: self.storage_fingerprints,
+                sandbox,
+                factory,
+                session_id,
+                sandbox_id,
+                profile_name,
+                budget_lease,
+                source_ip,
+                storage_fingerprints,
             }),
-            Ok(Err(e)) => Err(self.into_failure(e.to_string())),
-            Err(_) => Err(self.into_failure("sandbox park panicked".into())),
-        }
-    }
-
-    fn into_failure(self, error: String) -> IdleParkFailure {
-        IdleParkFailure {
-            sandbox: self.sandbox,
-            factory: self.factory,
-            budget_lease: self.budget_lease,
-            error,
+            Ok(Err(e)) => Err(IdleParkFailure {
+                sandbox,
+                factory,
+                budget_lease,
+                error: e.to_string(),
+            }),
+            Err(_) => Err(IdleParkFailure {
+                sandbox,
+                factory,
+                budget_lease,
+                error: "sandbox park panicked".into(),
+            }),
         }
     }
 }
@@ -917,16 +915,16 @@ mod tests {
             })
             .await
             .expect("create sandbox");
-        IdleParkRequest::new(
+        IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
-            session_id.into(),
+            session_id: session_id.into(),
             sandbox_id,
-            "vm0/default".into(),
+            profile_name: "vm0/default".into(),
             budget_lease,
-            "10.0.0.1".into(),
-            StorageFingerprints::default(),
-        )
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+        })
     }
 
     #[tokio::test]
@@ -980,16 +978,16 @@ mod tests {
             )]),
         };
         let expected_storage_fingerprints = storage_fingerprints.clone();
-        let request = IdleParkRequest::new(
+        let request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
-            session_id.into(),
+            session_id: session_id.into(),
             sandbox_id,
-            profile_name.into(),
+            profile_name: profile_name.into(),
             budget_lease,
-            source_ip.into(),
+            source_ip: source_ip.into(),
             storage_fingerprints,
-        );
+        });
 
         let candidate = match request.park_for_idle().await {
             Ok(candidate) => candidate,

@@ -22,8 +22,8 @@ use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
-    DestroyOutcome, IdleParkActiveParts, IdleParkRequest, ParkResult, ParkingGate,
-    StorageFingerprints,
+    DestroyOutcome, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts, ParkResult,
+    ParkingGate, StorageFingerprints,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -104,16 +104,16 @@ pub(super) async fn finalize_sandbox_for_completion(
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
-        let park_request = IdleParkRequest::new(
+        let park_request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
-            Arc::clone(&factory),
-            session_id.clone(),
+            factory: Arc::clone(&factory),
+            session_id: session_id.clone(),
             sandbox_id,
-            profile_name.clone(),
-            active_lease.into_idle_park_lease(),
+            profile_name: profile_name.clone(),
+            budget_lease: active_lease.into_idle_park_lease(),
             source_ip,
             storage_fingerprints,
-        );
+        });
         let candidate = match park_request.park_for_idle().await {
             Ok(candidate) => candidate,
             Err(failure) => {
