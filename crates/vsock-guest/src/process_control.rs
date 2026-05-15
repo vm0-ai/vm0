@@ -191,11 +191,14 @@ mod tests {
     #[test]
     fn operation_without_control_nonce_still_reserves_sequence() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, None).unwrap();
+        let guard = registry.register(7, None).unwrap();
 
         assert!(registry.register(7, Some(NONCE)).is_err());
         let (status, diagnostic) = registry.status_for(7, NONCE);
         assert_eq!(status, ProcessControlStatus::Inactive);
         assert_eq!(diagnostic, "process operation is not active");
+
+        drop(guard);
+        assert!(registry.register(7, Some(NONCE)).is_ok());
     }
 }
