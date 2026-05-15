@@ -196,6 +196,24 @@ pub async fn run_start(
         ));
     }
 
+    let config::SandboxConfig {
+        max_concurrent,
+        concurrency_factor: yaml_concurrency_factor,
+        idle_timeout_secs,
+        max_idle,
+    } = runner_config.sandbox;
+    let (concurrency_factor, concurrency_factor_source) =
+        crate::runtime_overrides::resolve_concurrency_factor(yaml_concurrency_factor)?;
+    if concurrency_factor_source.is_override() {
+        info!(
+            env_var = crate::host_env::RUNNER_CONCURRENCY_FACTOR_ENV,
+            override_source = concurrency_factor_source.label(),
+            concurrency_factor,
+            yaml_concurrency_factor,
+            "using host environment override for concurrency_factor"
+        );
+    }
+
     tokio::fs::create_dir_all(&runner_config.base_dir)
         .await
         .map_err(|e| {
@@ -327,12 +345,6 @@ pub async fn run_start(
     ]);
 
     // Resource budget from host resources + config.
-    let config::SandboxConfig {
-        max_concurrent,
-        concurrency_factor,
-        idle_timeout_secs,
-        max_idle,
-    } = runner_config.sandbox;
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
     let budget = Arc::new(ResourceBudget::new(
@@ -345,6 +357,8 @@ pub async fn run_start(
         host_cpus,
         host_memory_mb,
         concurrency_factor,
+        concurrency_factor_source = concurrency_factor_source.label(),
+        yaml_concurrency_factor,
         max_concurrent,
         effective_vcpu = budget.effective_vcpu(),
         effective_memory_mb = budget.effective_memory_mb(),

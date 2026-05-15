@@ -980,6 +980,7 @@ mod tests {
         ));
         assert!(!content.contains("User="));
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
+        assert!(!content.contains("EnvironmentFile="));
         assert!(content.contains("Restart=on-failure"));
         assert!(content.contains("TimeoutStopSec=300"));
         assert!(content.contains("[Install]"));
@@ -1002,9 +1003,15 @@ mod tests {
             &env,
             false,
         );
+        assert!(!content.contains("EnvironmentFile="));
         assert!(content.contains("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\""));
         assert!(content.contains("Environment=\"USE_MOCK_CLAUDE=true\""));
         assert!(content.contains("Environment=\"MY_DESC=hello world\""));
+        let first_env_pos = content
+            .find("Environment=\"VERCEL_AUTOMATION_BYPASS_SECRET=xxx\"")
+            .unwrap();
+        let install_pos = content.find("[Install]").unwrap();
+        assert!(first_env_pos < install_pos);
         assert!(content.contains("\n\n[Install]"));
     }
 
