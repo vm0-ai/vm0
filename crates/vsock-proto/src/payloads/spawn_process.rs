@@ -5,6 +5,9 @@ use crate::wire::{
     SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO,
 };
 
+const SPAWN_PROCESS_KNOWN_FLAGS: u8 =
+    SPAWN_PROCESS_FLAG_SUDO | SPAWN_PROCESS_FLAG_STREAM_STDOUT | SPAWN_PROCESS_FLAG_CONTROL_NONCE;
+
 /// Encode spawn_process payload: command fields + optional `[2B log_path_len][log_path]`.
 ///
 /// `stream_stdout` controls whether stdout is streamed to the host via
@@ -145,6 +148,9 @@ fn decode_spawn_process_command_prefix(
     let flags = read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload(
         "command fields payload too short",
     ))?;
+    if flags & !SPAWN_PROCESS_KNOWN_FLAGS != 0 {
+        return Err(ProtocolError::InvalidPayload("spawn_process flags invalid"));
+    }
     let sudo = (flags & SPAWN_PROCESS_FLAG_SUDO) != 0;
     let cmd_len = read_u32_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
         "command fields payload too short",
@@ -456,6 +462,18 @@ mod tests {
         assert!(matches!(
             err,
             ProtocolError::InvalidPayload("spawn_process log_path requires stream flag")
+        ));
+    }
+
+    #[test]
+    fn decode_spawn_process_rejects_unknown_flags() {
+        let mut payload = encode_spawn_process(1000, "cmd", &[], false, false, None).unwrap();
+        payload[4] |= 0x80;
+
+        let err = decode_spawn_process_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_process flags invalid")
         ));
     }
 }

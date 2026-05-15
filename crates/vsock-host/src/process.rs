@@ -248,6 +248,11 @@ impl fmt::Debug for GuestProcessControlHandle {
 }
 
 impl GuestProcessControlHandle {
+    fn protocol_error(&self, message: impl ToString) -> io::Error {
+        self.shared.poison_connection();
+        io::Error::new(io::ErrorKind::InvalidData, message.to_string())
+    }
+
     pub async fn control(
         &self,
         message_id: &str,
@@ -272,41 +277,32 @@ impl GuestProcessControlHandle {
         response: RawMessage,
     ) -> io::Result<ProcessControlAck> {
         if response.msg_type == MSG_ERROR {
-            let msg = vsock_proto::decode_error(&response.payload)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            let msg =
+                vsock_proto::decode_error(&response.payload).map_err(|e| self.protocol_error(e))?;
             return Err(io::Error::other(msg.to_owned()));
         }
         if response.msg_type != MSG_PROCESS_CONTROL_RESULT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected response type: 0x{:02X}", response.msg_type),
-            ));
+            return Err(self.protocol_error(format!(
+                "unexpected response type: 0x{:02X}",
+                response.msg_type
+            )));
         }
         let result = vsock_proto::decode_process_control_result(&response.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            .map_err(|e| self.protocol_error(e))?;
         if result.target_seq != self.target_seq {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "process_control_result target seq mismatch: expected {}, got {}",
-                    self.target_seq, result.target_seq
-                ),
-            ));
+            return Err(self.protocol_error(format!(
+                "process_control_result target seq mismatch: expected {}, got {}",
+                self.target_seq, result.target_seq
+            )));
         }
         if result.control_nonce != self.control_nonce {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "process_control_result nonce mismatch",
-            ));
+            return Err(self.protocol_error("process_control_result nonce mismatch"));
         }
         if result.message_id != message_id {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "process_control_result message_id mismatch: expected {message_id}, got {}",
-                    result.message_id
-                ),
-            ));
+            return Err(self.protocol_error(format!(
+                "process_control_result message_id mismatch: expected {message_id}, got {}",
+                result.message_id
+            )));
         }
         match result.status {
             ProcessControlStatus::Delivered => Ok(ProcessControlAck {

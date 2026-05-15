@@ -209,6 +209,112 @@ async fn test_spawn_process_control_inactive_status_returns_not_found() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_control_malformed_result_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(44);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq + 1,
+            control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-3", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string()
+            .contains("process_control_result target seq mismatch"),
+        "unexpected error: {err}",
+    );
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let payload = vsock_proto::encode_spawn_process_result(45);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+
+        let exec = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(exec.msg_type, MSG_EXEC_START);
+        send_exec_result(
+            &mut guest,
+            exec.seq,
+            ExecTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let err = handle
+        .control("message-4", b"payload", Duration::from_millis(1))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(registration_counts(&host), (0, 1, 0));
+
+    let exec_result = host.exec("echo ok", 5000, &[], false).await.unwrap();
+    assert_eq!(exec_result.stdout, b"ok");
+    drop(handle);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
 async fn test_exit_event_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
