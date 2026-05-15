@@ -76,6 +76,12 @@
         "@tailwindcss/typography"
       ]
     },
+    "apps/host-worker": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts", "*.config.mjs"],
+      "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
+      "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
+    },
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
