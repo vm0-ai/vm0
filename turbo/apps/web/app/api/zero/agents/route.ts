@@ -8,6 +8,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/infra/compose/server-side-compose";
+import { deleteComposeById } from "../../../../src/lib/infra/agent-compose/compose-service";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { and, eq, desc } from "drizzle-orm";
@@ -31,6 +32,13 @@ function unauthenticatedResponse() {
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     },
   };
+}
+
+function publicAgentCreateLimitResponse() {
+  return createErrorResponse(
+    "CONFLICT",
+    "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+  );
 }
 
 const router = tsr.router(zeroAgentsMainContract, {
@@ -61,6 +69,13 @@ const router = tsr.router(zeroAgentsMainContract, {
     // Validate custom skill names exist in the org
     const validation = await validateCustomSkills(customSkills, org.orgId);
     if (!validation.valid) return validation.error;
+
+    if (
+      visibility === "public" &&
+      (await countPublicAgents(org.orgId)) >= PUBLIC_AGENT_LIMIT
+    ) {
+      return publicAgentCreateLimitResponse();
+    }
 
     // Build compose content (always includes all connector skills)
     const content = buildComposeContent(agentName);
@@ -140,10 +155,8 @@ const router = tsr.router(zeroAgentsMainContract, {
     });
 
     if (txResult.blocked) {
-      return createErrorResponse(
-        "CONFLICT",
-        "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
-      );
+      await deleteComposeById(result.composeId, result.composeName, org.orgId);
+      return publicAgentCreateLimitResponse();
     }
 
     log.info(`Created zero agent: ${result.composeName}`);

@@ -225,7 +225,6 @@ export function zeroTeam(
     const rows = await get(db$)
       .select({
         id: agentComposes.id,
-        composeUserId: agentComposes.userId,
         headVersionId: agentComposes.headVersionId,
         updatedAt: agentComposes.updatedAt,
         owner: zeroAgents.owner,
@@ -236,24 +235,21 @@ export function zeroTeam(
         visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
-        and(
-          eq(agentComposes.orgId, orgId),
-          visibleJoinedZeroAgentCondition(userId),
-        ),
+        and(eq(agentComposes.orgId, orgId), visibleZeroAgentCondition(userId)),
       )
       .orderBy(desc(agentComposes.updatedAt));
 
     return rows.map((row) => {
       return {
         id: row.id,
-        ownerId: row.owner ?? row.composeUserId,
+        ownerId: row.owner,
         displayName: row.displayName,
         description: row.description,
         sound: row.sound,
         avatarUrl: row.avatarUrl,
-        visibility: row.visibility ?? "public",
+        visibility: row.visibility,
         headVersionId: row.headVersionId,
         updatedAt: row.updatedAt.toISOString(),
       };
