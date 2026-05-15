@@ -299,7 +299,7 @@ async fn test_request_after_close_returns_immediately() {
 async fn connection_close_marks_normal_operations_closed() {
     let (host_stream, mut guest) = make_pair();
 
-    tokio::spawn(async move {
+    let guest_task = tokio::spawn(async move {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
         drop(guest);
@@ -314,13 +314,14 @@ async fn connection_close_marks_normal_operations_closed() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Closed
     );
+    guest_task.await.unwrap();
 }
 
 #[tokio::test]
 async fn connection_poison_marks_normal_operations_not_parkable() {
     let (host_stream, mut guest) = make_pair();
 
-    tokio::spawn(async move {
+    let guest_task = tokio::spawn(async move {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
         let mut buf = [0u8; 1];
@@ -334,6 +335,10 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
     );
+    tokio::time::timeout(Duration::from_secs(5), guest_task)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 /// Two concurrent exec calls get the correct response matched by seq.
