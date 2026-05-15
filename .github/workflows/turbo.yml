@@ -911,7 +911,18 @@ jobs:
 
       - name: Resolve API deploy environment
         id: api-deploy-env
-        if: needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true' || needs.prepare.outputs.e2e-changed == 'true' || needs.prepare.outputs.api-backend-needed == 'true'
+        # Web previews are built with VM0_API_BACKEND_URL pointing at the
+        # matching PR/staging API alias, so the API preview must exist whenever
+        # the web preview exists.
+        if: |
+          needs.prepare.outputs.web-changed == 'true' ||
+          needs.prepare.outputs.api-changed == 'true' ||
+          needs.prepare.outputs.cli-changed == 'true' ||
+          needs.prepare.outputs.platform-changed == 'true' ||
+          needs.prepare.outputs.crates-changed == 'true' ||
+          needs.prepare.outputs.ci-changed == 'true' ||
+          needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/web-api-env
         with:
           app: api
@@ -927,7 +938,15 @@ jobs:
 
       - name: Deploy API to Vercel
         id: api-deploy
-        if: needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true' || needs.prepare.outputs.e2e-changed == 'true' || needs.prepare.outputs.api-backend-needed == 'true'
+        if: |
+          needs.prepare.outputs.web-changed == 'true' ||
+          needs.prepare.outputs.api-changed == 'true' ||
+          needs.prepare.outputs.cli-changed == 'true' ||
+          needs.prepare.outputs.platform-changed == 'true' ||
+          needs.prepare.outputs.crates-changed == 'true' ||
+          needs.prepare.outputs.ci-changed == 'true' ||
+          needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/vercel-deploy
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -947,7 +966,15 @@ jobs:
           skip-finish: ${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '') }}
 
       - name: Check API health
-        if: needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true' || needs.prepare.outputs.e2e-changed == 'true' || needs.prepare.outputs.api-backend-needed == 'true'
+        if: |
+          needs.prepare.outputs.web-changed == 'true' ||
+          needs.prepare.outputs.api-changed == 'true' ||
+          needs.prepare.outputs.cli-changed == 'true' ||
+          needs.prepare.outputs.platform-changed == 'true' ||
+          needs.prepare.outputs.crates-changed == 'true' ||
+          needs.prepare.outputs.ci-changed == 'true' ||
+          needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.api-backend-needed == 'true'
         run: |
           set -euo pipefail
           vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
@@ -964,7 +991,17 @@ jobs:
 
       - name: Create API Vercel Alias
         id: api-alias
-        if: vars.PREVIEW_DOMAIN != '' && (needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true' || needs.prepare.outputs.e2e-changed == 'true' || needs.prepare.outputs.api-backend-needed == 'true')
+        if: |
+          vars.PREVIEW_DOMAIN != '' && (
+            needs.prepare.outputs.web-changed == 'true' ||
+            needs.prepare.outputs.api-changed == 'true' ||
+            needs.prepare.outputs.cli-changed == 'true' ||
+            needs.prepare.outputs.platform-changed == 'true' ||
+            needs.prepare.outputs.crates-changed == 'true' ||
+            needs.prepare.outputs.ci-changed == 'true' ||
+            needs.prepare.outputs.e2e-changed == 'true' ||
+            needs.prepare.outputs.api-backend-needed == 'true'
+          )
         uses: ./.github/actions/vercel-alias
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -977,7 +1014,17 @@ jobs:
           deployment-env: ${{ steps.api-deploy.outputs.deployment-env }}
 
       - name: Post API preview URL
-        if: github.event_name == 'pull_request' && (needs.prepare.outputs.api-changed == 'true' || needs.prepare.outputs.ci-changed == 'true' || needs.prepare.outputs.e2e-changed == 'true' || needs.prepare.outputs.api-backend-needed == 'true')
+        if: |
+          github.event_name == 'pull_request' && (
+            needs.prepare.outputs.web-changed == 'true' ||
+            needs.prepare.outputs.api-changed == 'true' ||
+            needs.prepare.outputs.cli-changed == 'true' ||
+            needs.prepare.outputs.platform-changed == 'true' ||
+            needs.prepare.outputs.crates-changed == 'true' ||
+            needs.prepare.outputs.ci-changed == 'true' ||
+            needs.prepare.outputs.e2e-changed == 'true' ||
+            needs.prepare.outputs.api-backend-needed == 'true'
+          )
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: api-preview
