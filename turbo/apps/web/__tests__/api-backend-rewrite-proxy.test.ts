@@ -168,6 +168,16 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero uploads complete rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/uploads/complete")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/uploads/complete/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/uploads/other")).toBe(false);
+  });
+
   it("forwards method, query, cookies, and request body", async () => {
     await withRewriteProxy(
       async (request) => {

@@ -19,7 +19,12 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = await get(completeBody$);
   signal.throwIfAborted();
   if (!body.ok) {
-    return body.response;
+    return {
+      status: 400 as const,
+      body: {
+        error: { message: "Invalid request body", code: "BAD_REQUEST" },
+      },
+    };
   }
 
   const { id, contentType: requestedContentType } = body.data;

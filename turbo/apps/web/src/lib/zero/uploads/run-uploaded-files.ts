@@ -30,8 +30,6 @@ type RecordUploadedFileWithS3MetadataParams = Omit<
   metadata?: Record<string, unknown>;
 };
 
-type RecordWebUploadedFileParams = RecordUploadedFileWithS3MetadataParams;
-
 export async function recordRunUploadedFile({
   runId,
   source,
@@ -81,14 +79,6 @@ export async function recordRunUploadedFile({
     });
 
   await publishChatThreadArtifactsChanged(runId);
-}
-
-export async function recordWebUploadedFile({
-  s3Key,
-  metadata,
-  ...params
-}: RecordWebUploadedFileParams): Promise<void> {
-  await recordUploadedFileWithS3Metadata("web", params, s3Key, metadata);
 }
 
 export async function recordGeneratedRunFile({

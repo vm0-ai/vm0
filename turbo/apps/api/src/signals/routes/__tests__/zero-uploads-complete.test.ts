@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
@@ -43,6 +44,7 @@ function zeroToken(args: {
   userId: string;
   orgId: string;
   runId: string;
+  capabilities?: readonly ZeroCapability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -50,7 +52,7 @@ function zeroToken(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: args.runId,
-    capabilities: ["file:write"],
+    capabilities: args.capabilities ?? ["file:write"],
     iat: seconds,
     exp: seconds + 60,
   });
@@ -352,6 +354,65 @@ describe("POST /api/zero/uploads/complete", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 403 for a zero token without file:write capability", async () => {
+    const fixture = await seedRunFixture({});
+    const token = zeroToken({
+      ...fixture,
+      capabilities: ["file:read"],
+    });
+
+    const response = await accept(
+      apiClient().complete({
+        headers: authHeaders(token),
+        body: { id: randomUUID() },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toContain("file:write");
+  });
+
+  it("returns 400 when the request body is invalid", async () => {
+    const fixture = await seedRunFixture({});
+    const token = zeroToken(fixture);
+
+    const response = await accept(
+      apiClient().complete({
+        headers: authHeaders(token),
+        body: { id: "not-a-uuid" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid request body", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("returns 400 for unsupported content types", async () => {
+    const fixture = await seedRunFixture({});
+    const token = zeroToken(fixture);
+
+    const response = await accept(
+      apiClient().complete({
+        headers: authHeaders(token),
+        body: {
+          id: randomUUID(),
+          contentType: "application/x-msdownload",
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Unsupported file type: application/x-msdownload",
+        code: "BAD_REQUEST",
+      },
     });
   });
 });
