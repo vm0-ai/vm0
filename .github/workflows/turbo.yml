@@ -211,13 +211,28 @@ jobs:
 
       - name: Detect web API backend proxy changes
         id: detect-api-backend
+        env:
+          WEB_CHANGED: ${{ steps.detect.outputs.web-changed }}
+          CLI_CHANGED: ${{ steps.detect.outputs.cli-changed }}
+          CRATES_CHANGED: ${{ steps.detect-crates.outputs.crates-changed }}
+          CI_CHANGED: ${{ steps.detect-ci.outputs.ci-changed }}
+          E2E_CHANGED: ${{ steps.detect-e2e.outputs.e2e-changed }}
         run: |
           BASE_REF="${{ steps.detect.outputs.base-ref }}"
-          if git diff --name-only "$BASE_REF" HEAD | grep -q "^turbo/apps/web/next\.config\.js$"; then
-            echo "Web API backend proxy changes detected"
+          # Web previews are built with VM0_API_BACKEND_URL pointing at the
+          # matching PR API alias. Runner E2E now exercises web-to-api rewrite
+          # routes, so these preview runs need a real API deployment even when
+          # the API source itself did not change.
+          if [[ "$WEB_CHANGED" == "true" ||
+                "$CLI_CHANGED" == "true" ||
+                "$CRATES_CHANGED" == "true" ||
+                "$CI_CHANGED" == "true" ||
+                "$E2E_CHANGED" == "true" ]] ||
+             git diff --name-only "$BASE_REF" HEAD | grep -qE "^turbo/apps/web/(api-backend-rewrites\.js|next\.config\.js|proxy\.ts)$"; then
+            echo "API backend preview needed for web preview E2E"
             echo "api-backend-needed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No web API backend proxy changes"
+            echo "No API backend preview needed"
             echo "api-backend-needed=false" >> "$GITHUB_OUTPUT"
           fi
 
