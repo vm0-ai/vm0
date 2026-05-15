@@ -241,6 +241,28 @@ describe("zero-nav", () => {
       expect(context.store.get(activeRoute$)).toBe("usage");
     });
 
+    it("should navigate to lab for 'lab' action", async () => {
+      context.store.set(setRootSignal$, context.signal);
+      createPushStateMock(context.signal);
+      mockLocation({ pathname: "/", search: "" }, context.signal);
+      const noop$ = command(() => {
+        return void 0;
+      });
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/_/lab", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
+        ],
+        context.signal,
+      );
+
+      context.store.set(handleZeroAccountAction$, "lab");
+
+      expect(context.store.get(activeRoute$)).toBe("lab");
+    });
+
     it("should do nothing for 'signout' action", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 

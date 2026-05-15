@@ -34,6 +34,11 @@ import {
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  onboardingStatusContract,
+  onboardingSetupContract,
+} from "@vm0/api-contracts/contracts/onboarding";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -185,6 +190,83 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     await waitFor(() => {
       expect(screen.getByText("Sign out")).toBeInTheDocument();
     });
+  });
+
+  it("shows Lab entry in account dropdown when FeatureSwitchKey.Lab is on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.Lab]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Org")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Preferences")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Lab")).toBeInTheDocument();
+  });
+
+  it("hides Lab entry in account dropdown when FeatureSwitchKey.Lab is off", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.Lab]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Default Org")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Preferences")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Lab")).not.toBeInTheDocument();
+  });
+
+  it("hides Lab entry in account dropdown during onboarding even when FeatureSwitchKey.Lab is on", async () => {
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
+        return respond(200, {
+          needsOnboarding: true,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+        });
+      }),
+      mockApi(onboardingSetupContract.setup, ({ respond }) => {
+        return respond(200, {
+          agentId: "d0000000-0000-4000-a000-000000000001",
+        });
+      }),
+    );
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.Lab]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Test User"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign out")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Preferences")).not.toBeInTheDocument();
+    expect(screen.queryByText("Lab")).not.toBeInTheDocument();
   });
 });
 

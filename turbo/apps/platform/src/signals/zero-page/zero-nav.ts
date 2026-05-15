@@ -69,8 +69,7 @@ export type SidebarNavId =
   | "insights"
   | "works"
   | "settings"
-  | "queues"
-  | "lab";
+  | "queues";
 
 export function isChatRoute(key: RouteKey | null): boolean {
   return (
@@ -95,7 +94,6 @@ export const handleZeroNavSelect$ = command(
         insights: ROUTES.insights,
         works: ROUTES.works,
         settings: ROUTES.settings,
-        lab: ROUTES.lab,
       } satisfies Record<
         Exclude<SidebarNavId, "queues">,
         (typeof ROUTES)[keyof typeof ROUTES]
