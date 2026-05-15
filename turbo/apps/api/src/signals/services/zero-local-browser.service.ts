@@ -334,6 +334,25 @@ function serializeHost(row: LocalBrowserHostRow, now: Date) {
   };
 }
 
+function serializeAuditEvent(
+  row: typeof localBrowserCommandAuditEvents.$inferSelect,
+) {
+  return {
+    id: row.id,
+    commandId: row.commandId,
+    runId: row.runId,
+    hostId: row.hostId,
+    tabId: row.tabId,
+    kind: row.kind as LocalBrowserWriteCommandKind,
+    targetUrl: row.targetUrl,
+    event: row.event as "created" | "approved" | "denied" | "completed",
+    approvalOutcome: row.approvalOutcome as "approved" | "denied" | null,
+    redactedResult: row.redactedResult,
+    error: row.error,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function commandErrorFromRow(
   row: LocalBrowserCommandRow,
 ): LocalBrowserCommandError | undefined {
@@ -911,6 +930,50 @@ export const listLocalBrowserHosts$ = command(
       hosts: rows.map((row) => {
         return serializeHost(row, now);
       }),
+    };
+  },
+);
+
+export const listLocalBrowserAuditEvents$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly limit: number;
+      readonly commandId?: string;
+      readonly hostId?: string;
+      readonly runId?: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const writeDb = set(writeDb$);
+    const filters = [
+      eq(localBrowserCommandAuditEvents.orgId, params.orgId),
+      eq(localBrowserCommandAuditEvents.userId, params.userId),
+    ];
+    if (params.commandId) {
+      filters.push(
+        eq(localBrowserCommandAuditEvents.commandId, params.commandId),
+      );
+    }
+    if (params.hostId) {
+      filters.push(eq(localBrowserCommandAuditEvents.hostId, params.hostId));
+    }
+    if (params.runId) {
+      filters.push(eq(localBrowserCommandAuditEvents.runId, params.runId));
+    }
+
+    const rows = await writeDb
+      .select()
+      .from(localBrowserCommandAuditEvents)
+      .where(and(...filters))
+      .orderBy(desc(localBrowserCommandAuditEvents.createdAt))
+      .limit(params.limit);
+    signal.throwIfAborted();
+
+    return {
+      auditEvents: rows.map(serializeAuditEvent),
     };
   },
 );

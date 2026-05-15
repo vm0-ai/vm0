@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
+  zeroLocalBrowserAuditEventsContract,
   zeroLocalBrowserCommandApprovalContract,
   zeroLocalBrowserCommandContract,
   zeroLocalBrowserHostCommandsContract,
@@ -503,6 +504,28 @@ describe("local-browser read commands", () => {
         redactedResult: { ok: true },
       }),
     );
+
+    const auditClient = setupApp({ context })(
+      zeroLocalBrowserAuditEventsContract,
+    );
+    const auditResponse = await accept(
+      auditClient.list({
+        query: { commandId: created.body.commandId, limit: 10 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      auditResponse.body.auditEvents.map((event) => {
+        return event.event;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining(["created", "approved", "completed"]),
+    );
+    expect(auditResponse.body.auditEvents[0]).toMatchObject({
+      commandId: created.body.commandId,
+      kind: "page.click",
+    });
   });
 
   it("denies pending write commands with permission_denied and audits the denial", async () => {

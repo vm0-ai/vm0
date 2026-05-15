@@ -2,11 +2,16 @@ import { initClient } from "@ts-rest/core";
 import type {
   LocalBrowserCommandCreateResponse,
   LocalBrowserCommandResponse,
+  LocalBrowserAuditEventListResponse,
+  LocalBrowserHostDeleteResponse,
+  LocalBrowserHostListResponse,
   LocalBrowserReadCommandKind,
   LocalBrowserWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
+  zeroLocalBrowserAuditEventsContract,
   zeroLocalBrowserCommandContract,
+  zeroLocalBrowserHostsContract,
   zeroLocalBrowserWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
@@ -139,4 +144,57 @@ export async function getLocalBrowserReadCommand(
   }
 
   handleError(result, "Failed to get local-browser command");
+}
+
+export async function listLocalBrowserHosts(): Promise<LocalBrowserHostListResponse> {
+  const config = await getLocalBrowserClientConfig();
+  const client = initClient(zeroLocalBrowserHostsContract, config);
+
+  const result = await client.list({});
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list local-browser hosts");
+}
+
+export async function deleteLocalBrowserHost(
+  hostId: string,
+): Promise<LocalBrowserHostDeleteResponse> {
+  const config = await getLocalBrowserClientConfig();
+  const client = initClient(zeroLocalBrowserHostsContract, config);
+
+  const result = await client.delete({ params: { hostId } });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to revoke local-browser host");
+}
+
+export async function listLocalBrowserAuditEvents(params: {
+  readonly limit?: number;
+  readonly commandId?: string;
+  readonly hostId?: string;
+  readonly runId?: string;
+}): Promise<LocalBrowserAuditEventListResponse> {
+  const config = await getLocalBrowserClientConfig();
+  const client = initClient(zeroLocalBrowserAuditEventsContract, config);
+
+  const result = await client.list({
+    query: {
+      limit: params.limit ?? 50,
+      ...(params.commandId ? { commandId: params.commandId } : {}),
+      ...(params.hostId ? { hostId: params.hostId } : {}),
+      ...(params.runId ? { runId: params.runId } : {}),
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list local-browser audit events");
 }

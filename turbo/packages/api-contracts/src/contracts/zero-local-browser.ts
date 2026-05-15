@@ -120,6 +120,25 @@ export const localBrowserHostListResponseSchema = z.object({
   hosts: z.array(localBrowserHostSchema),
 });
 
+export const localBrowserAuditEventSchema = z.object({
+  id: z.string(),
+  commandId: z.string(),
+  runId: z.string().nullable(),
+  hostId: z.string().nullable(),
+  tabId: z.string().nullable(),
+  kind: localBrowserWriteCommandKindSchema,
+  targetUrl: z.string().nullable(),
+  event: z.enum(["created", "approved", "denied", "completed"]),
+  approvalOutcome: z.enum(["approved", "denied"]).nullable(),
+  redactedResult: z.record(z.string(), z.unknown()).nullable(),
+  error: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+});
+
+export const localBrowserAuditEventListResponseSchema = z.object({
+  auditEvents: z.array(localBrowserAuditEventSchema),
+});
+
 export const localBrowserHostStartResponseSchema = z.object({
   hostId: z.string(),
   hostToken: z.string(),
@@ -452,6 +471,26 @@ export const zeroLocalBrowserHostsContract = c.router({
   },
 });
 
+export const zeroLocalBrowserAuditEventsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/local-browser/audit-events",
+    headers: authHeadersSchema,
+    query: z.object({
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+      commandId: z.string().min(1).optional(),
+      hostId: z.string().min(1).optional(),
+      runId: z.string().min(1).optional(),
+    }),
+    responses: {
+      200: localBrowserAuditEventListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List local-browser write command audit events",
+  },
+});
+
 export const zeroLocalBrowserHostSelfContract = c.router({
   delete: {
     method: "DELETE",
@@ -594,6 +633,9 @@ export type LocalBrowserCommandErrorCode = z.infer<
   typeof localBrowserCommandErrorCodeSchema
 >;
 export type LocalBrowserHost = z.infer<typeof localBrowserHostSchema>;
+export type LocalBrowserAuditEvent = z.infer<
+  typeof localBrowserAuditEventSchema
+>;
 export type LocalBrowserTab = z.infer<typeof localBrowserTabSchema>;
 export type LocalBrowserCommandResult = z.infer<
   typeof localBrowserCommandResultSchema
@@ -612,6 +654,9 @@ export type LocalBrowserRealtimeSubscription = z.infer<
 >;
 export type LocalBrowserHostListResponse = z.infer<
   typeof localBrowserHostListResponseSchema
+>;
+export type LocalBrowserAuditEventListResponse = z.infer<
+  typeof localBrowserAuditEventListResponseSchema
 >;
 export type LocalBrowserHostStartResponse = z.infer<
   typeof localBrowserHostStartResponseSchema
@@ -646,6 +691,8 @@ export type ZeroLocalBrowserHostRealtimeContract =
   typeof zeroLocalBrowserHostRealtimeContract;
 export type ZeroLocalBrowserHostsContract =
   typeof zeroLocalBrowserHostsContract;
+export type ZeroLocalBrowserAuditEventsContract =
+  typeof zeroLocalBrowserAuditEventsContract;
 export type ZeroLocalBrowserHostSelfContract =
   typeof zeroLocalBrowserHostSelfContract;
 export type ZeroLocalBrowserCommandContract =
