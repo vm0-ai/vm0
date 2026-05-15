@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.357.2](https://github.com/vm0-ai/vm0/compare/app-v0.357.1...app-v0.357.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* clarify private agent creation visibility ([#13357](https://github.com/vm0-ai/vm0/issues/13357)) ([9817ee8](https://github.com/vm0-ai/vm0/commit/9817ee831aa0f14f754541c8c5ecb328b2a67027))
+* improve presentation generation and previews ([#13393](https://github.com/vm0-ai/vm0/issues/13393)) ([fb08663](https://github.com/vm0-ai/vm0/commit/fb086637a04323b7439554dc35e8b8d06c8ea3aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.27.0
+    * @vm0/core bumped to 8.278.0
+
 ## [0.357.1](https://github.com/vm0-ai/vm0/compare/app-v0.357.0...app-v0.357.1) (2026-05-15)
 
 

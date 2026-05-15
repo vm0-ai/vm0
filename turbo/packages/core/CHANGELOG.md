@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.278.0](https://github.com/vm0-ai/vm0/compare/core-v8.277.1...core-v8.278.0) (2026-05-15)
+
+
+### Features
+
+* enable private agents by default ([#13417](https://github.com/vm0-ai/vm0/issues/13417)) ([4710b9f](https://github.com/vm0-ai/vm0/commit/4710b9fcb95c95bddbbaa28aad971d1d885431cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.27.0
+
 ## [8.277.1](https://github.com/vm0-ai/vm0/compare/core-v8.277.0...core-v8.277.1) (2026-05-15)
 
 

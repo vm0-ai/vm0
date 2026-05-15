@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.50.0](https://github.com/vm0-ai/vm0/compare/api-v1.49.0...api-v1.50.0) (2026-05-15)
+
+
+### Features
+
+* add built-in image model options ([#13381](https://github.com/vm0-ai/vm0/issues/13381)) ([ae89855](https://github.com/vm0-ai/vm0/commit/ae8985539dc9864ed0fd69ad228d2e48d6f1c718))
+* add local-browser host and audit cli ([#13394](https://github.com/vm0-ai/vm0/issues/13394)) ([8786ed7](https://github.com/vm0-ai/vm0/commit/8786ed74f2a52cc50ea08689f781f4b4cab7bdae))
+* enable private agents by default ([#13417](https://github.com/vm0-ai/vm0/issues/13417)) ([4710b9f](https://github.com/vm0-ai/vm0/commit/4710b9fcb95c95bddbbaa28aad971d1d885431cd))
+
+
+### Bug Fixes
+
+* clean orphan zero agent composes ([#13386](https://github.com/vm0-ai/vm0/issues/13386)) ([4a2b2c2](https://github.com/vm0-ai/vm0/commit/4a2b2c2d35ac4e756261311b6be7291f2208dd64))
+* improve presentation generation and previews ([#13393](https://github.com/vm0-ai/vm0/issues/13393)) ([fb08663](https://github.com/vm0-ai/vm0/commit/fb086637a04323b7439554dc35e8b8d06c8ea3aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.27.0
+    * @vm0/core bumped to 8.278.0
+    * @vm0/db bumped to 1.14.0
+
 ## [1.49.0](https://github.com/vm0-ai/vm0/compare/api-v1.48.0...api-v1.49.0) (2026-05-15)
 
 

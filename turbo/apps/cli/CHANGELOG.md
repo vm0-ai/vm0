@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.153.0](https://github.com/vm0-ai/vm0/compare/cli-v9.152.0...cli-v9.153.0) (2026-05-15)
+
+
+### Features
+
+* add built-in image model options ([#13381](https://github.com/vm0-ai/vm0/issues/13381)) ([ae89855](https://github.com/vm0-ai/vm0/commit/ae8985539dc9864ed0fd69ad228d2e48d6f1c718))
+* add local-browser host and audit cli ([#13394](https://github.com/vm0-ai/vm0/issues/13394)) ([8786ed7](https://github.com/vm0-ai/vm0/commit/8786ed74f2a52cc50ea08689f781f4b4cab7bdae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.27.0
+    * @vm0/core bumped to 8.278.0
+
 ## [9.152.0](https://github.com/vm0-ai/vm0/compare/cli-v9.151.0...cli-v9.152.0) (2026-05-15)
 
 

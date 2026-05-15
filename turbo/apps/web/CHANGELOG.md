@@ -1,5 +1,28 @@
 # Changelog
 
+## [12.368.0](https://github.com/vm0-ai/vm0/compare/web-v12.367.0...web-v12.368.0) (2026-05-15)
+
+
+### Features
+
+* add built-in image model options ([#13381](https://github.com/vm0-ai/vm0/issues/13381)) ([ae89855](https://github.com/vm0-ai/vm0/commit/ae8985539dc9864ed0fd69ad228d2e48d6f1c718))
+* enable private agents by default ([#13417](https://github.com/vm0-ai/vm0/issues/13417)) ([4710b9f](https://github.com/vm0-ai/vm0/commit/4710b9fcb95c95bddbbaa28aad971d1d885431cd))
+
+
+### Bug Fixes
+
+* clean orphan zero agent composes ([#13386](https://github.com/vm0-ai/vm0/issues/13386)) ([4a2b2c2](https://github.com/vm0-ai/vm0/commit/4a2b2c2d35ac4e756261311b6be7291f2208dd64))
+* route hosted site API through web ([#13407](https://github.com/vm0-ai/vm0/issues/13407)) ([bf31325](https://github.com/vm0-ai/vm0/commit/bf31325bd7fc24e4c2aff649025835a3933850fc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.27.0
+    * @vm0/core bumped to 8.278.0
+    * @vm0/db bumped to 1.14.0
+
 ## [12.367.0](https://github.com/vm0-ai/vm0/compare/web-v12.366.0...web-v12.367.0) (2026-05-15)
 
 
