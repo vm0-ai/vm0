@@ -15,6 +15,7 @@ export interface InitialPage {
   messages: PagedChatMessage[];
   hasHistoryBefore: boolean;
   needsHistoryBackfill?: boolean;
+  fetchedFromRemote?: boolean;
 }
 
 export interface PatchDraftArgs {

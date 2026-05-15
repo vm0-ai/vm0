@@ -304,17 +304,26 @@ export function matchesConnectorSearch(
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
-  const { connectors } = await get(connectors$);
+  const connectorListPromise = get(connectors$);
+  const features = get(featureSwitch$);
+  const remoteAgentHostListPromise = get(remoteAgentHosts$);
+  const localBrowserHostListPromise = features?.[
+    FeatureSwitchKey.LocalBrowserUse
+  ]
+    ? get(localBrowserHosts$)
+    : Promise.resolve({ hosts: [] } satisfies LocalBrowserHostListResponse);
+
+  const [{ connectors }, remoteAgentHostList, localBrowserHostList] =
+    await Promise.all([
+      connectorListPromise,
+      remoteAgentHostListPromise,
+      localBrowserHostListPromise,
+    ]);
   const connectorMap = new Map(
     connectors.map((c) => {
       return [c.type, c];
     }),
   );
-  const features = await get(featureSwitch$);
-  const remoteAgentHostList = await get(remoteAgentHosts$);
-  const localBrowserHostList = features?.[FeatureSwitchKey.LocalBrowserUse]
-    ? await get(localBrowserHosts$)
-    : { hosts: [] };
   const remoteAgentOnlineHosts = getRemoteAgentOnlineHosts(
     remoteAgentHostList.hosts,
   );

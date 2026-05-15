@@ -11,20 +11,55 @@ import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
+import { clerk$ } from "./auth.ts";
+import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
 
-export const currentChatAgentId$ = computed(
-  async (get): Promise<string | null> => {
-    return get(internalChatAgentId$) ?? (await get(defaultAgentId$));
-  },
-);
-
 export const setChatAgentId$ = command(({ set }, agentId: string | null) => {
   set(internalChatAgentId$, agentId);
 });
+
+export const currentChatThreadId$ = computed((get): string | null => {
+  const params = get(pathParams$);
+  const threadId = params?.threadId;
+  const route = get(activeRoute$);
+  if (route !== "chat") {
+    return null;
+  }
+  return typeof threadId === "string" ? threadId : null;
+});
+
+const currentChatThreadAgentId$ = computed(
+  async (get): Promise<string | null> => {
+    const threadId = get(currentChatThreadId$);
+    if (!threadId) {
+      return null;
+    }
+
+    const clerk = await get(clerk$);
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+    if (!userId || !orgId) {
+      return null;
+    }
+
+    const meta = await readThreadMeta$(userId, orgId, threadId);
+    return meta?.agentId ?? null;
+  },
+);
+
+export const currentChatAgentId$ = computed(
+  async (get): Promise<string | null> => {
+    return (
+      (await get(currentChatThreadAgentId$)) ??
+      get(internalChatAgentId$) ??
+      (await get(defaultAgentId$))
+    );
+  },
+);
 
 export const currentChatAgent$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
@@ -37,16 +72,6 @@ export const currentChatAgent$ = computed(async (get) => {
 
 export const currentChatAgentDisplayName$ = computed(async (get) => {
   return (await get(currentChatAgent$))?.displayName;
-});
-
-export const currentChatThreadId$ = computed((get): string | null => {
-  const params = get(pathParams$);
-  const threadId = params?.threadId;
-  const route = get(activeRoute$);
-  if (route !== "chat") {
-    return null;
-  }
-  return typeof threadId === "string" ? threadId : null;
 });
 
 export interface ChatThread {

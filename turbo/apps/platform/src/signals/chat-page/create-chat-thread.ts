@@ -1013,6 +1013,7 @@ function createPagedMessages(
   });
 
   return {
+    initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
     groupedChatMessages$,
@@ -1219,6 +1220,7 @@ interface RunTrackingDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   interruptedRunIds$: Computed<Promise<Set<string>>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
+  initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   backfillHistoryBoundary$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
@@ -1277,6 +1279,7 @@ function createRunTracking({
   threadData$,
   interruptedRunIds$,
   latestChatMessageId$,
+  initialPage$,
   fetchNextPage$,
   backfillHistoryBoundary$,
   refreshLatestMessages$,
@@ -1304,20 +1307,33 @@ function createRunTracking({
     dataSource,
   });
 
+  const shouldRunPreSubscribeCatchup$ = command(
+    async ({ get }, signal: AbortSignal): Promise<boolean> => {
+      const initial = await get(initialPage$);
+      signal.throwIfAborted();
+      if (initial.messages.length > 0 || initial.fetchedFromRemote !== true) {
+        return true;
+      }
+
+      const thread = await get(threadData$);
+      signal.throwIfAborted();
+      return (thread?.activeRunIds.length ?? 0) > 0;
+    },
+  );
+
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
 
     // Catch up any messages that arrived since the initial page was loaded.
-    // On IDB cache hit this fetches messages that arrived after the cache
-    // was written; on cache miss `fetchNextPage$` issues a no-cursor fetch
-    // (since the contract treats `sinceId` as optional) and ingests the
-    // server's latest page. This must run before the subscribe loop below
-    // because that loop never resolves — `setAblyLoop$` blocks on the
-    // realtime channel for the lifetime of the thread.
+    // Cache hits and active runs still need a catch-up fetch. A fresh remote
+    // empty page on an idle thread can skip it because it would repeat the same
+    // no-cursor request before the realtime loop starts.
     L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
       threadId,
     });
-    await set(fetchNextPage$, signal);
+    if (await set(shouldRunPreSubscribeCatchup$, signal)) {
+      await set(fetchNextPage$, signal);
+    }
     L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
       threadId,
     });
@@ -1885,6 +1901,7 @@ export function createChatThreadSignals(
     copyMessage$,
   } = createThreadUIState();
   const {
+    initialPage$,
     earliestChatMessageId$,
     latestChatMessageId$,
     groupedChatMessages$,
@@ -1909,6 +1926,7 @@ export function createChatThreadSignals(
     threadData$,
     interruptedRunIds$,
     latestChatMessageId$,
+    initialPage$,
     fetchNextPage$,
     backfillHistoryBoundary$,
     refreshLatestMessages$,
