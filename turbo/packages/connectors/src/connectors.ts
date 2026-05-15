@@ -2,6 +2,7 @@ import { z } from "zod";
 import { FeatureSwitchKey } from "./feature-switch-key";
 import { axiom } from "./connectors/axiom";
 import { ahrefs } from "./connectors/ahrefs";
+import { agora } from "./connectors/agora";
 import { agentmail } from "./connectors/agentmail";
 import { airtable } from "./connectors/airtable";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
@@ -383,6 +384,7 @@ export interface ConnectorConfig {
 const CONNECTOR_TYPES_DEF = {
   ...axiom,
   ...ahrefs,
+  ...agora,
   ...agentmail,
   ...airtable,
   ...anthropicManagedAgents,

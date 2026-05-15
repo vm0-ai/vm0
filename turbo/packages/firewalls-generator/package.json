@@ -29,6 +29,7 @@
     "generate:agentphone": "tsx src/index.ts agentphone",
     "generate:amplitude": "tsx src/index.ts amplitude",
     "generate:ahrefs": "tsx src/index.ts ahrefs",
+    "generate:agora": "tsx src/index.ts agora",
     "generate:airtable": "tsx src/index.ts airtable",
     "generate:apollo": "tsx src/index.ts apollo",
     "generate:apify": "tsx src/index.ts apify",

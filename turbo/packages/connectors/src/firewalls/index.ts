@@ -36,6 +36,7 @@ import { agentmailFirewall } from "./agentmail.generated";
 import { amplitudeFirewall } from "./amplitude.generated";
 import { anthropicManagedAgentsFirewall } from "./anthropic-managed-agents.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
+import { agoraFirewall } from "./agora.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { apolloFirewall } from "./apollo.generated";
 import { apifyFirewall } from "./apify.generated";
@@ -235,6 +236,7 @@ const CONNECTOR_FIREWALLS = {
   amplitude: amplitudeFirewall,
   "anthropic-managed-agents": anthropicManagedAgentsFirewall,
   ahrefs: ahrefsFirewall,
+  agora: agoraFirewall,
   airtable: airtableFirewall,
   apollo: apolloFirewall,
   pika: pikaFirewall,
