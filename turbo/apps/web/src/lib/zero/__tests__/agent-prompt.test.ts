@@ -27,9 +27,12 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("zero doctor check-connector");
     expect(prompt).toContain("explicitly choose the bot with `--bot-id`");
     expect(prompt).toContain(
-      "When the user asks to generate anything (for example, image, video, audio, or website)",
+      "When the user asks to generate anything (supported generation content: image, video, presentation, voice/audio, and connector-backed text, code, document, or website)",
     );
     expect(prompt).toContain("run `zero doctor generate -h`");
+    expect(prompt).toContain(
+      "After selecting a Zero generation command, wait for it to complete",
+    );
     expect(prompt).toContain("zero built-in generate image --prompt");
     expect(prompt).toContain(
       "OpenAI `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`",
@@ -47,6 +50,8 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("do not support transparent backgrounds");
     expect(prompt).toContain("reference images, masks");
     expect(prompt).toContain("Pass `--json`");
+    expect(prompt).toContain("zero built-in generate presentation --prompt");
+    expect(prompt).toContain("`--image-model`");
     expect(prompt).toContain(
       "Do not present a local path as something the user can open",
     );

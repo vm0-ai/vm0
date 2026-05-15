@@ -10,7 +10,6 @@ import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import {
   getMissingImagePricing,
-  IMAGE_IO_MODEL,
   imagePricing$,
 } from "../services/zero-image-io-generate.service";
 import {
@@ -68,7 +67,7 @@ const postPresentationInner$ = command(
       options.imageCount > 0 ? await get(imagePricing$) : null;
     signal.throwIfAborted();
     const missingImagePricing = imagePricing
-      ? getMissingImagePricing(imagePricing, IMAGE_IO_MODEL)
+      ? getMissingImagePricing(imagePricing, options.imageModel)
       : [];
     if (options.imageCount > 0 && missingImagePricing.length > 0) {
       return presentationServiceUnavailable(

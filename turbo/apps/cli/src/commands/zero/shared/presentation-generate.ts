@@ -4,11 +4,14 @@ import chalk from "chalk";
 import { generateWebPresentation } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
+const PRESENTATION_MAX_IMAGES = 8;
+
 interface PresentationOptions {
   prompt?: string;
   style: string;
   slides: number;
   images: number;
+  imageModel?: string;
   theme?: string;
   audience?: string;
   title?: string;
@@ -33,6 +36,15 @@ function parseImageCount(value: string): number {
   const imageCount = Number(value);
   if (!Number.isInteger(imageCount)) {
     throw new InvalidArgumentError("images must be an integer");
+  }
+  if (
+    !Number.isSafeInteger(imageCount) ||
+    imageCount < 0 ||
+    imageCount > PRESENTATION_MAX_IMAGES
+  ) {
+    throw new InvalidArgumentError(
+      `images must be between 0 and ${PRESENTATION_MAX_IMAGES}`,
+    );
   }
   return imageCount;
 }
@@ -73,9 +85,13 @@ export function createPresentationGenerateCommand(
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .option(
       "--images <count>",
-      "Generated image count: 0-8",
+      `Generated image count: 0-${PRESENTATION_MAX_IMAGES}`,
       parseImageCount,
       2,
+    )
+    .option(
+      "--image-model <model>",
+      "Image model for generated visuals: gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
     )
     .option(
       "--theme <theme>",
@@ -106,6 +122,7 @@ Notes:
           style: options.style,
           slideCount: options.slides,
           imageCount: options.images,
+          imageModel: options.imageModel,
           theme: options.theme,
           audience: options.audience,
           title: options.title,
@@ -121,6 +138,7 @@ Notes:
         console.log(chalk.dim(`  Title: ${result.title}`));
         console.log(chalk.dim(`  Slides: ${result.slideCount}`));
         console.log(chalk.dim(`  Images: ${result.imageCount}`));
+        console.log(chalk.dim(`  Image model: ${result.imageModel}`));
         console.log(chalk.dim(`  Style: ${result.style}`));
         console.log(chalk.dim(`  Theme: ${result.theme}`));
         console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));

@@ -14,11 +14,16 @@ import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import {
   IMAGE_IO_MODEL,
-  OPENAI_IMAGE_GENERATION_URL,
-  parseImageGenerationResult,
+  generateImageWithProvider,
   recordGeneratedImage$,
+  imageModelConfig,
+  imageModelList,
+  normalizeImageModel,
+  parseImageOptions,
   type ImageOptions,
+  type ImageModel,
   type ImagePricing,
+  type ParsedImageGeneration,
 } from "./zero-image-io-generate.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
@@ -62,20 +67,6 @@ const PRESENTATION_LAYOUTS = [
   "closing",
 ] as const;
 
-const PRESENTATION_VISUAL_IMAGE_OPTIONS = {
-  model: IMAGE_IO_MODEL,
-  provider: "openai",
-  size: "1536x864",
-  quality: "medium",
-  background: "opaque",
-  outputFormat: "webp",
-  outputCompression: undefined,
-  moderation: "auto",
-  seed: undefined,
-  safetyTolerance: "4",
-  enhancePrompt: false,
-} as const;
-
 type PresentationStyle = (typeof PRESENTATION_STYLES)[number];
 type PresentationLayout = (typeof PRESENTATION_LAYOUTS)[number];
 type PresentationPricingCategory =
@@ -109,6 +100,7 @@ interface PresentationOptions {
   readonly style: PresentationStyle;
   readonly slideCount: number;
   readonly imageCount: number;
+  readonly imageModel: ImageModel;
   readonly theme: string;
   readonly audience: string | undefined;
   readonly title: string | undefined;
@@ -163,16 +155,11 @@ interface PresentationVisual {
   readonly creditsCharged: number;
 }
 
-type ParsedPresentationVisualImageGeneration = Exclude<
-  ReturnType<typeof parseImageGenerationResult>,
-  { readonly status: number }
->;
-
 interface GeneratedPresentationVisualImage {
   readonly slideIndex: number;
   readonly slide: SlideSpec;
   readonly prompt: string;
-  readonly generation: ParsedPresentationVisualImageGeneration;
+  readonly generation: ParsedImageGeneration;
 }
 
 interface RecordedPresentation {
@@ -187,6 +174,7 @@ interface RecordedPresentation {
   readonly theme: string;
   readonly slideCount: number;
   readonly imageCount: number;
+  readonly imageModel: ImageModel;
   readonly imageUrls: readonly string[];
   readonly imageCreditsCharged: number;
   readonly textCreditsCharged: number;
@@ -518,9 +506,21 @@ export function parsePresentationOptions(
     return rawImageCount;
   }
   const imageCount = rawImageCount ?? PRESENTATION_IO_DEFAULT_IMAGE_COUNT;
-  if (imageCount < 0 || imageCount > PRESENTATION_IO_MAX_IMAGES) {
+  if (
+    !Number.isSafeInteger(imageCount) ||
+    imageCount < 0 ||
+    imageCount > PRESENTATION_IO_MAX_IMAGES
+  ) {
     return badRequest(
       `imageCount must be between 0 and ${PRESENTATION_IO_MAX_IMAGES}`,
+    );
+  }
+
+  const rawImageModel = readString(body, "imageModel", IMAGE_IO_MODEL);
+  const imageModel = normalizeImageModel(rawImageModel);
+  if (!imageModel) {
+    return badRequest(
+      `Unsupported image model: ${rawImageModel}. Available models: ${imageModelList()}`,
     );
   }
 
@@ -537,6 +537,7 @@ export function parsePresentationOptions(
     style,
     slideCount,
     imageCount,
+    imageModel,
     theme,
     audience: readOptionalString(body, "audience", 160),
     title: readOptionalString(body, "title", 120),
@@ -1412,11 +1413,41 @@ function selectVisualSlides(
   return [...preferred, ...remaining].slice(0, imageCount);
 }
 
-function createVisualImageOptions(prompt: string): ImageOptions {
-  return {
+function visualImageSizeForModel(model: ImageModel): string {
+  const config = imageModelConfig(model);
+  if (config.provider === "openai" && config.sizeMode === "standard") {
+    return "1536x1024";
+  }
+  return "1536x864";
+}
+
+function visualImageOutputFormatForModel(model: ImageModel): string {
+  const formats: readonly string[] = imageModelConfig(model).outputFormats;
+  if (formats.includes("webp")) {
+    return "webp";
+  }
+  if (formats.includes("png")) {
+    return "png";
+  }
+  return formats[0] ?? "png";
+}
+
+function createVisualImageOptions(
+  prompt: string,
+  imageModel: ImageModel,
+): ImageOptions | ErrorResponse {
+  const options = parseImageOptions({
     prompt,
-    ...PRESENTATION_VISUAL_IMAGE_OPTIONS,
-  };
+    model: imageModel,
+    size: visualImageSizeForModel(imageModel),
+    quality: "medium",
+    background: "opaque",
+    outputFormat: visualImageOutputFormatForModel(imageModel),
+    moderation: "auto",
+    safetyTolerance: "4",
+    enhancePrompt: false,
+  });
+  return options;
 }
 
 function presentationVisualImageTimeoutMs(deadlineAtMs: number | undefined) {
@@ -1442,44 +1473,31 @@ async function generatePresentationVisualImage(
     readonly slideIndex: number;
     readonly slide: SlideSpec;
     readonly prompt: string;
+    readonly imageModel: ImageModel;
     readonly timeoutMs: number;
   },
   signal: AbortSignal,
 ): Promise<GeneratedPresentationVisualImage | null> {
-  const imageOptions = createVisualImageOptions(params.prompt);
   const startedAt = now();
   const result = await safeAsync(async () => {
-    const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: IMAGE_IO_MODEL,
-        prompt: imageOptions.prompt,
-        n: 1,
-        size: imageOptions.size,
-        quality: imageOptions.quality,
-        background: imageOptions.background,
-        output_format: imageOptions.outputFormat,
-        moderation: imageOptions.moderation,
-      }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(params.timeoutMs)]),
-    });
-    signal.throwIfAborted();
-    if (!response.ok) {
-      L.warn("Presentation visual image request failed", {
+    const imageOptions = createVisualImageOptions(
+      params.prompt,
+      params.imageModel,
+    );
+    if ("status" in imageOptions) {
+      L.warn("Presentation visual image options could not be used", {
         slideIndex: params.slideIndex,
-        status: response.status,
+        code: imageOptions.body.error.code,
         durationMs: now() - startedAt,
       });
       return null;
     }
 
-    const responseBody: unknown = await response.json();
+    const generation = await generateImageWithProvider(
+      imageOptions,
+      AbortSignal.any([signal, AbortSignal.timeout(params.timeoutMs)]),
+    );
     signal.throwIfAborted();
-    const generation = parseImageGenerationResult(responseBody, imageOptions);
     if ("status" in generation) {
       L.warn("Presentation visual image response could not be used", {
         slideIndex: params.slideIndex,
@@ -1551,6 +1569,7 @@ export const generatePresentationVisuals$ = command(
             slideIndex,
             slide,
             timeoutMs: imageTimeoutMs,
+            imageModel: params.options.imageModel,
             prompt: visualPromptForSlide({
               deck: params.generation.deck,
               slide,
@@ -1681,6 +1700,7 @@ export const recordGeneratedPresentation$ = command(
           theme: params.generation.theme,
           slideCount: params.generation.slideCount,
           imageCount: params.visuals.length,
+          imageModel: params.options.imageModel,
           imageIds: params.visuals.map((visual) => {
             return visual.imageId;
           }),
@@ -1747,6 +1767,7 @@ export const recordGeneratedPresentation$ = command(
       theme: params.generation.theme,
       slideCount: params.generation.slideCount,
       imageCount: params.visuals.length,
+      imageModel: params.options.imageModel,
       imageUrls: params.visuals.map((visual) => {
         return visual.url;
       }),

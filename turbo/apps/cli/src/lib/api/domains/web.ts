@@ -279,6 +279,7 @@ interface GenerateWebPresentationOptions {
   style?: string;
   slideCount?: number;
   imageCount?: number;
+  imageModel?: string;
   theme?: string;
   audience?: string;
   title?: string;
@@ -296,6 +297,7 @@ interface GenerateWebPresentationResult {
   theme: string;
   slideCount: number;
   imageCount: number;
+  imageModel: string;
   imageUrls: string[];
   imageCreditsCharged: number;
   textCreditsCharged: number;
@@ -651,6 +653,7 @@ export async function generateWebPresentation(
         ...(options.imageCount !== undefined
           ? { imageCount: options.imageCount }
           : {}),
+        ...(options.imageModel ? { imageModel: options.imageModel } : {}),
         ...(options.theme ? { theme: options.theme } : {}),
         ...(options.audience ? { audience: options.audience } : {}),
         ...(options.title ? { title: options.title } : {}),

@@ -26,7 +26,8 @@ const PRESENTATION_RESULT = {
   style: "swiss",
   theme: "ikb",
   slideCount: 10,
-  imageCount: 3,
+  imageCount: 8,
+  imageModel: "gpt-image-1.5",
   imageUrls: ["http://localhost:3000/f/user-1/image-file-id/image-visual.webp"],
   imageCreditsCharged: 7,
   textCreditsCharged: 24,
@@ -68,7 +69,8 @@ describe("zero built-in generate presentation command", () => {
           prompt: "API migration plan",
           style: "swiss",
           slideCount: 10,
-          imageCount: 3,
+          imageCount: 8,
+          imageModel: "gpt-image-1.5",
           theme: "ikb",
           audience: "engineering leadership",
           title: "API Migration Plan",
@@ -90,7 +92,9 @@ describe("zero built-in generate presentation command", () => {
       "--slides",
       "10",
       "--images",
-      "3",
+      "8",
+      "--image-model",
+      "gpt-image-1.5",
       "--theme",
       "ikb",
       "--audience",
@@ -106,7 +110,8 @@ describe("zero built-in generate presentation command", () => {
     expect(stdout).toContain(`File: ${PRESENTATION_RESULT.filename}`);
     expect(stdout).toContain("Title: API Migration Plan");
     expect(stdout).toContain("Slides: 10");
-    expect(stdout).toContain("Images: 3");
+    expect(stdout).toContain("Images: 8");
+    expect(stdout).toContain("Image model: gpt-image-1.5");
     expect(stdout).toContain("Style: swiss");
     expect(stdout).toContain("Theme: ikb");
     expect(stdout).toContain("Credits charged: 31");
@@ -145,7 +150,8 @@ describe("zero built-in generate presentation command", () => {
       style: "swiss",
       theme: "ikb",
       slideCount: 10,
-      imageCount: 3,
+      imageCount: 8,
+      imageModel: "gpt-image-1.5",
       imageUrls: PRESENTATION_RESULT.imageUrls,
       imageCreditsCharged: 7,
       textCreditsCharged: 24,

@@ -8,6 +8,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
@@ -200,6 +201,7 @@ const IMAGE_MODEL_CONFIGS = {
 } as const;
 
 const IMAGE_MODELS = Object.keys(IMAGE_MODEL_CONFIGS) as ImageModel[];
+const L = logger("ZeroImageIoGenerate");
 
 type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
@@ -262,7 +264,7 @@ export interface ImageUsage {
   readonly totalTokens: number;
 }
 
-interface ParsedImageGeneration {
+export interface ParsedImageGeneration {
   readonly model: ImageModel;
   readonly provider: ImageProvider;
   readonly imageBytes: Buffer;
@@ -360,7 +362,7 @@ function badRequest(message: string, code = "BAD_REQUEST") {
   return { status: 400 as const, body: errorBody(message, code) };
 }
 
-export function internalError(message: string) {
+function internalError(message: string) {
   return {
     status: 500 as const,
     body: errorBody(message, "INTERNAL_SERVER_ERROR"),
@@ -387,6 +389,10 @@ export function insufficientCredits() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isErrorResponse(value: unknown): value is ErrorResponse {
+  return isRecord(value) && "status" in value && "body" in value;
 }
 
 function readString(
@@ -435,7 +441,7 @@ function hasString(values: readonly string[], value: string): boolean {
   return values.includes(value);
 }
 
-function normalizeImageModel(value: string): ImageModel | null {
+export function normalizeImageModel(value: string): ImageModel | null {
   if (value in IMAGE_MODEL_CONFIGS) {
     return value as ImageModel;
   }
@@ -445,8 +451,12 @@ function normalizeImageModel(value: string): ImageModel | null {
   return null;
 }
 
-function imageModelList(): string {
+export function imageModelList(): string {
   return Object.keys(IMAGE_MODEL_ALIASES).join(", ");
+}
+
+export function imageModelConfig(model: ImageModel): ImageModelConfig {
+  return IMAGE_MODEL_CONFIGS[model];
 }
 
 export function imagePricingKey(
@@ -993,7 +1003,7 @@ function openAiBillingEntries(usage: ImageUsage): readonly ImageBillingEntry[] {
   });
 }
 
-export function parseImageGenerationResult(
+function parseImageGenerationResult(
   value: unknown,
   options: ImageOptions,
 ): ParsedImageGeneration | ErrorResponse {
@@ -1169,7 +1179,7 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
   };
 }
 
-export async function submitFalImageGeneration(
+async function submitFalImageGeneration(
   options: ImageOptions,
   falKey: string,
   signal: AbortSignal,
@@ -1207,9 +1217,7 @@ function readFalSeed(value: unknown): number | undefined {
     : undefined;
 }
 
-export function parseFalImageResult(
-  value: unknown,
-): FalImageResult | ErrorResponse {
+function parseFalImageResult(value: unknown): FalImageResult | ErrorResponse {
   if (!isRecord(value) || !Array.isArray(value.images)) {
     return badGateway("Model returned no image data", "NO_IMAGE_RETURNED");
   }
@@ -1261,7 +1269,7 @@ function falBillingEntries(
   return [{ category: FAL_OUTPUT_IMAGE_CATEGORY, quantity: 1 }];
 }
 
-export async function downloadFalImage(
+async function downloadFalImage(
   result: FalImageResult,
   options: ImageOptions,
   signal: AbortSignal,
@@ -1308,6 +1316,89 @@ export async function downloadFalImage(
     sourceUrl: result.image.url,
     seed: result.seed ?? options.seed,
   };
+}
+
+async function generateOpenAiImage(
+  options: ImageOptions,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | ErrorResponse> {
+  const response = await fetch(OPENAI_IMAGE_GENERATION_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: options.model,
+      prompt: options.prompt,
+      n: 1,
+      size: options.size,
+      quality: options.quality,
+      background: options.background,
+      output_format: options.outputFormat,
+      ...(options.outputCompression !== undefined
+        ? { output_compression: options.outputCompression }
+        : {}),
+      moderation: options.moderation,
+    }),
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    signal.throwIfAborted();
+    L.error("OpenAI image request failed", {
+      status: response.status,
+      body: errorBody,
+    });
+    return internalError("Image generation failed");
+  }
+
+  const responseBody: unknown = await response.json();
+  signal.throwIfAborted();
+  const generation = parseImageGenerationResult(responseBody, options);
+  if (
+    "status" in generation &&
+    generation.body.error.code === "USAGE_UNKNOWN"
+  ) {
+    L.error("OpenAI image response missing usage", { responseBody });
+  }
+  return generation;
+}
+
+async function generateFalImage(
+  options: ImageOptions,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | ErrorResponse> {
+  const falKey = env("FAL_KEY");
+  if (!falKey) {
+    return serviceUnavailable(
+      "Fal image generation is not configured",
+      "NOT_CONFIGURED",
+    );
+  }
+
+  const responseBody = await submitFalImageGeneration(options, falKey, signal);
+  signal.throwIfAborted();
+  if (isErrorResponse(responseBody)) {
+    return responseBody;
+  }
+
+  const falResult = parseFalImageResult(responseBody);
+  if ("status" in falResult) {
+    return falResult;
+  }
+  return await downloadFalImage(falResult, options, signal);
+}
+
+export function generateImageWithProvider(
+  options: ImageOptions,
+  signal: AbortSignal,
+): Promise<ParsedImageGeneration | ErrorResponse> {
+  return options.provider === "fal"
+    ? generateFalImage(options, signal)
+    : generateOpenAiImage(options, signal);
 }
 
 export const recordGeneratedImage$ = command(

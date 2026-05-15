@@ -20,6 +20,7 @@ import {
   IMAGE_IO_MODEL,
   imagePricingKey,
   OPENAI_IMAGE_GENERATION_URL,
+  type ImageModel,
   type ImageUsage,
 } from "../../services/zero-image-io-generate.service";
 import {
@@ -55,6 +56,7 @@ const IMAGE_PRICING_CATEGORIES = [
   "tokens.input.image",
   "tokens.output.image",
 ] as const;
+const SELECTED_IMAGE_MODEL = "gpt-image-1.5" satisfies ImageModel;
 
 type PresentationPricingCategory =
   (typeof PRESENTATION_PRICING_CATEGORIES)[number];
@@ -64,7 +66,7 @@ interface PresentationFixture {
   readonly orgId: string;
   readonly userId: string;
   readonly insertedPricingCategories: readonly PresentationPricingCategory[];
-  readonly insertedImagePricingCategories: readonly ImagePricingCategory[];
+  readonly insertedImagePricingRows: readonly ImagePricingKey[];
 }
 
 interface PricingSnapshot {
@@ -74,9 +76,15 @@ interface PricingSnapshot {
 }
 
 interface ImagePricingSnapshot {
+  readonly provider: ImageModel;
   readonly category: ImagePricingCategory;
   readonly unitPrice: number;
   readonly unitSize: number;
+}
+
+interface ImagePricingKey {
+  readonly provider: ImageModel;
+  readonly category: ImagePricingCategory;
 }
 
 interface PresentationUsage {
@@ -160,6 +168,7 @@ function expectedCredits(
 }
 
 function expectedImageCredits(
+  model: ImageModel,
   usage: ImageUsage,
   pricing: ReadonlyMap<string, ImagePricingSnapshot>,
 ): number {
@@ -173,7 +182,7 @@ function expectedImageCredits(
     if (quantity <= 0) {
       return total;
     }
-    const row = pricing.get(imagePricingKey(IMAGE_IO_MODEL, category));
+    const row = pricing.get(imagePricingKey(model, category));
     if (!row) {
       return total;
     }
@@ -246,9 +255,9 @@ async function ensurePresentationPricing(): Promise<{
   return { pricing, insertedCategories };
 }
 
-async function ensureImagePricing(): Promise<{
+async function ensureImagePricing(model: ImageModel = IMAGE_IO_MODEL): Promise<{
   readonly pricing: ReadonlyMap<string, ImagePricingSnapshot>;
-  readonly insertedCategories: readonly ImagePricingCategory[];
+  readonly insertedRows: readonly ImagePricingKey[];
 }> {
   const writeDb = store.set(writeDb$);
   const rows = await writeDb
@@ -261,7 +270,7 @@ async function ensureImagePricing(): Promise<{
     .where(
       and(
         eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, IMAGE_IO_MODEL),
+        eq(usagePricing.provider, model),
         inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
       ),
     );
@@ -269,7 +278,8 @@ async function ensureImagePricing(): Promise<{
   const pricing = new Map<string, ImagePricingSnapshot>();
   for (const row of rows) {
     if (isImagePricingCategory(row.category)) {
-      pricing.set(imagePricingKey(IMAGE_IO_MODEL, row.category), {
+      pricing.set(imagePricingKey(model, row.category), {
+        provider: model,
         category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
@@ -277,42 +287,46 @@ async function ensureImagePricing(): Promise<{
     }
   }
 
-  const defaults: Readonly<Record<ImagePricingCategory, ImagePricingSnapshot>> =
-    {
-      "tokens.input.text": {
-        category: "tokens.input.text",
-        unitPrice: 6000,
-        unitSize: 1_000_000,
-      },
-      "tokens.input.image": {
-        category: "tokens.input.image",
-        unitPrice: 9600,
-        unitSize: 1_000_000,
-      },
-      "tokens.output.image": {
-        category: "tokens.output.image",
-        unitPrice: 36_000,
-        unitSize: 1_000_000,
-      },
-    };
+  const defaults: Readonly<
+    Record<ImagePricingCategory, Omit<ImagePricingSnapshot, "provider">>
+  > = {
+    "tokens.input.text": {
+      category: "tokens.input.text",
+      unitPrice: 6000,
+      unitSize: 1_000_000,
+    },
+    "tokens.input.image": {
+      category: "tokens.input.image",
+      unitPrice: 9600,
+      unitSize: 1_000_000,
+    },
+    "tokens.output.image": {
+      category: "tokens.output.image",
+      unitPrice: 36_000,
+      unitSize: 1_000_000,
+    },
+  };
 
-  const insertedCategories: ImagePricingCategory[] = [];
+  const insertedRows: ImagePricingKey[] = [];
   for (const category of IMAGE_PRICING_CATEGORIES) {
-    if (!pricing.has(imagePricingKey(IMAGE_IO_MODEL, category))) {
+    if (!pricing.has(imagePricingKey(model, category))) {
       const row = defaults[category];
       await writeDb.insert(usagePricing).values({
         kind: "image",
-        provider: IMAGE_IO_MODEL,
+        provider: model,
         category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
       });
-      pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), row);
-      insertedCategories.push(category);
+      pricing.set(imagePricingKey(model, category), {
+        provider: model,
+        ...row,
+      });
+      insertedRows.push({ provider: model, category });
     }
   }
 
-  return { pricing, insertedCategories };
+  return { pricing, insertedRows };
 }
 
 async function deletePresentationPricingRows(): Promise<
@@ -373,6 +387,7 @@ async function restorePresentationPricingRows(
 
 async function seedPresentationFixture(options: {
   readonly credits?: number;
+  readonly imageModel?: ImageModel;
   readonly withPricing?: boolean;
 }): Promise<PresentationFixture> {
   const orgId = `org_${randomUUID()}`;
@@ -399,14 +414,14 @@ async function seedPresentationFixture(options: {
     ? await ensurePresentationPricing()
     : { insertedCategories: [] };
   const imagePricing = options.withPricing
-    ? await ensureImagePricing()
-    : { insertedCategories: [] };
+    ? await ensureImagePricing(options.imageModel ?? IMAGE_IO_MODEL)
+    : { insertedRows: [] };
 
   return {
     orgId,
     userId,
     insertedPricingCategories: pricing.insertedCategories,
-    insertedImagePricingCategories: imagePricing.insertedCategories,
+    insertedImagePricingRows: imagePricing.insertedRows,
   };
 }
 
@@ -446,16 +461,14 @@ async function deletePresentationFixture(
         ),
       );
   }
-  if (fixture.insertedImagePricingCategories.length > 0) {
+  for (const row of fixture.insertedImagePricingRows) {
     await writeDb
       .delete(usagePricing)
       .where(
         and(
           eq(usagePricing.kind, "image"),
-          eq(usagePricing.provider, IMAGE_IO_MODEL),
-          inArray(usagePricing.category, [
-            ...fixture.insertedImagePricingCategories,
-          ]),
+          eq(usagePricing.provider, row.provider),
+          eq(usagePricing.category, row.category),
         ),
       );
   }
@@ -585,9 +598,15 @@ describe("POST /api/zero/presentation-io/generate", () => {
   });
 
   it("generates HTML presentation files for run-scoped zero tokens", async () => {
-    const fixture = await track(seedPresentationFixture({ withPricing: true }));
+    const fixture = await track(
+      seedPresentationFixture({
+        withPricing: true,
+        imageModel: SELECTED_IMAGE_MODEL,
+      }),
+    );
     const { pricing } = await ensurePresentationPricing();
-    const { pricing: imagePricing } = await ensureImagePricing();
+    const { pricing: imagePricing } =
+      await ensureImagePricing(SELECTED_IMAGE_MODEL);
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -615,7 +634,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
       totalTokens: 2820,
     };
     const textCreditsCharged = expectedCredits(usage, pricing);
-    const imageCreditsCharged = expectedImageCredits(imageUsage, imagePricing);
+    const imageCreditsCharged = expectedImageCredits(
+      SELECTED_IMAGE_MODEL,
+      imageUsage,
+      imagePricing,
+    );
     const creditsCharged = textCreditsCharged + imageCreditsCharged;
     let observedAuthorization: string | null = null;
     let observedBody: unknown = null;
@@ -656,7 +679,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
             },
           ],
           output_format: "webp",
-          size: "1536x864",
+          size: "1536x1024",
           quality: "medium",
           background: "opaque",
           usage: {
@@ -687,6 +710,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
         style: "swiss",
         slideCount: 4,
         imageCount: 1,
+        imageModel: SELECTED_IMAGE_MODEL,
         theme: "ikb",
         audience: "engineering leadership",
         title: "API Migration Plan",
@@ -705,6 +729,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
       theme: "ikb",
       slideCount: 4,
       imageCount: 1,
+      imageModel: SELECTED_IMAGE_MODEL,
       title: "API Migration Plan",
       responseId: "resp_presentation_test",
       usage,
@@ -725,9 +750,9 @@ describe("POST /api/zero/presentation-io/generate", () => {
     });
     expect(observedImageAuthorization).toBe("Bearer test-openai-key");
     expect(observedImageBody).toMatchObject({
-      model: IMAGE_IO_MODEL,
+      model: SELECTED_IMAGE_MODEL,
       n: 1,
-      size: "1536x864",
+      size: "1536x1024",
       quality: "medium",
       background: "opaque",
       output_format: "webp",
@@ -827,6 +852,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
       theme: "ikb",
       slideCount: 4,
       imageCount: 1,
+      imageModel: SELECTED_IMAGE_MODEL,
       imageUrls: [imageUrl],
       imageIds: [expect.any(String)],
       title: "API Migration Plan",
@@ -886,7 +912,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
           eq(usageEvent.orgId, fixture.orgId),
           eq(usageEvent.userId, fixture.userId),
           eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, IMAGE_IO_MODEL),
+          eq(usageEvent.provider, SELECTED_IMAGE_MODEL),
         ),
       );
     expect(imageUsageRows).toHaveLength(3);
@@ -919,6 +945,43 @@ describe("POST /api/zero/presentation-io/generate", () => {
       return total + (row.creditsCharged ?? 0);
     }, 0);
     expect(totalImageCredits).toBe(imageCreditsCharged);
+  });
+
+  it("returns 400 when image count exceeds the presentation limit", async () => {
+    mocks.clerk.session("user_image_limit", "org_image_limit");
+    let calledPresentationGeneration = false;
+    let calledImageGeneration = false;
+    server.use(
+      http.post(OPENAI_PRESENTATION_GENERATION_URL, () => {
+        calledPresentationGeneration = true;
+        return HttpResponse.json({});
+      }),
+      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+        calledImageGeneration = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/presentation-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "image scale plan",
+        slideCount: 4,
+        imageCount: 9,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "imageCount must be between 0 and 8",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(calledPresentationGeneration).toBeFalsy();
+    expect(calledImageGeneration).toBeFalsy();
   });
 
   it("returns the presentation when visual image generation fails", async () => {
