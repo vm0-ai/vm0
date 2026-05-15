@@ -8,10 +8,13 @@ use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS_RESULT, M
 
 use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
-use crate::exec::{EnvScriptGuard, format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
 use crate::quiesce::OperationGuard;
+use crate::shell_command::{
+    EnvScriptGuard, SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
+    truncate_command_preview,
+};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, await_drain_deadline, finalize_buffered_result, finalize_wait_outcome,
@@ -114,7 +117,7 @@ where
         "INFO",
         &format!(
             "spawn_process: {} (timeout={}ms, sudo={}, stream={}, {})",
-            truncate_preview(request.command),
+            truncate_command_preview(request.command),
             request.timeout_ms,
             request.sudo,
             request.stream_stdout,
@@ -122,7 +125,7 @@ where
         ),
     );
 
-    let spawned = match spawn_with_pipes(request.command, request.env, request.sudo) {
+    let spawned = match spawn_shell_command_with_pipes(request.command, request.env, request.sudo) {
         Ok(c) => c,
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!(
@@ -137,7 +140,7 @@ where
             return Ok(());
         }
     };
-    let crate::exec::SpawnedCommand {
+    let SpawnedShellCommand {
         mut child,
         env_script,
     } = spawned;

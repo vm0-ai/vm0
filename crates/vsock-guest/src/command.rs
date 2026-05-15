@@ -14,10 +14,13 @@ use vsock_proto::{
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
 use crate::error::to_io_error;
-use crate::exec::{format_env_diagnostics, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::quiesce::OperationGuard;
+use crate::shell_command::{
+    SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
+    truncate_command_preview,
+};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
@@ -63,7 +66,7 @@ impl CommandRegistry {
             seq,
             CommandRegistryEntry {
                 cancel: cancel.clone(),
-                label_preview: truncate_preview(label),
+                label_preview: truncate_command_preview(label),
             },
         );
         Ok(CommandRegistration {
@@ -311,7 +314,7 @@ fn run_command_worker<S>(
     }
 
     let env_refs = env_refs(&request.env);
-    let spawned = match spawn_with_pipes(&request.command, &env_refs, request.sudo) {
+    let spawned = match spawn_shell_command_with_pipes(&request.command, &env_refs, request.sudo) {
         Ok(spawned) => spawned,
         Err(e) => {
             let diagnostic = format!(
@@ -335,7 +338,7 @@ fn run_command_worker<S>(
         }
     };
 
-    let crate::exec::SpawnedCommand {
+    let SpawnedShellCommand {
         mut child,
         env_script,
     } = spawned;
@@ -373,7 +376,7 @@ fn run_command_worker<S>(
 
     let (output_tx, output_handle) = if needs_stream {
         let (tx, rx) = mpsc::sync_channel(OUTPUT_CHANNEL_CAPACITY);
-        let label_preview = truncate_preview(&request.label);
+        let label_preview = truncate_command_preview(&request.label);
         match spawn_output_writer(
             request.seq,
             label_preview,
@@ -485,7 +488,7 @@ fn run_command_worker<S>(
             &format!(
                 "command: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
                 request.seq,
-                truncate_preview(&request.label)
+                truncate_command_preview(&request.label)
             ),
         );
     }
@@ -874,7 +877,7 @@ fn log_command_terminal_if_notable(
         &format!(
             "command result: seq={} label={} elapsed_ms={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
             request.seq,
-            truncate_preview(&request.label),
+            truncate_command_preview(&request.label),
             elapsed.as_millis(),
             termination,
             stdout_result.captured.as_ref().map_or(0, Vec::len),
@@ -990,7 +993,7 @@ mod tests {
         let registration = registry.register(10, &long_label).unwrap();
 
         let preview = registry.cancel(10).unwrap();
-        assert_eq!(preview, truncate_preview(&long_label));
+        assert_eq!(preview, truncate_command_preview(&long_label));
         assert!(preview.ends_with("..."));
         assert!(preview.len() < long_label.len());
         assert!(!preview.contains('🔥'));

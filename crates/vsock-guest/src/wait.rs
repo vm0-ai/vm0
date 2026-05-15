@@ -251,7 +251,7 @@ where
     S: ThreadSpawner,
 {
     // Defensive: if either pipe is missing the caller broke the
-    // `spawn_with_pipes` invariant. Reap the child before returning so we
+    // `spawn_shell_command_with_pipes` invariant. Reap the child before returning so we
     // don't leave a zombie — `Child`'s `Drop` doesn't wait.
     let stdout = match child.stdout.take() {
         Some(s) => s,
