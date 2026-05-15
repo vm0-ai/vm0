@@ -417,7 +417,7 @@ mod tests {
 
         impl Drop for NotifyOnDrop {
             fn drop(&mut self) {
-                self.0.notify_waiters();
+                self.0.notify_one();
             }
         }
 
@@ -428,7 +428,7 @@ mod tests {
             let dropped = Arc::clone(&dropped);
             tokio::spawn(async move {
                 let _guard = NotifyOnDrop(dropped);
-                started.notify_waiters();
+                started.notify_one();
                 std::future::pending::<()>().await;
             })
         };
