@@ -463,7 +463,8 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       expect(screen.queryByText("First chat")).not.toBeInTheDocument();
     });
 
-    expect(screen.getByText("Second chat")).toBeInTheDocument();
+    const sidebar = screen.getByLabelText("Sidebar");
+    expect(within(sidebar).getByText("Second chat")).toBeInTheDocument();
   });
 });
 
