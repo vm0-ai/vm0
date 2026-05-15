@@ -240,13 +240,12 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/team/route.ts",
   "app/api/zero/variables/[name]/route.ts",
   "app/api/zero/variables/route.ts",
-  "app/api/zero/voice-chat/token/route.ts",
   "app/api/zero/voice-io/stt/route.ts",
   "app/api/zero/voice-io/tts/route.ts",
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "ce2e63c278bf7ddaecec5c9f8cf6b3417b3cbbcfac4467f97aa5d9d64c19e625";
+  "8226b80efc355a12238bdfcbf578d5fe185236a45a613ea54e4279cca266cb27";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

@@ -43,15 +43,3 @@ export async function createVoiceChatSession(params: {
   }
   return session;
 }
-
-export async function getVoiceChatSession(
-  id: string,
-): Promise<SessionRow | null> {
-  const db = globalThis.services.db;
-  const [session] = await db
-    .select()
-    .from(voiceChatSessions)
-    .where(eq(voiceChatSessions.id, id))
-    .limit(1);
-  return session ?? null;
-}

@@ -25,10 +25,12 @@ const { getPathMatch } =
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_REWRITE_SOURCE =
   "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const VOICE_CHAT_TOKEN_REWRITE_SOURCE = "/api/zero/voice-chat/token";
 const VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE = `${VOICE_CHAT_SESSION_REWRITE_SOURCE}/items`;
 const VOICE_CHAT_TASKS_REWRITE_SOURCE = `${VOICE_CHAT_SESSION_REWRITE_SOURCE}/tasks`;
 const VOICE_CHAT_TRIGGER_REASONING_REWRITE_SOURCE = `${VOICE_CHAT_SESSION_REWRITE_SOURCE}/trigger-reasoning`;
 const VOICE_CHAT_SESSION_PATH = `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}`;
+const VOICE_CHAT_TOKEN_PATH = "/api/zero/voice-chat/token";
 const VOICE_CHAT_ITEM_APPEND_PATH = `${VOICE_CHAT_SESSION_PATH}/items`;
 const VOICE_CHAT_TASKS_PATH = `${VOICE_CHAT_SESSION_PATH}/tasks`;
 const VOICE_CHAT_TRIGGER_REASONING_PATH = `${VOICE_CHAT_SESSION_PATH}/trigger-reasoning`;
@@ -54,7 +56,24 @@ const VOICE_CHAT_TRIGGER_REASONING_NEXT_NEGATIVE_PATHS = [
   VOICE_CHAT_TASKS_PATH,
 ] as const;
 const VOICE_CHAT_SESSION_REWRITE_NEGATIVE_PATHS = [
-  "/api/zero/voice-chat/token",
+  "/api/zero/voice-chat/not-a-uuid",
+] as const;
+const VOICE_CHAT_TOKEN_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token/extra",
+  "/api/zero/voice-chat/token/items",
+  "/api/zero/voice-chat/token/tasks",
+  "/api/zero/voice-chat/token/trigger-reasoning",
+  VOICE_CHAT_SESSION_PATH,
+  VOICE_CHAT_ITEM_APPEND_PATH,
+  VOICE_CHAT_TASKS_PATH,
+  VOICE_CHAT_TRIGGER_REASONING_PATH,
+  "/api/zero/voice-chat/not-a-uuid",
+] as const;
+const VOICE_CHAT_TOKEN_REWRITE_NEGATIVE_PATHS = [
+  "/api/zero/voice-chat/token/extra",
+  "/api/zero/voice-chat/token/items",
+  "/api/zero/voice-chat/token/tasks",
+  "/api/zero/voice-chat/token/trigger-reasoning",
   "/api/zero/voice-chat/not-a-uuid",
 ] as const;
 const VOICE_CHAT_ITEM_APPEND_REWRITE_NEGATIVE_PATHS = [
@@ -66,7 +85,6 @@ const VOICE_CHAT_TASKS_REWRITE_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/not-a-uuid/tasks",
 ] as const;
 const VOICE_CHAT_TRIGGER_REASONING_REWRITE_NEGATIVE_PATHS = [
-  "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/trigger-reasoning",
   "/api/zero/voice-chat/not-a-uuid/trigger-reasoning",
 ] as const;
@@ -321,6 +339,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/voice-chat",
         },
         {
+          source: VOICE_CHAT_TOKEN_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/voice-chat/token",
+        },
+        {
           source: VOICE_CHAT_SESSION_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/voice-chat/:id",
         },
@@ -370,6 +392,29 @@ describe("API backend rewrites", () => {
     expect(matcher(VOICE_CHAT_ITEM_APPEND_PATH)).toBe(false);
     expect(matcher(VOICE_CHAT_TRIGGER_REASONING_PATH)).toBe(false);
     expect(matcher("/api/zero/voice-chat/not-a-uuid")).toBe(false);
+  });
+
+  it("should match only the exact voice-chat token rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === VOICE_CHAT_TOKEN_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: VOICE_CHAT_TOKEN_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/voice-chat/token",
+    });
+
+    const matcher = getPathMatch(VOICE_CHAT_TOKEN_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(VOICE_CHAT_TOKEN_PATH)).toStrictEqual({});
+    for (const pathname of VOICE_CHAT_TOKEN_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only UUID-shaped voice-chat item append rewrites", async () => {
@@ -426,6 +471,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for UUID-shaped voice-chat session detail paths", () => {
     expect(matchesApiBackendRewritePath(VOICE_CHAT_SESSION_PATH)).toBe(true);
     for (const pathname of VOICE_CHAT_SESSION_REWRITE_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact voice-chat token path", () => {
+    expect(matchesApiBackendRewritePath(VOICE_CHAT_TOKEN_PATH)).toBe(true);
+    for (const pathname of VOICE_CHAT_TOKEN_REWRITE_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

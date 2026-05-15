@@ -87,6 +87,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/voice-chat", "/api/zero/voice-chat"],
+  ["/api/zero/voice-chat/token", "/api/zero/voice-chat/token"],
   [
     ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE,
     "/api/zero/voice-chat/:id",

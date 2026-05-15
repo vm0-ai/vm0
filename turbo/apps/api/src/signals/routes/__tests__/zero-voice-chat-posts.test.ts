@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroVoiceChatContract,
   type AppendVoiceChatItemBody,
+  type VoiceChatTokenBody,
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
@@ -61,6 +62,19 @@ async function rawCreateSessionWithoutBody(): Promise<{
   return { status: response.status, body: await response.json() };
 }
 
+async function rawTokenWithoutBody(): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/zero/voice-chat/token", {
+    method: "POST",
+    headers: { authorization: "Bearer clerk-session" },
+  });
+
+  return { status: response.status, body: await response.json() };
+}
+
 async function seedEnabledFixture(
   options: {
     readonly credits?: number;
@@ -86,6 +100,61 @@ async function seedEnabledFixture(
   );
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return { fixture, agentId };
+}
+
+interface OpenAiRealtimeSessionPayload {
+  readonly type?: string;
+  readonly model?: string;
+  readonly reasoning?: unknown;
+  readonly output_modalities?: unknown;
+  readonly instructions?: string;
+  readonly audio?: {
+    readonly input?: {
+      readonly transcription?: unknown;
+      readonly noise_reduction?: unknown;
+      readonly turn_detection?: unknown;
+    };
+    readonly output?: {
+      readonly voice?: string;
+    };
+  };
+  readonly tools?: readonly { readonly name?: string }[];
+}
+
+interface OpenAiClientSecretRequest {
+  readonly session?: OpenAiRealtimeSessionPayload;
+}
+
+function expectDefaultOpenAiSessionPayload(
+  session: OpenAiRealtimeSessionPayload | undefined,
+): void {
+  if (!session) {
+    throw new Error("OpenAI session payload was not captured");
+  }
+  expect(session.type).toBe("realtime");
+  expect(session.model).toBe("gpt-realtime-2");
+  expect(session.reasoning).toStrictEqual({ effort: "low" });
+  expect(session.output_modalities).toStrictEqual(["audio"]);
+  expect(typeof session.instructions).toBe("string");
+  expect(session.instructions).toContain("## Preambles");
+  expect(session.instructions).toContain("## Unclear Audio");
+  expect(session.audio?.input?.transcription).toStrictEqual({
+    model: "gpt-4o-mini-transcribe",
+  });
+  expect(session.audio?.input?.noise_reduction).toStrictEqual({
+    type: "far_field",
+  });
+  expect(session.audio?.input?.turn_detection).toStrictEqual({
+    type: "semantic_vad",
+    eagerness: "medium",
+    interrupt_response: false,
+  });
+  expect(session.audio?.output?.voice).toBe("verse");
+  const toolNames = session.tools?.map((tool) => {
+    return tool.name;
+  });
+  expect(toolNames).toContain("inform_slow_brain");
+  expect(toolNames).toContain("feel_confused");
 }
 
 describe("POST /api/zero/voice-chat (createSession)", () => {
@@ -688,7 +757,118 @@ describe("POST /api/zero/voice-chat/:id/trigger-reasoning", () => {
 });
 
 describe("POST /api/zero/voice-chat/token", () => {
-  it("mints an OpenAI realtime client secret with talker instructions", async () => {
+  it("returns 401 when unauthenticated", async () => {
+    const response = await accept(
+      client().token({
+        headers: {},
+        body: { sessionId: randomUUID() },
+      }),
+      [401],
+    );
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 403 when Trinity is disabled", async () => {
+    const fixture = await track(
+      store.set(seedVoiceChatFixture$, {}, context.signal),
+    );
+    const agentId = await store.set(
+      seedVoiceChatAgent$,
+      fixture,
+      {},
+      context.signal,
+    );
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId },
+      }),
+      [403],
+    );
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 400 when the body is missing", async () => {
+    await seedEnabledFixture();
+
+    const response = await rawTokenWithoutBody();
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
+  it("returns 400 when sessionId is not a uuid", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId: "not-a-uuid" } as unknown as VoiceChatTokenBody,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when noiseReduction is invalid", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: {
+          sessionId: randomUUID(),
+          noiseReduction: "invalid",
+        } as unknown as VoiceChatTokenBody,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 404 when the session does not exist", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId: randomUUID() },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session belongs to a different user or org", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("mints an OpenAI realtime client secret with default talker instructions", async () => {
     mockEnv("OPENAI_API_KEY", "test-openai-key");
     const { fixture, agentId } = await seedEnabledFixture();
     const sessionId = await store.set(
@@ -698,12 +878,46 @@ describe("POST /api/zero/voice-chat/token", () => {
       context.signal,
     );
 
-    let upstreamBody: unknown;
+    let upstreamBody: OpenAiClientSecretRequest | undefined;
     let safetyIdentifier: string | null = null;
     server.use(
       http.post(OPENAI_REALTIME_CLIENT_SECRETS_URL, async ({ request }) => {
-        upstreamBody = await request.json();
+        upstreamBody = (await request.json()) as OpenAiClientSecretRequest;
         safetyIdentifier = request.headers.get("OpenAI-Safety-Identifier");
+        return HttpResponse.json({
+          value: "ek_test",
+          expires_at: 999_999,
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId },
+      }),
+      [200],
+    );
+    expect(response.body.client_secret.value).toBe("ek_test");
+    expect(safetyIdentifier).toHaveLength(64);
+    expect(safetyIdentifier).not.toBe(fixture.userId);
+    expectDefaultOpenAiSessionPayload(upstreamBody?.session);
+  });
+
+  it("threads near_field noiseReduction through to the upstream body", async () => {
+    mockEnv("OPENAI_API_KEY", "test-openai-key");
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+
+    let upstreamBody: OpenAiClientSecretRequest | undefined;
+    server.use(
+      http.post(OPENAI_REALTIME_CLIENT_SECRETS_URL, async ({ request }) => {
+        upstreamBody = (await request.json()) as OpenAiClientSecretRequest;
         return HttpResponse.json({
           value: "ek_test",
           expires_at: 999_999,
@@ -719,9 +933,37 @@ describe("POST /api/zero/voice-chat/token", () => {
       [200],
     );
     expect(response.body.client_secret.value).toBe("ek_test");
-    expect(safetyIdentifier).toHaveLength(64);
-    expect(JSON.stringify(upstreamBody)).toContain("inform_slow_brain");
-    expect(JSON.stringify(upstreamBody)).toContain("near_field");
+    expect(upstreamBody?.session?.audio?.input?.noise_reduction).toStrictEqual({
+      type: "near_field",
+    });
+  });
+
+  it("returns 500 when OpenAI returns an error", async () => {
+    mockEnv("OPENAI_API_KEY", "test-openai-key");
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    server.use(
+      http.post(OPENAI_REALTIME_CLIENT_SECRETS_URL, () => {
+        return HttpResponse.json(
+          { error: { message: "bad" } },
+          { status: 400 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId },
+      }),
+      [500],
+    );
+    expect(response.body.error.code).toBe("INTERNAL_SERVER_ERROR");
   });
 
   it("returns 402 before minting when realtime billing is enabled without credits", async () => {
@@ -745,5 +987,37 @@ describe("POST /api/zero/voice-chat/token", () => {
       [402],
     );
     expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("mints after realtime billing credit and pricing admission passes", async () => {
+    mockEnv("OPENAI_API_KEY", "test-openai-key");
+    const { fixture, agentId } = await seedEnabledFixture({
+      credits: 1000,
+      realtimeBillingEnabled: true,
+    });
+    await store.set(seedVoiceChatRealtimePricing$, context.signal);
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    server.use(
+      http.post(OPENAI_REALTIME_CLIENT_SECRETS_URL, () => {
+        return HttpResponse.json({
+          value: "ek_admitted",
+          expires_at: 999_999,
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().token({
+        headers: authHeaders(),
+        body: { sessionId },
+      }),
+      [200],
+    );
+    expect(response.body.client_secret.value).toBe("ek_admitted");
   });
 });
