@@ -1664,6 +1664,42 @@ fn process_control_rejects_nonce_mismatch() {
 }
 
 #[test]
+fn process_control_without_registered_nonce_returns_inactive() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_spawn_process(&mut host_stream, 37, "sleep 60", None, 5000);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 37);
+
+    send_process_control(&mut host_stream, 38, 37, NONCE, "message-4");
+    assert_process_control_result(
+        &mut host_stream,
+        38,
+        37,
+        NONCE,
+        "message-4",
+        ProcessControlStatus::Inactive,
+        "process operation is not active",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
+#[test]
 fn process_control_after_exit_returns_inactive() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
