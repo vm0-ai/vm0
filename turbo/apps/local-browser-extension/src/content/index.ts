@@ -59,10 +59,10 @@ async function sendToBackground(
 }
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
-  if (event.source && event.source !== window) {
+  if (event.source !== window) {
     return;
   }
-  if (event.origin && event.origin !== window.location.origin) {
+  if (event.origin !== window.location.origin) {
     return;
   }
   if (!isBridgeRequest(event.data)) {

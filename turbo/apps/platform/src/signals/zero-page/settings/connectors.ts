@@ -694,10 +694,10 @@ function sendLocalBrowserExtensionRequest(
   }
 
   function onMessage(event: MessageEvent<unknown>) {
-    if (event.source && event.source !== window) {
+    if (event.source !== window) {
       return;
     }
-    if (event.origin && event.origin !== window.location.origin) {
+    if (event.origin !== window.location.origin) {
       return;
     }
     const response = parseLocalBrowserExtensionResponse(event.data, requestId);
