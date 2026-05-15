@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
-    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SPAWN_PROCESS, MSG_WRITE_FILE,
+    MSG_PROCESS_CONTROL, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
+    MSG_SPAWN_PROCESS, MSG_WRITE_FILE,
 };
 
 use crate::error::to_io_error;
@@ -20,6 +21,7 @@ use crate::handlers::{
 };
 use crate::log::log;
 use crate::monitor::{SpawnProcessRequest, handle_spawn_process};
+use crate::process_control::{ProcessControlRegistry, handle_process_control};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -204,6 +206,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
     let exec_operation_registry = ExecOperationRegistry::default();
+    let process_control_registry = ProcessControlRegistry::default();
     let operation_state = OperationState::default();
 
     let mut decoder = vsock_proto::Decoder::new();
@@ -270,6 +273,9 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 else {
                     continue;
                 };
+                let process_control_guard = d
+                    .control_nonce
+                    .map(|nonce| process_control_registry.register(msg.seq, nonce));
                 // handle_spawn_process writes the response itself (before
                 // spawning the streaming thread) to prevent a race where
                 // stdout chunks could arrive at the host before the result.
@@ -281,12 +287,15 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         sudo: d.sudo,
                         stream_stdout: d.stream_stdout,
                         stdout_log_path: d.stdout_log_path,
+                        process_control_guard,
                     },
                     msg.seq,
                     operation_guard,
                     writer.clone(),
                     connection_cancel.clone(),
                 )?;
+            } else if msg.msg_type == MSG_PROCESS_CONTROL {
+                handle_process_control(msg.seq, &msg.payload, &process_control_registry, &writer)?;
             } else if msg.msg_type == MSG_WRITE_FILE {
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
                     continue;

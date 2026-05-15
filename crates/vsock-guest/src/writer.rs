@@ -45,6 +45,23 @@ impl GuestWriter {
         self.write_frame_with_deadline_after_lock(frame, WRITE_DEADLINE, after_lock)
     }
 
+    /// Build and send one frame while holding the writer mutex.
+    ///
+    /// Control paths that derive the response from operation state use this so
+    /// the state check and frame ordering are linearized with terminal frames.
+    pub(crate) fn write_generated_frame_after_lock<F>(&self, build_frame: F) -> io::Result<()>
+    where
+        F: FnOnce() -> io::Result<Vec<u8>>,
+    {
+        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        let frame = build_frame()?;
+        let result = send_frame(stream.as_raw_fd(), &frame, WRITE_DEADLINE);
+        if result.is_err() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        result
+    }
+
     fn write_frame_with_deadline_after_lock<F>(
         &self,
         frame: &[u8],

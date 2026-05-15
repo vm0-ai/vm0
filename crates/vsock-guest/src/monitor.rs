@@ -10,6 +10,7 @@ use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{ChildReapGuard, kill_and_reap_child};
+use crate::process_control::ProcessControlGuard;
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     EnvScriptGuard, SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -38,6 +39,7 @@ struct StreamingMonitorRequest {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
 }
 
 struct BufferedMonitorRequest {
@@ -49,6 +51,7 @@ struct BufferedMonitorRequest {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
 }
 
 struct StreamingSetupFailure {
@@ -62,6 +65,7 @@ struct StreamingSetupFailure {
     env_script: Option<EnvScriptGuard>,
     writer: GuestWriter,
     operation_guard: OperationGuard,
+    process_control_guard: Option<ProcessControlGuard>,
     error: String,
 }
 
@@ -72,6 +76,7 @@ pub(crate) struct SpawnProcessRequest<'a> {
     pub(crate) sudo: bool,
     pub(crate) stream_stdout: bool,
     pub(crate) stdout_log_path: Option<&'a str>,
+    pub(crate) process_control_guard: Option<ProcessControlGuard>,
 }
 
 /// Handle spawn_process: spawn the child, write `MSG_SPAWN_PROCESS_RESULT` over
@@ -113,27 +118,40 @@ fn handle_spawn_process_with_spawner<S>(
 where
     S: ThreadSpawner,
 {
+    let SpawnProcessRequest {
+        timeout_ms,
+        command,
+        env,
+        sudo,
+        stream_stdout,
+        stdout_log_path,
+        process_control_guard,
+    } = request;
+
     log(
         "INFO",
         &format!(
             "spawn_process: {} (timeout={}ms, sudo={}, stream={}, {})",
-            truncate_command_preview(request.command),
-            request.timeout_ms,
-            request.sudo,
-            request.stream_stdout,
-            format_env_diagnostics(request.command, request.env),
+            truncate_command_preview(command),
+            timeout_ms,
+            sudo,
+            stream_stdout,
+            format_env_diagnostics(command, env),
         ),
     );
 
-    let spawned = match spawn_shell_command_with_pipes(request.command, request.env, request.sudo) {
+    let spawned = match spawn_shell_command_with_pipes(command, env, sudo) {
         Ok(c) => c,
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!(
                 "Failed to spawn: {e} ({})",
-                format_env_diagnostics(request.command, request.env)
+                format_env_diagnostics(command, env)
             ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
             let result = writer.write_frame_after_lock(&response, || {
+                if let Some(guard) = process_control_guard {
+                    guard.release();
+                }
                 operation_guard.release();
             });
             result?;
@@ -162,17 +180,23 @@ where
         Ok(r) => r,
         Err(e) => {
             kill_and_reap_child(child);
+            if let Some(guard) = process_control_guard {
+                guard.release();
+            }
             operation_guard.release();
             return Err(to_io_error(e));
         }
     };
     if let Err(e) = writer.write_frame(&response) {
         kill_and_reap_child(child);
+        if let Some(guard) = process_control_guard {
+            guard.release();
+        }
         operation_guard.release();
         return Err(e);
     }
 
-    if request.stream_stdout {
+    if stream_stdout {
         // Streaming mode: stream stdout to vsock chunks, optionally teeing to a guest file.
         // Take stdout from child so we can read it in a separate thread.
         let stdout_pipe = child.stdout.take();
@@ -181,13 +205,14 @@ where
                 seq,
                 pid,
                 child,
-                timeout_ms: request.timeout_ms,
+                timeout_ms,
                 stdout_pipe,
-                log_path: request.stdout_log_path.map(str::to_owned),
+                log_path: stdout_log_path.map(str::to_owned),
                 env_script,
                 writer,
                 connection_cancel,
                 operation_guard: operation_guard.clone(),
+                process_control_guard,
             },
             spawner,
         ) {
@@ -204,11 +229,12 @@ where
                 seq,
                 pid,
                 child,
-                timeout_ms: request.timeout_ms,
+                timeout_ms,
                 env_script,
                 writer,
                 connection_cancel,
                 operation_guard: operation_guard.clone(),
+                process_control_guard,
             },
             spawner,
         ) {
@@ -253,6 +279,7 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let monitor_spawner = spawner.clone();
@@ -280,6 +307,7 @@ where
                     writer,
                     connection_cancel,
                     operation_guard: monitor_operation_guard,
+                    process_control_guard,
                 },
                 monitor_spawner,
             );
@@ -314,6 +342,7 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let _env_script = env_script;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -350,6 +379,7 @@ where
                     env_script: _env_script,
                     writer,
                     operation_guard: operation_guard.clone(),
+                    process_control_guard,
                     error: format!("Failed to spawn stderr drain thread: {e}"),
                 });
                 return;
@@ -432,6 +462,7 @@ where
                     env_script: _env_script,
                     writer,
                     operation_guard: operation_guard.clone(),
+                    process_control_guard,
                     error: format!("Failed to spawn stdout drain thread: {e}"),
                 });
                 return;
@@ -487,6 +518,9 @@ where
     );
 
     send_process_exit_after_lock(seq, pid, exit_code, &[], &stderr, &writer, || {
+        if let Some(guard) = process_control_guard {
+            guard.release();
+        }
         operation_guard.release();
     });
 }
@@ -503,6 +537,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         env_script,
         writer,
         operation_guard,
+        process_control_guard,
         error,
     } = failure;
     let _env_script = env_script;
@@ -516,6 +551,9 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         let _ = handle.join();
     }
     send_process_exit_after_lock(seq, pid, 1, &[], error.as_bytes(), &writer, || {
+        if let Some(guard) = process_control_guard {
+            guard.release();
+        }
         operation_guard.release();
     });
 }
@@ -535,6 +573,7 @@ where
         writer,
         connection_cancel,
         operation_guard,
+        process_control_guard,
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let exit_writer = writer.clone();
@@ -571,6 +610,9 @@ where
             );
 
             send_process_exit_after_lock(seq, pid, exit_code, &stdout, &stderr, &writer, || {
+                if let Some(guard) = process_control_guard {
+                    guard.release();
+                }
                 monitor_operation_guard.release();
             });
             drop(env_script);
@@ -663,6 +705,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             7,
             operation_guard(),
@@ -708,6 +751,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             8,
             operation_guard(),
@@ -753,6 +797,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: true,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             10,
             operation_guard(),
@@ -798,6 +843,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: false,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             9,
             operation_guard(),
@@ -843,6 +889,7 @@ mod tests {
                 sudo: false,
                 stream_stdout: false,
                 stdout_log_path: None,
+                process_control_guard: None,
             },
             11,
             operation_guard(),

@@ -3653,6 +3653,7 @@ dependencies = [
  "nix",
  "tokio",
  "tracing",
+ "uuid",
  "vsock-proto",
 ]
 
