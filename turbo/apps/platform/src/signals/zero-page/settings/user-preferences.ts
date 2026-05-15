@@ -26,7 +26,9 @@ export const reloadUserPreferences$ = command(({ set }) => {
 export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
-  const client = createClient(zeroUserPreferencesContract);
+  const client = createClient(zeroUserPreferencesContract, {
+    apiBase: "api",
+  });
   const result = await accept(client.get(), [200]);
   return result.body;
 });
@@ -42,7 +44,9 @@ export const updateUserPreference$ = command(
     _signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroUserPreferencesContract);
+    const client = createClient(zeroUserPreferencesContract, {
+      apiBase: "api",
+    });
     await accept(
       client.update({
         body: update,
