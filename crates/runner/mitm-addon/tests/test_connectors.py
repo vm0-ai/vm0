@@ -1280,6 +1280,7 @@ class TestGetFirewallHeaders:
             None,
             None,
             None,
+            False,
             force_refresh=False,
         )
 
@@ -1366,6 +1367,132 @@ class TestGetFirewallHeaders:
         assert headers["headers"] == cached_headers
         assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
+
+    async def test_billable_cache_hit_requires_valid_expiry(self, headers):
+        cache_key = ("run-1", "api-1")
+        cached_headers = {"Authorization": "Bearer cached-token"}
+        auth._firewall_header_cache[cache_key] = {
+            "headers": cached_headers,
+            "expiresAt": time.time() + 30,
+        }
+
+        mock_fetch = AsyncMock()
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
+                "run-1",
+                "api-1",
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                firewall_billable=True,
+            )
+
+        assert headers["headers"] == cached_headers
+        assert headers["cache_hit"] is True
+        mock_fetch.assert_not_called()
+
+    @pytest.mark.parametrize("expiry", [None, True, "123", float("inf"), float("nan")])
+    def test_expiry_validation_rejects_invalid_values(self, expiry):
+        assert auth._has_valid_expiry(expiry, now=time.time()) is False
+
+    @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
+    async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
+        cache_key = ("run-1", "api-1")
+        auth._firewall_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer malformed-token"},
+            "expiresAt": expiry,
+        }
+        fresh_headers = {"Authorization": "Bearer fresh-token"}
+        mock_fetch = AsyncMock(return_value={"headers": fresh_headers, "expiresAt": None})
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
+
+        assert headers["headers"] == fresh_headers
+        assert headers["cache_hit"] is False
+        mock_fetch.assert_called_once()
+
+    async def test_billable_cache_without_expiry_refetches(self, headers):
+        cache_key = ("run-1", "api-1")
+        auth._firewall_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer stale-token"},
+            "expiresAt": None,
+        }
+        fresh_headers = {"Authorization": "Bearer fresh-token"}
+        expires_at = time.time() + 30
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": fresh_headers,
+                "expiresAt": expires_at,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
+                "run-1",
+                "api-1",
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                firewall_billable=True,
+            )
+
+        assert headers["headers"] == fresh_headers
+        assert headers["cache_hit"] is False
+        mock_fetch.assert_called_once()
+        assert mock_fetch.call_args.args[8] is True
+        assert auth._firewall_header_cache[cache_key]["expiresAt"] == expires_at
+
+    async def test_billable_cache_with_expired_expiry_refetches(self, headers):
+        cache_key = ("run-1", "api-1")
+        auth._firewall_header_cache[cache_key] = {
+            "headers": {"Authorization": "Bearer stale-token"},
+            "expiresAt": time.time() - 1,
+        }
+        fresh_headers = {"Authorization": "Bearer fresh-token"}
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": fresh_headers,
+                "expiresAt": time.time() + 30,
+            }
+        )
+
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
+                "run-1",
+                "api-1",
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                firewall_billable=True,
+            )
+
+        assert headers["headers"] == fresh_headers
+        assert headers["cache_hit"] is False
+        mock_fetch.assert_called_once()
+
+    async def test_billable_fetch_without_expiry_fails_closed(self, headers):
+        mock_fetch = AsyncMock(
+            return_value={
+                "headers": {"Authorization": "Bearer token"},
+                "expiresAt": None,
+            }
+        )
+
+        with (
+            patch.object(auth, "fetch_firewall_headers", mock_fetch),
+            pytest.raises(auth.MissingAuthExpiryError),
+        ):
+            await auth.get_firewall_headers(
+                "run-1",
+                "api-1",
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                firewall_billable=True,
+            )
 
     async def test_cache_hit_includes_base_when_present(self, headers):
         """Cached entry with 'base' returns it on cache hit."""
@@ -1821,6 +1948,34 @@ class TestFetchFirewallHeaders:
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
+    def test_includes_billable_firewall_flag_in_request_body(self, headers):
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = json.dumps(
+            {
+                "headers": {},
+                "expiresAt": time.time() + 30,
+            }
+        ).encode()
+
+        with (
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "https://api.vm0.ai",
+                firewall_billable=True,
+            )
+
+        body = json.loads(mock_req_cls.call_args[1]["data"])
+        assert body["firewallBillable"] is True
+        assert "firewallName" not in body
+        assert "modelUsageProvider" not in body
+
     def test_424_connector_not_configured_raises_custom_error(self):
         """Auth endpoint 424 CONNECTOR_NOT_CONFIGURED raises ConnectorNotConfiguredError."""
         error_body = json.dumps(
@@ -1849,6 +2004,34 @@ class TestFetchFirewallHeaders:
                     "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
                 )
             assert "Connector not configured" in str(exc_info.value)
+
+    def test_402_insufficient_credits_raises_custom_error(self):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Insufficient credits",
+                    "code": "INSUFFICIENT_CREDITS",
+                }
+            }
+        ).encode()
+        http_error = urllib.error.HTTPError(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            402,
+            "Payment Required",
+            {},
+            io.BytesIO(error_body),
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            with pytest.raises(auth.InsufficientCreditsError) as exc_info:
+                auth._fetch_firewall_headers_sync(
+                    "iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai"
+                )
+            assert "Insufficient credits" in str(exc_info.value)
 
     def test_non_connector_not_configured_error_reraised(self):
         """Non-CONNECTOR_NOT_CONFIGURED HTTP errors should be re-raised as HTTPError."""

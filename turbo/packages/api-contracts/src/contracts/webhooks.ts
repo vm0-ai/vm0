@@ -135,6 +135,9 @@ const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),
   base: z.string().optional(),
   query: z.record(z.string(), z.string()).optional(),
+  // Effective addon cache expiry as Unix seconds. OAuth token expiry is the
+  // normal source; billable firewall auth can shorten it to force credit
+  // re-authorization. Null means non-expiring only for non-billable auth.
   expiresAt: z.number().nullable(),
   resolvedSecrets: z.array(z.string()),
   refreshedConnectors: z.array(z.string()),
@@ -158,12 +161,16 @@ export const webhookFirewallAuthContract = c.router({
       secretConnectorMap: z.record(z.string(), z.string()).optional(),
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
+      // Set by mitm from billableFirewalls. Server uses this only to bound
+      // auth cache lifetime by the current credit authorization lease.
+      firewallBillable: z.boolean().optional(),
       forceRefresh: z.boolean().optional(),
     }),
     responses: {
       200: firewallAuthResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       424: firewallAuthErrorSchema,
       502: firewallAuthErrorSchema,

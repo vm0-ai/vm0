@@ -6,6 +6,7 @@ both standard header injection and auth.base URL rewriting.
 
 import asyncio
 import json
+import math
 import os
 import time
 import urllib.error
@@ -22,10 +23,23 @@ class ConnectorNotConfiguredError(Exception):
     """Raised when the auth endpoint returns 424 — connector not linked or misconfigured."""
 
 
+class InsufficientCreditsError(Exception):
+    """Raised when the auth endpoint denies billable firewall auth for credits."""
+
+
+class MissingAuthExpiryError(Exception):
+    """Raised when billable firewall auth succeeds without a valid cache expiry."""
+
+
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 
 # Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict, "expiresAt": float | None}
+#
+# expiresAt is the effective cache expiry returned by the server. For
+# non-billable auth it is just the auth-token expiry and may be None. For
+# billable auth it must be finite because the server folds the credit
+# authorization lease into this timestamp.
 _firewall_header_cache: dict[tuple[str, str], dict] = {}
 
 # Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
@@ -138,6 +152,7 @@ def _fetch_firewall_headers_sync(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
@@ -157,6 +172,8 @@ def _fetch_firewall_headers_sync(
         body["secretConnectorMetadataMap"] = secret_connector_metadata_map
     if vars_map:
         body["vars"] = vars_map
+    if firewall_billable:
+        body["firewallBillable"] = True
     if force_refresh:
         body["forceRefresh"] = True
     data = json.dumps(body).encode()
@@ -185,6 +202,10 @@ def _fetch_firewall_headers_sync(
                 raise ConnectorNotConfiguredError(
                     error_info.get("message", "Connector not configured"),
                 ) from None
+            if error_info.get("code") == "INSUFFICIENT_CREDITS":
+                raise InsufficientCreditsError(
+                    error_info.get("message", "Insufficient credits"),
+                ) from None
             raise
 
 
@@ -197,12 +218,15 @@ async def fetch_firewall_headers(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    firewall_billable: bool = False,
     force_refresh: bool = False,
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
     When secret_connector_map is provided, the auth endpoint can refresh
     expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+    For billable firewall auth, expiresAt is also bounded by the server-side
+    credit authorization lease.
 
     When force_refresh is True, the endpoint refreshes OAuth tokens regardless
     of DB tokenExpiresAt — used after the upstream returns 401 (#9860).
@@ -221,6 +245,7 @@ async def fetch_firewall_headers(
         vars_map,
         auth_base,
         auth_query,
+        firewall_billable,
         force_refresh,
     )
 
@@ -311,18 +336,30 @@ async def forward_request(
     return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
 
 
-def _build_cache_hit(cached: dict) -> dict | None:
+def _has_valid_expiry(value: object, now: float | None = None) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    if not math.isfinite(value):
+        return False
+    return (time.time() if now is None else now) < value
+
+
+def _build_cache_hit(cached: dict, firewall_billable: bool = False) -> dict | None:
     """Check if a cached entry is still valid and return a cache-hit result."""
     expires_at = cached.get("expiresAt")
-    if expires_at is None or time.time() < expires_at:
-        return {
-            "headers": cached["headers"],
-            "resolved_secrets": cached.get("resolvedSecrets", []),
-            "cache_hit": True,
-            **({"base": cached["base"]} if "base" in cached else {}),
-            **({"query": cached["query"]} if "query" in cached else {}),
-        }
-    return None
+    now = time.time()
+    if expires_at is None:
+        if firewall_billable:
+            return None
+    elif not _has_valid_expiry(expires_at, now):
+        return None
+    return {
+        "headers": cached["headers"],
+        "resolved_secrets": cached.get("resolvedSecrets", []),
+        "cache_hit": True,
+        **({"base": cached["base"]} if "base" in cached else {}),
+        **({"query": cached["query"]} if "query" in cached else {}),
+    }
 
 
 async def get_firewall_headers(
@@ -336,6 +373,7 @@ async def get_firewall_headers(
     vars_map: dict | None = None,
     auth_base: str | None = None,
     auth_query: dict | None = None,
+    firewall_billable: bool = False,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
@@ -352,7 +390,7 @@ async def get_firewall_headers(
     # Fast path: cache hit (no lock needed — single-threaded event loop)
     cached = _firewall_header_cache.get(cache_key)
     if cached:
-        hit = _build_cache_hit(cached)
+        hit = _build_cache_hit(cached, firewall_billable=firewall_billable)
         if hit:
             return hit
 
@@ -362,7 +400,7 @@ async def get_firewall_headers(
         # Double-check: another coroutine may have populated cache while we waited
         cached = _firewall_header_cache.get(cache_key)
         if cached:
-            hit = _build_cache_hit(cached)
+            hit = _build_cache_hit(cached, firewall_billable=firewall_billable)
             if hit:
                 return hit
 
@@ -386,8 +424,13 @@ async def get_firewall_headers(
             vars_map,
             auth_base,
             auth_query,
+            firewall_billable,
             force_refresh=force_refresh,
         )
+        if firewall_billable and not _has_valid_expiry(result.get("expiresAt")):
+            raise MissingAuthExpiryError(
+                "Billable firewall auth response did not include a valid cache expiry"
+            )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])
         cache_entry: dict = {
@@ -491,6 +534,7 @@ async def handle_firewall_request(
             vars_map,
             auth_base,
             auth_query,
+            flow.metadata["firewall_billable"],
         )
     except ConnectorNotConfiguredError as e:
         fw_name = match_info.get("name", "")
@@ -514,6 +558,29 @@ async def handle_firewall_request(
         flow.response = http.Response.make(
             424,
             json.dumps(error_body).encode(),
+            {"Content-Type": "application/json"},
+        )
+        return
+    except InsufficientCreditsError as e:
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            f"Billable firewall auth denied for {firewall_base}: {e}",
+            type="firewall",
+            firewall_base=firewall_base,
+        )
+        flow.metadata["firewall_action"] = "BLOCK"
+        flow.metadata["firewall_error"] = "insufficient_credits"
+        flow.response = http.Response.make(
+            402,
+            json.dumps(
+                {
+                    "error": "insufficient_credits",
+                    "message": str(e),
+                    "permission": match_info.get("name", ""),
+                    "base": firewall_base,
+                }
+            ).encode(),
             {"Content-Type": "application/json"},
         )
         return

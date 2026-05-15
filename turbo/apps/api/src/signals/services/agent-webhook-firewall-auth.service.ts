@@ -14,7 +14,7 @@ import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
@@ -25,11 +25,16 @@ import {
   decryptSecretsMap,
   encryptSecretValue,
 } from "./crypto.utils";
+import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
 type ProviderHandler =
   (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS];
+
+const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
+const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
+const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 
 interface FirewallAuthBody {
   readonly encryptedSecrets: string;
@@ -39,6 +44,7 @@ interface FirewallAuthBody {
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
   readonly vars?: Record<string, string>;
+  readonly firewallBillable?: boolean;
   readonly forceRefresh?: boolean;
 }
 
@@ -64,6 +70,49 @@ interface ResolveResult {
     readonly resolvedSecrets: readonly string[];
     readonly refreshedConnectors: readonly string[];
     readonly refreshedSecrets: readonly string[];
+  };
+}
+
+function mergeExpiresAt(
+  expiresAt: number | null,
+  additionalExpiresAt: number | undefined,
+): number | null {
+  if (additionalExpiresAt === undefined) {
+    return expiresAt;
+  }
+  if (expiresAt === null) {
+    return additionalExpiresAt;
+  }
+  return Math.min(expiresAt, additionalExpiresAt);
+}
+
+async function resolveBillableFirewallCacheExpiry(params: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly firewallBillable: boolean | undefined;
+}): Promise<
+  { readonly expiresAt?: number } | ReturnType<typeof insufficientCredits>
+> {
+  if (params.firewallBillable !== true) {
+    return {};
+  }
+
+  const availability = await resolveOrgCreditAvailability({
+    db: params.db,
+    orgId: params.auth.orgId,
+    userId: params.auth.userId,
+  });
+  if (!availability) {
+    return insufficientCredits();
+  }
+
+  const leaseSeconds =
+    availability.spendableCredits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
+      ? LOW_BILLABLE_FIREWALL_LEASE_SECONDS
+      : NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS;
+
+  return {
+    expiresAt: Math.floor(nowDate().getTime() / 1000) + leaseSeconds,
   };
 }
 
@@ -1100,7 +1149,7 @@ export async function resolveFirewallAuth(
   | ResolveResult
   | ReturnType<typeof badRequestMessage>
   | {
-      readonly status: 403 | 424 | 502;
+      readonly status: 402 | 403 | 424 | 502;
       readonly body: {
         readonly error: {
           readonly message: string;
@@ -1144,31 +1193,41 @@ export async function resolveFirewallAuth(
     };
   }
 
+  if (
+    body.secretConnectorMap &&
+    hasForbiddenModelProviderOwner(
+      auth,
+      body.secretConnectorMap,
+      body.secretConnectorMetadataMap,
+      referenced.secrets,
+    )
+  ) {
+    return {
+      status: 403,
+      body: {
+        error: {
+          message: "Invalid model-provider secret owner",
+          code: "FORBIDDEN",
+        },
+      },
+    };
+  }
+
+  const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
+    db,
+    auth,
+    firewallBillable: body.firewallBillable,
+  });
+  if ("status" in billableCacheExpiry) {
+    return billableCacheExpiry;
+  }
+
   let expiresAt: number | null = null;
   let refreshedConnectors: readonly string[] = [];
   let refreshedSecrets: readonly string[] = [];
   let failedConnectors: readonly string[] = [];
 
   if (body.secretConnectorMap) {
-    if (
-      hasForbiddenModelProviderOwner(
-        auth,
-        body.secretConnectorMap,
-        body.secretConnectorMetadataMap,
-        referenced.secrets,
-      )
-    ) {
-      return {
-        status: 403,
-        body: {
-          error: {
-            message: "Invalid model-provider secret owner",
-            code: "FORBIDDEN",
-          },
-        },
-      };
-    }
-
     const result = await refreshExpiredTokens({
       db,
       auth,
@@ -1211,7 +1270,7 @@ export async function resolveFirewallAuth(
       headers: resolved.headers,
       base: resolved.base,
       query: resolved.query,
-      expiresAt,
+      expiresAt: mergeExpiresAt(expiresAt, billableCacheExpiry.expiresAt),
       resolvedSecrets: resolved.resolvedSecrets,
       refreshedConnectors,
       refreshedSecrets,

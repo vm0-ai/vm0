@@ -5,7 +5,6 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
-  createTestSandboxToken,
   insertTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
   findTestConnectorSecret,
@@ -13,6 +12,8 @@ import {
   setTestModelProviderTokenExpiresAt,
   insertUserMultiAuthModelProvider,
   ORG_SENTINEL_USER_ID,
+  insertOrgMembersEntry,
+  setOrgCredits,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -22,6 +23,7 @@ import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { encryptSecretsMap } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { insertTestUserModelProviderSecret } from "../../../../../../../src/__tests__/db-test-seeders/secrets";
+import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -62,7 +64,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
-    testToken = await createTestSandboxToken(user.userId, testRunId);
+    testToken = await generateSandboxToken(user.userId, testRunId, user.orgId);
 
     mockClerk({ userId: null });
   });
@@ -403,6 +405,98 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers.Authorization).toBe("Bearer ghp_test_token_123");
+    });
+  });
+
+  describe("Billable auth expiry", () => {
+    it("should bound expiresAt when billable firewall credits are available", async () => {
+      await setOrgCredits(user.orgId, 10_000);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditEnabled: true,
+      });
+
+      const encrypted = encryptTestSecrets({
+        API_TOKEN: "secret-token",
+      });
+      const before = Math.floor(Date.now() / 1000);
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+            },
+            firewallBillable: true,
+          },
+          testToken,
+        ),
+      );
+
+      const after = Math.floor(Date.now() / 1000);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer secret-token");
+      expect(data.expiresAt).toBeGreaterThan(before);
+      expect(data.expiresAt).toBeLessThanOrEqual(after + 30);
+    });
+
+    it("should allow billable firewall auth when member credit metadata is absent", async () => {
+      await setOrgCredits(user.orgId, 10_000);
+
+      const encrypted = encryptTestSecrets({
+        API_TOKEN: "secret-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+            },
+            firewallBillable: true,
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer secret-token");
+      expect(data.expiresAt).toBeTypeOf("number");
+    });
+
+    it("should deny billable firewall auth when credits are exhausted", async () => {
+      await setOrgCredits(user.orgId, 0);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditEnabled: true,
+      });
+
+      const encrypted = encryptTestSecrets({
+        API_TOKEN: "secret-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+            },
+            firewallBillable: true,
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(402);
+      const data = await response.json();
+      expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
     });
   });
 
@@ -926,6 +1020,104 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const nowEpoch = Math.floor(Date.now() / 1000);
       expect(data.expiresAt).toBeGreaterThan(nowEpoch + 3500);
       expect(data.expiresAt).toBeLessThanOrEqual(nowEpoch + 3600);
+    });
+
+    it("should use OAuth token expiry when it is earlier than billable credit lease", async () => {
+      await setOrgCredits(user.orgId, 10_000);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditEnabled: true,
+      });
+      await setupNotionConnector({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "short-lived-notion-token",
+            expires_in: 10,
+          });
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+      const before = Math.floor(Date.now() / 1000);
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+            firewallBillable: true,
+          },
+          testToken,
+        ),
+      );
+
+      const after = Math.floor(Date.now() / 1000);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe(
+        "Bearer short-lived-notion-token",
+      );
+      expect(data.expiresAt).toBeGreaterThan(before);
+      expect(data.expiresAt).toBeLessThanOrEqual(after + 10);
+    });
+
+    it("should use billable credit lease when it is earlier than OAuth token expiry", async () => {
+      await setOrgCredits(user.orgId, 10_000);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditEnabled: true,
+      });
+      await setupNotionConnector({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "long-lived-notion-token",
+            expires_in: 3600,
+          });
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+      const before = Math.floor(Date.now() / 1000);
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+            firewallBillable: true,
+          },
+          testToken,
+        ),
+      );
+
+      const after = Math.floor(Date.now() / 1000);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer long-lived-notion-token");
+      expect(data.expiresAt).toBeGreaterThan(before);
+      expect(data.expiresAt).toBeLessThanOrEqual(after + 30);
     });
 
     it("should proactively refresh token expiring within 60s buffer", async () => {
@@ -1734,7 +1926,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(row!.lastRefreshErrorCode).toBeNull();
     });
 
-    it("rejects forged personal codex-oauth-token owner metadata", async () => {
+    it("rejects forged personal codex-oauth-token owner metadata before billable credit auth", async () => {
       const encrypted = encryptTestSecrets({
         CHATGPT_ACCESS_TOKEN: "old-personal-chatgpt-at",
       });
@@ -1754,6 +1946,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
                 metadataKey: "codex-oauth-token",
               },
             },
+            firewallBillable: true,
           },
           testToken,
         ),

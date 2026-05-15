@@ -21,6 +21,11 @@ import {
 } from "../../../../../../src/lib/zero/handler-key-bridge";
 import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/zero/org/org-sentinel";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
+import { resolveOrgCreditAvailability } from "../../../../../../src/lib/zero/credit/check-org-credits";
+
+const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
+const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
+const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
@@ -39,6 +44,7 @@ const bodySchema = z.object({
     )
     .optional(),
   vars: z.record(z.string(), z.string()).optional(),
+  firewallBillable: z.boolean().optional(),
   // Set by the mitm addon after an upstream 401 so the refresh filter
   // below overrides DB tokenExpiresAt. Covers the case where the provider
   // silently invalidates a token while DB expiry is still in the future
@@ -120,6 +126,19 @@ interface RefreshResult {
   refreshedConnectors: string[];
   refreshedSecrets: string[];
   failedConnectors: string[];
+}
+
+function mergeExpiresAt(
+  expiresAt: number | null,
+  additionalExpiresAt: number | undefined,
+): number | null {
+  if (additionalExpiresAt === undefined) {
+    return expiresAt;
+  }
+  if (expiresAt === null) {
+    return additionalExpiresAt;
+  }
+  return Math.min(expiresAt, additionalExpiresAt);
 }
 
 /**
@@ -596,8 +615,12 @@ function resolveTemplates(
  *
  * Auth: Sandbox JWT
  * Body: { encryptedSecrets, authHeaders, authBase?, authQuery?, secretConnectorMap?,
- *         secretConnectorMetadataMap?, vars?, forceRefresh? }
- * Response: { headers, base?, query?, expiresAt?, resolvedSecrets, refreshedConnectors, refreshedSecrets }
+ *         secretConnectorMetadataMap?, vars?, firewallBillable?, forceRefresh? }
+ * Response: { headers, base?, query?, expiresAt?,
+ *             resolvedSecrets, refreshedConnectors, refreshedSecrets }
+ *           where expiresAt is the effective addon cache expiry. Billable
+ *           firewall auth folds credit re-check timing into this value.
+ *           or 402 { error } when a billable firewall request has no credits
  *           or 424 { error } when referenced secrets/vars are missing (connector not configured)
  *           or 502 { error } when token refresh fails
  */
@@ -652,6 +675,7 @@ export async function POST(request: Request) {
     secretConnectorMap,
     secretConnectorMetadataMap,
     vars,
+    firewallBillable,
     forceRefresh,
   } = parsed.data;
 
@@ -696,31 +720,57 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    secretConnectorMap &&
+    hasForbiddenModelProviderOwner(
+      auth,
+      secretConnectorMap,
+      secretConnectorMetadataMap,
+      referenced.secrets,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Invalid model-provider secret owner",
+          code: "FORBIDDEN",
+        },
+      },
+      { status: 403 },
+    );
+  }
+
+  let billableExpiresAt: number | undefined;
+  if (firewallBillable === true) {
+    const availability = await resolveOrgCreditAvailability(
+      auth.orgId,
+      auth.userId,
+    );
+    if (!availability) {
+      return NextResponse.json(
+        {
+          error: {
+            message:
+              "Insufficient credits. Add credits or configure your own API key to continue.",
+            code: "INSUFFICIENT_CREDITS",
+          },
+        },
+        { status: 402 },
+      );
+    }
+    const leaseSeconds =
+      availability.spendableCredits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
+        ? LOW_BILLABLE_FIREWALL_LEASE_SECONDS
+        : NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS;
+    billableExpiresAt = Math.floor(Date.now() / 1000) + leaseSeconds;
+  }
+
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
   let refreshedConnectors: string[] = [];
   let refreshedSecrets: string[] = [];
   let failedConnectors: string[] = [];
   if (secretConnectorMap) {
-    if (
-      hasForbiddenModelProviderOwner(
-        auth,
-        secretConnectorMap,
-        secretConnectorMetadataMap,
-        referenced.secrets,
-      )
-    ) {
-      return NextResponse.json(
-        {
-          error: {
-            message: "Invalid model-provider secret owner",
-            code: "FORBIDDEN",
-          },
-        },
-        { status: 403 },
-      );
-    }
-
     const result = await refreshExpiredTokens(
       auth,
       secrets,
@@ -763,7 +813,7 @@ export async function POST(request: Request) {
     headers,
     base,
     query,
-    expiresAt,
+    expiresAt: mergeExpiresAt(expiresAt, billableExpiresAt),
     resolvedSecrets,
     refreshedConnectors,
     refreshedSecrets,

@@ -7,7 +7,10 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { connectors } from "@vm0/db/schema/connector";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { createApp } from "../../../app-factory";
@@ -123,6 +126,13 @@ const track = createFixtureTracker<FirewallFixture>(async (fixture) => {
     .delete(modelProviders)
     .where(eq(modelProviders.orgId, fixture.orgId));
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+  await db
+    .delete(creditExpiresRecord)
+    .where(eq(creditExpiresRecord.orgId, fixture.orgId));
+  await db
+    .delete(orgMembersMetadata)
+    .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
@@ -140,6 +150,38 @@ async function seedSecret(args: {
     name: args.name,
     encryptedValue: encryptSecretValue(args.value),
     type: args.type,
+  });
+}
+
+async function seedCreditState(
+  fixture: FirewallFixture,
+  args: {
+    readonly credits: number;
+    readonly creditEnabled?: boolean;
+  },
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(orgMetadata).values({
+    orgId: fixture.orgId,
+    credits: args.credits,
+  });
+  await db.insert(orgMembersMetadata).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    creditEnabled: args.creditEnabled ?? true,
+  });
+}
+
+async function seedOrgCredits(
+  fixture: FirewallFixture,
+  args: {
+    readonly credits: number;
+  },
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(orgMetadata).values({
+    orgId: fixture.orgId,
+    credits: args.credits,
   });
 }
 
@@ -464,6 +506,151 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("returns a bounded expiry for billable firewall auth", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 10_000 });
+
+    const before = currentSecond();
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    const after = currentSecond();
+    expect(response.body.headers.Authorization).toBe("Bearer secret-token");
+    expect(response.body.expiresAt).toBeGreaterThan(before);
+    expect(response.body.expiresAt).toBeLessThanOrEqual(after + 30);
+  });
+
+  it("allows billable firewall auth when member credit metadata is absent", async () => {
+    const fixture = await track(seedFixture());
+    await seedOrgCredits(fixture, { credits: 10_000 });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe("Bearer secret-token");
+    expect(response.body.expiresAt).toBeTypeOf("number");
+  });
+
+  it("denies billable firewall auth when expired credits have not been settled", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 100 });
+
+    const db = store.set(writeDb$);
+    await db.insert(creditExpiresRecord).values({
+      orgId: fixture.orgId,
+      source: "starter_grant",
+      amount: 100,
+      remaining: 100,
+      expiresAt: new Date(now() - 60_000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("denies billable firewall auth when credits are exhausted", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 0 });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [402],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Insufficient credits. Add credits or configure your own API key to continue.",
+        code: "INSUFFICIENT_CREDITS",
+      },
+    });
+  });
+
+  it("denies billable firewall auth when member credit is disabled", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 10_000, creditEnabled: false });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("denies billable firewall auth when credit state is missing", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
   it("refreshes expired connector OAuth tokens", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);
@@ -522,6 +709,88 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const connector = await notionConnectorState(fixture);
     expect(connector.needsReconnect).toBeFalsy();
     expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
+  });
+
+  it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 10_000 });
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "short-lived-notion-token",
+          expires_in: 10,
+        });
+      }),
+    );
+
+    const before = currentSecond();
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    const after = currentSecond();
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer short-lived-notion-token",
+    );
+    expect(response.body.expiresAt).toBeGreaterThan(before);
+    expect(response.body.expiresAt).toBeLessThanOrEqual(after + 10);
+  });
+
+  it("uses billable credit lease when it is earlier than OAuth token expiry", async () => {
+    const fixture = await track(seedFixture());
+    await seedCreditState(fixture, { credits: 10_000 });
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "long-lived-notion-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const before = currentSecond();
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    const after = currentSecond();
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer long-lived-notion-token",
+    );
+    expect(response.body.expiresAt).toBeGreaterThan(before);
+    expect(response.body.expiresAt).toBeLessThanOrEqual(after + 30);
   });
 
   it("returns token-refresh-failed and marks connector reconnect when refresh fails", async () => {
@@ -622,7 +891,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("rejects model-provider refresh metadata for another user", async () => {
+  it("rejects model-provider refresh metadata for another user before billable credit auth", async () => {
     const fixture = await track(seedFixture());
 
     const response = await accept(
@@ -644,6 +913,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
               metadataKey: "codex-oauth-token",
             },
           },
+          firewallBillable: true,
         },
         headers: authHeaders(fixture),
       }),
