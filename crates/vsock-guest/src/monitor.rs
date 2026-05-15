@@ -647,8 +647,24 @@ fn send_process_exit_after_lock<F>(
     let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &payload) {
         Ok(msg) => msg,
         Err(e) => {
-            log("ERROR", &format!("Failed to encode process_exit: {}", e));
-            return;
+            log(
+                "ERROR",
+                &format!("Failed to encode process_exit, sending fallback: {}", e),
+            );
+            let diagnostic = format!("process_exit output exceeded protocol limit: {e}");
+            let fallback_payload =
+                vsock_proto::encode_process_exit(pid, 1, &[], diagnostic.as_bytes());
+            match vsock_proto::encode(MSG_PROCESS_EXIT, seq, &fallback_payload) {
+                Ok(msg) => msg,
+                Err(fallback_error) => {
+                    log(
+                        "ERROR",
+                        &format!("Failed to encode fallback process_exit: {fallback_error}"),
+                    );
+                    after_lock();
+                    return;
+                }
+            }
         }
     };
     if let Err(e) = writer.write_frame_after_lock(&exit_msg, after_lock) {
@@ -688,6 +704,36 @@ mod tests {
 
     fn operation_guard() -> OperationGuard {
         crate::quiesce::OperationState::default().acquire().unwrap()
+    }
+
+    #[test]
+    fn oversized_process_exit_sends_fallback_and_releases_operation() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let operation_state = crate::quiesce::OperationState::default();
+        let operation_guard = operation_state.acquire().unwrap();
+        let stdout = vec![0u8; vsock_proto::MAX_MESSAGE_SIZE];
+
+        send_process_exit_after_lock(7, 123, 0, &stdout, &[], &writer, || {
+            operation_guard.release();
+        });
+
+        assert_eq!(operation_state.pending(), 0);
+
+        let exit = read_message(&mut host);
+        assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 7);
+        let (pid, code, fallback_stdout, fallback_stderr) =
+            vsock_proto::decode_process_exit(&exit.payload).unwrap();
+        assert_eq!(pid, 123);
+        assert_eq!(code, 1);
+        assert!(fallback_stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(fallback_stderr).contains("protocol limit"),
+            "unexpected stderr: {:?}",
+            String::from_utf8_lossy(fallback_stderr),
+        );
     }
 
     #[test]
