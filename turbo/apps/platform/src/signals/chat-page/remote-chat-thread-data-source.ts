@@ -316,7 +316,11 @@ export function createRemoteChatThreadDataSource(
       count: result.body.messages.length,
       hasHistoryBefore,
     });
-    return { messages: result.body.messages, hasHistoryBefore };
+    return {
+      messages: result.body.messages,
+      hasHistoryBefore,
+      fetchedFromRemote: true,
+    };
   });
 
   return {
