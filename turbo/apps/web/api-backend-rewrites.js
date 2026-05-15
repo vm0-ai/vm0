@@ -5,6 +5,10 @@ const ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE = `/api/zero/voice-chat/:id(
 const ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE = new RegExp(
   `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const ZERO_VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE = `${ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE}/items`;
+const ZERO_VOICE_CHAT_ITEM_APPEND_PATH_RE = new RegExp(
+  `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/items$`,
+);
 
 export const API_BACKEND_REWRITES = [
   ["/api/device-token", "/api/device-token"],
@@ -75,6 +79,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_VOICE_CHAT_SESSION_DETAIL_REWRITE_SOURCE,
     "/api/zero/voice-chat/:id",
     ZERO_VOICE_CHAT_SESSION_DETAIL_PATH_RE,
+  ],
+  [
+    ZERO_VOICE_CHAT_ITEM_APPEND_REWRITE_SOURCE,
+    "/api/zero/voice-chat/:id/items",
+    ZERO_VOICE_CHAT_ITEM_APPEND_PATH_RE,
   ],
   ["/api/zero/web/download-file", "/api/zero/web/download-file"],
 ];

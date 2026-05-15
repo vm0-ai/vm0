@@ -2,15 +2,9 @@ import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
-import { voiceChatItems, voiceChatTasks } from "@vm0/db/schema/voice-chat";
+import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
-
-export const appendVoiceChatItemBodySchema = z.object({
-  role: z.enum(["user", "assistant", "task_result", "system_note"]),
-  content: z.string(),
-  realtimeItemId: z.string().min(1),
-});
 
 export const createVoiceChatTaskBodySchema = z.object({
   prompt: z.string().min(1),
@@ -22,21 +16,7 @@ export const voiceChatTokenBodySchema = z.object({
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
 });
 
-type ItemRow = typeof voiceChatItems.$inferSelect;
 type TaskRow = typeof voiceChatTasks.$inferSelect;
-
-export function serializeVoiceChatItem(item: ItemRow) {
-  return {
-    id: item.id,
-    sessionId: item.sessionId,
-    seq: item.seq,
-    role: item.role,
-    content: item.content,
-    taskId: item.taskId,
-    realtimeItemId: item.realtimeItemId,
-    createdAt: item.createdAt.toISOString(),
-  };
-}
 
 export function serializeVoiceChatTask(task: TaskRow) {
   return {

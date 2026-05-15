@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroVoiceChatContract } from "@vm0/api-contracts/contracts/zero-voice-chat";
+import {
+  zeroVoiceChatContract,
+  type AppendVoiceChatItemBody,
+} from "@vm0/api-contracts/contracts/zero-voice-chat";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -170,6 +173,117 @@ describe("POST /api/zero/voice-chat (createSession)", () => {
 });
 
 describe("POST /api/zero/voice-chat/:id/items (appendItem)", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const response = await accept(
+      client().appendItem({
+        headers: {},
+        params: { id: randomUUID() },
+        body: {
+          role: "user",
+          content: "hello",
+          realtimeItemId: `item_${randomUUID()}`,
+        },
+      }),
+      [401],
+    );
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 404 when Trinity is disabled", async () => {
+    const fixture = await track(
+      store.set(seedVoiceChatFixture$, {}, context.signal),
+    );
+    const agentId = await store.set(
+      seedVoiceChatAgent$,
+      fixture,
+      {},
+      context.signal,
+    );
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      client().appendItem({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: {
+          role: "user",
+          content: "hello",
+          realtimeItemId: `item_${randomUUID()}`,
+        },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 when the session does not exist", async () => {
+    await seedEnabledFixture();
+
+    const response = await accept(
+      client().appendItem({
+        headers: authHeaders(),
+        params: { id: randomUUID() },
+        body: {
+          role: "user",
+          content: "hello",
+          realtimeItemId: `item_${randomUUID()}`,
+        },
+      }),
+      [404],
+    );
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when the role is invalid", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+
+    const response = await accept(
+      client().appendItem({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: {
+          role: "invalid",
+          content: "hello",
+          realtimeItemId: `item_${randomUUID()}`,
+        } as unknown as AppendVoiceChatItemBody,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when the body is missing", async () => {
+    const { fixture, agentId } = await seedEnabledFixture();
+    const sessionId = await store.set(
+      addVoiceChatSession$,
+      fixture,
+      { agentId },
+      context.signal,
+    );
+
+    const response = await accept(
+      client().appendItem({
+        headers: authHeaders(),
+        params: { id: sessionId },
+        body: undefined as unknown as AppendVoiceChatItemBody,
+      }),
+      [400],
+    );
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("appends an item and silently dedupes duplicate realtimeItemId", async () => {
     const { agentId } = await seedEnabledFixture();
     const created = await accept(
@@ -193,7 +307,11 @@ describe("POST /api/zero/voice-chat/:id/items (appendItem)", () => {
       }),
       [200],
     );
+    expect(first.body.item.sessionId).toBe(created.body.session.id);
+    expect(first.body.item.role).toBe("user");
     expect(first.body.item.content).toBe("hello");
+    expect(first.body.item.realtimeItemId).toBe(realtimeItemId);
+    expect(first.body.item.seq).toBeGreaterThanOrEqual(1);
 
     const second = await accept(
       client().appendItem({
