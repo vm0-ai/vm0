@@ -43,6 +43,14 @@ impl ProcessControlRegistry {
             .remove(&seq);
     }
 
+    #[cfg(test)]
+    pub(crate) fn contains(&self, seq: u32) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&seq)
+    }
+
     fn status_for(
         &self,
         target_seq: u32,

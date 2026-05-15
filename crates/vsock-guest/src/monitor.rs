@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::process::{Child, ChildStdout};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK};
@@ -79,6 +79,22 @@ pub(crate) struct SpawnProcessRequest<'a> {
     pub(crate) process_control_guard: Option<ProcessControlGuard>,
 }
 
+type ProcessControlGuardSlot = Arc<Mutex<Option<ProcessControlGuard>>>;
+
+fn new_process_control_guard_slot(guard: Option<ProcessControlGuard>) -> ProcessControlGuardSlot {
+    Arc::new(Mutex::new(guard))
+}
+
+fn take_process_control_guard(slot: &ProcessControlGuardSlot) -> Option<ProcessControlGuard> {
+    slot.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
+fn release_process_control_guard(guard: Option<ProcessControlGuard>) {
+    if let Some(guard) = guard {
+        guard.release();
+    }
+}
+
 /// Handle spawn_process: spawn the child, write `MSG_SPAWN_PROCESS_RESULT` over
 /// the wire, THEN start the background monitor. Returns immediately; exit is
 /// later reported via `MSG_PROCESS_EXIT`.
@@ -149,9 +165,7 @@ where
             ));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
             let result = writer.write_frame_after_lock(&response, || {
-                if let Some(guard) = process_control_guard {
-                    guard.release();
-                }
+                release_process_control_guard(process_control_guard);
                 operation_guard.release();
             });
             result?;
@@ -180,18 +194,14 @@ where
         Ok(r) => r,
         Err(e) => {
             kill_and_reap_child(child);
-            if let Some(guard) = process_control_guard {
-                guard.release();
-            }
+            release_process_control_guard(process_control_guard);
             operation_guard.release();
             return Err(to_io_error(e));
         }
     };
     if let Err(e) = writer.write_frame(&response) {
         kill_and_reap_child(child);
-        if let Some(guard) = process_control_guard {
-            guard.release();
-        }
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
         return Err(e);
     }
@@ -285,14 +295,20 @@ where
     let monitor_spawner = spawner.clone();
     let exit_writer = writer.clone();
     let monitor_operation_guard = operation_guard.clone();
+    let process_control_guard_slot = new_process_control_guard_slot(process_control_guard);
+    let monitor_process_control_guard_slot = process_control_guard_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_STREAM_MONITOR,
         Box::new(move || {
+            let process_control_guard =
+                take_process_control_guard(&monitor_process_control_guard_slot);
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
                     "spawn_process: streaming monitor child guard was empty",
                 );
+                release_process_control_guard(process_control_guard);
+                monitor_operation_guard.release();
                 return;
             };
             run_streaming_monitor(
@@ -314,6 +330,7 @@ where
         }),
     );
     if let Err(e) = &result {
+        let process_control_guard = take_process_control_guard(&process_control_guard_slot);
         send_process_exit_after_lock(
             seq,
             pid,
@@ -321,7 +338,10 @@ where
             &[],
             format!("Failed to spawn streaming monitor thread: {e}").as_bytes(),
             &exit_writer,
-            || operation_guard.release(),
+            || {
+                release_process_control_guard(process_control_guard);
+                operation_guard.release();
+            },
         );
     }
     result.map(|_| ())
@@ -518,9 +538,7 @@ where
     );
 
     send_process_exit_after_lock(seq, pid, exit_code, &[], &stderr, &writer, || {
-        if let Some(guard) = process_control_guard {
-            guard.release();
-        }
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
     });
 }
@@ -551,9 +569,7 @@ fn finish_streaming_setup_failure(failure: StreamingSetupFailure) {
         let _ = handle.join();
     }
     send_process_exit_after_lock(seq, pid, 1, &[], error.as_bytes(), &writer, || {
-        if let Some(guard) = process_control_guard {
-            guard.release();
-        }
+        release_process_control_guard(process_control_guard);
         operation_guard.release();
     });
 }
@@ -579,14 +595,20 @@ where
     let exit_writer = writer.clone();
     let monitor_spawner = spawner.clone();
     let monitor_operation_guard = operation_guard.clone();
+    let process_control_guard_slot = new_process_control_guard_slot(process_control_guard);
+    let monitor_process_control_guard_slot = process_control_guard_slot.clone();
     let result = spawner.spawn_unit(
         THREAD_BUFFERED_MONITOR,
         Box::new(move || {
+            let process_control_guard =
+                take_process_control_guard(&monitor_process_control_guard_slot);
             let Some(child) = child_guard.into_child() else {
                 log(
                     "ERROR",
                     "spawn_process: buffered monitor child guard was empty",
                 );
+                release_process_control_guard(process_control_guard);
+                monitor_operation_guard.release();
                 return;
             };
             let (outcome, stdout, stderr_buf) =
@@ -610,15 +632,14 @@ where
             );
 
             send_process_exit_after_lock(seq, pid, exit_code, &stdout, &stderr, &writer, || {
-                if let Some(guard) = process_control_guard {
-                    guard.release();
-                }
+                release_process_control_guard(process_control_guard);
                 monitor_operation_guard.release();
             });
             drop(env_script);
         }),
     );
     if let Err(e) = &result {
+        let process_control_guard = take_process_control_guard(&process_control_guard_slot);
         send_process_exit_after_lock(
             seq,
             pid,
@@ -626,7 +647,10 @@ where
             &[],
             format!("Failed to spawn buffered monitor thread: {e}").as_bytes(),
             &exit_writer,
-            || operation_guard.release(),
+            || {
+                release_process_control_guard(process_control_guard);
+                operation_guard.release();
+            },
         );
     }
     result.map(|_| ())
@@ -675,6 +699,7 @@ fn send_process_exit_after_lock<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::process_control::ProcessControlRegistry;
     use crate::threading::test_support::FailingThreadSpawner;
     use crate::wait::THREAD_DRAIN_STDOUT;
     use std::io::Read;
@@ -704,6 +729,31 @@ mod tests {
 
     fn operation_guard() -> OperationGuard {
         crate::quiesce::OperationState::default().acquire().unwrap()
+    }
+
+    #[test]
+    fn process_control_guard_slot_survives_dropped_monitor_task() {
+        const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+        let registry = ProcessControlRegistry::default();
+        let guard_slot = new_process_control_guard_slot(Some(registry.register(7, NONCE)));
+        let task_guard_slot = guard_slot.clone();
+
+        let result = FailingThreadSpawner::fail_once("test-monitor").spawn_unit(
+            "test-monitor",
+            Box::new(move || {
+                release_process_control_guard(take_process_control_guard(&task_guard_slot));
+            }),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            registry.contains(7),
+            "dropping an unstarted monitor task must not release process control early",
+        );
+
+        release_process_control_guard(take_process_control_guard(&guard_slot));
+        assert!(!registry.contains(7));
     }
 
     #[test]
