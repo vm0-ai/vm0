@@ -3,12 +3,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
-use crate::{ConnectionState, SpawnWatchHandle, VsockHost};
+use crate::{ConnectionState, GuestProcessHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
 use vsock_proto::{
-    CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH,
-    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS,
+    MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK,
 };
 
 fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
@@ -24,14 +24,14 @@ fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
     }
 }
 
-async fn wait_spawn(handle: SpawnWatchHandle) -> io::Result<crate::ProcessExitEvent> {
+async fn wait_spawn(handle: GuestProcessHandle) -> io::Result<crate::ProcessExitEvent> {
     tokio::time::timeout(Duration::from_secs(5), handle.wait())
         .await
-        .expect("spawn_watch exit should arrive before timeout")
+        .expect("spawn_process exit should arrive before timeout")
 }
 
 #[tokio::test]
-async fn test_spawn_watch_and_wait() {
+async fn test_spawn_process_and_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -41,11 +41,11 @@ async fn test_spawn_watch_and_wait() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let payload = vsock_proto::encode_spawn_watch_result(42);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(42);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(42, 0, b"done", b"");
@@ -58,13 +58,13 @@ async fn test_spawn_watch_and_wait() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let mut handle = host
-        .spawn_watch("sleep 1", 0, &[], false, false, None)
+        .spawn_process("sleep 1", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 42);
     assert!(
         handle.take_stdout_receiver().is_none(),
-        "buffered spawn_watch must not keep a stdout stream registered",
+        "buffered spawn_process must not keep a stdout stream registered",
     );
 
     let event = wait_spawn(handle).await.unwrap();
@@ -84,11 +84,11 @@ async fn test_exit_event_before_wait() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let payload = vsock_proto::encode_spawn_watch_result(99);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(99);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
         let exit_payload = vsock_proto::encode_process_exit(99, 1, b"", b"error");
         let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
 
@@ -102,7 +102,7 @@ async fn test_exit_event_before_wait() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("false", 0, &[], false, false, None)
+        .spawn_process("false", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 99);
@@ -113,7 +113,7 @@ async fn test_exit_event_before_wait() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_error_response_cleans_up() {
+async fn test_spawn_process_error_response_cleans_up() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -123,17 +123,17 @@ async fn test_spawn_watch_error_response_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let err_payload = vsock_proto::encode_error("no such command");
         let err_resp = vsock_proto::encode(MSG_ERROR, msgs[0].seq, &err_payload).unwrap();
         guest.write_all(&err_resp).await.unwrap();
 
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
-        let ok_payload = vsock_proto::encode_spawn_watch_result(222);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
+        let ok_payload = vsock_proto::encode_spawn_process_result(222);
         let ok_resp =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, msgs[0].seq, &ok_payload).unwrap();
         guest.write_all(&ok_resp).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -143,25 +143,25 @@ async fn test_spawn_watch_error_response_cleans_up() {
     let host = host_from_stream(host_stream).await.unwrap();
 
     let err = host
-        .spawn_watch("bad-cmd", 0, &[], false, true, None)
+        .spawn_process("bad-cmd", 0, &[], false, true, None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("no such command"));
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "streaming spawn_watch error must clean operation registration",
+        "streaming spawn_process error must clean operation registration",
     );
 
     let handle = host
-        .spawn_watch("good-cmd", 0, &[], false, false, None)
+        .spawn_process("good-cmd", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 222);
 }
 
 #[tokio::test]
-async fn test_spawn_watch_malformed_result_cleans_up() {
+async fn test_spawn_process_malformed_result_cleans_up() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -173,14 +173,14 @@ async fn test_spawn_watch_malformed_result_cleans_up() {
         let msgs = decoder.decode(&buf[..n]).unwrap();
         let bad_payload = b"\x00\x01\x02";
         let bad_resp =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, bad_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, msgs[0].seq, bad_payload).unwrap();
         guest.write_all(&bad_resp).await.unwrap();
 
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        let ok_payload = vsock_proto::encode_spawn_watch_result(333);
+        let ok_payload = vsock_proto::encode_spawn_process_result(333);
         let ok_resp =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &ok_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, msgs[0].seq, &ok_payload).unwrap();
         guest.write_all(&ok_resp).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -190,25 +190,25 @@ async fn test_spawn_watch_malformed_result_cleans_up() {
     let host = host_from_stream(host_stream).await.unwrap();
 
     let err = host
-        .spawn_watch("bad-payload-cmd", 0, &[], false, true, None)
+        .spawn_process("bad-payload-cmd", 0, &[], false, true, None)
         .await
         .unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "malformed streaming spawn_watch result must clean operation registration",
+        "malformed streaming spawn_process result must clean operation registration",
     );
 
     let handle = host
-        .spawn_watch("good-cmd", 0, &[], false, false, None)
+        .spawn_process("good-cmd", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 333);
 }
 
 #[tokio::test]
-async fn test_spawn_watch_connection_closed_before_result_cleans_up() {
+async fn test_spawn_process_connection_closed_before_result_cleans_up() {
     let (host_stream, mut guest) = make_pair();
     let request_seen = Arc::new(Notify::new());
 
@@ -221,7 +221,7 @@ async fn test_spawn_watch_connection_closed_before_result_cleans_up() {
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             request_seen.notify_one();
             drop(guest);
         });
@@ -231,20 +231,20 @@ async fn test_spawn_watch_connection_closed_before_result_cleans_up() {
     let task_host = Arc::clone(&host);
     let task = tokio::spawn(async move {
         task_host
-            .spawn_watch("pending-result", 0, &[], false, true, None)
+            .spawn_process("pending-result", 0, &[], false, true, None)
             .await
     });
 
     tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
         .await
-        .expect("guest should receive spawn_watch request");
+        .expect("guest should receive spawn_process request");
 
     let err = task.await.unwrap().unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "connection close while spawn_watch is pending must clean registrations",
+        "connection close while spawn_process is pending must clean registrations",
     );
 }
 
@@ -265,11 +265,11 @@ async fn test_malformed_unsolicited_process_frames_are_ignored() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let payload = vsock_proto::encode_spawn_watch_result(444);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(444);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(444, 0, b"after-malformed", b"");
@@ -282,7 +282,7 @@ async fn test_malformed_unsolicited_process_frames_are_ignored() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("after-malformed", 0, &[], false, false, None)
+        .spawn_process("after-malformed", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 444);
@@ -306,7 +306,7 @@ async fn assert_lifecycle_before_result_closes(
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
         let frame = vsock_proto::encode(msg_type, spawn_seq, &payload).unwrap();
@@ -319,7 +319,7 @@ async fn assert_lifecycle_before_result_closes(
     let host = host_from_stream(host_stream).await.unwrap();
     let result = tokio::time::timeout(
         Duration::from_secs(5),
-        host.spawn_watch("early-lifecycle", 0, &[], false, stream_stdout, None),
+        host.spawn_process("early-lifecycle", 0, &[], false, stream_stdout, None),
     )
     .await
     .expect("pre-result lifecycle frame should close connection promptly");
@@ -333,7 +333,7 @@ async fn assert_lifecycle_before_result_closes(
 }
 
 #[tokio::test]
-async fn test_stdout_chunk_before_spawn_watch_result_closes_and_cleans_up() {
+async fn test_stdout_chunk_before_spawn_process_result_closes_and_cleans_up() {
     assert_lifecycle_before_result_closes(
         MSG_STDOUT_CHUNK,
         vsock_proto::encode_stdout_chunk(777, b"early stdout"),
@@ -343,7 +343,7 @@ async fn test_stdout_chunk_before_spawn_watch_result_closes_and_cleans_up() {
 }
 
 #[tokio::test]
-async fn test_process_exit_before_spawn_watch_result_closes_and_cleans_up() {
+async fn test_process_exit_before_spawn_process_result_closes_and_cleans_up() {
     assert_lifecycle_before_result_closes(
         MSG_PROCESS_EXIT,
         vsock_proto::encode_process_exit(777, 0, b"early stdout", b""),
@@ -368,11 +368,11 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             let spawn_seq = msgs[0].seq;
 
-            let payload = vsock_proto::encode_spawn_watch_result(555);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+            let payload = vsock_proto::encode_spawn_process_result(555);
+            let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
             send_chunk.notified().await;
@@ -392,7 +392,7 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let mut handle = host
-        .spawn_watch("streaming", 0, &[], false, true, None)
+        .spawn_process("streaming", 0, &[], false, true, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 555);
@@ -433,11 +433,11 @@ async fn test_wait_drops_unclaimed_stdout_receiver() {
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             let spawn_seq = msgs[0].seq;
 
-            let payload = vsock_proto::encode_spawn_watch_result(556);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+            let payload = vsock_proto::encode_spawn_process_result(556);
+            let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
             send_chunk.notified().await;
@@ -457,7 +457,7 @@ async fn test_wait_drops_unclaimed_stdout_receiver() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("streaming", 0, &[], false, true, None)
+        .spawn_process("streaming", 0, &[], false, true, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 556);
@@ -492,7 +492,7 @@ async fn test_wait_drops_unclaimed_stdout_receiver() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_cancel_cleans_up_registrations() {
+async fn test_spawn_process_cancel_cleans_up_registrations() {
     let (host_stream, mut guest) = make_pair();
     let request_seen = Arc::new(Notify::new());
     let release_guest = Arc::new(Notify::new());
@@ -507,7 +507,7 @@ async fn test_spawn_watch_cancel_cleans_up_registrations() {
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             request_seen.notify_one();
 
             release_guest.notified().await;
@@ -518,13 +518,13 @@ async fn test_spawn_watch_cancel_cleans_up_registrations() {
     let task_host = Arc::clone(&host);
     let task = tokio::spawn(async move {
         task_host
-            .spawn_watch("long-running", 0, &[], false, true, None)
+            .spawn_process("long-running", 0, &[], false, true, None)
             .await
     });
 
     tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
         .await
-        .expect("guest should receive spawn_watch request");
+        .expect("guest should receive spawn_process request");
     assert_eq!(registration_counts(&host), (1, 1, 1));
 
     task.abort();
@@ -532,7 +532,7 @@ async fn test_spawn_watch_cancel_cleans_up_registrations() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "aborted spawn_watch future must clean pending registrations",
+        "aborted spawn_process future must clean pending registrations",
     );
 
     release_guest.notify_one();
@@ -552,10 +552,11 @@ async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
             let mut buf = [0u8; 4096];
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             let dropped_seq = msgs[0].seq;
-            let payload = vsock_proto::encode_spawn_watch_result(66);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, dropped_seq, &payload).unwrap();
+            let payload = vsock_proto::encode_spawn_process_result(66);
+            let resp =
+                vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, dropped_seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
 
             release_late_frames.notified().await;
@@ -566,10 +567,10 @@ async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
 
             let n = guest.read(&mut buf).await.unwrap();
             let msgs = decoder.decode(&buf[..n]).unwrap();
-            assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+            assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             let next_seq = msgs[0].seq;
-            let payload = vsock_proto::encode_spawn_watch_result(67);
-            let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, next_seq, &payload).unwrap();
+            let payload = vsock_proto::encode_spawn_process_result(67);
+            let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, next_seq, &payload).unwrap();
             guest.write_all(&resp).await.unwrap();
             let exit_payload = vsock_proto::encode_process_exit(67, 0, b"still-alive", b"");
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, next_seq, &exit_payload).unwrap();
@@ -582,7 +583,7 @@ async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("drop-before-late-frame", 0, &[], false, true, None)
+        .spawn_process("drop-before-late-frame", 0, &[], false, true, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 66);
@@ -592,7 +593,7 @@ async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
     release_late_frames.notify_one();
 
     let next = host
-        .spawn_watch("next-spawn", 0, &[], false, false, None)
+        .spawn_process("next-spawn", 0, &[], false, false, None)
         .await
         .unwrap();
     let event = wait_spawn(next).await.unwrap();
@@ -601,7 +602,7 @@ async fn test_late_malformed_lifecycle_after_handle_drop_is_ignored() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_after_close_returns_immediately() {
+async fn test_spawn_process_after_close_returns_immediately() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -618,10 +619,10 @@ async fn test_spawn_watch_after_close_returns_immediately() {
 
     let err = tokio::time::timeout(
         Duration::from_secs(5),
-        host.spawn_watch("long-running", 0, &[], false, false, None),
+        host.spawn_process("long-running", 0, &[], false, false, None),
     )
     .await
-    .expect("spawn_watch should return when the connection is already closed")
+    .expect("spawn_process should return when the connection is already closed")
     .unwrap_err();
     assert!(
         matches!(
@@ -634,7 +635,7 @@ async fn test_spawn_watch_after_close_returns_immediately() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_exit_before_wait() {
+async fn test_spawn_process_exit_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -644,11 +645,11 @@ async fn test_spawn_watch_exit_before_wait() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let payload = vsock_proto::encode_spawn_watch_result(88);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(88);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let exit_payload = vsock_proto::encode_process_exit(88, 7, b"quick", b"");
@@ -661,7 +662,7 @@ async fn test_spawn_watch_exit_before_wait() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("quick-exit", 0, &[], false, false, None)
+        .spawn_process("quick-exit", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 88);
@@ -673,7 +674,7 @@ async fn test_spawn_watch_exit_before_wait() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_connection_closed_while_waiting() {
+async fn test_spawn_process_connection_closed_while_waiting() {
     let (host_stream, mut guest) = make_pair();
     let (close_tx, close_rx) = oneshot::channel();
 
@@ -684,10 +685,10 @@ async fn test_spawn_watch_connection_closed_while_waiting() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
 
-        let payload = vsock_proto::encode_spawn_watch_result(77);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(77);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, msgs[0].seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let _ = close_rx.await;
@@ -696,7 +697,7 @@ async fn test_spawn_watch_connection_closed_while_waiting() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("long-running", 0, &[], false, false, None)
+        .spawn_process("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 77);
@@ -709,7 +710,7 @@ async fn test_spawn_watch_connection_closed_while_waiting() {
 }
 
 #[tokio::test]
-async fn test_spawn_watch_exit_result_survives_close_before_wait() {
+async fn test_spawn_process_exit_result_survives_close_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -719,12 +720,12 @@ async fn test_spawn_watch_exit_result_survives_close_before_wait() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(111);
+        let result_payload = vsock_proto::encode_spawn_process_result(111);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         let exit_payload = vsock_proto::encode_process_exit(111, 3, b"early-output", b"err");
         let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
 
@@ -736,7 +737,7 @@ async fn test_spawn_watch_exit_result_survives_close_before_wait() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("quick-exit", 0, &[], false, false, None)
+        .spawn_process("quick-exit", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 111);
@@ -765,12 +766,12 @@ async fn test_malformed_active_process_exit_closes_and_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         let bad_exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, b"\x00").unwrap();
         let mut combined = result;
         combined.extend_from_slice(&bad_exit);
@@ -782,7 +783,7 @@ async fn test_malformed_active_process_exit_closes_and_cleans_up() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("malformed-exit", 0, &[], false, false, None)
+        .spawn_process("malformed-exit", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -807,12 +808,12 @@ async fn test_mismatched_active_process_exit_pid_closes_and_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         let wrong_pid_exit = vsock_proto::encode_process_exit(321, 0, b"wrong-pid", b"");
         let exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &wrong_pid_exit).unwrap();
         let mut combined = result;
@@ -825,7 +826,7 @@ async fn test_mismatched_active_process_exit_pid_closes_and_cleans_up() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("mismatched-exit-pid", 0, &[], false, false, None)
+        .spawn_process("mismatched-exit-pid", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -849,12 +850,12 @@ async fn assert_bad_active_stdout_chunk_closes_and_cleans_up(payload: Vec<u8>) {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &payload).unwrap();
         let mut combined = result;
         combined.extend_from_slice(&chunk);
@@ -866,7 +867,7 @@ async fn assert_bad_active_stdout_chunk_closes_and_cleans_up(payload: Vec<u8>) {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let mut handle = host
-        .spawn_watch("bad-stdout", 0, &[], false, true, None)
+        .spawn_process("bad-stdout", 0, &[], false, true, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -910,12 +911,12 @@ async fn test_buffered_active_stdout_chunk_closes_and_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         let chunk_payload = vsock_proto::encode_stdout_chunk(123, b"unexpected stream");
         let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &chunk_payload).unwrap();
         let mut combined = result;
@@ -928,7 +929,7 @@ async fn test_buffered_active_stdout_chunk_closes_and_cleans_up() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("buffered-bad-stdout", 0, &[], false, false, None)
+        .spawn_process("buffered-bad-stdout", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -938,12 +939,12 @@ async fn test_buffered_active_stdout_chunk_closes_and_cleans_up() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "stdout_chunk for buffered spawn_watch must close and clean registrations",
+        "stdout_chunk for buffered spawn_process must close and clean registrations",
     );
 }
 
 #[tokio::test]
-async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
+async fn test_duplicate_spawn_process_result_cannot_overwrite_pid() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -953,17 +954,17 @@ async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         guest.write_all(&result).await.unwrap();
 
-        let duplicate_payload = vsock_proto::encode_spawn_watch_result(321);
+        let duplicate_payload = vsock_proto::encode_spawn_process_result(321);
         let duplicate =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &duplicate_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &duplicate_payload).unwrap();
         guest.write_all(&duplicate).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -972,7 +973,7 @@ async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("duplicate-result", 0, &[], false, false, None)
+        .spawn_process("duplicate-result", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -982,12 +983,12 @@ async fn test_duplicate_spawn_watch_result_cannot_overwrite_pid() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "duplicate spawn_watch_result must not overwrite recorded pid",
+        "duplicate spawn_process_result must not overwrite recorded pid",
     );
 }
 
 #[tokio::test]
-async fn test_duplicate_spawn_watch_result_same_pid_closes_and_cleans_up() {
+async fn test_duplicate_spawn_process_result_same_pid_closes_and_cleans_up() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -997,16 +998,16 @@ async fn test_duplicate_spawn_watch_result_same_pid_closes_and_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         guest.write_all(&result).await.unwrap();
 
         let duplicate =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         guest.write_all(&duplicate).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -1015,7 +1016,7 @@ async fn test_duplicate_spawn_watch_result_same_pid_closes_and_cleans_up() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("duplicate-same-pid-result", 0, &[], false, false, None)
+        .spawn_process("duplicate-same-pid-result", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -1025,12 +1026,12 @@ async fn test_duplicate_spawn_watch_result_same_pid_closes_and_cleans_up() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "duplicate same-pid spawn_watch_result must close and clean registrations",
+        "duplicate same-pid spawn_process_result must close and clean registrations",
     );
 }
 
 #[tokio::test]
-async fn test_malformed_duplicate_spawn_watch_result_closes_and_cleans_up() {
+async fn test_malformed_duplicate_spawn_process_result_closes_and_cleans_up() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -1040,16 +1041,16 @@ async fn test_malformed_duplicate_spawn_watch_result_closes_and_cleans_up() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let result_payload = vsock_proto::encode_spawn_watch_result(123);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
         let result =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &result_payload).unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &result_payload).unwrap();
         guest.write_all(&result).await.unwrap();
 
         let duplicate =
-            vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, b"\x00\x01").unwrap();
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, b"\x00\x01").unwrap();
         guest.write_all(&duplicate).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -1058,7 +1059,7 @@ async fn test_malformed_duplicate_spawn_watch_result_closes_and_cleans_up() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("malformed-duplicate-result", 0, &[], false, false, None)
+        .spawn_process("malformed-duplicate-result", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 123);
@@ -1068,12 +1069,12 @@ async fn test_malformed_duplicate_spawn_watch_result_closes_and_cleans_up() {
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
-        "malformed duplicate spawn_watch_result must close and clean registrations",
+        "malformed duplicate spawn_process_result must close and clean registrations",
     );
 }
 
 #[tokio::test]
-async fn test_spawn_watch_wait_future_drop_cleans_registration() {
+async fn test_spawn_process_wait_future_drop_cleans_registration() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -1083,8 +1084,8 @@ async fn test_spawn_watch_wait_future_drop_cleans_registration() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        let payload = vsock_proto::encode_spawn_watch_result(55);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, msgs[0].seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(55);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, msgs[0].seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let mut discard = [0u8; 1];
@@ -1093,7 +1094,7 @@ async fn test_spawn_watch_wait_future_drop_cleans_registration() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let handle = host
-        .spawn_watch("long-running", 0, &[], false, false, None)
+        .spawn_process("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 55);
@@ -1104,7 +1105,7 @@ async fn test_spawn_watch_wait_future_drop_cleans_registration() {
 }
 
 #[tokio::test]
-async fn test_concurrent_spawn_watch_routes_by_seq_not_pid() {
+async fn test_concurrent_spawn_process_routes_by_seq_not_pid() {
     let (host_stream, mut guest) = make_pair();
 
     tokio::spawn(async move {
@@ -1115,18 +1116,18 @@ async fn test_concurrent_spawn_watch_routes_by_seq_not_pid() {
 
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let first_seq = msgs[0].seq;
-        let payload = vsock_proto::encode_spawn_watch_result(999);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, first_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(999);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, first_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let second_seq = msgs[0].seq;
-        let payload = vsock_proto::encode_spawn_watch_result(999);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, second_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(999);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, second_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let second_chunk_payload = vsock_proto::encode_stdout_chunk(999, b"second");
@@ -1153,11 +1154,11 @@ async fn test_concurrent_spawn_watch_routes_by_seq_not_pid() {
 
     let host = host_from_stream(host_stream).await.unwrap();
     let mut first = host
-        .spawn_watch("first", 0, &[], false, true, None)
+        .spawn_process("first", 0, &[], false, true, None)
         .await
         .unwrap();
     let mut second = host
-        .spawn_watch("second", 0, &[], false, true, None)
+        .spawn_process("second", 0, &[], false, true, None)
         .await
         .unwrap();
     assert_eq!(first.pid(), 999);
@@ -1188,11 +1189,11 @@ async fn test_concurrent_exec_and_wait_exit() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_SPAWN_WATCH);
+        assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
         let spawn_seq = msgs[0].seq;
 
-        let payload = vsock_proto::encode_spawn_watch_result(50);
-        let resp = vsock_proto::encode(MSG_SPAWN_WATCH_RESULT, spawn_seq, &payload).unwrap();
+        let payload = vsock_proto::encode_spawn_process_result(50);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
         let n = guest.read(&mut buf).await.unwrap();
@@ -1220,7 +1221,7 @@ async fn test_concurrent_exec_and_wait_exit() {
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
     let handle = host
-        .spawn_watch("long-running", 0, &[], false, false, None)
+        .spawn_process("long-running", 0, &[], false, false, None)
         .await
         .unwrap();
     assert_eq!(handle.pid(), 50);

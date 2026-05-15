@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.277.0](https://github.com/vm0-ai/vm0/compare/core-v8.276.4...core-v8.277.0) (2026-05-15)
+
+
+### Features
+
+* add zero hosted sites ([#13135](https://github.com/vm0-ai/vm0/issues/13135)) ([7e5c995](https://github.com/vm0-ai/vm0/commit/7e5c995810af12c79a2c704459dba2265df2d23d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.25.0
+    * @vm0/connectors bumped to 1.12.0
+
 ## [8.276.4](https://github.com/vm0-ai/vm0/compare/core-v8.276.3...core-v8.276.4) (2026-05-15)
 
 

@@ -13,8 +13,8 @@ pub const MSG_PING: u8 = 0x01;
 pub const MSG_PONG: u8 = 0x02;
 pub const MSG_WRITE_FILE: u8 = 0x03;
 pub const MSG_WRITE_FILE_RESULT: u8 = 0x04;
-pub const MSG_SPAWN_WATCH: u8 = 0x05;
-pub const MSG_SPAWN_WATCH_RESULT: u8 = 0x06;
+pub const MSG_SPAWN_PROCESS: u8 = 0x05;
+pub const MSG_SPAWN_PROCESS_RESULT: u8 = 0x06;
 pub const MSG_PROCESS_EXIT: u8 = 0x07;
 pub const MSG_SHUTDOWN: u8 = 0x08;
 pub const MSG_SHUTDOWN_ACK: u8 = 0x09;
@@ -32,9 +32,9 @@ pub const MSG_ERROR: u8 = 0xFF;
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
 
-// Spawn-watch payload flags.
-pub const SPAWN_WATCH_FLAG_SUDO: u8 = 0x01;
-pub const SPAWN_WATCH_FLAG_STREAM_STDOUT: u8 = 0x02;
+// Spawn-process payload flags.
+pub const SPAWN_PROCESS_FLAG_SUDO: u8 = 0x01;
+pub const SPAWN_PROCESS_FLAG_STREAM_STDOUT: u8 = 0x02;
 
 // Command operation payload flags.
 pub const COMMAND_FLAG_SUDO: u8 = 0x01;
@@ -46,3 +46,14 @@ pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;
 pub const WRITE_FILE_FLAG_APPEND: u8 = 0x02;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_process_keeps_existing_wire_values() {
+        assert_eq!(MSG_SPAWN_PROCESS, 0x05);
+        assert_eq!(MSG_SPAWN_PROCESS_RESULT, 0x06);
+    }
+}

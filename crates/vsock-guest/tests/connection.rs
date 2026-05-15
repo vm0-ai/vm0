@@ -14,8 +14,8 @@ use vsock_proto::{
     self, CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
     MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
-    MSG_STDOUT_CHUNK, MSG_WRITE_FILE,
+    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS,
+    MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -198,7 +198,7 @@ fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
 }
 
 // -----------------------------------------------------------------------
-// Helpers for spawn_watch streaming tests
+// Helpers for spawn_process streaming tests
 // -----------------------------------------------------------------------
 
 /// Read one framed message from the stream.
@@ -1470,18 +1470,18 @@ fn read_retry_eintr(stream: &mut impl std::io::Read, buf: &mut [u8]) -> std::io:
     }
 }
 
-/// Send a MSG_SPAWN_WATCH message with streaming enabled.
-fn send_spawn_watch(
+/// Send a MSG_SPAWN_PROCESS message with streaming enabled.
+fn send_spawn_process(
     stream: &mut impl std::io::Write,
     seq: u32,
     command: &str,
     log_path: Option<&str>,
     timeout_ms: u32,
 ) {
-    send_spawn_watch_with_env(stream, seq, command, &[], log_path, timeout_ms);
+    send_spawn_process_with_env(stream, seq, command, &[], log_path, timeout_ms);
 }
 
-fn send_spawn_watch_with_env(
+fn send_spawn_process_with_env(
     stream: &mut impl std::io::Write,
     seq: u32,
     command: &str,
@@ -1490,12 +1490,12 @@ fn send_spawn_watch_with_env(
     timeout_ms: u32,
 ) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, true, log_path).unwrap();
-    let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
+        vsock_proto::encode_spawn_process(timeout_ms, command, env, false, true, log_path).unwrap();
+    let msg = vsock_proto::encode(MSG_SPAWN_PROCESS, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
 
-/// Read all streaming messages for a spawn_watch command in a single loop.
+/// Read all streaming messages for a spawn_process command in a single loop.
 /// Uses one decoder to avoid losing messages when the OS batches multiple
 /// protocol frames into a single read buffer.
 ///
@@ -1512,9 +1512,9 @@ fn read_streaming_result(
         let n = read_retry_eintr(stream, &mut buf).unwrap();
         assert!(n > 0, "unexpected EOF waiting for streaming result");
         for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-            // Pick up the PID from spawn_watch_result
-            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
-                pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+            // Pick up the PID from spawn_process_result
+            if msg.msg_type == MSG_SPAWN_PROCESS_RESULT && msg.seq == seq {
+                pid = Some(vsock_proto::decode_spawn_process_result(&msg.payload).unwrap());
                 continue;
             }
             let Some(p) = pid else { continue };
@@ -1556,7 +1556,7 @@ fn streaming_monitor_normal_exit() {
     read_and_discard_message(&mut host_stream);
 
     let log_path = unique_tmp_path("normal", ".log");
-    send_spawn_watch(
+    send_spawn_process(
         &mut host_stream,
         1,
         "echo hello",
@@ -1578,7 +1578,7 @@ fn streaming_monitor_normal_exit() {
 }
 
 #[test]
-fn streaming_spawn_watch_large_env_payload_succeeds() {
+fn streaming_spawn_process_large_env_payload_succeeds() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let values = large_env_values();
@@ -1593,7 +1593,7 @@ fn streaming_spawn_watch_large_env_payload_succeeds() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_watch_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, None, 5000);
+    send_spawn_process_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, None, 5000);
     let (_pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
 
     assert_eq!(exit_code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
@@ -1604,7 +1604,7 @@ fn streaming_spawn_watch_large_env_payload_succeeds() {
 }
 
 #[test]
-fn streaming_spawn_watch_invalid_env_payload_returns_error_without_leaking_value() {
+fn streaming_spawn_process_invalid_env_payload_returns_error_without_leaking_value() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
@@ -1617,7 +1617,7 @@ fn streaming_spawn_watch_invalid_env_payload_returns_error_without_leaking_value
         .unwrap();
 
     let secret = "do-not-print-this-secret";
-    send_spawn_watch_with_env(
+    send_spawn_process_with_env(
         &mut host_stream,
         1,
         "echo should-not-run",
@@ -1655,7 +1655,7 @@ fn streaming_monitor_clean_exit_returns_before_long_timeout() {
         .unwrap();
 
     let start = Instant::now();
-    send_spawn_watch(&mut host_stream, 1, "printf clean-exit", None, 60_000);
+    send_spawn_process(&mut host_stream, 1, "printf clean-exit", None, 60_000);
     let (pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
     let elapsed = start.elapsed();
 
@@ -1672,11 +1672,11 @@ fn streaming_monitor_clean_exit_returns_before_long_timeout() {
     let _ = handle.join();
 }
 
-/// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that request.
+/// `MSG_SPAWN_PROCESS_RESULT` must arrive before stdout chunks for that request.
 /// The host records the pid from the result and rejects lifecycle frames for
 /// that request until the pid is known.
 #[test]
-fn streaming_spawn_watch_result_precedes_stdout_chunks() {
+fn streaming_spawn_process_result_precedes_stdout_chunks() {
     use std::os::unix::net::UnixStream as StdUnixStream;
     use std::time::Instant;
 
@@ -1686,7 +1686,7 @@ fn streaming_spawn_watch_result_precedes_stdout_chunks() {
     });
 
     read_and_discard_message(&mut host_stream);
-    send_spawn_watch(&mut host_stream, 1, "printf ordered-output", None, 5000);
+    send_spawn_process(&mut host_stream, 1, "printf ordered-output", None, 5000);
 
     host_stream
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -1709,19 +1709,19 @@ fn streaming_spawn_watch_result_precedes_stdout_chunks() {
         let n = read_retry_eintr(&mut host_stream, &mut buf).unwrap();
         assert!(
             n > 0,
-            "unexpected EOF waiting for streaming spawn_watch result"
+            "unexpected EOF waiting for streaming spawn_process result"
         );
 
         for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == 1 {
-                assert!(pid.is_none(), "duplicate spawn_watch_result");
-                pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+            if msg.msg_type == MSG_SPAWN_PROCESS_RESULT && msg.seq == 1 {
+                assert!(pid.is_none(), "duplicate spawn_process_result");
+                pid = Some(vsock_proto::decode_spawn_process_result(&msg.payload).unwrap());
                 continue;
             }
 
             if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 1 {
                 let Some(p) = pid else {
-                    panic!("stdout chunk arrived before spawn_watch_result");
+                    panic!("stdout chunk arrived before spawn_process_result");
                 };
                 let (chunk_pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload).unwrap();
                 if chunk_pid == p {
@@ -1729,7 +1729,7 @@ fn streaming_spawn_watch_result_precedes_stdout_chunks() {
                 }
             } else if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 1 {
                 let Some(p) = pid else {
-                    panic!("process_exit arrived before spawn_watch_result");
+                    panic!("process_exit arrived before spawn_process_result");
                 };
                 let (exit_pid, code, _stdout, stderr) =
                     vsock_proto::decode_process_exit(&msg.payload).unwrap();
@@ -1764,7 +1764,7 @@ fn streaming_monitor_stream_only_does_not_write_guest_log() {
 
     let log_path = unique_tmp_path("stream-only", ".log");
     std::fs::write(log_path.as_str(), "preexisting\n").unwrap();
-    send_spawn_watch(&mut host_stream, 1, "echo stream-only", None, 5000);
+    send_spawn_process(&mut host_stream, 1, "echo stream-only", None, 5000);
 
     host_stream
         .set_read_timeout(Some(Duration::from_secs(10)))
@@ -1805,7 +1805,7 @@ fn streaming_monitor_drains_on_orphaned_stdout() {
     let log_path = unique_tmp_path("orphan", ".log");
     let orphan = OrphanProcessGuard::new("orphan-sleep");
     let command = orphan_sleep_command("orphan-test", orphan.pid_path());
-    send_spawn_watch(
+    send_spawn_process(
         &mut host_stream,
         1,
         &command,
@@ -1853,7 +1853,7 @@ fn streaming_monitor_timeout_kills_process() {
     // Command that runs longer than the timeout.
     // timeout_ms = 1000 (1s), command sleeps 60s → killed after 1s.
     let log_path = unique_tmp_path("timeout", ".log");
-    send_spawn_watch(
+    send_spawn_process(
         &mut host_stream,
         1,
         "echo timeout-test; sleep 60",
@@ -1885,17 +1885,17 @@ fn streaming_monitor_timeout_kills_process() {
 // Buffered (cancellable-drain) regression tests for #11077
 // -----------------------------------------------------------------------
 
-/// Send a `MSG_SPAWN_WATCH` with the buffered (no `stdout_log_path`) shape.
-fn send_spawn_watch_buffered(
+/// Send a `MSG_SPAWN_PROCESS` with the buffered (no `stdout_log_path`) shape.
+fn send_spawn_process_buffered(
     stream: &mut impl std::io::Write,
     seq: u32,
     command: &str,
     timeout_ms: u32,
 ) {
-    send_spawn_watch_buffered_with_env(stream, seq, command, &[], timeout_ms);
+    send_spawn_process_buffered_with_env(stream, seq, command, &[], timeout_ms);
 }
 
-fn send_spawn_watch_buffered_with_env(
+fn send_spawn_process_buffered_with_env(
     stream: &mut impl std::io::Write,
     seq: u32,
     command: &str,
@@ -1903,14 +1903,14 @@ fn send_spawn_watch_buffered_with_env(
     timeout_ms: u32,
 ) {
     let payload =
-        vsock_proto::encode_spawn_watch(timeout_ms, command, env, false, false, None).unwrap();
-    let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
+        vsock_proto::encode_spawn_process(timeout_ms, command, env, false, false, None).unwrap();
+    let msg = vsock_proto::encode(MSG_SPAWN_PROCESS, seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }
 
-/// Read `MSG_SPAWN_WATCH_RESULT` + `MSG_PROCESS_EXIT` for a buffered
-/// spawn_watch and return `(pid, exit_code, stdout, stderr)`.
-fn read_buffered_spawn_watch_result(
+/// Read `MSG_SPAWN_PROCESS_RESULT` + `MSG_PROCESS_EXIT` for a buffered
+/// spawn_process and return `(pid, exit_code, stdout, stderr)`.
+fn read_buffered_spawn_process_result(
     stream: &mut impl std::io::Read,
     seq: u32,
 ) -> (u32, i32, Vec<u8>, Vec<u8>) {
@@ -1921,11 +1921,11 @@ fn read_buffered_spawn_watch_result(
         let n = read_retry_eintr(stream, &mut buf).unwrap();
         assert!(
             n > 0,
-            "unexpected EOF waiting for buffered spawn_watch result"
+            "unexpected EOF waiting for buffered spawn_process result"
         );
         for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
-                pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+            if msg.msg_type == MSG_SPAWN_PROCESS_RESULT && msg.seq == seq {
+                pid = Some(vsock_proto::decode_spawn_process_result(&msg.payload).unwrap());
                 continue;
             }
             let Some(p) = pid else { continue };
@@ -1941,26 +1941,26 @@ fn read_buffered_spawn_watch_result(
     }
 }
 
-fn read_spawn_watch_pid(stream: &mut impl std::io::Read, seq: u32) -> u32 {
+fn read_spawn_process_pid(stream: &mut impl std::io::Read, seq: u32) -> u32 {
     let mut decoder = vsock_proto::Decoder::new();
     let mut buf = [0u8; 4096];
     loop {
         let n = read_retry_eintr(stream, &mut buf).unwrap();
-        assert!(n > 0, "unexpected EOF waiting for spawn_watch pid");
+        assert!(n > 0, "unexpected EOF waiting for spawn_process pid");
         for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
-                return vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap();
+            if msg.msg_type == MSG_SPAWN_PROCESS_RESULT && msg.seq == seq {
+                return vsock_proto::decode_spawn_process_result(&msg.payload).unwrap();
             }
         }
     }
 }
 
 #[test]
-fn spawn_watch_remains_pending_after_spawn_result_until_process_exit() {
+fn spawn_process_remains_pending_after_spawn_result_until_process_exit() {
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_spawn_watch_buffered(&mut host_stream, 231, "sleep 60", 0);
-    let pid = read_spawn_watch_pid(&mut host_stream, 231);
+    send_spawn_process_buffered(&mut host_stream, 231, "sleep 60", 0);
+    let pid = read_spawn_process_pid(&mut host_stream, 231);
 
     send_quiesce_operations(&mut host_stream, 232);
     let busy = read_message(&mut host_stream);
@@ -2174,7 +2174,7 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 #[test]
-fn spawn_watch_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+fn spawn_process_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
@@ -2183,11 +2183,11 @@ fn spawn_watch_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     });
     read_and_discard_message(&mut host_stream); // MSG_READY
 
-    send_spawn_watch(&mut host_stream, 1, "sleep 60", None, 0);
+    send_spawn_process(&mut host_stream, 1, "sleep 60", None, 0);
     host_stream
         .set_read_timeout(Some(Duration::from_secs(3)))
         .unwrap();
-    let pid = read_spawn_watch_pid(&mut host_stream, 1);
+    let pid = read_spawn_process_pid(&mut host_stream, 1);
     assert!(
         pid_alive(pid),
         "child should still be running before disconnect",
@@ -2195,11 +2195,11 @@ fn spawn_watch_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
 
     drop(host_stream);
     let _ = handle.join();
-    wait_for_pid_exit(pid, "spawn_watch host disconnect");
+    wait_for_pid_exit(pid, "spawn_process host disconnect");
 }
 
 #[test]
-fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+fn spawn_process_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
@@ -2208,11 +2208,11 @@ fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnec
     });
     read_and_discard_message(&mut host_stream); // MSG_READY
 
-    send_spawn_watch_buffered(&mut host_stream, 1, "sleep 60", 0);
+    send_spawn_process_buffered(&mut host_stream, 1, "sleep 60", 0);
     host_stream
         .set_read_timeout(Some(Duration::from_secs(3)))
         .unwrap();
-    let pid = read_spawn_watch_pid(&mut host_stream, 1);
+    let pid = read_spawn_process_pid(&mut host_stream, 1);
     assert!(
         pid_alive(pid),
         "child should still be running before disconnect",
@@ -2220,11 +2220,11 @@ fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnec
 
     drop(host_stream);
     let _ = handle.join();
-    wait_for_pid_exit(pid, "buffered spawn_watch host disconnect");
+    wait_for_pid_exit(pid, "buffered spawn_process host disconnect");
 }
 
 #[test]
-fn buffered_spawn_watch_large_env_payload_succeeds() {
+fn buffered_spawn_process_large_env_payload_succeeds() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let values = large_env_values();
@@ -2239,8 +2239,8 @@ fn buffered_spawn_watch_large_env_payload_succeeds() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_watch_buffered_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, 5000);
-    let (_pid, code, stdout, stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+    send_spawn_process_buffered_with_env(&mut host_stream, 1, LARGE_ENV_COMMAND, &env, 5000);
+    let (_pid, code, stdout, stderr) = read_buffered_spawn_process_result(&mut host_stream, 1);
 
     assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&stderr));
     assert_large_env_stdout(&stdout);
@@ -2274,7 +2274,7 @@ fn streaming_terminates_child_on_vsock_disconnect() {
     // streaming drain a chunk to forward at high frequency, so the post-
     // disconnect write failure is observed promptly.
     let log_path = unique_tmp_path("disco", ".log");
-    send_spawn_watch(
+    send_spawn_process(
         &mut host_stream,
         1,
         "while true; do echo tick; sleep 0.05; done",
@@ -2286,7 +2286,7 @@ fn streaming_terminates_child_on_vsock_disconnect() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    // Read until we observe both `MSG_SPAWN_WATCH_RESULT` (for the pid)
+    // Read until we observe both `MSG_SPAWN_PROCESS_RESULT` (for the pid)
     // and at least one `MSG_STDOUT_CHUNK` (proving the drain is live).
     let mut decoder = vsock_proto::Decoder::new();
     let mut buf = [0u8; 4096];
@@ -2296,12 +2296,12 @@ fn streaming_terminates_child_on_vsock_disconnect() {
     while pid.is_none() || !got_chunk {
         assert!(
             Instant::now() < stream_deadline,
-            "did not see spawn_watch_result + stdout chunk in time (pid={pid:?}, chunk={got_chunk})",
+            "did not see spawn_process_result + stdout chunk in time (pid={pid:?}, chunk={got_chunk})",
         );
         let n = read_retry_eintr(&mut host_stream, &mut buf).unwrap();
         for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == 1 {
-                pid = vsock_proto::decode_spawn_watch_result(&msg.payload).ok();
+            if msg.msg_type == MSG_SPAWN_PROCESS_RESULT && msg.seq == 1 {
+                pid = vsock_proto::decode_spawn_process_result(&msg.payload).ok();
             } else if msg.msg_type == MSG_STDOUT_CHUNK && msg.seq == 1 {
                 got_chunk = true;
             }
@@ -2326,7 +2326,7 @@ fn streaming_terminates_child_on_vsock_disconnect() {
     while pid_alive(pid) {
         if Instant::now() >= kill_deadline {
             // Best-effort cleanup before failing
-            // SAFETY: pid was obtained from MSG_SPAWN_WATCH_RESULT.
+            // SAFETY: pid was obtained from MSG_SPAWN_PROCESS_RESULT.
             unsafe {
                 libc::kill(pid as i32, libc::SIGKILL);
             }
@@ -2342,11 +2342,11 @@ fn streaming_terminates_child_on_vsock_disconnect() {
 /// the second pipe would fill, the child would block on its next write,
 /// and the test would hit the read timeout.
 ///
-/// Pins down the concurrent-drain invariant for buffered `MSG_SPAWN_WATCH`.
+/// Pins down the concurrent-drain invariant for buffered `MSG_SPAWN_PROCESS`.
 /// The streaming path in `spawn_streaming_monitor` follows the same
 /// stderr-thread-before-stdout-thread structure for the same reason.
 #[test]
-fn buffered_spawn_watch_concurrent_large_stdout_stderr() {
+fn buffered_spawn_process_concurrent_large_stdout_stderr() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
@@ -2366,13 +2366,13 @@ fn buffered_spawn_watch_concurrent_large_stdout_stderr() {
     // concurrently so stdout and stderr are interleaved producers.
     // 100 KB > the ~64 KB pipe buffer on Linux, so a single-threaded
     // drainer would visibly stall.
-    send_spawn_watch_buffered(
+    send_spawn_process_buffered(
         &mut host_stream,
         1,
         "{ yes A | head -c 102400; } & { yes B | head -c 102400 >&2; } & wait",
         10_000,
     );
-    let (pid, code, stdout, stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+    let (pid, code, stdout, stderr) = read_buffered_spawn_process_result(&mut host_stream, 1);
 
     assert!(pid > 0);
     assert_eq!(code, 0);
@@ -2395,13 +2395,13 @@ fn buffered_spawn_watch_concurrent_large_stdout_stderr() {
     let _ = handle.join();
 }
 
-/// Regression for #11077 (`MSG_SPAWN_WATCH` buffered side): symmetric to
+/// Regression for #11077 (`MSG_SPAWN_PROCESS` buffered side): symmetric to
 /// `streaming_monitor_drains_on_orphaned_stdout`. Pre-fix, the buffered
 /// monitor used the same `wait_with_output` and hung on a leaked stdout
 /// fd. Post-fix, drain threads observe the cancel flag at the deadline,
 /// drop the pipe read end, and the orphan's next write returns EPIPE.
 #[test]
-fn buffered_spawn_watch_returns_when_orphaned_grandchild_holds_stdout() {
+fn buffered_spawn_process_returns_when_orphaned_grandchild_holds_stdout() {
     use std::os::unix::net::UnixStream as StdUnixStream;
     use std::time::Instant;
 
@@ -2419,8 +2419,8 @@ fn buffered_spawn_watch_returns_when_orphaned_grandchild_holds_stdout() {
     let orphan = OrphanProcessGuard::new("orphan-buf-sleep");
     let command = orphan_sleep_command("orphan-buf", orphan.pid_path());
     let start = Instant::now();
-    send_spawn_watch_buffered(&mut host_stream, 1, &command, 0);
-    let (pid, code, stdout, _stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
+    send_spawn_process_buffered(&mut host_stream, 1, &command, 0);
+    let (pid, code, stdout, _stderr) = read_buffered_spawn_process_result(&mut host_stream, 1);
     let elapsed = start.elapsed();
 
     assert!(pid > 0);

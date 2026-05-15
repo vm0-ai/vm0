@@ -1,0 +1,63 @@
+import { randomUUID } from "node:crypto";
+
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { createStore } from "ccstate";
+import { like } from "drizzle-orm";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { now } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
+import { resolveOrgCreditAvailability } from "../zero-run-admission.service";
+
+const store = createStore();
+const ORG_ID_PREFIX = "org_zero_run_admission_";
+
+afterEach(async () => {
+  const db = store.set(writeDb$);
+  await db
+    .delete(creditExpiresRecord)
+    .where(like(creditExpiresRecord.orgId, `${ORG_ID_PREFIX}%`));
+  await db
+    .delete(orgMembersMetadata)
+    .where(like(orgMembersMetadata.orgId, `${ORG_ID_PREFIX}%`));
+  await db
+    .delete(orgMetadata)
+    .where(like(orgMetadata.orgId, `${ORG_ID_PREFIX}%`));
+});
+
+async function withCreditFixture<T>(
+  fn: (fixture: {
+    readonly orgId: string;
+    readonly userId: string;
+  }) => Promise<T>,
+): Promise<T> {
+  const orgId = `${ORG_ID_PREFIX}${randomUUID()}`;
+  const userId = `user_${randomUUID()}`;
+  const db = store.set(writeDb$);
+
+  await db.insert(orgMetadata).values({ orgId, credits: 10_000 });
+  await db.insert(orgMembersMetadata).values({ orgId, userId });
+
+  return await fn({ orgId, userId });
+}
+
+describe("resolveOrgCreditAvailability", () => {
+  it("returns spendable credits after unsettled expired credits", async () => {
+    await withCreditFixture(async ({ orgId, userId }) => {
+      const db = store.set(writeDb$);
+      await db.insert(creditExpiresRecord).values({
+        orgId,
+        source: "subscription_renewal",
+        amount: 2500,
+        remaining: 2500,
+        expiresAt: new Date(now() - 24 * 60 * 60 * 1000),
+      });
+
+      await expect(
+        resolveOrgCreditAvailability({ db, orgId, userId }),
+      ).resolves.toStrictEqual({ spendableCredits: 7500 });
+    });
+  });
+});

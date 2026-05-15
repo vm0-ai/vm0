@@ -1047,7 +1047,7 @@ pub(crate) async fn start_command_operation_on_shared(
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "command operation requires a positive timeout; use spawn_watch for unbounded commands",
+            "command operation requires a positive timeout; use spawn_process for unbounded commands",
         ));
     }
     if matches!(request.stream_queue_capacity, Some(0)) {
@@ -1264,7 +1264,7 @@ pub(crate) async fn exec_capture_on_shared(
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "exec requires a positive timeout; use spawn_watch for unbounded commands",
+            "exec requires a positive timeout; use spawn_process for unbounded commands",
         ));
     }
     let result = command_capture_on_shared(shared, request).await?;

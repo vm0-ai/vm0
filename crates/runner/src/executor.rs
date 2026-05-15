@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox,
-    SandboxConfig, SandboxFactory, SandboxId, SpawnOutputMode, SpawnWatchRequest,
+    SandboxConfig, SandboxFactory, SandboxId, SpawnProcessOutputMode, SpawnProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -552,16 +552,16 @@ async fn run_in_sandbox(
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
-    // JOB_TIMEOUT is used for both spawn_watch (guest-side kill) and wait_exit
+    // JOB_TIMEOUT is used for both spawn_process (guest-side kill) and wait_exit
     // (host-side watchdog) so neither side outlives the other.
     let t = Instant::now();
     let handle = sandbox
-        .spawn_watch(&SpawnWatchRequest {
+        .spawn_process(&SpawnProcessRequest {
             cmd: &agent_cmd,
             timeout: JOB_TIMEOUT,
             env: &env_refs,
             sudo: false,
-            output: SpawnOutputMode::Stream {
+            output: SpawnProcessOutputMode::Stream {
                 guest_log_path: None,
             },
         })
@@ -3073,7 +3073,7 @@ mod tests {
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
 
-        let calls = overrides.spawn_watch_calls();
+        let calls = overrides.spawn_process_calls();
         assert_eq!(calls.len(), 1);
         assert!(calls[0].streams_stdout);
         assert!(calls[0].guest_log_path.is_none());

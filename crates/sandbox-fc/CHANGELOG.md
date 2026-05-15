@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.32.1...sandbox-fc-v0.33.0) (2026-05-15)
+
+
+### Features
+
+* gate sandbox park with ReadyForPark ([#13346](https://github.com/vm0-ai/vm0/issues/13346)) ([dd87143](https://github.com/vm0-ai/vm0/commit/dd87143a9b2955ff93820b5efa3d32d01f857f63))
+
 ## [0.32.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.32.0...sandbox-fc-v0.32.1) (2026-05-14)
 
 ## [0.32.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.31.0...sandbox-fc-v0.32.0) (2026-05-14)

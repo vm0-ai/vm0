@@ -322,6 +322,34 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
+  it("preserves usage limit errors on failed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const usageLimitError =
+      "usage_limit_reached: Your usage limit has been reached.";
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: usageLimitError,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+
+    const messages = await listMessages(fixture.threadId);
+    const errorMessage = messages.find((message) => {
+      return message.role === "assistant" && message.runId === fixture.runId;
+    });
+    expect(errorMessage?.error).toBe(usageLimitError);
+    expect(errorMessage?.content).toBe(usageLimitError);
+    expect(errorMessage?.error).not.toBe(
+      "Oops, something went wrong. Please try again later.",
+    );
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
   it("auto-sends the oldest queued user message after a terminal callback", async () => {
     const fixture = await track(seedChatCallbackFixture());
     const db = store.set(writeDb$);

@@ -11,7 +11,7 @@
 - **Run `pnpm db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
 - **Run `script/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
 - **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
-- **API migration is in progress** - `apps/web` API traffic is migrating to `apps/api`; read https://github.com/vm0-ai/vm0/issues/12290 before API work, and keep `apps/web` and `apps/api` implementations in sync for feature work until the relevant route is fully API-authoritative.
+- **API migration is in progress** - `apps/web` API traffic is migrating to `apps/api`; read https://github.com/vm0-ai/vm0/issues/12290 before API work. New or migrated endpoint routes should be implemented in `apps/api`, not as new `apps/web/app/api/**/route.ts` handlers. When a web-compatible path is still needed, route it back to the API backend through `apps/web/next.config.js` Next rewrites instead of adding thin web proxy routes. For routes that still have implementations in both `apps/web` and `apps/api`, bug fixes and behavior or logic changes must update both implementations together until the route is fully API-authoritative.
 
 ## Global Services Pattern
 
@@ -266,4 +266,3 @@ The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes f
 - **Use the user's language** - When communicating directly with users, respond in their language
 - **Language priority** - If the user uses multiple languages, prioritize them in this order: user's primary language(s) first, English last
 - **Consistency** - Once you identify the user's preferred language, maintain that language throughout the conversation
-

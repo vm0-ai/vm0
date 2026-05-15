@@ -13,16 +13,21 @@ test("create a new schedule and verify it appears in the list", async ({
   await expect(
     page.getByRole("heading", { name: "Scheduled tasks" }),
   ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.getByTestId("app-skeleton"),
+  ).toHaveAttribute("aria-hidden", "true", { timeout: 60_000 });
 
   // Click "Add schedule" in the page header (the list empty-state may show a second button)
   await page
     .getByRole("banner")
     .getByRole("button", { name: "Add schedule" })
     .click();
-  await expect(page.getByLabel("Prompt")).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByRole("heading", { name: "Add schedule" }),
+  ).toBeVisible({ timeout: 30_000 });
 
   // Fill prompt and submit
-  await page.getByLabel("Prompt").fill(schedulePrompt);
+  await page.getByLabel("Prompt", { exact: true }).fill(schedulePrompt);
   await page.getByRole("button", { name: "Create" }).click();
 
   // After creation, app navigates to schedule detail page — verify the redirect

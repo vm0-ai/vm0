@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.151.0](https://github.com/vm0-ai/vm0/compare/cli-v9.150.11...cli-v9.151.0) (2026-05-15)
+
+
+### Features
+
+* add local-browser read command queue ([#13338](https://github.com/vm0-ai/vm0/issues/13338)) ([a627678](https://github.com/vm0-ai/vm0/commit/a627678ad051ba97d9d4748418b89784542275ea))
+* add zero hosted sites ([#13135](https://github.com/vm0-ai/vm0/issues/13135)) ([7e5c995](https://github.com/vm0-ai/vm0/commit/7e5c995810af12c79a2c704459dba2265df2d23d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.25.0
+    * @vm0/connectors bumped to 1.12.0
+    * @vm0/core bumped to 8.277.0
+
 ## [9.150.11](https://github.com/vm0-ai/vm0/compare/cli-v9.150.10...cli-v9.150.11) (2026-05-15)
 
 

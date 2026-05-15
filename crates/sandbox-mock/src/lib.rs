@@ -52,7 +52,7 @@ pub struct ExecMatcher {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SpawnWatchCall {
+pub struct SpawnProcessCall {
     pub streams_stdout: bool,
     pub guest_log_path: Option<String>,
 }
@@ -306,9 +306,9 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of destroy behaviours consumed by every factory built with
     /// these overrides. Empty queue → default successful destroy.
     destroy_behaviors: Mutex<VecDeque<DestroyBehavior>>,
-    /// Recorded spawn_watch output modes across all sandboxes built from
+    /// Recorded spawn_process output modes across all sandboxes built from
     /// this override set.
-    spawn_watch_calls: Mutex<Vec<SpawnWatchCall>>,
+    spawn_process_calls: Mutex<Vec<SpawnProcessCall>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -333,7 +333,7 @@ impl MockSandboxOverrides {
             unpark_behaviors: Mutex::new(VecDeque::new()),
             destroy_gate: Mutex::new(None),
             destroy_behaviors: Mutex::new(VecDeque::new()),
-            spawn_watch_calls: Mutex::new(Vec::new()),
+            spawn_process_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
@@ -500,10 +500,10 @@ impl MockSandboxOverrides {
         *self.destroy_calls.lock_ignoring_poison()
     }
 
-    /// Recorded spawn_watch calls across all sandboxes built from this
+    /// Recorded spawn_process calls across all sandboxes built from this
     /// override set, in call order.
-    pub fn spawn_watch_calls(&self) -> Vec<SpawnWatchCall> {
-        self.spawn_watch_calls.lock_ignoring_poison().clone()
+    pub fn spawn_process_calls(&self) -> Vec<SpawnProcessCall> {
+        self.spawn_process_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -548,7 +548,7 @@ pub struct MockSandbox {
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_exit_error override). Without this, the sender is
-    /// dropped immediately in `spawn_watch` and the drain task exits.
+    /// dropped immediately in `spawn_process` and the drain task exits.
     stdout_tx: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
 }
 
@@ -858,12 +858,12 @@ impl Sandbox for MockSandbox {
             .unwrap_or(Ok(()))
     }
 
-    async fn spawn_watch(&self, request: &SpawnWatchRequest<'_>) -> Result<SpawnHandle> {
+    async fn spawn_process(&self, request: &SpawnProcessRequest<'_>) -> Result<GuestProcessHandle> {
         if let Some(overrides) = &self.overrides {
             overrides
-                .spawn_watch_calls
+                .spawn_process_calls
                 .lock_ignoring_poison()
-                .push(SpawnWatchCall {
+                .push(SpawnProcessCall {
                     streams_stdout: request.output.streams_stdout(),
                     guest_log_path: request.output.guest_log_path().map(str::to_owned),
                 });
@@ -878,19 +878,23 @@ impl Sandbox for MockSandbox {
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
-        Ok(SpawnHandle::new(
+        Ok(GuestProcessHandle::new(
             1,
             request.output.streams_stdout().then_some(rx),
             Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
         ))
     }
 
-    async fn wait_exit(&self, mut handle: SpawnHandle, _timeout: Duration) -> Result<ProcessExit> {
+    async fn wait_exit(
+        &self,
+        mut handle: GuestProcessHandle,
+        _timeout: Duration,
+    ) -> Result<ProcessExit> {
         let Some(_exit) = handle.take_exit_future() else {
             return Err(SandboxError::Operation {
                 operation: SandboxOperation::WaitExit,
                 reason: SandboxOperationReason::Other,
-                message: "spawn_watch handle already consumed".to_string(),
+                message: "spawn_process handle already consumed".to_string(),
             });
         };
         // `wait_exit` consumes the handle; an unclaimed stream receiver can no
@@ -2159,29 +2163,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn overrides_record_spawn_watch_output_modes_in_order() {
+    async fn overrides_record_spawn_process_output_modes_in_order() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let buffered = sandbox
-            .spawn_watch(&SpawnWatchRequest {
+            .spawn_process(&SpawnProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnOutputMode::Buffered,
+                output: SpawnProcessOutputMode::Buffered,
             })
             .await
             .unwrap();
         assert!(buffered.stdout_rx.is_none());
 
         let streamed = sandbox
-            .spawn_watch(&SpawnWatchRequest {
+            .spawn_process(&SpawnProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnOutputMode::Stream {
+                output: SpawnProcessOutputMode::Stream {
                     guest_log_path: None,
                 },
             })
@@ -2190,12 +2194,12 @@ mod tests {
         assert!(streamed.stdout_rx.is_some());
 
         let tee = sandbox
-            .spawn_watch(&SpawnWatchRequest {
+            .spawn_process(&SpawnProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnOutputMode::Stream {
+                output: SpawnProcessOutputMode::Stream {
                     guest_log_path: Some("/tmp/guest.log"),
                 },
             })
@@ -2204,17 +2208,17 @@ mod tests {
         assert!(tee.stdout_rx.is_some());
 
         assert_eq!(
-            overrides.spawn_watch_calls(),
+            overrides.spawn_process_calls(),
             vec![
-                SpawnWatchCall {
+                SpawnProcessCall {
                     streams_stdout: false,
                     guest_log_path: None,
                 },
-                SpawnWatchCall {
+                SpawnProcessCall {
                     streams_stdout: true,
                     guest_log_path: None,
                 },
-                SpawnWatchCall {
+                SpawnProcessCall {
                     streams_stdout: true,
                     guest_log_path: Some("/tmp/guest.log".to_string()),
                 },
@@ -2223,17 +2227,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wait_exit_rejects_consumed_spawn_handle() {
+    async fn wait_exit_rejects_consumed_guest_process_handle() {
         let runtime = MockSandboxRuntime::new();
         let factory = runtime.create_factory(test_factory_config()).await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let mut handle = sandbox
-            .spawn_watch(&SpawnWatchRequest {
+            .spawn_process(&SpawnProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnOutputMode::Buffered,
+                output: SpawnProcessOutputMode::Buffered,
             })
             .await
             .unwrap();
@@ -2261,7 +2265,7 @@ mod tests {
         let overrides = Arc::new(MockSandboxOverrides::with_wait_exit_gate(Arc::clone(&gate)));
         let sandbox = MockSandbox::with_overrides("test", overrides);
         let (stdout_tx, stdout_rx) = tokio::sync::mpsc::unbounded_channel();
-        let handle = SpawnHandle::new(
+        let handle = GuestProcessHandle::new(
             1,
             Some(stdout_rx),
             Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),

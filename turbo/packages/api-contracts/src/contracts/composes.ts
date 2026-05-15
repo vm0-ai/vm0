@@ -35,6 +35,7 @@ export const ZERO_CAPABILITIES = [
   "remote-agent:read",
   "remote-agent:write",
   "local-browser:read",
+  "local-browser:write",
   "schedule:read",
   "schedule:write",
   "schedule:delete",
@@ -85,6 +86,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "local-browser:read": {
       group: "Local Browser",
       label: "Read authorized browser context",
+    },
+    "local-browser:write": {
+      group: "Local Browser",
+      label: "Control approved browser actions",
     },
     "schedule:read": { group: "Schedules", label: "View schedules" },
     "schedule:write": {

@@ -1,8 +1,13 @@
 //! Host-side park gate for same-session idle park.
 //!
-//! #13274 lands the state machine before #13275 routes production guest
-//! operations through it. Keep this module internal until those call sites
-//! consume the coordinator directly.
+//! `AgentQuiesced` is guest evidence that guest-agent-managed operations are
+//! fenced and settled. The host coordinator owns the stronger `ReadyForPark`
+//! state and is the only boundary that can authorize pausing this same
+//! sandbox/session.
+//!
+//! This is not a clean-VM certificate. Same-session park intentionally
+//! preserves guest/session state, and `ReadyForPark` must not be used to
+//! authorize cross-run reuse or snapshot publication.
 //!
 //! Invariants:
 //! - A `Poisoned` operation keeps the coordinator `Dirty`; dirty sandboxes are

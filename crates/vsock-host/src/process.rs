@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
-use vsock_proto::{MSG_ERROR, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, RawMessage};
+use vsock_proto::{MSG_ERROR, MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, RawMessage};
 
 use crate::{ConnectionState, Shared, request_raw_on_shared};
 
@@ -18,7 +18,7 @@ pub struct ProcessExitEvent {
     pub stderr: Vec<u8>,
 }
 
-struct SpawnOperation {
+struct ProcessOperation {
     pid: Option<u32>,
     streams_stdout: bool,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
@@ -27,8 +27,8 @@ struct SpawnOperation {
 
 /// Process lifecycle state while the vsock connection is open.
 pub(crate) struct ConnectedProcessState {
-    /// Active spawn_watch operations keyed by request sequence number.
-    operations: HashMap<u32, SpawnOperation>,
+    /// Active spawn_process operations keyed by request sequence number.
+    operations: HashMap<u32, ProcessOperation>,
 }
 
 impl ConnectedProcessState {
@@ -47,7 +47,7 @@ impl ConnectedProcessState {
         )
     }
 
-    fn insert_operation(&mut self, seq: u32, operation: SpawnOperation) {
+    fn insert_operation(&mut self, seq: u32, operation: ProcessOperation) {
         self.operations.insert(seq, operation);
     }
 
@@ -55,11 +55,11 @@ impl ConnectedProcessState {
         self.operations.remove(&seq);
     }
 
-    fn operation_mut(&mut self, seq: u32) -> Option<&mut SpawnOperation> {
+    fn operation_mut(&mut self, seq: u32) -> Option<&mut ProcessOperation> {
         self.operations.get_mut(&seq)
     }
 
-    fn take_operation(&mut self, seq: u32) -> Option<SpawnOperation> {
+    fn take_operation(&mut self, seq: u32) -> Option<ProcessOperation> {
         self.operations.remove(&seq)
     }
 
@@ -98,7 +98,7 @@ fn require_recorded_lifecycle_pid(
     let expected = expected.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("{frame} arrived before spawn_watch_result for pid {actual}"),
+            format!("{frame} arrived before spawn_process_result for pid {actual}"),
         )
     })?;
     validate_lifecycle_pid(frame, Some(expected), actual)?;
@@ -114,19 +114,19 @@ impl ClosedProcessState {
     }
 }
 
-/// Spawn operation map moved out during close so drops happen outside
+/// Process operation map moved out during close so drops happen outside
 /// `Shared.state`.
 pub(crate) struct ProcessOperationMap {
-    _operations: HashMap<u32, SpawnOperation>,
+    _operations: HashMap<u32, ProcessOperation>,
 }
 
-struct SpawnOperationRegistrationGuard {
+struct ProcessOperationRegistrationGuard {
     shared: Arc<Shared>,
     seq: u32,
     disarmed: bool,
 }
 
-impl SpawnOperationRegistrationGuard {
+impl ProcessOperationRegistrationGuard {
     fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self {
             shared,
@@ -140,15 +140,15 @@ impl SpawnOperationRegistrationGuard {
     }
 }
 
-impl Drop for SpawnOperationRegistrationGuard {
+impl Drop for ProcessOperationRegistrationGuard {
     fn drop(&mut self) {
         if !self.disarmed {
-            remove_spawn_operation(&self.shared, self.seq);
+            remove_process_operation(&self.shared, self.seq);
         }
     }
 }
 
-/// Handle for a spawn_watch operation.
+/// Handle for a spawn_process operation.
 ///
 /// Dropping the handle removes the host-side operation registration. It does
 /// not send a guest-side cancellation request; this matches the previous
@@ -158,7 +158,7 @@ impl Drop for SpawnOperationRegistrationGuard {
 /// before [`wait`](Self::wait). Waiting consumes the handle and drops any
 /// unclaimed stdout receiver so streamed output is not buffered without a
 /// reader.
-pub struct SpawnWatchHandle {
+pub struct GuestProcessHandle {
     shared: Arc<Shared>,
     seq: Option<u32>,
     pid: u32,
@@ -166,9 +166,9 @@ pub struct SpawnWatchHandle {
     exit_rx: Option<oneshot::Receiver<ProcessExitEvent>>,
 }
 
-impl fmt::Debug for SpawnWatchHandle {
+impl fmt::Debug for GuestProcessHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SpawnWatchHandle")
+        f.debug_struct("GuestProcessHandle")
             .field("seq", &self.seq)
             .field("pid", &self.pid)
             .field("has_stdout_receiver", &self.stdout_rx.is_some())
@@ -177,7 +177,7 @@ impl fmt::Debug for SpawnWatchHandle {
     }
 }
 
-impl SpawnWatchHandle {
+impl GuestProcessHandle {
     pub fn pid(&self) -> u32 {
         self.pid
     }
@@ -190,7 +190,7 @@ impl SpawnWatchHandle {
         let rx = self.exit_rx.take().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::ConnectionReset,
-                "spawn_watch operation closed",
+                "spawn_process operation closed",
             )
         })?;
 
@@ -207,37 +207,40 @@ impl SpawnWatchHandle {
     }
 }
 
-impl Drop for SpawnWatchHandle {
+impl Drop for GuestProcessHandle {
     fn drop(&mut self) {
         if let Some(seq) = self.seq.take() {
-            remove_spawn_operation(&self.shared, seq);
+            remove_process_operation(&self.shared, seq);
         }
     }
 }
 
-fn remove_spawn_operation(shared: &Arc<Shared>, seq: u32) {
+fn remove_process_operation(shared: &Arc<Shared>, seq: u32) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard {
         process.remove_operation(seq);
     }
 }
 
-pub(crate) fn record_spawn_watch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+pub(crate) fn record_spawn_process_result(
+    shared: &Arc<Shared>,
+    msg: &RawMessage,
+) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard
         && let Some(operation) = process.operation_mut(msg.seq)
     {
         if let Some(expected) = operation.pid {
-            let pid = vsock_proto::decode_spawn_watch_result(&msg.payload)
+            let pid = vsock_proto::decode_spawn_process_result(&msg.payload)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            validate_lifecycle_pid("spawn_watch_result", Some(expected), pid)?;
+            validate_lifecycle_pid("spawn_process_result", Some(expected), pid)?;
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("duplicate spawn_watch_result for pid {pid}"),
+                format!("duplicate spawn_process_result for pid {pid}"),
             ));
         }
 
-        let pid = match vsock_proto::decode_spawn_watch_result(&msg.payload) {
+        let pid = match vsock_proto::decode_spawn_process_result(&msg.payload) {
             Ok(pid) => pid,
             // Initial malformed responses are still delivered to the pending
             // request path, which returns InvalidData and drops the operation.
@@ -263,7 +266,7 @@ pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> i
         if !operation.streams_stdout {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("stdout_chunk for non-streaming spawn_watch pid {pid}"),
+                format!("stdout_chunk for non-streaming spawn_process pid {pid}"),
             ));
         }
         (operation.stdout_tx.clone(), data)
@@ -314,7 +317,7 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
     Ok(())
 }
 
-pub(crate) async fn spawn_watch_on_shared(
+pub(crate) async fn spawn_process_on_shared(
     shared: &Arc<Shared>,
     command: &str,
     timeout_ms: u32,
@@ -322,8 +325,8 @@ pub(crate) async fn spawn_watch_on_shared(
     sudo: bool,
     stream_stdout: bool,
     stdout_log_path: Option<&str>,
-) -> io::Result<SpawnWatchHandle> {
-    let payload = vsock_proto::encode_spawn_watch(
+) -> io::Result<GuestProcessHandle> {
+    let payload = vsock_proto::encode_spawn_process(
         timeout_ms,
         command,
         env,
@@ -353,7 +356,7 @@ pub(crate) async fn spawn_watch_on_shared(
             ConnectionState::Connected { process, .. } => {
                 process.insert_operation(
                     seq,
-                    SpawnOperation {
+                    ProcessOperation {
                         pid: None,
                         streams_stdout: stream_stdout,
                         stdout_tx,
@@ -363,11 +366,11 @@ pub(crate) async fn spawn_watch_on_shared(
             }
         }
     }
-    let mut registration_guard = SpawnOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    let mut registration_guard = ProcessOperationRegistrationGuard::new(Arc::clone(shared), seq);
 
     let resp = request_raw_on_shared(
         shared,
-        MSG_SPAWN_WATCH,
+        MSG_SPAWN_PROCESS,
         seq,
         &payload,
         Duration::from_secs(30),
@@ -380,19 +383,19 @@ pub(crate) async fn spawn_watch_on_shared(
         return Err(io::Error::other(msg));
     }
 
-    if resp.msg_type != MSG_SPAWN_WATCH_RESULT {
+    if resp.msg_type != MSG_SPAWN_PROCESS_RESULT {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unexpected response type: 0x{:02X}", resp.msg_type),
         ));
     }
 
-    let pid = vsock_proto::decode_spawn_watch_result(&resp.payload)
+    let pid = vsock_proto::decode_spawn_process_result(&resp.payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
     registration_guard.disarm();
 
-    Ok(SpawnWatchHandle {
+    Ok(GuestProcessHandle {
         shared: Arc::clone(shared),
         seq: Some(seq),
         pid,

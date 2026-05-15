@@ -3,22 +3,23 @@ import { sql } from "drizzle-orm";
 import { insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 
+type CreditDb = Pick<Db, "execute">;
+
 interface CreditCheckRow extends Record<string, unknown> {
   readonly credit_enabled: boolean | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
 }
 
-export async function checkOrgCreditsForRunAdmission(params: {
-  readonly db: Db;
+interface OrgCreditAvailability {
+  readonly spendableCredits: number;
+}
+
+export async function resolveOrgCreditAvailability(params: {
+  readonly db: CreditDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly modelProviderType: string | null | undefined;
-}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
-  if (params.modelProviderType !== "vm0") {
-    return undefined;
-  }
-
+}): Promise<OrgCreditAvailability | null> {
   const { rows } = await params.db.execute<CreditCheckRow>(sql`
     WITH member AS (
       SELECT credit_enabled FROM org_members_metadata
@@ -45,10 +46,25 @@ export async function checkOrgCreditsForRunAdmission(params: {
 
   const row = rows[0];
   if (!row || row.credit_enabled === false || row.credits === null) {
-    return insufficientCredits();
+    return null;
   }
 
   const credits = Number(row.credits);
   const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  return credits - unsettledExpired > 0 ? undefined : insufficientCredits();
+  const spendableCredits = credits - unsettledExpired;
+  return spendableCredits > 0 ? { spendableCredits } : null;
+}
+
+export async function checkOrgCreditsForRunAdmission(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelProviderType: string | null | undefined;
+}): Promise<ReturnType<typeof insufficientCredits> | undefined> {
+  if (params.modelProviderType !== "vm0") {
+    return undefined;
+  }
+
+  const availability = await resolveOrgCreditAvailability(params);
+  return availability ? undefined : insufficientCredits();
 }

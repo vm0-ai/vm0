@@ -2,12 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import {
+  zeroLocalBrowserCommandApprovalContract,
   zeroLocalBrowserCommandContract,
   zeroLocalBrowserHostCommandsContract,
+  zeroLocalBrowserWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import {
+  localBrowserCommandAuditEvents,
   localBrowserCommands,
   localBrowserHosts,
 } from "@vm0/db/schema/local-browser";
@@ -25,9 +28,11 @@ import {
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/zero-org-membership";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -135,12 +140,16 @@ describe("local-browser read commands", () => {
     fixtures.push(fixture);
     trackedOrgIds.push(fixture.orgId);
     await enableLocalBrowser(fixture.orgId, fixture.userId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     return fixture;
   }
 
   afterEach(async () => {
     const writeDb = store.set(writeDb$);
     if (trackedOrgIds.length > 0) {
+      await writeDb
+        .delete(localBrowserCommandAuditEvents)
+        .where(inArray(localBrowserCommandAuditEvents.orgId, trackedOrgIds));
       await writeDb
         .delete(localBrowserCommands)
         .where(inArray(localBrowserCommands.orgId, trackedOrgIds));
@@ -181,6 +190,53 @@ describe("local-browser read commands", () => {
 
     expect(response.body.error.message).toBe(
       "Missing required capability: local-browser:read",
+    );
+  });
+
+  it("rejects zero tokens without local-browser write capability", async () => {
+    const client = setupApp({ context })(zeroLocalBrowserWriteCommandContract);
+    const token = mintZeroToken({
+      orgId: `org_${randomUUID()}`,
+      userId: `user_${randomUUID()}`,
+      capabilities: ["local-browser:read"],
+    });
+
+    const response = await accept(
+      client.create({
+        body: {
+          kind: "page.click",
+          selector: "button",
+          timeoutMs: 15_000,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Missing required capability: local-browser:write",
+    );
+  });
+
+  it("rejects write command URLs with non-http schemes", async () => {
+    const fixture = await createOrgFixture();
+    const client = setupApp({ context })(zeroLocalBrowserWriteCommandContract);
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["local-browser:write"],
+    });
+
+    await accept(
+      client.create({
+        body: {
+          kind: "page.navigate",
+          url: "javascript:alert(1)",
+          timeoutMs: 15_000,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [400],
     );
   });
 
@@ -312,6 +368,240 @@ describe("local-browser read commands", () => {
       .where(eq(localBrowserCommands.id, created.body.commandId))
       .limit(1);
     expect(row?.runId).toMatch(/^run_/);
+  });
+
+  it("holds write commands for approval, then claims, completes, and audits them", async () => {
+    const fixture = await createOrgFixture();
+    await seedLocalBrowserConnector(fixture);
+    const hostToken = `vm0_local_browser_host_${randomUUID()}`;
+    await seedLocalBrowserHost({
+      ...fixture,
+      hostToken,
+      supportedCapabilities: ["page.click"],
+    });
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["local-browser:write"],
+    });
+    const writeClient = setupApp({ context })(
+      zeroLocalBrowserWriteCommandContract,
+    );
+
+    const created = await accept(
+      writeClient.create({
+        body: {
+          kind: "page.click",
+          selector: "button[data-action='save']",
+          timeoutMs: 15_000,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(created.body.status).toBe("pending_approval");
+
+    const hostClient = setupApp({ context })(
+      zeroLocalBrowserHostCommandsContract,
+    );
+    const beforeApproval = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: ["page.click"] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    expect(beforeApproval.body.status).toBe("idle");
+
+    const approvalClient = setupApp({ context })(
+      zeroLocalBrowserCommandApprovalContract,
+    );
+    const approved = await accept(
+      approvalClient.decide({
+        params: { commandId: created.body.commandId },
+        body: { decision: "approve" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(approved.body).toStrictEqual({
+      commandId: created.body.commandId,
+      status: "queued",
+    });
+
+    const claimed = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: ["page.click"] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    expect(claimed.body.status).toBe("command");
+    if (claimed.body.status !== "command") {
+      throw new Error("expected local-browser command");
+    }
+    expect(claimed.body.command).toMatchObject({
+      id: created.body.commandId,
+      kind: "page.click",
+      payload: { selector: "button[data-action='save']" },
+      timeoutMs: 15_000,
+    });
+
+    await accept(
+      hostClient.complete({
+        params: { commandId: created.body.commandId },
+        body: { status: "succeeded", result: { ok: true } },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    const commandClient = setupApp({ context })(
+      zeroLocalBrowserCommandContract,
+    );
+    const result = await accept(
+      commandClient.get({
+        params: { commandId: created.body.commandId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(result.body).toMatchObject({
+      id: created.body.commandId,
+      kind: "page.click",
+      status: "succeeded",
+      result: { ok: true },
+    });
+
+    const writeDb = store.set(writeDb$);
+    const auditRows = await writeDb
+      .select({
+        event: localBrowserCommandAuditEvents.event,
+        approvalOutcome: localBrowserCommandAuditEvents.approvalOutcome,
+        redactedResult: localBrowserCommandAuditEvents.redactedResult,
+      })
+      .from(localBrowserCommandAuditEvents)
+      .where(
+        eq(localBrowserCommandAuditEvents.commandId, created.body.commandId),
+      );
+    expect(
+      auditRows.map((row) => {
+        return row.event;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining(["created", "approved", "completed"]),
+    );
+    expect(auditRows).toContainEqual(
+      expect.objectContaining({
+        event: "approved",
+        approvalOutcome: "approved",
+      }),
+    );
+    expect(auditRows).toContainEqual(
+      expect.objectContaining({
+        event: "completed",
+        redactedResult: { ok: true },
+      }),
+    );
+  });
+
+  it("denies pending write commands with permission_denied and audits the denial", async () => {
+    const fixture = await createOrgFixture();
+    await seedLocalBrowserConnector(fixture);
+    const hostToken = `vm0_local_browser_host_${randomUUID()}`;
+    await seedLocalBrowserHost({
+      ...fixture,
+      hostToken,
+      supportedCapabilities: ["page.navigate"],
+    });
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["local-browser:write"],
+    });
+    const writeClient = setupApp({ context })(
+      zeroLocalBrowserWriteCommandContract,
+    );
+    const created = await accept(
+      writeClient.create({
+        body: {
+          kind: "page.navigate",
+          url: "https://example.com/checkout",
+          timeoutMs: 15_000,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    const approvalClient = setupApp({ context })(
+      zeroLocalBrowserCommandApprovalContract,
+    );
+    const denied = await accept(
+      approvalClient.decide({
+        params: { commandId: created.body.commandId },
+        body: { decision: "deny", message: "Not this tab" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(denied.body).toStrictEqual({
+      commandId: created.body.commandId,
+      status: "failed",
+    });
+
+    const hostClient = setupApp({ context })(
+      zeroLocalBrowserHostCommandsContract,
+    );
+    const claimed = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: ["page.navigate"] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    expect(claimed.body.status).toBe("idle");
+
+    const commandClient = setupApp({ context })(
+      zeroLocalBrowserCommandContract,
+    );
+    const result = await accept(
+      commandClient.get({
+        params: { commandId: created.body.commandId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(result.body).toMatchObject({
+      kind: "page.navigate",
+      status: "failed",
+      error: {
+        code: "permission_denied",
+        message: "Not this tab",
+      },
+    });
+
+    const writeDb = store.set(writeDb$);
+    const auditRows = await writeDb
+      .select({
+        event: localBrowserCommandAuditEvents.event,
+        approvalOutcome: localBrowserCommandAuditEvents.approvalOutcome,
+        error: localBrowserCommandAuditEvents.error,
+      })
+      .from(localBrowserCommandAuditEvents)
+      .where(
+        eq(localBrowserCommandAuditEvents.commandId, created.body.commandId),
+      );
+    expect(auditRows).toContainEqual(
+      expect.objectContaining({
+        event: "denied",
+        approvalOutcome: "denied",
+        error: {
+          code: "permission_denied",
+          message: "Not this tab",
+        },
+      }),
+    );
   });
 
   it("serializes deterministic extension failures", async () => {

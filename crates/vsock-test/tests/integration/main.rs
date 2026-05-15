@@ -8,7 +8,7 @@
 
 mod exec;
 mod shutdown;
-mod spawn_watch;
+mod spawn_process;
 mod stdout_streaming;
 mod support;
 mod write_file;

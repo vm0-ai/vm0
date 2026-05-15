@@ -211,6 +211,7 @@ export {
 // Domain modules - Zero Local Browser
 export {
   createLocalBrowserReadCommand,
+  createLocalBrowserWriteCommand,
   getLocalBrowserReadCommand,
 } from "./domains/zero-local-browser";
 

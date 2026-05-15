@@ -22,12 +22,12 @@
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x04 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x05 | H→G       | spawn_watch       | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
-//! | 0x06 | G→H       | spawn_watch_result| `[4B pid]` |
-//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` (`spawn_watch` uses the original request seq; pid is metadata, not the routing key) |
+//! | 0x05 | H→G       | spawn_process     | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`) |
+//! | 0x06 | G→H       | spawn_process_result | `[4B pid]` |
+//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
 //! | 0x08 | H→G       | shutdown          | (empty) |
 //! | 0x09 | G→H       | shutdown_ack      | (empty) |
-//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_watch` uses the original request seq; pid is metadata, not the routing key) |
+//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
 //! | 0x0B | H→G       | command_start     | `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...` |
 //! | 0x0C | G→H       | command_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | command_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
@@ -65,9 +65,9 @@ pub use payloads::error::{decode_error, encode_error};
 pub use payloads::process::{
     ProcessExit, decode_process_exit, decode_stdout_chunk, encode_process_exit, encode_stdout_chunk,
 };
-pub use payloads::spawn_watch::{
-    DecodedSpawnWatch, decode_spawn_watch, decode_spawn_watch_result, encode_spawn_watch,
-    encode_spawn_watch_result,
+pub use payloads::spawn_process::{
+    DecodedSpawnProcess, decode_spawn_process, decode_spawn_process_result, encode_spawn_process,
+    encode_spawn_process_result,
 };
 pub use payloads::write_file::{
     decode_write_file, decode_write_file_result, encode_write_file, encode_write_file_result,
@@ -77,8 +77,8 @@ pub use wire::{
     HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_COMMAND_CANCEL, MSG_COMMAND_OUTPUT,
     MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
-    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    SPAWN_WATCH_FLAG_STREAM_STDOUT, SPAWN_WATCH_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS,
+    MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
     WRITE_FILE_FLAG_SUDO,
 };

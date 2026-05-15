@@ -6,9 +6,11 @@ import {
   zeroLocalBrowserHeartbeatContract,
   zeroLocalBrowserHostRealtimeContract,
   zeroLocalBrowserCommandContract,
+  zeroLocalBrowserCommandApprovalContract,
   zeroLocalBrowserHostCommandsContract,
   zeroLocalBrowserHostsContract,
   zeroLocalBrowserHostSelfContract,
+  zeroLocalBrowserWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -19,11 +21,13 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
+  approveLocalBrowserWriteCommand$,
   claimLocalBrowserDeviceCode$,
   claimNextLocalBrowserHostCommand$,
   completeLocalBrowserHostCommand$,
   createLocalBrowserDeviceCode$,
   createLocalBrowserReadCommand$,
+  createLocalBrowserWriteCommand$,
   createLocalBrowserHostRealtimeToken$,
   deleteLocalBrowserHost$,
   getLocalBrowserReadCommand$,
@@ -62,6 +66,17 @@ const invalidLocalBrowserToken = Object.freeze({
     error: Object.freeze({
       message: "Invalid local browser host token",
       code: "UNAUTHORIZED",
+    }),
+  }),
+});
+
+const missingLocalBrowserCommandCapability = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message:
+        "Missing required capability: local-browser:read or local-browser:write",
+      code: "FORBIDDEN",
     }),
   }),
 });
@@ -448,9 +463,114 @@ const commandCreateInner$ = command(
   },
 );
 
+const writeCommandCreateBody$ = bodyResultOf(
+  zeroLocalBrowserWriteCommandContract.create,
+);
+const writeCommandCreateInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isLocalBrowserEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return localBrowserDisabled;
+    }
+
+    const bodyResult = await get(writeCommandCreateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const payload = {
+      ...(bodyResult.data.tabId ? { tabId: bodyResult.data.tabId } : {}),
+      ...(bodyResult.data.selector
+        ? { selector: bodyResult.data.selector }
+        : {}),
+      ...(bodyResult.data.x !== undefined ? { x: bodyResult.data.x } : {}),
+      ...(bodyResult.data.y !== undefined ? { y: bodyResult.data.y } : {}),
+      ...(bodyResult.data.text ? { text: bodyResult.data.text } : {}),
+      ...(bodyResult.data.direction
+        ? { direction: bodyResult.data.direction }
+        : {}),
+      ...(bodyResult.data.amount !== undefined
+        ? { amount: bodyResult.data.amount }
+        : {}),
+      ...(bodyResult.data.url ? { url: bodyResult.data.url } : {}),
+    };
+    const commandParams = {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      kind: bodyResult.data.kind,
+      payload,
+      timeoutMs: bodyResult.data.timeoutMs,
+      ...(auth.tokenType === "zero" ? { runId: auth.runId } : {}),
+      ...(bodyResult.data.hostId ? { hostId: bodyResult.data.hostId } : {}),
+      ...(bodyResult.data.hostName
+        ? { hostName: bodyResult.data.hostName }
+        : {}),
+    };
+    const result = await set(
+      createLocalBrowserWriteCommand$,
+      commandParams,
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "no_connector") {
+      return conflict(
+        "Connect the local-browser connector before controlling tabs",
+      );
+    }
+    if (result.status === "no_host") {
+      return notFound("No linked local-browser host found");
+    }
+    if (result.status === "host_not_found") {
+      return notFound("Local-browser host not found");
+    }
+    if (result.status === "host_ambiguous") {
+      return conflict("Multiple local-browser hosts have this name");
+    }
+    if (result.status === "host_offline") {
+      return conflict("No online local-browser host found");
+    }
+    if (result.status === "host_unsupported") {
+      return conflict("No online local-browser host supports this command");
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        commandId: result.commandId,
+        status: result.commandStatus,
+      },
+    };
+  },
+);
+
 const commandGetParams$ = pathParamsOf(zeroLocalBrowserCommandContract.get);
 const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  if (
+    auth.tokenType === "sandbox" ||
+    (auth.tokenType === "zero" &&
+      !auth.capabilities.some((capability) => {
+        return (
+          capability === "local-browser:read" ||
+          capability === "local-browser:write"
+        );
+      }))
+  ) {
+    return missingLocalBrowserCommandCapability;
+  }
+
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
   );
@@ -483,6 +603,68 @@ const commandGetInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return { status: 200 as const, body: result };
 });
+
+const commandApprovalBody$ = bodyResultOf(
+  zeroLocalBrowserCommandApprovalContract.decide,
+);
+const commandApprovalParams$ = pathParamsOf(
+  zeroLocalBrowserCommandApprovalContract.decide,
+);
+const commandApprovalInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isLocalBrowserEnabled({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        overrides,
+      })
+    ) {
+      return localBrowserDisabled;
+    }
+
+    const bodyResult = await get(commandApprovalBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const params = get(commandApprovalParams$);
+    const result = await set(
+      approveLocalBrowserWriteCommand$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        commandId: params.commandId,
+        decision: bodyResult.data.decision,
+        ...(bodyResult.data.message
+          ? { message: bodyResult.data.message }
+          : {}),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "not_found") {
+      return notFound("Local-browser write command not found");
+    }
+    if (result.status === "not_pending") {
+      return conflict("Local-browser write command is not pending approval");
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        commandId: result.commandId,
+        status: result.status === "approved" ? "queued" : "failed",
+      },
+    };
+  },
+);
 
 const hostCommandNextBody$ = bodyResultOf(
   zeroLocalBrowserHostCommandsContract.next,
@@ -589,6 +771,16 @@ const localBrowserReadAuthOptions = {
   requiredCapability: "local-browser:read",
 } as const;
 
+const localBrowserWriteAuthOptions = {
+  ...localBrowserAuthOptions,
+  requiredCapability: "local-browser:write",
+} as const;
+
+const localBrowserCommandGetAuthOptions = {
+  ...localBrowserAuthOptions,
+  acceptAnySandboxCapability: true,
+} as const;
+
 export const zeroLocalBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalBrowserDeviceStartContract.start,
@@ -631,8 +823,16 @@ export const zeroLocalBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(localBrowserReadAuthOptions, commandCreateInner$),
   },
   {
+    route: zeroLocalBrowserWriteCommandContract.create,
+    handler: authRoute(localBrowserWriteAuthOptions, writeCommandCreateInner$),
+  },
+  {
     route: zeroLocalBrowserCommandContract.get,
-    handler: authRoute(localBrowserReadAuthOptions, commandGetInner$),
+    handler: authRoute(localBrowserCommandGetAuthOptions, commandGetInner$),
+  },
+  {
+    route: zeroLocalBrowserCommandApprovalContract.decide,
+    handler: authRoute(localBrowserAuthOptions, commandApprovalInner$),
   },
   {
     route: zeroLocalBrowserHostCommandsContract.next,

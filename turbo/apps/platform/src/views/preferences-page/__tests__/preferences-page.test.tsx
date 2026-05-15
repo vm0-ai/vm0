@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -34,6 +34,25 @@ function renderPreferencesPage() {
 }
 
 describe("zero preferences page - tab navigation", () => {
+  it("loads preferences through the web proxy host", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/settings"));
+    const requestHosts: string[] = [];
+
+    server.use(
+      mockApi(zeroUserPreferencesContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, createMockPreferences());
+      }),
+    );
+
+    await renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+    });
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
   it("should show appearance tab by default and switch to time zone tab", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();

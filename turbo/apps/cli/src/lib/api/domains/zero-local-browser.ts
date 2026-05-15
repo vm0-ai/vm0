@@ -3,8 +3,12 @@ import type {
   LocalBrowserCommandCreateResponse,
   LocalBrowserCommandResponse,
   LocalBrowserReadCommandKind,
+  LocalBrowserWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
-import { zeroLocalBrowserCommandContract } from "@vm0/api-contracts/contracts/zero-local-browser";
+import {
+  zeroLocalBrowserCommandContract,
+  zeroLocalBrowserWriteCommandContract,
+} from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   ApiRequestError,
   getBaseUrl,
@@ -79,6 +83,47 @@ export async function createLocalBrowserReadCommand(params: {
   }
 
   handleError(result, "Failed to create local-browser command");
+}
+
+export async function createLocalBrowserWriteCommand(params: {
+  kind: LocalBrowserWriteCommandKind;
+  tabId?: string;
+  hostId?: string;
+  hostName?: string;
+  selector?: string;
+  x?: number;
+  y?: number;
+  text?: string;
+  direction?: "up" | "down";
+  amount?: number;
+  url?: string;
+  timeoutMs?: number;
+}): Promise<LocalBrowserCommandCreateResponse> {
+  const config = await getLocalBrowserClientConfig();
+  const client = initClient(zeroLocalBrowserWriteCommandContract, config);
+
+  const result = await client.create({
+    body: {
+      kind: params.kind,
+      timeoutMs: params.timeoutMs ?? 15_000,
+      ...(params.tabId ? { tabId: params.tabId } : {}),
+      ...(params.hostId ? { hostId: params.hostId } : {}),
+      ...(params.hostName ? { hostName: params.hostName } : {}),
+      ...(params.selector ? { selector: params.selector } : {}),
+      ...(params.x !== undefined ? { x: params.x } : {}),
+      ...(params.y !== undefined ? { y: params.y } : {}),
+      ...(params.text ? { text: params.text } : {}),
+      ...(params.direction ? { direction: params.direction } : {}),
+      ...(params.amount !== undefined ? { amount: params.amount } : {}),
+      ...(params.url ? { url: params.url } : {}),
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create local-browser write command");
 }
 
 export async function getLocalBrowserReadCommand(

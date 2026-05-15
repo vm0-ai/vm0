@@ -57,9 +57,9 @@ impl ExecRequest<'_> {
     }
 }
 
-/// Request for a watched command whose process can outlive the initial spawn
-/// request and is supervised through [`SpawnHandle`].
-pub struct SpawnWatchRequest<'a> {
+/// Request for a guest process that can outlive the initial spawn request and
+/// is supervised through [`GuestProcessHandle`].
+pub struct SpawnProcessRequest<'a> {
     /// Shell command to run inside the guest.
     pub cmd: &'a str,
     /// Guest-side process timeout.
@@ -69,10 +69,10 @@ pub struct SpawnWatchRequest<'a> {
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,
     /// Buffered or streamed stdout behavior.
-    pub output: SpawnOutputMode<'a>,
+    pub output: SpawnProcessOutputMode<'a>,
 }
 
-impl SpawnWatchRequest<'_> {
+impl SpawnProcessRequest<'_> {
     /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
         duration_ms(self.timeout)
@@ -127,34 +127,34 @@ pub struct CopyFileResult {
     pub bytes_copied: u64,
 }
 
-/// Backend-owned future that resolves when a watched process exits.
+/// Backend-owned future that resolves when a spawned process exits.
 ///
-/// Sandbox implementations store this in [`SpawnHandle`] so
+/// Sandbox implementations store this in [`GuestProcessHandle`] so
 /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit) can consume the exact
-/// backend operation created by [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
-pub type SpawnExitFuture =
+/// backend operation created by [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
+pub type GuestProcessExitFuture =
     Pin<Box<dyn Future<Output = std::io::Result<ProcessExit>> + Send + 'static>>;
 
-/// Handle returned by [`Sandbox::spawn_watch`](crate::Sandbox::spawn_watch).
+/// Handle returned by [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
 ///
 /// The handle owns backend-specific exit state and must be consumed by
 /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit). When stdout streaming is
 /// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting; if
 /// they do, they must drain it while the process runs.
-pub struct SpawnHandle {
+pub struct GuestProcessHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
     pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
-    exit: Option<SpawnExitFuture>,
+    exit: Option<GuestProcessExitFuture>,
 }
 
-impl SpawnHandle {
-    /// Construct a spawn handle from backend-owned process state.
+impl GuestProcessHandle {
+    /// Construct a guest process handle from backend-owned process state.
     pub fn new(
         pid: u32,
         stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
-        exit: SpawnExitFuture,
+        exit: GuestProcessExitFuture,
     ) -> Self {
         Self {
             pid,
@@ -168,18 +168,18 @@ impl SpawnHandle {
     /// This is intended for sandbox backend implementations of
     /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit); ordinary callers should
     /// pass the handle to that trait method instead.
-    pub fn take_exit_future(&mut self) -> Option<SpawnExitFuture> {
+    pub fn take_exit_future(&mut self) -> Option<GuestProcessExitFuture> {
         self.exit.take()
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpawnOutputMode<'a> {
+pub enum SpawnProcessOutputMode<'a> {
     Buffered,
     Stream { guest_log_path: Option<&'a str> },
 }
 
-impl<'a> SpawnOutputMode<'a> {
+impl<'a> SpawnProcessOutputMode<'a> {
     pub fn streams_stdout(self) -> bool {
         matches!(self, Self::Stream { .. })
     }

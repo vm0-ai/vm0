@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import { insufficientCredits } from "@vm0/api-services/errors";
 import type { Database } from "../../../types/global";
 
+type CreditDb = Pick<Database, "execute">;
+
 export interface CheckOrgCreditsOptions {
   preloadedOrgCredits?: {
     orgId: string;
@@ -15,7 +17,11 @@ interface CreditCheckRow extends Record<string, unknown> {
   unsettled_expired: string | null;
 }
 
-function isDatabase(value: unknown): value is Database {
+interface OrgCreditAvailability {
+  readonly spendableCredits: number;
+}
+
+function isDatabase(value: unknown): value is CreditDb {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -25,11 +31,11 @@ function isDatabase(value: unknown): value is Database {
 }
 
 /**
- * Pre-flight check: ensure the member can spend vm0-bundled credits for this org.
+ * Resolve the org's spendable vm0-bundled credit balance for this member.
  *
- * Throws `insufficientCredits` if either:
+ * Returns `null` if either:
  *   - the member's `credit_enabled` flag is false (hit their billing-cycle cap), or
- *   - `org_metadata.credits − Σ unsettled-expired ≤ 0`.
+ *   - `org_metadata.credits - sum(unsettled-expired) <= 0`.
  *
  * The spendable balance subtracts unsettled expired records so a dormant
  * non-subscription org whose credits have expired (but haven't yet been
@@ -45,12 +51,12 @@ function isDatabase(value: unknown): value is Database {
  * Callers that already fetched org_metadata may pass preloaded credits either
  * as the third argument or after the db handle.
  */
-export async function checkOrgCredits(
+export async function resolveOrgCreditAvailability(
   orgId: string,
   userId: string,
-  dbOrOptions: Database | CheckOrgCreditsOptions = globalThis.services.db,
+  dbOrOptions: CreditDb | CheckOrgCreditsOptions = globalThis.services.db,
   options: CheckOrgCreditsOptions = {},
-): Promise<void> {
+): Promise<OrgCreditAvailability | null> {
   const db = isDatabase(dbOrOptions) ? dbOrOptions : globalThis.services.db;
   const resolvedOptions = isDatabase(dbOrOptions) ? options : dbOrOptions;
   const preloaded = resolvedOptions.preloadedOrgCredits;
@@ -99,11 +105,35 @@ export async function checkOrgCredits(
         `);
 
   const row = rows[0];
-  if (!row) throw insufficientCredits();
-  if (row.credit_enabled === false) throw insufficientCredits();
-  if (row.credits == null) throw insufficientCredits();
+  if (!row || row.credit_enabled === false || row.credits == null) {
+    return null;
+  }
 
   const credits = Number(row.credits);
   const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  if (credits - unsettledExpired <= 0) throw insufficientCredits();
+  const spendableCredits = credits - unsettledExpired;
+  return spendableCredits <= 0 ? null : { spendableCredits };
+}
+
+/**
+ * Pre-flight check: ensure the member can spend vm0-bundled credits for this org.
+ *
+ * Throws `insufficientCredits` when `resolveOrgCreditAvailability` returns no
+ * spendable balance. Callable from any vm0-billable route. For LLM runs that
+ * may use BYOK, first resolve the run admission context, then call
+ * `checkOrgCreditsForRunAdmission` in zero-run-policy.
+ */
+export async function checkOrgCredits(
+  orgId: string,
+  userId: string,
+  dbOrOptions: CreditDb | CheckOrgCreditsOptions = globalThis.services.db,
+  options: CheckOrgCreditsOptions = {},
+): Promise<void> {
+  const availability = await resolveOrgCreditAvailability(
+    orgId,
+    userId,
+    dbOrOptions,
+    options,
+  );
+  if (!availability) throw insufficientCredits();
 }

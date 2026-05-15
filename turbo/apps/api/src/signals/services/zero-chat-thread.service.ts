@@ -61,6 +61,10 @@ const ACTIONABLE_ERROR_SNIPPETS = [
   "Cannot continue session",
   "Invalid signature in thinking block",
   "Run cancelled",
+  "usage limit",
+  "usage_limit",
+  "usage-limit",
+  "UsageLimit",
 ] as const;
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {

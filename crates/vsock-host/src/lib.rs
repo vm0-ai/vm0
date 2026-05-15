@@ -40,7 +40,7 @@ use tokio::time::{self, Instant};
 use vsock_proto::{
     Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH_RESULT,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS_RESULT,
     MSG_STDOUT_CHUNK, RawMessage,
 };
 
@@ -49,7 +49,7 @@ pub use command::{
     CommandOutputEvent, CommandOwnedCapturedOutput, CommandStreamRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
-pub use process::{ProcessExitEvent, SpawnWatchHandle};
+pub use process::{GuestProcessHandle, ProcessExitEvent};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 
@@ -79,7 +79,7 @@ enum ConnectionState {
         pending: HashMap<u32, oneshot::Sender<RawMessage>>,
         /// Active command-operation state owned by the command module.
         operations: command::Operations,
-        /// Active spawn_watch operation state owned by the process module.
+        /// Active spawn_process operation state owned by the process module.
         process: process::ConnectedProcessState,
     },
     Closed {
@@ -263,7 +263,7 @@ impl Drop for VsockHost {
 
 /// Background reader task: owns the read half and decoder exclusively.
 ///
-/// Dispatches responses, command operations, and spawn_watch lifecycle frames
+/// Dispatches responses, command operations, and spawn_process lifecycle frames
 /// by seq number.
 async fn reader_loop(
     mut reader: tokio::net::unix::OwnedReadHalf,
@@ -319,8 +319,8 @@ async fn reader_loop(
                     return;
                 }
             } else {
-                if msg.msg_type == MSG_SPAWN_WATCH_RESULT
-                    && process::record_spawn_watch_result(&shared, &msg).is_err()
+                if msg.msg_type == MSG_SPAWN_PROCESS_RESULT
+                    && process::record_spawn_process_result(&shared, &msg).is_err()
                 {
                     shared.poison_connection();
                     return;
@@ -671,7 +671,7 @@ impl VsockHost {
     /// Execute a command on the guest.
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
-    /// should use [`spawn_watch`](Self::spawn_watch), which decouples the
+    /// should use [`spawn_process`](Self::spawn_process), which decouples the
     /// host request/response cycle from the command's lifetime and does not
     /// leak a guest-side orphan when the host stops waiting.
     pub async fn exec(
@@ -691,16 +691,16 @@ impl VsockHost {
 
     /// Spawn a process on the guest and monitor for exit.
     ///
-    /// Returns immediately with a handle. Use [`SpawnWatchHandle::wait`] to
+    /// Returns immediately with a handle. Use [`GuestProcessHandle::wait`] to
     /// wait for completion.
     ///
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
     /// the guest to tee those chunks into the given guest-side file.
-    /// Use [`SpawnWatchHandle::take_stdout_receiver`] to receive streamed chunks
+    /// Use [`GuestProcessHandle::take_stdout_receiver`] to receive streamed chunks
     /// when enabled. The receiver is closed when the process exits or the
     /// connection drops.
-    pub async fn spawn_watch(
+    pub async fn spawn_process(
         &self,
         command: &str,
         timeout_ms: u32,
@@ -708,8 +708,8 @@ impl VsockHost {
         sudo: bool,
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
-    ) -> io::Result<SpawnWatchHandle> {
-        process::spawn_watch_on_shared(
+    ) -> io::Result<GuestProcessHandle> {
+        process::spawn_process_on_shared(
             &self.shared,
             command,
             timeout_ms,

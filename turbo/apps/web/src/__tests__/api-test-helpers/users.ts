@@ -1,14 +1,14 @@
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
-import { consumeCaptureNetworkBodies } from "../../lib/zero/user/user-preferences-service";
+import {
+  consumeCaptureNetworkBodies,
+  getUserPreferences,
+  updateUserPreferences,
+} from "../../lib/zero/user/user-preferences-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test helper: service access needed for test data setup
 import { getVm0ApiKey } from "../../lib/zero/vm0-key/vm0-key-service";
 import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/push-subscriptions/route";
-import {
-  GET as getUserPreferencesRoute,
-  POST as updateUserPreferencesRoute,
-} from "../../../app/api/zero/user-preferences/route";
 import { randomUUID } from "crypto";
-import { createTestRequest } from "./core";
+import { createTestRequest, getTestAuthContext } from "./core";
 
 // Re-exports: DB-direct seeders
 export {
@@ -83,8 +83,7 @@ export async function consumeTestCaptureNetworkBodies(
 }
 
 /**
- * Get the full user preferences object for testing via the
- * GET /api/zero/user-preferences route. The caller must be
+ * Get the full user preferences object for test setup. The caller must be
  * authenticated via mockClerk() before calling this function.
  */
 export async function getTestUserPreferencesAll(): Promise<{
@@ -93,21 +92,13 @@ export async function getTestUserPreferencesAll(): Promise<{
   sendMode: string;
   captureNetworkBodiesRemaining: number;
 }> {
-  const response = await getUserPreferencesRoute(
-    createTestRequest("http://localhost:3000/api/zero/user-preferences"),
-  );
-  if (response.status !== 200) {
-    throw new Error(
-      `Failed to get user preferences: status ${response.status}`,
-    );
-  }
-  return response.json();
+  const { orgId, userId } = await getTestAuthContext();
+  return getUserPreferences(orgId, userId);
 }
 
 /**
- * Update user preferences for test setup via the
- * POST /api/zero/user-preferences route. The caller must be
- * authenticated via mockClerk() before calling this function.
+ * Update user preferences for test setup. The caller must be authenticated via
+ * mockClerk() before calling this function.
  */
 export async function updateTestUserPreferencesAll(prefs: {
   timezone?: string;
@@ -120,17 +111,6 @@ export async function updateTestUserPreferencesAll(prefs: {
   sendMode: string;
   captureNetworkBodiesRemaining: number;
 }> {
-  const response = await updateUserPreferencesRoute(
-    createTestRequest("http://localhost:3000/api/zero/user-preferences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(prefs),
-    }),
-  );
-  if (response.status !== 200) {
-    throw new Error(
-      `Failed to update user preferences: status ${response.status}`,
-    );
-  }
-  return response.json();
+  const { orgId, userId } = await getTestAuthContext();
+  return updateUserPreferences(orgId, userId, prefs);
 }

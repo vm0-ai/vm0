@@ -49,6 +49,7 @@ vi.mock("next-intl/middleware", () => {
 
 // Import after mocks are set up
 import middleware from "../proxy";
+import { reloadEnv } from "../src/env";
 
 /**
  * Create a minimal NextFetchEvent stub.
@@ -176,5 +177,41 @@ describe("proxy middleware: sandbox token handling", () => {
 
     expect(capturedClerkRequest).toBeDefined();
     expect(capturedClerkRequest!.headers.get("authorization")).toBeNull();
+  });
+
+  it("should add the Vercel bypass header to API backend proxy requests", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    reloadEnv();
+
+    const token = "Bearer clerk_session_token";
+    const request = new NextRequest(
+      "https://pr-13380-www.vm6.ai/api/zero/user-preferences",
+      {
+        headers: {
+          authorization: token,
+          origin: "https://pr-13380-app.vm6.ai",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-authorization")).toBe(
+      token,
+    );
+    expect(
+      response.headers.get("x-middleware-request-x-vercel-protection-bypass"),
+    ).toBe("preview-secret");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://pr-13380-app.vm6.ai",
+    );
+    expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
+      "true",
+    );
   });
 });

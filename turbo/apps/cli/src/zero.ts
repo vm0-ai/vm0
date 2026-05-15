@@ -62,7 +62,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   host: "host:write",
   "remote-agent": ["remote-agent:read", "remote-agent:write"],
-  "local-browser": "local-browser:read",
+  "local-browser": ["local-browser:read", "local-browser:write"],
 };
 
 const DEFAULT_COMMANDS: Command[] = [

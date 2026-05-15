@@ -14,7 +14,21 @@ export const localBrowserReadCommandKindSchema = z.enum([
   "page.selection",
   "page.metadata",
 ]);
+export const localBrowserWriteCommandKindSchema = z.enum([
+  "page.click",
+  "page.type",
+  "page.scroll",
+  "page.navigate",
+  "tabs.activate",
+  "tabs.open",
+  "tabs.close",
+]);
+export const localBrowserCommandKindSchema = z.enum([
+  ...localBrowserReadCommandKindSchema.options,
+  ...localBrowserWriteCommandKindSchema.options,
+]);
 export const localBrowserCommandStatusSchema = z.enum([
+  "pending_approval",
   "queued",
   "running",
   "succeeded",
@@ -32,6 +46,16 @@ const hostNameSchema = z.string().trim().min(1).max(128);
 const browserSchema = z.string().trim().min(1).max(64);
 const extensionVersionSchema = z.string().trim().min(1).max(64);
 const tabIdSchema = z.string().trim().min(1).max(128);
+const targetUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(2_048)
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "URL must use http or https");
+const cssSelectorSchema = z.string().trim().min(1).max(1_024);
 const supportedCapabilitiesSchema = z
   .array(z.string().trim().min(1).max(128))
   .max(50);
@@ -105,16 +129,94 @@ export const localBrowserHostDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
-const localBrowserCommandCreateBodySchema = z.object({
-  kind: localBrowserReadCommandKindSchema,
+const localBrowserCommandTargetShape = {
   tabId: tabIdSchema.optional(),
   hostId: z.string().min(1).optional(),
   hostName: hostNameSchema.optional(),
   timeoutMs: z.number().int().min(1_000).max(60_000).default(15_000),
+} as const;
+
+const localBrowserCommandCreateBodySchema = z.object({
+  kind: localBrowserReadCommandKindSchema,
+  ...localBrowserCommandTargetShape,
 });
+
+const localBrowserWriteCommandCreateBodySchema = z
+  .object({
+    kind: localBrowserWriteCommandKindSchema,
+    ...localBrowserCommandTargetShape,
+    selector: cssSelectorSchema.optional(),
+    x: z.number().int().min(0).optional(),
+    y: z.number().int().min(0).optional(),
+    text: z.string().min(1).max(64_000).optional(),
+    direction: z.enum(["up", "down"]).optional(),
+    amount: z.number().int().positive().max(10_000).optional(),
+    url: targetUrlSchema.optional(),
+  })
+  .superRefine((body, ctx) => {
+    const requireField = (field: string, message: string) => {
+      ctx.addIssue({
+        code: "custom",
+        path: [field],
+        message,
+      });
+    };
+
+    if (body.kind === "page.click") {
+      const hasPoint = body.x !== undefined && body.y !== undefined;
+      if (!body.selector && !hasPoint) {
+        requireField("selector", "page.click requires selector or x/y");
+      }
+      if ((body.x === undefined) !== (body.y === undefined)) {
+        requireField("x", "page.click coordinates require both x and y");
+      }
+      return;
+    }
+
+    if (body.kind === "page.type") {
+      if (!body.selector) {
+        requireField("selector", "page.type requires selector");
+      }
+      if (!body.text) {
+        requireField("text", "page.type requires text");
+      }
+      return;
+    }
+
+    if (body.kind === "page.scroll") {
+      if (!body.direction) {
+        requireField("direction", "page.scroll requires direction");
+      }
+      if (!body.amount) {
+        requireField("amount", "page.scroll requires amount");
+      }
+      return;
+    }
+
+    if (body.kind === "page.navigate" || body.kind === "tabs.open") {
+      if (!body.url) {
+        requireField("url", `${body.kind} requires url`);
+      }
+      return;
+    }
+
+    if (
+      (body.kind === "tabs.activate" || body.kind === "tabs.close") &&
+      !body.tabId
+    ) {
+      requireField("tabId", `${body.kind} requires tabId`);
+    }
+  });
 
 const localBrowserCommandPayloadSchema = z.object({
   tabId: tabIdSchema.optional(),
+  selector: cssSelectorSchema.optional(),
+  x: z.number().int().min(0).optional(),
+  y: z.number().int().min(0).optional(),
+  text: z.string().max(64_000).optional(),
+  direction: z.enum(["up", "down"]).optional(),
+  amount: z.number().int().positive().max(10_000).optional(),
+  url: targetUrlSchema.optional(),
 });
 
 export const localBrowserTabSchema = z.object({
@@ -156,6 +258,10 @@ export const localBrowserCommandResultSchema = z.union([
     .refine((value) => {
       return Object.keys(value).length > 0;
     }, "Metadata result must include at least one field"),
+  z.object({
+    ok: z.literal(true),
+    details: z.string().max(1_024).optional(),
+  }),
 ]);
 
 export const localBrowserCommandErrorSchema = z.object({
@@ -165,12 +271,12 @@ export const localBrowserCommandErrorSchema = z.object({
 
 export const localBrowserCommandCreateResponseSchema = z.object({
   commandId: z.string(),
-  status: z.literal("queued"),
+  status: z.enum(["queued", "pending_approval"]),
 });
 
 export const localBrowserCommandResponseSchema = z.object({
   id: z.string(),
-  kind: localBrowserReadCommandKindSchema,
+  kind: localBrowserCommandKindSchema,
   status: localBrowserCommandStatusSchema,
   hostId: z.string().nullable(),
   hostName: z.string().nullable(),
@@ -191,7 +297,7 @@ export const localBrowserHostCommandNextResponseSchema = z.discriminatedUnion(
       status: z.literal("command"),
       command: z.object({
         id: z.string(),
-        kind: localBrowserReadCommandKindSchema,
+        kind: localBrowserCommandKindSchema,
         payload: localBrowserCommandPayloadSchema,
         timeoutMs: z.number().int().positive().nullable(),
       }),
@@ -215,6 +321,11 @@ const localBrowserHostCommandCompleteBodySchema = z.discriminatedUnion(
 
 export const localBrowserHostCommandCompleteResponseSchema = z.object({
   ok: z.literal(true),
+});
+
+export const localBrowserCommandApprovalResponseSchema = z.object({
+  commandId: z.string(),
+  status: z.enum(["queued", "failed"]),
 });
 
 export const zeroLocalBrowserDeviceStartContract = c.router({
@@ -388,6 +499,48 @@ export const zeroLocalBrowserCommandContract = c.router({
   },
 });
 
+export const zeroLocalBrowserWriteCommandContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/local-browser/write-commands",
+    headers: authHeadersSchema,
+    body: localBrowserWriteCommandCreateBodySchema,
+    responses: {
+      200: localBrowserCommandCreateResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Create an approved-write local-browser command",
+  },
+});
+
+export const zeroLocalBrowserCommandApprovalContract = c.router({
+  decide: {
+    method: "POST",
+    path: "/api/zero/local-browser/commands/:commandId/approval",
+    pathParams: z.object({
+      commandId: z.string().min(1),
+    }),
+    headers: authHeadersSchema,
+    body: z.object({
+      decision: z.enum(["approve", "deny"]),
+      message: z.string().trim().min(1).max(1_024).optional(),
+    }),
+    responses: {
+      200: localBrowserCommandApprovalResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Approve or deny a pending local-browser write command",
+  },
+});
+
 export const zeroLocalBrowserHostCommandsContract = c.router({
   next: {
     method: "POST",
@@ -401,7 +554,7 @@ export const zeroLocalBrowserHostCommandsContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
     },
-    summary: "Claim the next local-browser read command",
+    summary: "Claim the next approved local-browser command",
   },
   complete: {
     method: "POST",
@@ -418,7 +571,7 @@ export const zeroLocalBrowserHostCommandsContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Complete a local-browser read command",
+    summary: "Complete a local-browser command",
   },
 });
 
@@ -427,6 +580,12 @@ export type LocalBrowserHostStatus = z.infer<
 >;
 export type LocalBrowserReadCommandKind = z.infer<
   typeof localBrowserReadCommandKindSchema
+>;
+export type LocalBrowserWriteCommandKind = z.infer<
+  typeof localBrowserWriteCommandKindSchema
+>;
+export type LocalBrowserCommandKind = z.infer<
+  typeof localBrowserCommandKindSchema
 >;
 export type LocalBrowserCommandStatus = z.infer<
   typeof localBrowserCommandStatusSchema
@@ -472,6 +631,9 @@ export type LocalBrowserHostCommandNextResponse = z.infer<
 export type LocalBrowserHostCommandCompleteResponse = z.infer<
   typeof localBrowserHostCommandCompleteResponseSchema
 >;
+export type LocalBrowserCommandApprovalResponse = z.infer<
+  typeof localBrowserCommandApprovalResponseSchema
+>;
 export type ZeroLocalBrowserDeviceStartContract =
   typeof zeroLocalBrowserDeviceStartContract;
 export type ZeroLocalBrowserDevicePollContract =
@@ -488,5 +650,9 @@ export type ZeroLocalBrowserHostSelfContract =
   typeof zeroLocalBrowserHostSelfContract;
 export type ZeroLocalBrowserCommandContract =
   typeof zeroLocalBrowserCommandContract;
+export type ZeroLocalBrowserWriteCommandContract =
+  typeof zeroLocalBrowserWriteCommandContract;
+export type ZeroLocalBrowserCommandApprovalContract =
+  typeof zeroLocalBrowserCommandApprovalContract;
 export type ZeroLocalBrowserHostCommandsContract =
   typeof zeroLocalBrowserHostCommandsContract;
