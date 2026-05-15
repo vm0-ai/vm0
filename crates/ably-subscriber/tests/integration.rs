@@ -1571,6 +1571,90 @@ async fn server_sends_detached_reattach() {
     server_task.await.unwrap();
 }
 
+#[tokio::test]
+async fn huge_realtime_request_timeout_allows_detached_reattach() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (after_reattach_seen_tx, after_reattach_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+
+        let detached = ProtocolMessage {
+            action: action::DETACHED,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "channel detached".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&detached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn))
+            .await
+            .expect("timed out waiting for ATTACH after DETACHED")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-2".into()),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&attached).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        send_message(
+            &mut conn,
+            "ch",
+            "after-huge-timeout-reattach",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        wait_for_test_observation(
+            after_reattach_seen_rx,
+            "after huge-timeout reattach message",
+        )
+        .await;
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.realtime_request_timeout = Duration::MAX;
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after huge-timeout reattach")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-huge-timeout-reattach"));
+            after_reattach_seen_tx.send(()).unwrap();
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Test 12: close subscription sends CLOSE to server
 // ---------------------------------------------------------------------------

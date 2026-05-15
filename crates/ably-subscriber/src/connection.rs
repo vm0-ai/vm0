@@ -659,7 +659,8 @@ fn retry_delay(initial_timeout: Duration, retry_attempt: u32) -> Duration {
         .unwrap_or_default()
         .subsec_nanos() as u128;
     let jitter_per_mille = 800 + (nanos % 200);
-    Duration::from_millis(upper_ms.saturating_mul(jitter_per_mille) as u64 / 1000)
+    let jittered_ms = upper_ms.saturating_mul(jitter_per_mille) / 1000;
+    Duration::from_millis(u64::try_from(jittered_ms).unwrap_or(u64::MAX))
 }
 
 async fn sleep_until_optional(deadline: Option<Instant>) {
@@ -691,7 +692,7 @@ fn request_channel_attach(p: &mut EventLoopState) -> bool {
     }
 
     p.channel_retry_at = None;
-    p.channel_operation_deadline = Some(Instant::now() + p.timing.realtime_request_timeout);
+    p.channel_operation_deadline = checked_deadline_after(p.timing.realtime_request_timeout);
     true
 }
 
@@ -701,9 +702,10 @@ fn schedule_channel_retry(p: &mut EventLoopState) {
         && p.lifecycle.connection.send_events()
     {
         p.channel_retry_count += 1;
-        p.channel_retry_at = Some(
-            Instant::now() + retry_delay(p.timing.channel_retry_timeout, p.channel_retry_count),
-        );
+        p.channel_retry_at = checked_deadline_after(retry_delay(
+            p.timing.channel_retry_timeout,
+            p.channel_retry_count,
+        ));
     } else {
         p.channel_retry_at = None;
     }
@@ -1889,6 +1891,13 @@ mod tests {
         let _ = idle_deadline(state.max_idle_interval, Duration::from_secs(10));
         let _ = checked_deadline_from(Instant::now(), state.connection_state_ttl);
         let _ = state.token_renewal_at;
+    }
+
+    #[test]
+    fn retry_delay_saturates_huge_timeout_without_truncating() {
+        let delay = retry_delay(Duration::MAX, 1);
+
+        assert_eq!(delay, Duration::from_millis(u64::MAX));
     }
 
     #[test]
