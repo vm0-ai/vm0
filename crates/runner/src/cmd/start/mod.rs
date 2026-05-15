@@ -89,7 +89,7 @@ use mitm_restart::{
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
 };
-use signals::{EarlySignals, SignalController};
+use signals::{EarlySignals, SignalController, recv_handler_task};
 
 struct TeardownTimer {
     start: Instant,
@@ -852,7 +852,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     };
     let mut mode_rx = signal.mode_rx;
     let lifecycle = signal.lifecycle;
-    let signal_handler_abort = signal.handler_abort;
+    let mut signal_handler_task = signal.handler_task;
 
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
@@ -1031,6 +1031,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
+            // Signal handler task should run until teardown aborts it. If it
+            // exits early, stop the runner because OS signals are no longer
+            // being consumed.
+            result = recv_handler_task(&mut signal_handler_task) => {
+                match result {
+                    Ok(()) => warn!("signal handler task exited unexpectedly"),
+                    Err(error) => warn!(error = %error, "signal handler task failed"),
+                }
+                lifecycle.hard_stop();
+            }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and
             // stale cancel tokens until drain, budget exhaustion, or shutdown.
@@ -1202,9 +1212,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let phase = teardown.phase_start("finish_mitm_restart");
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
     teardown.phase_complete("finish_mitm_restart", phase);
-    if let Some(abort) = signal_handler_abort {
-        abort.abort();
-        teardown.event("signal_handler_aborted");
+    if let Some(handler_task) = signal_handler_task.take() {
+        handler_task.abort();
+        match handler_task.await {
+            Err(error) if error.is_cancelled() => {
+                teardown.event("signal_handler_aborted");
+            }
+            Err(error) => {
+                warn!(error = %error, "signal handler task failed during shutdown");
+            }
+            Ok(()) => {
+                warn!("signal handler task exited before shutdown abort completed");
+            }
+        }
     }
 
     info!("shutting down factories");

@@ -158,13 +158,10 @@ impl LifecycleController {
 pub(crate) struct SignalController {
     pub mode_rx: tokio::sync::watch::Receiver<RunnerMode>,
     pub lifecycle: LifecycleController,
-    /// Abort handle for the spawned signal-handler task. `None` for test
-    /// overrides where no task was spawned. Teardown calls `.abort()` to
-    /// reap the task symmetrically with `mitm_retry.handle.abort()` — the
-    /// handler otherwise would run until runtime drop, which is safe for
-    /// the runner binary but leaks the task when `run()` is embedded in a
-    /// longer-lived host runtime.
-    pub handler_abort: Option<tokio::task::AbortHandle>,
+    /// Spawned signal-handler task. `None` for test overrides where no real
+    /// task was spawned. Teardown aborts and awaits this handle so the task
+    /// releases its signal stream subscriptions before `run()` returns.
+    pub handler_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl SignalController {
@@ -191,9 +188,9 @@ impl SignalController {
     ///
     /// ## Lifetime
     ///
-    /// The spawned task loops forever and is implicitly cancelled when the
-    /// tokio runtime is dropped. Its `JoinHandle` is discarded — panics in
-    /// the handler will be logged by tokio but not surfaced.
+    /// The spawned task owns the registered signal streams and normally runs
+    /// until `run()` teardown aborts and awaits `handler_task`. Test overrides
+    /// construct a controller with no real handler task.
     pub(super) fn spawn(
         cancel: CancellationToken,
         cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
@@ -230,8 +227,29 @@ impl SignalController {
         Self {
             mode_rx,
             lifecycle,
-            handler_abort: Some(handle.abort_handle()),
+            handler_task: Some(handle),
         }
+    }
+}
+
+/// Await a signal-handler task, or pend forever when tests supply no task.
+///
+/// This mirrors the retry-task helper used by the main loop: keeping the
+/// `Option` outside the future lets `tokio::select!` watch the task without
+/// taking ownership unless it actually completes.
+pub(super) async fn recv_handler_task(
+    handler_task: &mut Option<tokio::task::JoinHandle<()>>,
+) -> Result<(), String> {
+    match handler_task {
+        Some(task) => {
+            let result = match task.await {
+                Ok(()) => Ok(()),
+                Err(error) => Err(error.to_string()),
+            };
+            *handler_task = None;
+            result
+        }
+        None => std::future::pending().await,
     }
 }
 
@@ -325,9 +343,38 @@ mod tests {
 
         // Abort so the task releases its Signal stream subscriptions
         // and does not linger to consume signals raised by later tests.
-        if let Some(abort) = controller.handler_abort {
-            abort.abort();
+        if let Some(handler_task) = controller.handler_task {
+            handler_task.abort();
+            let result = handler_task
+                .await
+                .expect_err("signal handler should be cancelled");
+            assert!(result.is_cancelled());
         }
+    }
+
+    #[tokio::test]
+    async fn recv_handler_task_clears_completed_task() {
+        let mut handler_task = Some(tokio::spawn(async {}));
+
+        recv_handler_task(&mut handler_task)
+            .await
+            .expect("completed handler task");
+
+        assert!(handler_task.is_none());
+    }
+
+    #[tokio::test]
+    async fn recv_handler_task_reports_cancelled_task() {
+        let task = tokio::spawn(std::future::pending::<()>());
+        task.abort();
+        let mut handler_task = Some(task);
+
+        let result = recv_handler_task(&mut handler_task)
+            .await
+            .expect_err("cancelled handler task should be reported");
+
+        assert!(result.contains("cancelled"));
+        assert!(handler_task.is_none());
     }
 
     /// `handle_drain_signal` state guard: SIGUSR1 is honored only from

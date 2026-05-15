@@ -220,7 +220,7 @@ fn build_mock_run_config_with_runtime(
         signal_source: SignalSource::Override(SignalController {
             mode_rx,
             lifecycle: lifecycle.clone(),
-            handler_abort: None,
+            handler_task: None,
         }),
         outer_job_panic: None,
         test_observer: start_observer.clone(),
