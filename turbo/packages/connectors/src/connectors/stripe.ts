@@ -39,8 +39,28 @@ export const stripe = {
           },
         },
       },
+      "cli-auth": {
+        featureFlag: FeatureSwitchKey.CliAuthStripe,
+        label: "Stripe CLI",
+        helpText: "Sign in with the Stripe CLI to import an API key.",
+        secrets: {},
+      },
     },
     defaultAuthMethod: "oauth",
+    cliAuth: {
+      modes: [
+        {
+          value: "test",
+          label: "Test mode",
+          description: "Import a Stripe test mode key.",
+        },
+        {
+          value: "live",
+          label: "Live mode",
+          description: "Import a Stripe live mode key.",
+        },
+      ],
+    },
     oauth: {
       authorizationUrl: "https://connect.stripe.com/oauth/authorize",
       tokenUrl: "https://connect.stripe.com/oauth/token",

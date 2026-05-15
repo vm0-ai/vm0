@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { connectorTypeSchema } from "../connectors";
+import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
 import {
+  getAvailableConnectorAuthMethods,
   hasRequiredScopes,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
@@ -11,6 +12,7 @@ import {
   getConfiguredConnectorTypes,
   isGoogleOAuthConnector,
 } from "../connector-utils";
+import { FeatureSwitchKey } from "../feature-switch-key";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
@@ -54,6 +56,41 @@ describe("hasRequiredScopes", () => {
         "user",
       ]),
     ).toBe(true);
+  });
+});
+
+describe("connector auth method config", () => {
+  it("declares Stripe CLI auth as a gated connection flow with modes", () => {
+    const method = CONNECTOR_TYPES.stripe.authMethods["cli-auth"];
+
+    expect(method).toBeDefined();
+    expect(method?.secrets).toStrictEqual({});
+    expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
+    expect(CONNECTOR_TYPES.stripe.cliAuth?.modes).toStrictEqual([
+      {
+        value: "test",
+        label: "Test mode",
+        description: "Import a Stripe test mode key.",
+      },
+      {
+        value: "live",
+        label: "Live mode",
+        description: "Import a Stripe live mode key.",
+      },
+    ]);
+  });
+});
+
+describe("getAvailableConnectorAuthMethods", () => {
+  it("exposes Stripe CLI auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("stripe", {})).toStrictEqual([
+      "api-token",
+    ]);
+    expect(
+      getAvailableConnectorAuthMethods("stripe", {
+        [FeatureSwitchKey.CliAuthStripe]: true,
+      }),
+    ).toStrictEqual(["api-token", "cli-auth"]);
   });
 });
 

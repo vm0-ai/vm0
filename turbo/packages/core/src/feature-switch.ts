@@ -134,19 +134,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Stripe payment connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.CliAuth]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Gate CLI-based connector auth UI and API surfaces. Rollout control only; credential routes still require normal auth and ownership checks.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.CliAuthStripe]: {
     maintainer: "liangyou@vm0.ai",
-    description:
-      "Gate Stripe-specific CLI auth UI and API surfaces. CLI auth for Stripe consumers should also require CliAuth.",
+    description: "Gate Stripe-specific CLI auth UI and API surfaces.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",

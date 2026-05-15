@@ -40,10 +40,7 @@ function isCliAuthStripeEnabled(params: {
     userId: params.userId,
     overrides: params.overrides,
   };
-  return (
-    isFeatureEnabled(FeatureSwitchKey.CliAuth, switchContext) &&
-    isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, switchContext)
-  );
+  return isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, switchContext);
 }
 
 const completeCliAuthStripeBody$ = bodyResultOf(

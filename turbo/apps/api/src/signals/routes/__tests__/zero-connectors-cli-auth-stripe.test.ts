@@ -255,7 +255,6 @@ async function enableCliAuthStripe(userId: string, orgId: string) {
       orgId,
       userId,
       switches: {
-        [FeatureSwitchKey.CliAuth]: true,
         [FeatureSwitchKey.CliAuthStripe]: true,
       },
     })
@@ -263,7 +262,6 @@ async function enableCliAuthStripe(userId: string, orgId: string) {
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: {
         switches: {
-          [FeatureSwitchKey.CliAuth]: true,
           [FeatureSwitchKey.CliAuthStripe]: true,
         },
       },
@@ -380,7 +378,7 @@ describe("CLI auth for Stripe connector routes", () => {
     return { userId, orgId };
   }
 
-  it("requires both CLI auth feature switches before creating a sandbox", async () => {
+  it("requires the Stripe CLI auth feature switch before creating a sandbox", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     fixtures.push({ userId, orgId });

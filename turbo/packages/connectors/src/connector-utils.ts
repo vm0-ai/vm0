@@ -71,7 +71,8 @@ function shouldIncludeApiAuthMethod(
 /**
  * Return user-selectable connector connection flows for a surface.
  *
- * This describes configured connection flows, not persisted connected state.
+ * This does not describe persisted connected state. For example, a `cli-auth`
+ * flow can import an API key and still appear as `api-token` once connected.
  */
 export function getAvailableConnectorAuthMethods(
   type: ConnectorType,

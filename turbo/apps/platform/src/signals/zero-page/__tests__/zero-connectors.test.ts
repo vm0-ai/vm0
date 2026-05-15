@@ -179,3 +179,43 @@ describe("connectors — auth method feature flags", () => {
     expect(mercury?.availableAuthMethods).toContain("api-token");
   });
 });
+
+describe("connectors — CLI auth availability", () => {
+  async function stripeAuthMethods(
+    featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>,
+  ) {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches,
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const stripe = connectorTypes.find((c) => {
+      return c.type === "stripe";
+    });
+    expect(stripe).toBeDefined();
+    return stripe?.availableAuthMethods ?? [];
+  }
+
+  it.each([
+    ["no Stripe CLI auth switch", {}, false],
+    [
+      "Stripe CLI auth without StripeConnector",
+      {
+        [FeatureSwitchKey.CliAuthStripe]: true,
+        [FeatureSwitchKey.StripeConnector]: false,
+      },
+      true,
+    ],
+  ] as const)(
+    "sets Stripe CLI auth availability for %s",
+    async (_name, featureSwitches, expectedCliAuth) => {
+      const authMethods = await stripeAuthMethods(featureSwitches);
+
+      expect(authMethods).toContain("api-token");
+      expect(authMethods.includes("cli-auth")).toBe(expectedCliAuth);
+    },
+  );
+});

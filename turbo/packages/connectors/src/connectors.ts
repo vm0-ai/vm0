@@ -205,7 +205,7 @@ export interface ConnectorSecretConfig {
 }
 
 /**
- * Auth method configuration for connectors
+ * Auth method configuration for user-selectable connector connection flows.
  */
 export interface ConnectorAuthMethodConfig {
   label: string;
@@ -225,21 +225,44 @@ export interface ConnectorOAuthConfig {
 }
 
 /**
- * Connector auth method variants.
+ * CLI auth configuration for connectors that can import credentials through a
+ * provider CLI.
+ */
+export interface ConnectorCliAuthConfig {
+  modes?: readonly {
+    value: string;
+    label: string;
+    description?: string;
+  }[];
+}
+
+/**
+ * Connector auth method variants exposed as configured connection flows.
+ *
+ * These values describe the choices users can select when connecting a
+ * service. They are not necessarily the same as the persisted connected
+ * credential shape returned by connector APIs.
  *
  * - `oauth` — full OAuth 2.0 flow. Enablement stored as a DB row in
  *   `connectors` (with scopes, external identity, token refresh metadata).
  * - `api-token` — user supplies an API token via the UI. No DB row:
  *   enablement is derived from the presence of required secrets/variables.
- * - `api` — connector-specific first-party flow, not the generic OAuth or
- *   user-entered API-token setup.
+ * - `api` — service-managed connection flow for integrations established
+ *   outside OAuth or user-entered API-token forms.
+ * - `cli-auth` — user imports credentials through a provider CLI. The imported
+ *   result may still be stored as another credential shape such as `api-token`.
  */
-export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
+export type ConnectorAuthMethodType =
+  | "oauth"
+  | "api-token"
+  | "api"
+  | "cli-auth";
 
 export const CONNECTOR_AUTH_METHOD_TYPES = [
   "oauth",
   "api-token",
   "api",
+  "cli-auth",
 ] as const satisfies readonly ConnectorAuthMethodType[];
 
 type MissingConnectorAuthMethodType = Exclude<
@@ -371,6 +394,7 @@ export interface ConnectorConfig {
   >;
   readonly defaultAuthMethod?: ConnectorAuthMethodType;
   readonly oauth?: ConnectorOAuthConfig;
+  readonly cliAuth?: ConnectorCliAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
   /**

@@ -73,26 +73,15 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {})).toBe(true);
   });
 
-  it("should enable CLI auth switches for staff orgs only by default", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.CliAuth, {})).toBe(false);
+  it("should keep Stripe CLI auth disabled by default", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);
 
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
-    ).toBe(true);
-
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
-        orgId: "org_nonexistent",
-      }),
     ).toBe(false);
+
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         orgId: "org_nonexistent",
@@ -198,28 +187,12 @@ describe("overrides", () => {
     ).toBe(false);
   });
 
-  it("should allow CLI auth switches to be overridden independently", () => {
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
-        overrides: { [FeatureSwitchKey.CliAuth]: true },
-      }),
-    ).toBe(true);
+  it("should allow Stripe CLI auth to be overridden", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         overrides: { [FeatureSwitchKey.CliAuthStripe]: true },
       }),
     ).toBe(true);
-
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
-        overrides: { [FeatureSwitchKey.CliAuth]: true },
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.CliAuth, {
-        overrides: { [FeatureSwitchKey.CliAuthStripe]: true },
-      }),
-    ).toBe(false);
   });
 
   it("should behave identically when no overrides provided", () => {

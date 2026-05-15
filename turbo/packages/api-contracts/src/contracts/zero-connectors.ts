@@ -106,7 +106,12 @@ export const zeroConnectorAuthorizeContract = c.router({
   },
 });
 
-const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token", "api"]);
+const connectorSearchAuthMethodSchema = z.enum([
+  "oauth",
+  "api-token",
+  "api",
+  "cli-auth",
+]);
 
 export type ConnectorSearchAuthMethod = z.infer<
   typeof connectorSearchAuthMethodSchema

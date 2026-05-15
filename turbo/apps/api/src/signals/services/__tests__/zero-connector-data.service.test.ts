@@ -114,6 +114,31 @@ describe("zeroConnectorList", () => {
 });
 
 describe("zeroConnectorSearch", () => {
+  async function stripeSearchAuthMethods(
+    switches: Partial<Record<FeatureSwitchKey, boolean>>,
+  ) {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    if (Object.keys(switches).length > 0) {
+      await writeDb.insert(userFeatureSwitches).values({
+        orgId,
+        userId,
+        switches,
+      });
+    }
+
+    const connectors = await store.get(
+      zeroConnectorSearch({ orgId, userId, keyword: "stripe" }),
+    );
+
+    const stripe = connectors.find((connector) => {
+      return connector.id === "stripe";
+    });
+    expect(stripe).toBeDefined();
+    return stripe?.authMethods ?? [];
+  }
+
   it("hides feature-flagged api-token connectors when the flag is disabled", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -147,4 +172,24 @@ describe("zeroConnectorSearch", () => {
     });
     expect(zapier?.authMethods).toStrictEqual(["api-token"]);
   });
+
+  it.each([
+    ["no Stripe CLI auth switch", {}, false],
+    [
+      "Stripe CLI auth without StripeConnector",
+      {
+        [FeatureSwitchKey.CliAuthStripe]: true,
+        [FeatureSwitchKey.StripeConnector]: false,
+      },
+      true,
+    ],
+  ] as const)(
+    "sets Stripe API search CLI auth availability for %s",
+    async (_name, switches, expectedCliAuth) => {
+      const authMethods = await stripeSearchAuthMethods(switches);
+
+      expect(authMethods).toContain("api-token");
+      expect(authMethods.includes("cli-auth")).toBe(expectedCliAuth);
+    },
+  );
 });
