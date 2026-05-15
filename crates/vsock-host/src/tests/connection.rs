@@ -13,7 +13,7 @@ use super::support::{
     host_from_stream, make_pair, mock_handshake, normal_operation_readiness, poison_connection,
     read_guest_message, send_exec_result,
 };
-use crate::{operation_tracker::NormalOperationReadiness, VsockHost};
+use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn wait_for_connection_removes_listener_socket_on_abort() {
