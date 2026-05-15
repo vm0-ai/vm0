@@ -1,6 +1,7 @@
 //! CLI command building and execution for Claude Code / Codex.
 
 mod command;
+mod diagnostics;
 
 pub use command::build_cli_command;
 
@@ -14,16 +15,12 @@ use crate::paths;
 use crate::timing;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const STDERR_RESULT_MAX_LINES: usize = 200;
-const STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
-const STDERR_READ_BUFFER_BYTES: usize = 8 * 1024;
-const STDERR_OMITTED_LONG_LINE: &str = "[stderr line omitted: exceeded diagnostic size limit]";
 
 /// State machine driving forced CLI process-group termination. A single
 /// pinned deadline is resettable across phases; the enum value tells the
@@ -270,88 +267,6 @@ impl AckedEventPrefix {
     }
 }
 
-fn push_stderr_result_line(lines: &mut VecDeque<String>, line: String) {
-    if lines.len() == STDERR_RESULT_MAX_LINES {
-        lines.pop_front();
-    }
-    lines.push_back(line);
-}
-
-fn push_decoded_stderr_result_line(lines: &mut VecDeque<String>, line: &[u8]) {
-    let line = String::from_utf8_lossy(line);
-    if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
-        push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
-    } else {
-        push_stderr_result_line(lines, line.into_owned());
-    }
-}
-
-fn finish_stderr_result_line(
-    lines: &mut VecDeque<String>,
-    line: &mut Vec<u8>,
-    line_omitted: &mut bool,
-    strip_trailing_cr: bool,
-) {
-    if *line_omitted {
-        push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
-    } else {
-        if strip_trailing_cr && line.last() == Some(&b'\r') {
-            line.pop();
-        }
-        if line.len() > STDERR_RESULT_MAX_LINE_BYTES {
-            push_stderr_result_line(lines, STDERR_OMITTED_LONG_LINE.to_string());
-        } else {
-            push_decoded_stderr_result_line(lines, line);
-        }
-    }
-    line.clear();
-    *line_omitted = false;
-}
-
-async fn collect_stderr_result_tail<R>(mut stderr: R) -> Vec<String>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut lines = VecDeque::with_capacity(STDERR_RESULT_MAX_LINES);
-    let mut line = Vec::with_capacity(STDERR_RESULT_MAX_LINE_BYTES.min(1024));
-    let mut line_omitted = false;
-    let mut buffer = [0u8; STDERR_READ_BUFFER_BYTES];
-
-    loop {
-        let read = match stderr.read(&mut buffer).await {
-            Ok(0) => break,
-            Ok(read) => read,
-            Err(_) => break,
-        };
-
-        for &byte in buffer.iter().take(read) {
-            if byte == b'\n' {
-                finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted, true);
-                continue;
-            }
-
-            if line_omitted {
-                continue;
-            }
-
-            if line.len() < STDERR_RESULT_MAX_LINE_BYTES
-                || (byte == b'\r' && line.len() == STDERR_RESULT_MAX_LINE_BYTES)
-            {
-                line.push(byte);
-            } else {
-                line.clear();
-                line_omitted = true;
-            }
-        }
-    }
-
-    if !line.is_empty() || line_omitted {
-        finish_stderr_result_line(&mut lines, &mut line, &mut line_omitted, false);
-    }
-
-    lines.into_iter().collect()
-}
-
 /// Summary of Claude Code's terminal `type=result` event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaudeResultSummary {
@@ -475,7 +390,8 @@ pub async fn execute_cli(
         .ok_or_else(|| AgentError::Execution("no stderr".into()))?;
 
     // Stderr collector
-    let mut stderr_handle = tokio::spawn(async move { collect_stderr_result_tail(stderr).await });
+    let mut stderr_handle =
+        tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
