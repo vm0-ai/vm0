@@ -6,10 +6,10 @@
 //!
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
-mod command;
 mod connection;
 mod drain;
 mod error;
+mod exec_operation;
 mod handlers;
 mod log;
 mod monitor;

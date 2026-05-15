@@ -6,14 +6,14 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use vsock_proto::{
-    CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination, Decoder,
-    MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    Decoder, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination,
+    MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
 };
 
 use super::support::{
-    assert_connection_accepts_command_exec, host_from_stream, make_pair, mock_handshake,
-    operation_count, read_guest_message, send_command_output, send_command_result,
-    send_raw_command_result, send_stream_command_result, setup_host_and_guest,
+    assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
+    operation_count, read_guest_message, send_exec_output, send_exec_result, send_raw_exec_result,
+    send_stream_exec_result, setup_host_and_guest,
 };
 use crate::CopyFileOptions;
 use crate::file as file_impl;
@@ -48,15 +48,15 @@ async fn read_file_returns_content_and_missing() {
         tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await })
     };
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "read-file");
     assert!(decoded.command.contains("cat -- '/tmp/session.txt'"));
     assert_eq!(decoded.expected_exit_codes, vec![66]);
-    send_command_result(
+    send_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"session-id\n",
         b"",
     )
@@ -69,13 +69,13 @@ async fn read_file_returns_content_and_missing() {
         tokio::spawn(async move { host.read_file("/tmp/missing.txt", 1024, 5000).await })
     };
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
-    send_command_result(
+    send_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 66 },
+        ExecTermination::Exited { exit_code: 66 },
         b"",
         b"",
     )
@@ -90,22 +90,22 @@ async fn read_file_errors_on_truncated_stdout() {
     let read_task = tokio::spawn(async move { host.read_file("/tmp/large.txt", 5, 5000).await });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let payload = vsock_proto::encode_command_result(
-        CommandTermination::Exited { exit_code: 0 },
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let payload = vsock_proto::encode_exec_result(
+        ExecTermination::Exited { exit_code: 0 },
         12,
-        CommandCapturedOutput::Captured {
+        ExecCapturedOutput::Captured {
             bytes: b"hello",
             truncated: true,
         },
-        CommandCapturedOutput::Captured {
+        ExecCapturedOutput::Captured {
             bytes: b"",
             truncated: false,
         },
         "",
     )
     .unwrap();
-    send_raw_command_result(&mut guest, msg.seq, payload).await;
+    send_raw_exec_result(&mut guest, msg.seq, payload).await;
 
     let err = read_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("exceeded 5 bytes"));
@@ -128,7 +128,7 @@ async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
@@ -138,16 +138,16 @@ async fn read_file_quotes_guest_path_with_single_quote() {
         tokio::spawn(async move { host.read_file("/tmp/session'one.txt", 1024, 5000).await });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(
         decoded.command,
         "if test -f '/tmp/session'\\''one.txt'; then cat -- '/tmp/session'\\''one.txt'; else exit 66; fi"
     );
-    send_command_result(
+    send_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"ok",
         b"",
     )
@@ -183,8 +183,8 @@ async fn copy_file_streams_to_temp_then_renames() {
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "copy-file");
     assert_eq!(
         decoded.command,
@@ -192,33 +192,33 @@ async fn copy_file_streams_to_temp_then_renames() {
     );
     assert_eq!(
         decoded.stdout,
-        CommandOutputPolicy::Stream {
+        ExecOutputPolicy::Stream {
             limit_bytes: 1024,
             chunk_limit_bytes: 64 * 1024,
         }
     );
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"line 1\n",
         false,
     )
     .await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"line 2\n",
         false,
     )
     .await;
-    send_stream_command_result(
+    send_stream_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"",
     )
     .await;
@@ -282,7 +282,7 @@ async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_par
     assert!(!dir.exists());
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
@@ -313,25 +313,25 @@ async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(
         decoded.command,
         "if test -f '/tmp/vm0-system-run'\\''s.log'; then cat -- '/tmp/vm0-system-run'\\''s.log'; else exit 66; fi"
     );
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"quoted path\n",
         false,
     )
     .await;
-    send_stream_command_result(
+    send_stream_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"",
     )
     .await;
@@ -372,20 +372,20 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"partial",
         true,
     )
     .await;
 
     let cancel = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(cancel.msg_type, MSG_COMMAND_CANCEL);
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, msg.seq);
-    send_stream_command_result(&mut guest, msg.seq, CommandTermination::Cancelled, b"").await;
+    send_stream_exec_result(&mut guest, msg.seq, ExecTermination::Cancelled, b"").await;
 
     let err = copy_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("truncated"));
@@ -431,19 +431,19 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"partial",
         false,
     )
     .await;
-    send_stream_command_result(
+    send_stream_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 1 },
+        ExecTermination::Exited { exit_code: 1 },
         b"read error",
     )
     .await;
@@ -491,13 +491,13 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
-    send_stream_command_result(
+    send_stream_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 66 },
+        ExecTermination::Exited { exit_code: 66 },
         b"",
     )
     .await;
@@ -546,13 +546,13 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
     });
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert!(decoded.expected_exit_codes.is_empty());
-    send_stream_command_result(
+    send_stream_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 66 },
+        ExecTermination::Exited { exit_code: 66 },
         b"",
     )
     .await;
@@ -603,7 +603,7 @@ async fn copy_file_cancellation_cancels_guest_command_and_removes_temp() {
     });
 
     let start = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(start.msg_type, MSG_COMMAND_START);
+    assert_eq!(start.msg_type, MSG_EXEC_START);
     let temp_paths: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -619,7 +619,7 @@ async fn copy_file_cancellation_cancels_guest_command_and_removes_temp() {
     assert!(copy_task.await.unwrap_err().is_cancelled());
 
     let cancel = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(cancel.msg_type, MSG_COMMAND_CANCEL);
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
     assert!(!host_path.exists());
     assert!(
@@ -705,19 +705,19 @@ async fn test_write_file_chunked() {
                     let resp =
                         vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
                     guest.write_all(&resp).await.unwrap();
-                } else if msg.msg_type == MSG_COMMAND_START {
+                } else if msg.msg_type == MSG_EXEC_START {
                     // Atomic rename: mv temp → target
-                    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     assert!(decoded.command.contains("mv -f --"));
                     assert!(decoded.command.contains(temp_path));
                     assert!(decoded.command.contains("/tmp/big.bin"));
                     assert_eq!(decoded.label, "write-file-rename");
 
-                    send_command_result(
+                    send_exec_result(
                         &mut guest,
                         msg.seq,
-                        CommandTermination::Exited { exit_code: 0 },
+                        ExecTermination::Exited { exit_code: 0 },
                         &[],
                         &[],
                     )
@@ -823,17 +823,17 @@ async fn test_write_file_chunked_cleans_up_on_chunk_failure() {
                     let resp =
                         vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
                     guest.write_all(&resp).await.unwrap();
-                } else if msg.msg_type == MSG_COMMAND_START {
+                } else if msg.msg_type == MSG_EXEC_START {
                     // Cleanup: rm -f temp file
-                    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     assert!(decoded.command.contains("rm -f --"));
                     assert!(decoded.command.contains(temp_path));
                     assert_eq!(decoded.label, "exec-cleanup");
-                    send_command_result(
+                    send_exec_result(
                         &mut guest,
                         msg.seq,
-                        CommandTermination::Exited { exit_code: 0 },
+                        ExecTermination::Exited { exit_code: 0 },
                         &[],
                         &[],
                     )
@@ -886,18 +886,18 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
                     let resp =
                         vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
                     guest.write_all(&resp).await.unwrap();
-                } else if msg.msg_type == MSG_COMMAND_START {
+                } else if msg.msg_type == MSG_EXEC_START {
                     exec_count += 1;
-                    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     if decoded.command.contains("mv -f --") {
                         // mv fails
                         assert!(decoded.command.contains(temp_path));
                         assert_eq!(decoded.label, "write-file-rename");
-                        send_command_result(
+                        send_exec_result(
                             &mut guest,
                             msg.seq,
-                            CommandTermination::Exited { exit_code: 1 },
+                            ExecTermination::Exited { exit_code: 1 },
                             &[],
                             b"permission denied",
                         )
@@ -907,10 +907,10 @@ async fn test_write_file_chunked_cleans_up_on_mv_failure() {
                         assert!(decoded.command.contains("rm -f --"));
                         assert!(decoded.command.contains(temp_path));
                         assert_eq!(decoded.label, "exec-cleanup");
-                        send_command_result(
+                        send_exec_result(
                             &mut guest,
                             msg.seq,
-                            CommandTermination::Exited { exit_code: 0 },
+                            ExecTermination::Exited { exit_code: 0 },
                             &[],
                             &[],
                         )
@@ -973,8 +973,8 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                     if let Some(tx) = first_chunk_tx.take() {
                         let _ = tx.send(());
                     }
-                } else if msg.msg_type == MSG_COMMAND_START {
-                    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+                } else if msg.msg_type == MSG_EXEC_START {
+                    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
                     let temp_path = temp_path.as_ref().expect("temp path");
                     assert!(decoded.command.contains("rm -f --"));
                     assert!(decoded.command.contains(temp_path));
@@ -982,10 +982,10 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
                     if let Some(tx) = cleanup_tx.take() {
                         let _ = tx.send(decoded.command.to_string());
                     }
-                    send_command_result(
+                    send_exec_result(
                         &mut guest,
                         msg.seq,
-                        CommandTermination::Exited { exit_code: 0 },
+                        ExecTermination::Exited { exit_code: 0 },
                         &[],
                         &[],
                     )

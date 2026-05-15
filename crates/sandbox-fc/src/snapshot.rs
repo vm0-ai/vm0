@@ -1999,7 +1999,7 @@ async fn run_with_firecracker(
     //      are fast. The snapshot captures memory + disk state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
-        .exec_capture(vsock_host::CommandCaptureRequest {
+        .exec_capture(vsock_host::ExecCaptureRequest {
             command: inv.prewarm_script,
             timeout_ms: 30_000,
             env: &[],

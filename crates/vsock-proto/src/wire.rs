@@ -19,10 +19,10 @@ pub const MSG_PROCESS_EXIT: u8 = 0x07;
 pub const MSG_SHUTDOWN: u8 = 0x08;
 pub const MSG_SHUTDOWN_ACK: u8 = 0x09;
 pub const MSG_STDOUT_CHUNK: u8 = 0x0A;
-pub const MSG_COMMAND_START: u8 = 0x0B;
-pub const MSG_COMMAND_OUTPUT: u8 = 0x0C;
-pub const MSG_COMMAND_RESULT: u8 = 0x0D;
-pub const MSG_COMMAND_CANCEL: u8 = 0x0E;
+pub const MSG_EXEC_START: u8 = 0x0B;
+pub const MSG_EXEC_OUTPUT: u8 = 0x0C;
+pub const MSG_EXEC_RESULT: u8 = 0x0D;
+pub const MSG_EXEC_CANCEL: u8 = 0x0E;
 pub const MSG_QUIESCE_OPERATIONS: u8 = 0x0F;
 pub const MSG_OPERATIONS_QUIESCED: u8 = 0x10;
 pub const MSG_RESUME_OPERATIONS: u8 = 0x11;
@@ -36,10 +36,10 @@ pub const VSOCK_PORT: u32 = 1000;
 pub const SPAWN_PROCESS_FLAG_SUDO: u8 = 0x01;
 pub const SPAWN_PROCESS_FLAG_STREAM_STDOUT: u8 = 0x02;
 
-// Command operation payload flags.
-pub const COMMAND_FLAG_SUDO: u8 = 0x01;
-pub const COMMAND_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
-pub const COMMAND_CAPTURED_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
+// Exec operation payload flags.
+pub const EXEC_FLAG_SUDO: u8 = 0x01;
+pub const EXEC_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
+pub const EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
 
 // Write-file payload flags.
 pub const WRITE_FILE_FLAG_SUDO: u8 = 0x01;

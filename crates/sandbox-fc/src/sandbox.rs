@@ -1510,7 +1510,7 @@ impl Sandbox for FirecrackerSandbox {
 
         self.run_bounded_guest_operation(operation, |guest| async move {
             guest
-                .exec_capture(vsock_host::CommandCaptureRequest {
+                .exec_capture(vsock_host::ExecCaptureRequest {
                     command: request.cmd,
                     timeout_ms,
                     env: request.env,

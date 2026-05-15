@@ -460,7 +460,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) ->
     let env: &[(&str, &str)] = &[];
 
     let result = vsock
-        .exec_capture(vsock_host::CommandCaptureRequest {
+        .exec_capture(vsock_host::ExecCaptureRequest {
             command: &request.command,
             timeout_ms,
             env,
@@ -682,7 +682,7 @@ mod tests {
     use tokio::sync::oneshot;
     use vsock_host::VsockHost;
     use vsock_proto::{
-        Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+        Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
     };
 
     fn test_gate(guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>) -> GuestOperationGate {
@@ -1229,7 +1229,7 @@ mod tests {
 
         loop {
             let message = read_vsock_message(&mut stream, &mut decoder).await;
-            if message.msg_type == MSG_COMMAND_START {
+            if message.msg_type == MSG_EXEC_START {
                 let payload = vsock_proto::encode_error(error);
                 let frame = vsock_proto::encode(MSG_ERROR, message.seq, &payload).unwrap();
                 stream.write_all(&frame).await.unwrap();
@@ -1263,7 +1263,7 @@ mod tests {
             }
             let messages = decoder.decode(&buf[..n]).unwrap();
             for message in messages {
-                if message.msg_type == MSG_COMMAND_START {
+                if message.msg_type == MSG_EXEC_START {
                     if let Some(tx) = exec_seen.take() {
                         let _ = tx.send(());
                     }

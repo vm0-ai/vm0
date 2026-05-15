@@ -8,8 +8,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    self, CommandCapturedOutput, CommandOutputPolicy, CommandOutputStream, CommandTermination,
-    MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR,
+    self, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR,
+    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
 };
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
@@ -28,34 +28,34 @@ use crate::wait::{
 };
 use crate::writer::GuestWriter;
 
-const THREAD_COMMAND_WORKER: &str = "vsock-command-worker";
-const THREAD_COMMAND_STDOUT: &str = "vsock-command-stdout";
-const THREAD_COMMAND_STDERR: &str = "vsock-command-stderr";
-const THREAD_COMMAND_OUTPUT: &str = "vsock-command-output";
+const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
+const THREAD_EXEC_OPERATION_STDOUT: &str = "vsock-exec-operation-stdout";
+const THREAD_EXEC_OPERATION_STDERR: &str = "vsock-exec-operation-stderr";
+const THREAD_EXEC_OPERATION_OUTPUT: &str = "vsock-exec-operation-output";
 const OUTPUT_CHANNEL_CAPACITY: usize = 32;
 const FRAME_BODY_HEADER_LEN: usize = 1 + 4; // message type + sequence
-const COMMAND_OUTPUT_PAYLOAD_OVERHEAD: usize = 1 + 4 + 1 + 4;
-const COMMAND_RESULT_EXITED_LEN: usize = 1 + 4;
-const COMMAND_RESULT_DURATION_LEN: usize = 4;
-const COMMAND_RESULT_DIAGNOSTIC_LEN_FIELD: usize = 2;
-const COMMAND_RESULT_MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
-const COMMAND_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
-const COMMAND_DISCARDED_OUTPUT_LEN: usize = 1;
-const COMMAND_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
+const EXEC_OUTPUT_PAYLOAD_OVERHEAD: usize = 1 + 4 + 1 + 4;
+const EXEC_RESULT_EXITED_LEN: usize = 1 + 4;
+const EXEC_RESULT_DURATION_LEN: usize = 4;
+const EXEC_RESULT_DIAGNOSTIC_LEN_FIELD: usize = 2;
+const EXEC_RESULT_MAX_DIAGNOSTIC_BYTES: usize = u16::MAX as usize;
+const EXEC_CAPTURED_OUTPUT_OVERHEAD: usize = 1 + 1 + 4;
+const EXEC_DISCARDED_OUTPUT_LEN: usize = 1;
+const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Default)]
-pub(crate) struct CommandRegistry {
-    inner: Arc<Mutex<HashMap<u32, CommandRegistryEntry>>>,
+pub(crate) struct ExecOperationRegistry {
+    inner: Arc<Mutex<HashMap<u32, ExecOperationRegistryEntry>>>,
 }
 
 #[derive(Clone)]
-struct CommandRegistryEntry {
+struct ExecOperationRegistryEntry {
     cancel: Arc<AtomicBool>,
     label_preview: String,
 }
 
-impl CommandRegistry {
-    pub(crate) fn register(&self, seq: u32, label: &str) -> Result<CommandRegistration, ()> {
+impl ExecOperationRegistry {
+    pub(crate) fn register(&self, seq: u32, label: &str) -> Result<ExecOperationRegistration, ()> {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
             return Err(());
@@ -64,12 +64,12 @@ impl CommandRegistry {
         let cancel = Arc::new(AtomicBool::new(false));
         active.insert(
             seq,
-            CommandRegistryEntry {
+            ExecOperationRegistryEntry {
                 cancel: cancel.clone(),
                 label_preview: truncate_command_preview(label),
             },
         );
-        Ok(CommandRegistration {
+        Ok(ExecOperationRegistration {
             registry: self.clone(),
             seq,
             cancel,
@@ -94,13 +94,13 @@ impl CommandRegistry {
     }
 }
 
-pub(crate) struct CommandRegistration {
-    registry: CommandRegistry,
+pub(crate) struct ExecOperationRegistration {
+    registry: ExecOperationRegistry,
     seq: u32,
     cancel: Arc<AtomicBool>,
 }
 
-impl CommandRegistration {
+impl ExecOperationRegistration {
     fn cancel_token(&self) -> Arc<AtomicBool> {
         self.cancel.clone()
     }
@@ -110,7 +110,7 @@ impl CommandRegistration {
     }
 }
 
-impl Drop for CommandRegistration {
+impl Drop for ExecOperationRegistration {
     fn drop(&mut self) {
         self.complete();
     }
@@ -120,27 +120,27 @@ impl Drop for CommandRegistration {
 struct WaitFailureContext<'a> {
     seq: u32,
     started: Instant,
-    stdout_policy: CommandOutputPolicy,
-    stderr_policy: CommandOutputPolicy,
-    registration: &'a CommandRegistration,
+    stdout_policy: ExecOutputPolicy,
+    stderr_policy: ExecOutputPolicy,
+    registration: &'a ExecOperationRegistration,
     writer: &'a GuestWriter,
     operation_guard: &'a OperationGuard,
 }
 
-pub(crate) struct CommandWorkerRequest {
+pub(crate) struct ExecOperationWorkerRequest {
     seq: u32,
     timeout_ms: u32,
     command: String,
     env: Vec<(String, String)>,
     sudo: bool,
     label: String,
-    stdout: CommandOutputPolicy,
-    stderr: CommandOutputPolicy,
+    stdout: ExecOutputPolicy,
+    stderr: ExecOutputPolicy,
     expected_exit_codes: Vec<i32>,
 }
 
-impl CommandWorkerRequest {
-    pub(crate) fn from_decoded(seq: u32, decoded: vsock_proto::DecodedCommandStart<'_>) -> Self {
+impl ExecOperationWorkerRequest {
+    pub(crate) fn from_decoded(seq: u32, decoded: vsock_proto::DecodedExecStart<'_>) -> Self {
         Self {
             seq,
             timeout_ms: decoded.timeout_ms,
@@ -160,16 +160,16 @@ impl CommandWorkerRequest {
 }
 
 struct DrainWorker {
-    stream: CommandOutputStream,
+    stream: ExecOutputStream,
     policy: OutputSettings,
     output_tx: Option<SyncSender<StreamEvent>>,
     drain_cancel: Arc<AtomicBool>,
-    command_cancel: Arc<AtomicBool>,
+    exec_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
 }
 
 struct StreamEvent {
-    stream: CommandOutputStream,
+    stream: ExecOutputStream,
     chunk: Vec<u8>,
     truncated: bool,
 }
@@ -180,23 +180,23 @@ struct OutputSettings {
     stream: Option<BoundedStreamConfig>,
 }
 
-struct CommandResultFrame<'a> {
+struct ExecResultFrame<'a> {
     seq: u32,
-    termination: CommandTermination,
+    termination: ExecTermination,
     duration_ms: u32,
-    stdout: CommandCapturedOutput<'a>,
-    stderr: CommandCapturedOutput<'a>,
+    stdout: ExecCapturedOutput<'a>,
+    stderr: ExecCapturedOutput<'a>,
     diagnostic: &'a str,
 }
 
-pub(crate) fn start_command_operation(
-    request: CommandWorkerRequest,
+pub(crate) fn start_exec_operation(
+    request: ExecOperationWorkerRequest,
     operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
-    registry: CommandRegistry,
+    registry: ExecOperationRegistry,
 ) -> io::Result<()> {
-    start_command_operation_with_spawner(
+    start_exec_operation_with_spawner(
         request,
         operation_guard,
         writer,
@@ -206,12 +206,12 @@ pub(crate) fn start_command_operation(
     )
 }
 
-fn start_command_operation_with_spawner<S>(
-    request: CommandWorkerRequest,
+fn start_exec_operation_with_spawner<S>(
+    request: ExecOperationWorkerRequest,
     operation_guard: OperationGuard,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
-    registry: CommandRegistry,
+    registry: ExecOperationRegistry,
     spawner: S,
 ) -> io::Result<()>
 where
@@ -221,23 +221,23 @@ where
     let registration = match registry.register(seq, &request.label) {
         Ok(registration) => registration,
         Err(()) => {
-            return send_command_error(seq, "command operation already active", &writer);
+            return send_error_response(seq, "exec operation already active", &writer);
         }
     };
-    let command_cancel = registration.cancel_token();
+    let exec_cancel = registration.cancel_token();
     let stdout_policy = request.stdout;
     let stderr_policy = request.stderr;
     let worker_writer = writer.clone();
     let worker_spawner = spawner.clone();
     let worker_operation_guard = operation_guard.clone();
     let result = spawner.spawn_unit(
-        THREAD_COMMAND_WORKER,
+        THREAD_EXEC_OPERATION_WORKER,
         Box::new(move || {
-            run_command_worker(
+            run_exec_operation_worker(
                 request,
                 worker_writer,
                 connection_cancel,
-                command_cancel,
+                exec_cancel,
                 registration,
                 worker_operation_guard,
                 worker_spawner,
@@ -248,15 +248,15 @@ where
     match result {
         Ok(_) => Ok(()),
         Err(e) => {
-            let diagnostic = format!("Failed to spawn command worker thread: {e}");
+            let diagnostic = format!("Failed to spawn exec operation worker thread: {e}");
             log(
                 "ERROR",
-                &format!("command: worker spawn failed seq={seq}: {e}"),
+                &format!("exec operation: worker spawn failed seq={seq}: {e}"),
             );
-            send_command_result_after_lock(
-                CommandResultFrame {
+            send_exec_result_after_lock(
+                ExecResultFrame {
                     seq,
-                    termination: CommandTermination::StartFailed,
+                    termination: ExecTermination::StartFailed,
                     duration_ms: 0,
                     stdout: empty_output_for_policy(stdout_policy),
                     stderr: empty_output_for_policy(stderr_policy),
@@ -269,27 +269,27 @@ where
     }
 }
 
-pub(crate) fn cancel_command_operation(registry: &CommandRegistry, seq: u32) {
+pub(crate) fn cancel_exec_operation(registry: &ExecOperationRegistry, seq: u32) {
     if let Some(label_preview) = registry.cancel(seq) {
         log(
             "INFO",
-            &format!("command: cancel requested seq={seq} label={label_preview}"),
+            &format!("exec operation: cancel requested seq={seq} label={label_preview}"),
         );
     }
 }
 
-pub(crate) fn send_command_error(seq: u32, message: &str, writer: &GuestWriter) -> io::Result<()> {
+pub(crate) fn send_error_response(seq: u32, message: &str, writer: &GuestWriter) -> io::Result<()> {
     let payload = vsock_proto::encode_error(message);
     let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
     writer.write_frame(&response)
 }
 
-fn run_command_worker<S>(
-    request: CommandWorkerRequest,
+fn run_exec_operation_worker<S>(
+    request: ExecOperationWorkerRequest,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
-    command_cancel: Arc<AtomicBool>,
-    registration: CommandRegistration,
+    exec_cancel: Arc<AtomicBool>,
+    registration: ExecOperationRegistration,
     operation_guard: OperationGuard,
     spawner: S,
 ) where
@@ -299,9 +299,9 @@ fn run_command_worker<S>(
     if let Err(diagnostic) = validate_request(&request) {
         send_final_and_complete(
             &registration,
-            CommandResultFrame {
+            ExecResultFrame {
                 seq: request.seq,
-                termination: CommandTermination::StartFailed,
+                termination: ExecTermination::StartFailed,
                 duration_ms: duration_ms(started),
                 stdout: empty_output_for_policy(request.stdout),
                 stderr: empty_output_for_policy(request.stderr),
@@ -323,9 +323,9 @@ fn run_command_worker<S>(
             );
             send_final_and_complete(
                 &registration,
-                CommandResultFrame {
+                ExecResultFrame {
                     seq: request.seq,
-                    termination: CommandTermination::StartFailed,
+                    termination: ExecTermination::StartFailed,
                     duration_ms: duration_ms(started),
                     stdout: empty_output_for_policy(request.stdout),
                     stderr: empty_output_for_policy(request.stderr),
@@ -382,7 +382,7 @@ fn run_command_worker<S>(
             label_preview,
             rx,
             writer.clone(),
-            command_cancel.clone(),
+            exec_cancel.clone(),
             drain_cancel.clone(),
             spawner.clone(),
         ) {
@@ -390,7 +390,7 @@ fn run_command_worker<S>(
             Err(e) => {
                 kill_and_send_wait_failed(
                     child,
-                    &format!("failed to spawn command output writer thread: {e}"),
+                    &format!("failed to spawn exec output writer thread: {e}"),
                     failure,
                 );
                 return;
@@ -400,14 +400,14 @@ fn run_command_worker<S>(
         (None, None)
     };
 
-    let stdout_spawn = spawn_command_drain(
+    let stdout_spawn = spawn_exec_operation_drain(
         stdout,
         DrainWorker {
-            stream: CommandOutputStream::Stdout,
+            stream: ExecOutputStream::Stdout,
             policy: stdout_settings,
             output_tx: output_tx.clone(),
             drain_cancel: drain_cancel.clone(),
-            command_cancel: command_cancel.clone(),
+            exec_cancel: exec_cancel.clone(),
             drain_done_tx: drain_done_tx.clone(),
         },
         spawner.clone(),
@@ -427,14 +427,14 @@ fn run_command_worker<S>(
         }
     };
 
-    let stderr_spawn = spawn_command_drain(
+    let stderr_spawn = spawn_exec_operation_drain(
         stderr,
         DrainWorker {
-            stream: CommandOutputStream::Stderr,
+            stream: ExecOutputStream::Stderr,
             policy: stderr_settings,
             output_tx: output_tx.clone(),
             drain_cancel: drain_cancel.clone(),
-            command_cancel: command_cancel.clone(),
+            exec_cancel: exec_cancel.clone(),
             drain_done_tx: drain_done_tx.clone(),
         },
         spawner.clone(),
@@ -442,7 +442,7 @@ fn run_command_worker<S>(
     let (stderr_handle, stderr_result_rx) = match stderr_spawn {
         Ok(parts) => parts,
         Err(e) => {
-            command_cancel.store(true, Ordering::Release);
+            exec_cancel.store(true, Ordering::Release);
             drain_cancel.store(true, Ordering::Release);
             drop(output_tx);
             kill_and_reap_child(child);
@@ -450,9 +450,9 @@ fn run_command_worker<S>(
             join_output_writer(output_handle);
             send_final_and_complete(
                 &registration,
-                CommandResultFrame {
+                ExecResultFrame {
                     seq: request.seq,
-                    termination: CommandTermination::WaitFailed,
+                    termination: ExecTermination::WaitFailed,
                     duration_ms: duration_ms(started),
                     stdout: empty_output_for_policy(request.stdout),
                     stderr: empty_output_for_policy(request.stderr),
@@ -471,13 +471,13 @@ fn run_command_worker<S>(
         child,
         request.timeout_ms,
         &connection_cancel,
-        &command_cancel,
+        &exec_cancel,
     );
     if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
         || connection_cancel.load(Ordering::Acquire)
-        || command_cancel.load(Ordering::Acquire)
+        || exec_cancel.load(Ordering::Acquire)
     {
-        command_cancel.store(true, Ordering::Release);
+        exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
     }
 
@@ -486,7 +486,7 @@ fn run_command_worker<S>(
         log(
             "WARN",
             &format!(
-                "command: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
+                "exec operation: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
                 request.seq,
                 truncate_command_preview(&request.label)
             ),
@@ -501,20 +501,20 @@ fn run_command_worker<S>(
 
     let (termination, diagnostic) = match outcome {
         WaitOutcome::Exited(status) => (
-            CommandTermination::Exited {
+            ExecTermination::Exited {
                 exit_code: extract_exit_code(status),
             },
             String::new(),
         ),
-        WaitOutcome::TimedOut => (CommandTermination::TimedOut, String::new()),
-        WaitOutcome::Cancelled => (CommandTermination::Cancelled, String::new()),
+        WaitOutcome::TimedOut => (ExecTermination::TimedOut, String::new()),
+        WaitOutcome::Cancelled => (ExecTermination::Cancelled, String::new()),
         WaitOutcome::WaitFailed(msg) => (
-            CommandTermination::WaitFailed,
+            ExecTermination::WaitFailed,
             format!("Failed to wait: {msg}"),
         ),
     };
 
-    log_command_terminal_if_notable(
+    log_exec_terminal_if_notable(
         &request,
         started,
         termination,
@@ -525,7 +525,7 @@ fn run_command_worker<S>(
 
     send_final_and_complete(
         &registration,
-        CommandResultFrame {
+        ExecResultFrame {
             seq: request.seq,
             termination,
             duration_ms: duration_ms(started),
@@ -538,23 +538,23 @@ fn run_command_worker<S>(
     );
 }
 
-fn validate_request(request: &CommandWorkerRequest) -> Result<(), String> {
+fn validate_request(request: &ExecOperationWorkerRequest) -> Result<(), String> {
     let stdout_capture = capture_limit_bytes(request.stdout);
     let stderr_capture = capture_limit_bytes(request.stderr);
     let capture_total = stdout_capture
         .unwrap_or(0)
         .checked_add(stderr_capture.unwrap_or(0))
-        .ok_or_else(|| "command capture limits overflow".to_string())?;
-    let capture_budget = command_result_capture_budget(request.stdout, request.stderr);
+        .ok_or_else(|| "exec capture limits overflow".to_string())?;
+    let capture_budget = exec_result_capture_budget(request.stdout, request.stderr);
     if capture_total > capture_budget {
         return Err(format!(
-            "command capture limits exceed protocol result frame budget: {capture_total} > {capture_budget}"
+            "exec capture limits exceed protocol result frame budget: {capture_total} > {capture_budget}"
         ));
     }
 
     let max_chunk = vsock_proto::MAX_MESSAGE_SIZE
         .saturating_sub(FRAME_BODY_HEADER_LEN)
-        .saturating_sub(COMMAND_OUTPUT_PAYLOAD_OVERHEAD);
+        .saturating_sub(EXEC_OUTPUT_PAYLOAD_OVERHEAD);
     for (name, policy) in [("stdout", request.stdout), ("stderr", request.stderr)] {
         if let Some(stream) = stream_config(policy)
             && stream.chunk_limit_bytes > max_chunk
@@ -569,53 +569,53 @@ fn validate_request(request: &CommandWorkerRequest) -> Result<(), String> {
     Ok(())
 }
 
-fn command_result_capture_budget(
-    stdout_policy: CommandOutputPolicy,
-    stderr_policy: CommandOutputPolicy,
+fn exec_result_capture_budget(
+    stdout_policy: ExecOutputPolicy,
+    stderr_policy: ExecOutputPolicy,
 ) -> usize {
     let fixed = FRAME_BODY_HEADER_LEN
-        + COMMAND_RESULT_EXITED_LEN
-        + COMMAND_RESULT_DURATION_LEN
-        + command_result_output_overhead(stdout_policy)
-        + command_result_output_overhead(stderr_policy)
-        + COMMAND_RESULT_DIAGNOSTIC_LEN_FIELD
-        + COMMAND_RESULT_MAX_DIAGNOSTIC_BYTES;
+        + EXEC_RESULT_EXITED_LEN
+        + EXEC_RESULT_DURATION_LEN
+        + exec_result_output_overhead(stdout_policy)
+        + exec_result_output_overhead(stderr_policy)
+        + EXEC_RESULT_DIAGNOSTIC_LEN_FIELD
+        + EXEC_RESULT_MAX_DIAGNOSTIC_BYTES;
     vsock_proto::MAX_MESSAGE_SIZE.saturating_sub(fixed)
 }
 
-fn command_result_output_overhead(policy: CommandOutputPolicy) -> usize {
+fn exec_result_output_overhead(policy: ExecOutputPolicy) -> usize {
     if capture_limit_bytes(policy).is_some() {
-        COMMAND_CAPTURED_OUTPUT_OVERHEAD
+        EXEC_CAPTURED_OUTPUT_OVERHEAD
     } else {
-        COMMAND_DISCARDED_OUTPUT_LEN
+        EXEC_DISCARDED_OUTPUT_LEN
     }
 }
 
-fn output_settings(policy: CommandOutputPolicy) -> OutputSettings {
+fn output_settings(policy: ExecOutputPolicy) -> OutputSettings {
     OutputSettings {
         capture_limit_bytes: capture_limit_bytes(policy),
         stream: stream_config(policy),
     }
 }
 
-fn capture_limit_bytes(policy: CommandOutputPolicy) -> Option<usize> {
+fn capture_limit_bytes(policy: ExecOutputPolicy) -> Option<usize> {
     match policy {
-        CommandOutputPolicy::Discard | CommandOutputPolicy::Stream { .. } => None,
-        CommandOutputPolicy::Capture { limit_bytes } => Some(limit_bytes as usize),
-        CommandOutputPolicy::CaptureAndStream {
+        ExecOutputPolicy::Discard | ExecOutputPolicy::Stream { .. } => None,
+        ExecOutputPolicy::Capture { limit_bytes } => Some(limit_bytes as usize),
+        ExecOutputPolicy::CaptureAndStream {
             capture_limit_bytes,
             ..
         } => Some(capture_limit_bytes as usize),
     }
 }
 
-fn stream_config(policy: CommandOutputPolicy) -> Option<BoundedStreamConfig> {
+fn stream_config(policy: ExecOutputPolicy) -> Option<BoundedStreamConfig> {
     match policy {
-        CommandOutputPolicy::Stream {
+        ExecOutputPolicy::Stream {
             limit_bytes,
             chunk_limit_bytes,
         }
-        | CommandOutputPolicy::CaptureAndStream {
+        | ExecOutputPolicy::CaptureAndStream {
             stream_limit_bytes: limit_bytes,
             chunk_limit_bytes,
             ..
@@ -623,7 +623,7 @@ fn stream_config(policy: CommandOutputPolicy) -> Option<BoundedStreamConfig> {
             chunk_limit_bytes: chunk_limit_bytes as usize,
             stream_limit_bytes: limit_bytes as usize,
         }),
-        CommandOutputPolicy::Discard | CommandOutputPolicy::Capture { .. } => None,
+        ExecOutputPolicy::Discard | ExecOutputPolicy::Capture { .. } => None,
     }
 }
 
@@ -632,7 +632,7 @@ fn spawn_output_writer<S>(
     label_preview: String,
     rx: Receiver<StreamEvent>,
     writer: GuestWriter,
-    command_cancel: Arc<AtomicBool>,
+    exec_cancel: Arc<AtomicBool>,
     drain_cancel: Arc<AtomicBool>,
     spawner: S,
 ) -> io::Result<JoinHandle<()>>
@@ -640,14 +640,14 @@ where
     S: ThreadSpawner,
 {
     spawner.spawn_unit(
-        THREAD_COMMAND_OUTPUT,
+        THREAD_EXEC_OPERATION_OUTPUT,
         Box::new(move || {
             let mut output_seq = 0u32;
             for event in rx {
-                if command_cancel.load(Ordering::Acquire) {
+                if exec_cancel.load(Ordering::Acquire) {
                     break;
                 }
-                let payload = match vsock_proto::encode_command_output(
+                let payload = match vsock_proto::encode_exec_output(
                     event.stream,
                     output_seq,
                     &event.chunk,
@@ -658,25 +658,25 @@ where
                         log(
                             "ERROR",
                             &format!(
-                                "command: failed to encode output seq={seq} label={label_preview}: {e}"
+                                "exec operation: failed to encode output seq={seq} label={label_preview}: {e}"
                             ),
                         );
-                        command_cancel.store(true, Ordering::Release);
+                        exec_cancel.store(true, Ordering::Release);
                         drain_cancel.store(true, Ordering::Release);
                         break;
                     }
                 };
                 output_seq = output_seq.wrapping_add(1);
-                let frame = match vsock_proto::encode(MSG_COMMAND_OUTPUT, seq, &payload) {
+                let frame = match vsock_proto::encode(MSG_EXEC_OUTPUT, seq, &payload) {
                     Ok(frame) => frame,
                     Err(e) => {
                         log(
                             "ERROR",
                             &format!(
-                                "command: failed to encode output frame seq={seq} label={label_preview}: {e}"
+                                "exec operation: failed to encode output frame seq={seq} label={label_preview}: {e}"
                             ),
                         );
-                        command_cancel.store(true, Ordering::Release);
+                        exec_cancel.store(true, Ordering::Release);
                         drain_cancel.store(true, Ordering::Release);
                         break;
                     }
@@ -685,10 +685,10 @@ where
                     log(
                         "WARN",
                         &format!(
-                            "command: failed to send output chunk seq={seq} label={label_preview}: {e}"
+                            "exec operation: failed to send output chunk seq={seq} label={label_preview}: {e}"
                         ),
                     );
-                    command_cancel.store(true, Ordering::Release);
+                    exec_cancel.store(true, Ordering::Release);
                     drain_cancel.store(true, Ordering::Release);
                     break;
                 }
@@ -697,7 +697,7 @@ where
     )
 }
 
-fn spawn_command_drain<R, S>(
+fn spawn_exec_operation_drain<R, S>(
     pipe: R,
     worker: DrainWorker,
     spawner: S,
@@ -711,13 +711,13 @@ where
         policy,
         output_tx,
         drain_cancel,
-        command_cancel,
+        exec_cancel,
         drain_done_tx,
     } = worker;
     let (result_tx, result_rx) = mpsc::channel();
     let thread_name = match stream {
-        CommandOutputStream::Stdout => THREAD_COMMAND_STDOUT,
-        CommandOutputStream::Stderr => THREAD_COMMAND_STDERR,
+        ExecOutputStream::Stdout => THREAD_EXEC_OPERATION_STDOUT,
+        ExecOutputStream::Stderr => THREAD_EXEC_OPERATION_STDERR,
     };
     let handle = spawner.spawn_unit(
         thread_name,
@@ -731,9 +731,7 @@ where
                     let Some(tx) = &output_tx else {
                         return true;
                     };
-                    if command_cancel.load(Ordering::Acquire)
-                        || drain_cancel.load(Ordering::Acquire)
-                    {
+                    if exec_cancel.load(Ordering::Acquire) || drain_cancel.load(Ordering::Acquire) {
                         return false;
                     }
                     match tx.send(StreamEvent {
@@ -743,7 +741,7 @@ where
                     }) {
                         Ok(()) => true,
                         Err(_) => {
-                            command_cancel.store(true, Ordering::Release);
+                            exec_cancel.store(true, Ordering::Release);
                             drain_cancel.store(true, Ordering::Release);
                             false
                         }
@@ -761,9 +759,9 @@ fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailur
     kill_and_reap_child(child);
     send_final_and_complete(
         failure.registration,
-        CommandResultFrame {
+        ExecResultFrame {
             seq: failure.seq,
-            termination: CommandTermination::WaitFailed,
+            termination: ExecTermination::WaitFailed,
             duration_ms: duration_ms(failure.started),
             stdout: empty_output_for_policy(failure.stdout_policy),
             stderr: empty_output_for_policy(failure.stderr_policy),
@@ -775,27 +773,27 @@ fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailur
 }
 
 fn send_final_and_complete(
-    registration: &CommandRegistration,
-    frame: CommandResultFrame<'_>,
+    registration: &ExecOperationRegistration,
+    frame: ExecResultFrame<'_>,
     writer: &GuestWriter,
     operation_guard: &OperationGuard,
 ) {
-    let result = send_command_result_after_lock(frame, writer, || operation_guard.release());
+    let result = send_exec_result_after_lock(frame, writer, || operation_guard.release());
     registration.complete();
     if let Err(e) = result {
-        log("ERROR", &format!("Failed to send command_result: {e}"));
+        log("ERROR", &format!("Failed to send exec_result: {e}"));
     }
 }
 
-fn send_command_result_after_lock<F>(
-    frame: CommandResultFrame<'_>,
+fn send_exec_result_after_lock<F>(
+    frame: ExecResultFrame<'_>,
     writer: &GuestWriter,
     after_lock: F,
 ) -> io::Result<()>
 where
     F: FnOnce(),
 {
-    let payload = vsock_proto::encode_command_result(
+    let payload = vsock_proto::encode_exec_result(
         frame.termination,
         frame.duration_ms,
         frame.stdout,
@@ -803,31 +801,30 @@ where
         frame.diagnostic,
     )
     .map_err(to_io_error)?;
-    let encoded =
-        vsock_proto::encode(MSG_COMMAND_RESULT, frame.seq, &payload).map_err(to_io_error)?;
+    let encoded = vsock_proto::encode(MSG_EXEC_RESULT, frame.seq, &payload).map_err(to_io_error)?;
     writer.write_frame_after_lock(&encoded, after_lock)
 }
 
-fn captured_output(result: &BoundedDrainResult) -> CommandCapturedOutput<'_> {
+fn captured_output(result: &BoundedDrainResult) -> ExecCapturedOutput<'_> {
     match result.captured.as_deref() {
-        Some(bytes) => CommandCapturedOutput::Captured {
+        Some(bytes) => ExecCapturedOutput::Captured {
             bytes,
             truncated: result.capture_truncated,
         },
-        None => CommandCapturedOutput::Discarded,
+        None => ExecCapturedOutput::Discarded,
     }
 }
 
-fn empty_output_for_policy(policy: CommandOutputPolicy) -> CommandCapturedOutput<'static> {
+fn empty_output_for_policy(policy: ExecOutputPolicy) -> ExecCapturedOutput<'static> {
     match policy {
-        CommandOutputPolicy::Capture { .. } | CommandOutputPolicy::CaptureAndStream { .. } => {
-            CommandCapturedOutput::Captured {
+        ExecOutputPolicy::Capture { .. } | ExecOutputPolicy::CaptureAndStream { .. } => {
+            ExecCapturedOutput::Captured {
                 bytes: &[],
                 truncated: false,
             }
         }
-        CommandOutputPolicy::Discard | CommandOutputPolicy::Stream { .. } => {
-            CommandCapturedOutput::Discarded
+        ExecOutputPolicy::Discard | ExecOutputPolicy::Stream { .. } => {
+            ExecCapturedOutput::Discarded
         }
     }
 }
@@ -842,28 +839,25 @@ fn duration_ms(started: Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
 }
 
-fn command_termination_is_notable(
-    termination: CommandTermination,
-    expected_exit_codes: &[i32],
-) -> bool {
+fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes: &[i32]) -> bool {
     !matches!(
         termination,
-        CommandTermination::Exited { exit_code }
+        ExecTermination::Exited { exit_code }
             if exit_code == 0 || expected_exit_codes.contains(&exit_code)
     )
 }
 
-fn log_command_terminal_if_notable(
-    request: &CommandWorkerRequest,
+fn log_exec_terminal_if_notable(
+    request: &ExecOperationWorkerRequest,
     started: Instant,
-    termination: CommandTermination,
+    termination: ExecTermination,
     stdout_result: &BoundedDrainResult,
     stderr_result: &BoundedDrainResult,
     diagnostic: &str,
 ) {
     let elapsed = started.elapsed();
-    let slow = elapsed >= COMMAND_STAGE_SLOW_THRESHOLD;
-    let notable = command_termination_is_notable(termination, &request.expected_exit_codes)
+    let slow = elapsed >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD;
+    let notable = exec_termination_is_notable(termination, &request.expected_exit_codes)
         || stdout_result.capture_truncated
         || stderr_result.capture_truncated
         || !diagnostic.is_empty();
@@ -875,7 +869,7 @@ fn log_command_terminal_if_notable(
     log(
         "WARN",
         &format!(
-            "command result: seq={} label={} elapsed_ms={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
+            "exec result: seq={} label={} elapsed_ms={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
             request.seq,
             truncate_command_preview(&request.label),
             elapsed.as_millis(),
@@ -919,16 +913,16 @@ mod tests {
         messages.remove(0)
     }
 
-    fn request(seq: u32, command: &str) -> CommandWorkerRequest {
-        CommandWorkerRequest {
+    fn request(seq: u32, command: &str) -> ExecOperationWorkerRequest {
+        ExecOperationWorkerRequest {
             seq,
             timeout_ms: 0,
             command: command.to_string(),
             env: Vec::new(),
             sudo: false,
             label: "test".to_string(),
-            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: Vec::new(),
         }
     }
@@ -937,7 +931,7 @@ mod tests {
         crate::quiesce::OperationState::default().acquire().unwrap()
     }
 
-    fn wait_for_registry_release(registry: &CommandRegistry, seq: u32) {
+    fn wait_for_registry_release(registry: &ExecOperationRegistry, seq: u32) {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             if registry.register(seq, "test").is_ok() {
@@ -945,32 +939,32 @@ mod tests {
             }
             std::thread::yield_now();
         }
-        panic!("command registry entry for seq={seq} was not released");
+        panic!("exec operation registry entry for seq={seq} was not released");
     }
 
     #[test]
-    fn command_termination_notable_tracks_nonzero_exit() {
-        assert!(!command_termination_is_notable(
-            CommandTermination::Exited { exit_code: 0 },
+    fn exec_termination_notable_tracks_nonzero_exit() {
+        assert!(!exec_termination_is_notable(
+            ExecTermination::Exited { exit_code: 0 },
             &[]
         ));
-        assert!(command_termination_is_notable(
-            CommandTermination::Exited { exit_code: 1 },
+        assert!(exec_termination_is_notable(
+            ExecTermination::Exited { exit_code: 1 },
             &[]
         ));
-        assert!(!command_termination_is_notable(
-            CommandTermination::Exited { exit_code: 66 },
+        assert!(!exec_termination_is_notable(
+            ExecTermination::Exited { exit_code: 66 },
             &[66]
         ));
-        assert!(command_termination_is_notable(
-            CommandTermination::TimedOut,
+        assert!(exec_termination_is_notable(
+            ExecTermination::TimedOut,
             &[124]
         ));
     }
 
     #[test]
     fn registry_rejects_duplicate_active_sequence_and_cleans_on_drop() {
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
         let first = registry.register(7, "first").unwrap();
         assert!(registry.register(7, "duplicate").is_err());
         drop(first);
@@ -979,7 +973,7 @@ mod tests {
 
     #[test]
     fn registry_cancel_sets_token_and_unknown_cancel_is_noop() {
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
         let registration = registry.register(8, "cancel-me").unwrap();
         assert_eq!(registry.cancel(8).as_deref(), Some("cancel-me"));
         assert!(registration.cancel.load(Ordering::Acquire));
@@ -988,7 +982,7 @@ mod tests {
 
     #[test]
     fn registry_cancel_returns_truncated_label_preview() {
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
         let long_label = format!("{}🔥tail", "a".repeat(99));
         let registration = registry.register(10, &long_label).unwrap();
 
@@ -1001,40 +995,40 @@ mod tests {
     }
 
     #[test]
-    fn command_worker_spawn_failure_returns_start_failed_and_cleans_registry() {
+    fn exec_operation_worker_spawn_failure_returns_start_failed_and_cleans_registry() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
 
-        start_command_operation_with_spawner(
+        start_exec_operation_with_spawner(
             request(42, "echo should-not-run"),
             operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
-            FailingThreadSpawner::fail_once(THREAD_COMMAND_WORKER),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_WORKER),
         )
         .unwrap();
 
         let msg = read_message(&mut host);
-        assert_eq!(msg.msg_type, MSG_COMMAND_RESULT);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
         assert_eq!(msg.seq, 42);
-        let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
-        assert_eq!(result.termination, CommandTermination::StartFailed);
-        assert!(result.diagnostic.contains("command worker thread"));
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::StartFailed);
+        assert!(result.diagnostic.contains("exec operation worker thread"));
         wait_for_registry_release(&registry, 42);
     }
 
     #[test]
-    fn duplicate_active_command_returns_error() {
+    fn duplicate_active_exec_operation_returns_error() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
         let _registration = registry.register(11, "duplicate").unwrap();
 
-        start_command_operation_with_spawner(
+        start_exec_operation_with_spawner(
             request(11, "echo duplicate"),
             operation_guard(),
             writer,
@@ -1055,23 +1049,23 @@ mod tests {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
 
-        start_command_operation_with_spawner(
+        start_exec_operation_with_spawner(
             request(43, "sleep 60"),
             operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
-            FailingThreadSpawner::fail_once(THREAD_COMMAND_STDOUT),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_STDOUT),
         )
         .unwrap();
 
         let msg = read_message(&mut host);
-        assert_eq!(msg.msg_type, MSG_COMMAND_RESULT);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
         assert_eq!(msg.seq, 43);
-        let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
-        assert_eq!(result.termination, CommandTermination::WaitFailed);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("stdout drain thread"));
         wait_for_registry_release(&registry, 43);
     }
@@ -1081,23 +1075,23 @@ mod tests {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
 
-        start_command_operation_with_spawner(
+        start_exec_operation_with_spawner(
             request(45, "sleep 60"),
             operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
-            FailingThreadSpawner::fail_once(THREAD_COMMAND_STDERR),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_STDERR),
         )
         .unwrap();
 
         let msg = read_message(&mut host);
-        assert_eq!(msg.msg_type, MSG_COMMAND_RESULT);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
         assert_eq!(msg.seq, 45);
-        let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
-        assert_eq!(result.termination, CommandTermination::WaitFailed);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("stderr drain thread"));
         wait_for_registry_release(&registry, 45);
     }
@@ -1107,28 +1101,28 @@ mod tests {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
-        let registry = CommandRegistry::default();
+        let registry = ExecOperationRegistry::default();
         let mut request = request(44, "sleep 60");
-        request.stdout = CommandOutputPolicy::Stream {
+        request.stdout = ExecOutputPolicy::Stream {
             limit_bytes: 64,
             chunk_limit_bytes: 8,
         };
 
-        start_command_operation_with_spawner(
+        start_exec_operation_with_spawner(
             request,
             operation_guard(),
             writer,
             Arc::new(AtomicBool::new(false)),
             registry.clone(),
-            FailingThreadSpawner::fail_once(THREAD_COMMAND_OUTPUT),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_OPERATION_OUTPUT),
         )
         .unwrap();
 
         let msg = read_message(&mut host);
-        assert_eq!(msg.msg_type, MSG_COMMAND_RESULT);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
         assert_eq!(msg.seq, 44);
-        let result = vsock_proto::decode_command_result(&msg.payload).unwrap();
-        assert_eq!(result.termination, CommandTermination::WaitFailed);
+        let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("output writer thread"));
         wait_for_registry_release(&registry, 44);
     }

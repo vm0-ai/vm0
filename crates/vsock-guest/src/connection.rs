@@ -6,15 +6,15 @@ use std::thread;
 use std::time::Duration;
 
 use vsock_proto::{
-    self, MSG_COMMAND_CANCEL, MSG_COMMAND_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    self, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
     MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SPAWN_PROCESS, MSG_WRITE_FILE,
 };
 
-use crate::command::{
-    CommandRegistry, CommandWorkerRequest, cancel_command_operation, send_command_error,
-    start_command_operation,
-};
 use crate::error::to_io_error;
+use crate::exec_operation::{
+    ExecOperationRegistry, ExecOperationWorkerRequest, cancel_exec_operation, send_error_response,
+    start_exec_operation,
+};
 use crate::handlers::{
     MessageOutcome, decode_write_file_message, handle_decoded_write_file_message, handle_message,
 };
@@ -54,7 +54,7 @@ fn acquire_operation_guard(
     match operation_state.acquire() {
         Ok(guard) => Ok(Some(guard)),
         Err(AcquireOperationError::Quiescing) => {
-            send_command_error(seq, "guest operations are quiescing", writer)?;
+            send_error_response(seq, "guest operations are quiescing", writer)?;
             Ok(None)
         }
     }
@@ -66,7 +66,7 @@ fn reject_operation_if_quiescing(
     writer: &GuestWriter,
 ) -> io::Result<bool> {
     if operation_state.is_quiescing() {
-        send_command_error(seq, "guest operations are quiescing", writer)?;
+        send_error_response(seq, "guest operations are quiescing", writer)?;
         Ok(true)
     } else {
         Ok(false)
@@ -87,7 +87,7 @@ fn validate_empty_control_payload(
     match vsock_proto::decode_empty_payload(payload_name, payload) {
         Ok(()) => Ok(true),
         Err(error) => {
-            send_command_error(seq, &error.to_string(), writer)?;
+            send_error_response(seq, &error.to_string(), writer)?;
             Ok(false)
         }
     }
@@ -110,7 +110,7 @@ fn handle_quiesce_operations(
 
     match operation_state.enter_quiescing() {
         QuiesceResult::Quiesced => send_empty_response(MSG_OPERATIONS_QUIESCED, seq, writer),
-        QuiesceResult::Busy { pending } => send_command_error(
+        QuiesceResult::Busy { pending } => send_error_response(
             seq,
             &format!("guest operations still pending: {pending}"),
             writer,
@@ -203,7 +203,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
-    let command_registry = CommandRegistry::default();
+    let exec_operation_registry = ExecOperationRegistry::default();
     let operation_state = OperationState::default();
 
     let mut decoder = vsock_proto::Decoder::new();
@@ -229,38 +229,37 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             .decode(buf.get(..n).unwrap_or_default())
             .map_err(to_io_error)?
         {
-            // Command execution messages run in background threads to avoid
+            // Exec operation messages run in background threads to avoid
             // blocking the event loop. A blocking child process (e.g. reading a
             // pipe fd) would otherwise stall all subsequent messages.
-            if msg.msg_type == MSG_COMMAND_START {
+            if msg.msg_type == MSG_EXEC_START {
                 if msg.seq == 0 {
-                    send_command_error(0, "command start requires non-zero sequence", &writer)?;
+                    send_error_response(0, "exec start requires non-zero sequence", &writer)?;
                     continue;
                 }
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
                     continue;
                 }
-                let decoded =
-                    vsock_proto::decode_command_start(&msg.payload).map_err(to_io_error)?;
+                let decoded = vsock_proto::decode_exec_start(&msg.payload).map_err(to_io_error)?;
                 let Some(operation_guard) =
                     acquire_operation_guard(&operation_state, msg.seq, &writer)?
                 else {
                     continue;
                 };
-                start_command_operation(
-                    CommandWorkerRequest::from_decoded(msg.seq, decoded),
+                start_exec_operation(
+                    ExecOperationWorkerRequest::from_decoded(msg.seq, decoded),
                     operation_guard,
                     writer.clone(),
                     connection_cancel.clone(),
-                    command_registry.clone(),
+                    exec_operation_registry.clone(),
                 )?;
-            } else if msg.msg_type == MSG_COMMAND_CANCEL {
+            } else if msg.msg_type == MSG_EXEC_CANCEL {
                 if msg.seq == 0 {
-                    send_command_error(0, "command cancel requires non-zero sequence", &writer)?;
+                    send_error_response(0, "exec cancel requires non-zero sequence", &writer)?;
                     continue;
                 }
-                vsock_proto::decode_command_cancel(&msg.payload).map_err(to_io_error)?;
-                cancel_command_operation(&command_registry, msg.seq);
+                vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
+                cancel_exec_operation(&exec_operation_registry, msg.seq);
             } else if msg.msg_type == MSG_SPAWN_PROCESS {
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
                     continue;

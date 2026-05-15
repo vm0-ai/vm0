@@ -2,33 +2,31 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use vsock_proto::{
-    CommandOutputPolicy, CommandOutputStream, CommandTermination, MSG_COMMAND_START,
-};
+use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_command_exec, operation_count, read_guest_message,
-    send_command_output, send_command_result, send_discarded_command_result, setup_host_and_guest,
+    assert_connection_accepts_exec_operation, operation_count, read_guest_message,
+    send_discarded_exec_result, send_exec_output, send_exec_result, setup_host_and_guest,
 };
-use crate::{CommandOperationRequest, CommandStreamRequest, command as command_impl};
+use crate::{ExecOperationRequest, ExecStreamRequest, exec_operation as exec_operation_impl};
 
 #[tokio::test]
-async fn command_stream_rejects_zero_capacity_without_sending_frame() {
+async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "zero-capacity",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(0),
         })
@@ -40,28 +38,28 @@ async fn command_stream_rejects_zero_capacity_without_sending_frame() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_stream_rejects_oversized_capacity_without_sending_frame() {
+async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "oversized-capacity",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
-            stream_queue_capacity: Some(command_impl::test_support::MAX_STREAM_CAPACITY + 1),
+            stream_queue_capacity: Some(exec_operation_impl::test_support::MAX_STREAM_CAPACITY + 1),
         })
         .await
     {
@@ -71,23 +69,23 @@ async fn command_stream_rejects_oversized_capacity_without_sending_frame() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_start_stream_policy_uses_default_receiver() {
+async fn exec_start_stream_policy_uses_default_receiver() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let mut handle = host
-        .start_command_operation(CommandOperationRequest {
+        .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "default-receiver",
-            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: CommandOutputPolicy::CaptureAndStream {
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::CaptureAndStream {
                 capture_limit_bytes: 1024,
                 stream_limit_bytes: 1024,
                 chunk_limit_bytes: 16,
@@ -100,23 +98,23 @@ async fn command_start_stream_policy_uses_default_receiver() {
     let mut rx = handle.take_stream_receiver().unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    send_command_output(
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stderr,
+        ExecOutputStream::Stderr,
         b"default-queued",
         false,
     )
     .await;
     let event = rx.recv().await.unwrap();
-    assert_eq!(event.stream, CommandOutputStream::Stderr);
+    assert_eq!(event.stream, ExecOutputStream::Stderr);
     assert_eq!(event.chunk, b"default-queued");
-    send_command_result(
+    send_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"",
         b"",
     )
@@ -126,19 +124,19 @@ async fn command_start_stream_policy_uses_default_receiver() {
 }
 
 #[tokio::test]
-async fn command_start_rejects_receiver_without_stream_policy() {
+async fn exec_start_rejects_receiver_without_stream_policy() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .start_command_operation(CommandOperationRequest {
+        .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
             command: "capture",
             env: &[],
             sudo: false,
             label: "unexpected-receiver",
-            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: CommandOutputPolicy::Discard,
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -150,111 +148,111 @@ async fn command_start_rejects_receiver_without_stream_policy() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_stream_rejects_non_streaming_policy() {
+async fn exec_operation_stream_rejects_non_streaming_policy() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "capture",
             env: &[],
             sudo: false,
             label: "non-streaming-helper",
-            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: CommandOutputPolicy::Discard,
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
     {
-        Ok(_) => panic!("command_stream should reject non-streaming output policies"),
+        Ok(_) => panic!("exec_operation_stream should reject non-streaming output policies"),
         Err(err) => err,
     };
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_start_encode_error_does_not_register_or_send_frame() {
+async fn exec_start_encode_error_does_not_register_or_send_frame() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .start_command_operation(CommandOperationRequest {
+        .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "bad-policy",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 0,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
         .await
     {
-        Ok(_) => panic!("invalid command output policy should be rejected"),
+        Ok(_) => panic!("invalid exec output policy should be rejected"),
         Err(err) => err,
     };
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_start_rejects_zero_timeout_without_sending_frame() {
+async fn exec_start_rejects_zero_timeout_without_sending_frame() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
-        .start_command_operation(CommandOperationRequest {
+        .start_exec_operation(ExecOperationRequest {
             timeout_ms: 0,
             command: "sleep 60",
             env: &[],
             sudo: false,
             label: "zero-timeout",
-            stdout: CommandOutputPolicy::Capture { limit_bytes: 1024 },
-            stderr: CommandOutputPolicy::Capture { limit_bytes: 1024 },
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
             stream_queue_capacity: None,
         })
         .await
     {
-        Ok(_) => panic!("zero timeout command operation should be rejected"),
+        Ok(_) => panic!("zero timeout exec operation should be rejected"),
         Err(err) => err,
     };
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_command_exec(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
 }
 
 #[tokio::test]
-async fn command_stream_dispatches_stdout_stderr_and_closes_on_result() {
+async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let mut handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-test",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Stream {
+            stderr: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
@@ -266,42 +264,42 @@ async fn command_stream_dispatches_stdout_stderr_and_closes_on_result() {
     let mut rx = handle.take_stream_receiver().unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    send_command_output(
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"out",
         false,
     )
     .await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stderr,
+        ExecOutputStream::Stderr,
         b"err",
         true,
     )
     .await;
 
     let out = rx.recv().await.unwrap();
-    assert_eq!(out.stream, CommandOutputStream::Stdout);
+    assert_eq!(out.stream, ExecOutputStream::Stdout);
     assert_eq!(out.output_seq, 0);
     assert_eq!(out.chunk, b"out");
     assert!(!out.truncated);
 
     let err = rx.recv().await.unwrap();
-    assert_eq!(err.stream, CommandOutputStream::Stderr);
+    assert_eq!(err.stream, ExecOutputStream::Stderr);
     assert_eq!(err.output_seq, 1);
     assert_eq!(err.chunk, b"err");
     assert!(err.truncated);
 
-    send_discarded_command_result(
+    send_discarded_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
     )
     .await;
     let result = handle.wait(Duration::from_secs(5)).await.unwrap();
@@ -310,20 +308,20 @@ async fn command_stream_dispatches_stdout_stderr_and_closes_on_result() {
 }
 
 #[tokio::test]
-async fn command_stream_full_channel_closes_stream_and_marks_result() {
+async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let mut handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-overflow",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -332,28 +330,28 @@ async fn command_stream_full_channel_closes_stream_and_marks_result() {
     let mut rx = handle.take_stream_receiver().unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"first",
         false,
     )
     .await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"second",
         false,
     )
     .await;
-    send_discarded_command_result(
+    send_discarded_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
     )
     .await;
 
@@ -367,20 +365,20 @@ async fn command_stream_full_channel_closes_stream_and_marks_result() {
 }
 
 #[tokio::test]
-async fn command_stream_many_chunks_soak_does_not_block_terminal_result() {
+async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let mut handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream-many",
             env: &[],
             sudo: false,
             label: "stream-many",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(2),
         })
@@ -389,22 +387,22 @@ async fn command_stream_many_chunks_soak_does_not_block_terminal_result() {
     let mut rx = handle.take_stream_receiver().unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
     for output_seq in 0..32 {
-        send_command_output(
+        send_exec_output(
             &mut guest,
             msg.seq,
             output_seq,
-            CommandOutputStream::Stdout,
+            ExecOutputStream::Stdout,
             b"x",
             false,
         )
         .await;
     }
-    send_discarded_command_result(
+    send_discarded_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
     )
     .await;
 
@@ -425,17 +423,17 @@ async fn command_stream_many_chunks_soak_does_not_block_terminal_result() {
 }
 
 #[tokio::test]
-async fn command_output_for_non_streamed_side_poisons_connection() {
+async fn exec_output_for_non_streamed_side_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-side",
-            stdout: CommandOutputPolicy::Discard,
-            stderr: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
@@ -446,11 +444,11 @@ async fn command_output_for_non_streamed_side_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"unexpected",
         false,
     )
@@ -464,20 +462,20 @@ async fn command_output_for_non_streamed_side_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_output_seq_gap_poisons_connection() {
+async fn exec_output_seq_gap_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-seq",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -485,11 +483,11 @@ async fn command_output_seq_gap_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"gap",
         false,
     )
@@ -503,20 +501,20 @@ async fn command_output_seq_gap_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_output_zero_stream_limit_accepts_empty_truncation_marker() {
+async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let mut handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-zero-limit",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 0,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -525,19 +523,11 @@ async fn command_output_zero_stream_limit_accepts_empty_truncation_marker() {
     let mut rx = handle.take_stream_receiver().unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", true).await;
+    send_discarded_exec_result(
         &mut guest,
         msg.seq,
-        0,
-        CommandOutputStream::Stdout,
-        b"",
-        true,
-    )
-    .await;
-    send_discarded_command_result(
-        &mut guest,
-        msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
     )
     .await;
 
@@ -550,20 +540,20 @@ async fn command_output_zero_stream_limit_accepts_empty_truncation_marker() {
 }
 
 #[tokio::test]
-async fn command_output_empty_non_truncated_poisons_connection() {
+async fn exec_output_empty_non_truncated_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-empty",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -571,15 +561,7 @@ async fn command_output_empty_non_truncated_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
-        &mut guest,
-        msg.seq,
-        0,
-        CommandOutputStream::Stdout,
-        b"",
-        false,
-    )
-    .await;
+    send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", false).await;
 
     host.wait_until_closed(Duration::from_secs(5))
         .await
@@ -589,20 +571,20 @@ async fn command_output_empty_non_truncated_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_output_over_requested_chunk_limit_poisons_connection() {
+async fn exec_output_over_requested_chunk_limit_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-limits",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
@@ -610,11 +592,11 @@ async fn command_output_over_requested_chunk_limit_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"abcd",
         false,
     )
@@ -628,20 +610,20 @@ async fn command_output_over_requested_chunk_limit_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_output_over_requested_stream_limit_poisons_connection() {
+async fn exec_output_over_requested_stream_limit_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-total-limit",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 3,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
@@ -649,20 +631,20 @@ async fn command_output_over_requested_stream_limit_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"abc",
         false,
     )
     .await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"de",
         false,
     )
@@ -676,20 +658,20 @@ async fn command_output_over_requested_stream_limit_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_output_after_truncation_poisons_connection() {
+async fn exec_output_after_truncation_poisons_connection() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-truncated",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 4,
                 chunk_limit_bytes: 4,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(4),
         })
@@ -697,20 +679,12 @@ async fn command_output_after_truncation_poisons_connection() {
         .unwrap();
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
-        &mut guest,
-        msg.seq,
-        0,
-        CommandOutputStream::Stdout,
-        b"",
-        true,
-    )
-    .await;
-    send_command_output(
+    send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", true).await;
+    send_exec_output(
         &mut guest,
         msg.seq,
         1,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"late",
         false,
     )
@@ -724,20 +698,20 @@ async fn command_output_after_truncation_poisons_connection() {
 }
 
 #[tokio::test]
-async fn command_stream_dropped_receiver_does_not_block_result() {
+async fn exec_operation_stream_dropped_receiver_does_not_block_result() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let mut handle = host
-        .command_stream(CommandStreamRequest {
+        .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
             command: "stream",
             env: &[],
             sudo: false,
             label: "stream-dropped",
-            stdout: CommandOutputPolicy::Stream {
+            stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024,
                 chunk_limit_bytes: 16,
             },
-            stderr: CommandOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: &[],
             stream_queue_capacity: Some(1),
         })
@@ -746,19 +720,19 @@ async fn command_stream_dropped_receiver_does_not_block_result() {
     drop(handle.take_stream_receiver());
 
     let msg = read_guest_message(&mut guest, &mut decoder).await;
-    send_command_output(
+    send_exec_output(
         &mut guest,
         msg.seq,
         0,
-        CommandOutputStream::Stdout,
+        ExecOutputStream::Stdout,
         b"ignored",
         false,
     )
     .await;
-    send_discarded_command_result(
+    send_discarded_exec_result(
         &mut guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
     )
     .await;
 

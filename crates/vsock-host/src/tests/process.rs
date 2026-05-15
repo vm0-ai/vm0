@@ -2,12 +2,12 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
+use super::support::{host_from_stream, make_pair, mock_handshake, send_exec_result};
 use crate::{ConnectionState, GuestProcessHandle, VsockHost};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
 use vsock_proto::{
-    CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS,
+    Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START, MSG_PROCESS_EXIT, MSG_SPAWN_PROCESS,
     MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK,
 };
 
@@ -1198,13 +1198,13 @@ async fn test_concurrent_exec_and_wait_exit() {
 
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_COMMAND_START);
+        assert_eq!(msgs[0].msg_type, MSG_EXEC_START);
         let exec_seq = msgs[0].seq;
 
-        send_command_result(
+        send_exec_result(
             &mut guest,
             exec_seq,
-            CommandTermination::Exited { exit_code: 0 },
+            ExecTermination::Exited { exit_code: 0 },
             b"concurrent",
             b"",
         )

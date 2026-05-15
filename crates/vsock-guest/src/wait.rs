@@ -100,7 +100,7 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
 }
 
 /// Like [`wait_with_kill_timeout_or_cancelled`], but observes either cancel
-/// flag. Command operations have both connection-level cancellation and
+/// flag. Exec operations have both connection-level cancellation and
 /// request-level cancellation.
 pub(crate) fn wait_with_kill_timeout_or_cancelled_either(
     child: Child,

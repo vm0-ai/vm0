@@ -6,8 +6,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::Instant;
 use vsock_proto::{
-    CommandCapturedOutput, CommandOutputStream, CommandTermination, Decoder, MSG_COMMAND_OUTPUT,
-    MSG_COMMAND_RESULT, MSG_COMMAND_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    Decoder, ExecCapturedOutput, ExecOutputStream, ExecTermination, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
 };
 
 use crate::{ConnectionState, VsockHost};
@@ -87,19 +87,15 @@ pub(crate) async fn setup_host_and_guest() -> (VsockHost, UnixStream, Decoder) {
     (host, guest, decoder)
 }
 
-fn command_result_payload(
-    termination: CommandTermination,
-    stdout: &[u8],
-    stderr: &[u8],
-) -> Vec<u8> {
-    vsock_proto::encode_command_result(
+fn exec_result_payload(termination: ExecTermination, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
+    vsock_proto::encode_exec_result(
         termination,
         12,
-        CommandCapturedOutput::Captured {
+        ExecCapturedOutput::Captured {
             bytes: stdout,
             truncated: false,
         },
-        CommandCapturedOutput::Captured {
+        ExecCapturedOutput::Captured {
             bytes: stderr,
             truncated: false,
         },
@@ -108,71 +104,71 @@ fn command_result_payload(
     .unwrap()
 }
 
-pub(crate) async fn send_command_result(
+pub(crate) async fn send_exec_result(
     stream: &mut UnixStream,
     seq: u32,
-    termination: CommandTermination,
+    termination: ExecTermination,
     stdout: &[u8],
     stderr: &[u8],
 ) {
-    let payload = command_result_payload(termination, stdout, stderr);
-    let frame = vsock_proto::encode(MSG_COMMAND_RESULT, seq, &payload).unwrap();
+    let payload = exec_result_payload(termination, stdout, stderr);
+    let frame = vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 
-pub(crate) async fn send_stream_command_result(
+pub(crate) async fn send_stream_exec_result(
     stream: &mut UnixStream,
     seq: u32,
-    termination: CommandTermination,
+    termination: ExecTermination,
     stderr: &[u8],
 ) {
-    let payload = vsock_proto::encode_command_result(
+    let payload = vsock_proto::encode_exec_result(
         termination,
         12,
-        CommandCapturedOutput::Discarded,
-        CommandCapturedOutput::Captured {
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Captured {
             bytes: stderr,
             truncated: false,
         },
         "",
     )
     .unwrap();
-    let frame = vsock_proto::encode(MSG_COMMAND_RESULT, seq, &payload).unwrap();
+    let frame = vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 
-pub(crate) async fn send_raw_command_result(stream: &mut UnixStream, seq: u32, payload: Vec<u8>) {
-    let frame = vsock_proto::encode(MSG_COMMAND_RESULT, seq, &payload).unwrap();
+pub(crate) async fn send_raw_exec_result(stream: &mut UnixStream, seq: u32, payload: Vec<u8>) {
+    let frame = vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 
-pub(crate) async fn send_discarded_command_result(
+pub(crate) async fn send_discarded_exec_result(
     stream: &mut UnixStream,
     seq: u32,
-    termination: CommandTermination,
+    termination: ExecTermination,
 ) {
-    let payload = vsock_proto::encode_command_result(
+    let payload = vsock_proto::encode_exec_result(
         termination,
         12,
-        CommandCapturedOutput::Discarded,
-        CommandCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
         "",
     )
     .unwrap();
-    send_raw_command_result(stream, seq, payload).await;
+    send_raw_exec_result(stream, seq, payload).await;
 }
 
-pub(crate) async fn send_command_output(
+pub(crate) async fn send_exec_output(
     stream: &mut UnixStream,
     seq: u32,
     output_seq: u32,
-    output_stream: CommandOutputStream,
+    output_stream: ExecOutputStream,
     chunk: &[u8],
     truncated: bool,
 ) {
     let payload =
-        vsock_proto::encode_command_output(output_stream, output_seq, chunk, truncated).unwrap();
-    let frame = vsock_proto::encode(MSG_COMMAND_OUTPUT, seq, &payload).unwrap();
+        vsock_proto::encode_exec_output(output_stream, output_seq, chunk, truncated).unwrap();
+    let frame = vsock_proto::encode(MSG_EXEC_OUTPUT, seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 
@@ -186,7 +182,7 @@ pub(crate) async fn wait_for_operation_count(host: &VsockHost, expected: usize) 
     .unwrap();
 }
 
-pub(crate) async fn assert_connection_accepts_command_exec(
+pub(crate) async fn assert_connection_accepts_exec_operation(
     host: &Arc<VsockHost>,
     guest: &mut UnixStream,
     decoder: &mut Decoder,
@@ -196,14 +192,14 @@ pub(crate) async fn assert_connection_accepts_command_exec(
         tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
     };
     let msg = read_guest_message(guest, decoder).await;
-    assert_eq!(msg.msg_type, MSG_COMMAND_START);
-    let decoded = vsock_proto::decode_command_start(&msg.payload).unwrap();
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.command, "echo ok");
     assert_eq!(decoded.label, "exec");
-    send_command_result(
+    send_exec_result(
         guest,
         msg.seq,
-        CommandTermination::Exited { exit_code: 0 },
+        ExecTermination::Exited { exit_code: 0 },
         b"ok",
         b"",
     )

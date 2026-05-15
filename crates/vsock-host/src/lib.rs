@@ -18,7 +18,7 @@
 //! concurrently. Responses are dispatched to callers via oneshot channels
 //! keyed by sequence number.
 
-mod command;
+mod exec_operation;
 mod file;
 mod process;
 #[cfg(test)]
@@ -38,15 +38,15 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 use vsock_proto::{
-    Decoder, MSG_COMMAND_OUTPUT, MSG_COMMAND_RESULT, MSG_ERROR, MSG_OPERATIONS_QUIESCED,
+    Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS_RESULT,
     MSG_STDOUT_CHUNK, RawMessage,
 };
 
-pub use command::{
-    CommandCaptureRequest, CommandOperationHandle, CommandOperationRequest, CommandOperationResult,
-    CommandOutputEvent, CommandOwnedCapturedOutput, CommandStreamRequest,
+pub use exec_operation::{
+    ExecCaptureRequest, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
+    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
 pub use process::{GuestProcessHandle, ProcessExitEvent};
@@ -65,7 +65,7 @@ pub struct ExecResult {
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// Pending requests, active command operations, and connected process state
+/// Pending requests, active exec operations, and connected process state
 /// live inside the `Connected` variant so registrations are structurally
 /// unreachable once the reader task has exited.
 ///
@@ -77,8 +77,8 @@ enum ConnectionState {
     Connected {
         /// Pending request responses: seq → oneshot sender.
         pending: HashMap<u32, oneshot::Sender<RawMessage>>,
-        /// Active command-operation state owned by the command module.
-        operations: command::Operations,
+        /// Active exec-operation state owned by the exec_operation module.
+        operations: exec_operation::Operations,
         /// Active spawn_process operation state owned by the process module.
         process: process::ConnectedProcessState,
     },
@@ -180,12 +180,12 @@ impl Shared {
                     operations,
                     process,
                 } => {
-                    let command_snapshot = operations.close_snapshot();
+                    let exec_operation_snapshot = operations.close_snapshot();
                     let (closed_process, process_maps) = process.close();
                     *guard = ConnectionState::Closed {
                         _process: closed_process,
                     };
-                    Some((pending, process_maps, operations, command_snapshot))
+                    Some((pending, process_maps, operations, exec_operation_snapshot))
                 }
                 closed @ ConnectionState::Closed { .. } => {
                     // Reassign the whole variant by binding rather than by
@@ -195,11 +195,11 @@ impl Shared {
                 }
             }
         };
-        if let Some((pending, process_maps, operations, command_snapshot)) = maps_to_drop {
+        if let Some((pending, process_maps, operations, exec_operation_snapshot)) = maps_to_drop {
             let maps = (pending, process_maps, operations);
             drop(maps);
             self.close_notify.notify_waiters();
-            command::log_operations_closed(reason, &command_snapshot);
+            exec_operation::log_operations_closed(reason, &exec_operation_snapshot);
         }
     }
 
@@ -248,7 +248,7 @@ impl Drop for VsockHost {
     fn drop(&mut self) {
         // Drop registration state synchronously. The shutdown below normally
         // lets `reader_loop` observe EOF and call `close()`, but aborting the
-        // reader task can win that race. Closing here makes active command
+        // reader task can win that race. Closing here makes active exec
         // handles and stream receivers release immediately when the host is
         // dropped.
         self.shared.close();
@@ -263,7 +263,7 @@ impl Drop for VsockHost {
 
 /// Background reader task: owns the read half and decoder exclusively.
 ///
-/// Dispatches responses, command operations, and spawn_process lifecycle frames
+/// Dispatches responses, exec operations, and spawn_process lifecycle frames
 /// by seq number.
 async fn reader_loop(
     mut reader: tokio::net::unix::OwnedReadHalf,
@@ -283,10 +283,10 @@ async fn reader_loop(
         };
         for msg in messages {
             if msg.msg_type == MSG_ERROR {
-                // Intercept active command-operation errors before the legacy
-                // pending-request dispatch. If no command operation owns this
+                // Intercept active exec-operation errors before the legacy
+                // pending-request dispatch. If no exec operation owns this
                 // seq, the error falls through as a normal request response.
-                match command::dispatch_error(&shared, &msg) {
+                match exec_operation::dispatch_error(&shared, &msg) {
                     Ok(true) => {
                         continue;
                     }
@@ -298,13 +298,13 @@ async fn reader_loop(
                 }
             }
 
-            if msg.msg_type == MSG_COMMAND_OUTPUT {
-                if command::dispatch_output(&shared, &msg).is_err() {
+            if msg.msg_type == MSG_EXEC_OUTPUT {
+                if exec_operation::dispatch_output(&shared, &msg).is_err() {
                     shared.poison_connection();
                     return;
                 }
-            } else if msg.msg_type == MSG_COMMAND_RESULT {
-                if command::dispatch_result(&shared, &msg).is_err() {
+            } else if msg.msg_type == MSG_EXEC_RESULT {
+                if exec_operation::dispatch_result(&shared, &msg).is_err() {
                     shared.poison_connection();
                     return;
                 }
@@ -488,7 +488,7 @@ impl VsockHost {
             seq: AtomicU32::new(2),
             state: std::sync::Mutex::new(ConnectionState::Connected {
                 pending: HashMap::new(),
-                operations: command::Operations::new(),
+                operations: exec_operation::Operations::new(),
                 process: process::ConnectedProcessState::new(),
             }),
             close_notify: Notify::new(),
@@ -620,16 +620,16 @@ impl VsockHost {
         .await
     }
 
-    /// Start a request-scoped command operation using the unified command protocol.
-    pub async fn start_command_operation(
+    /// Start a request-scoped exec operation using the unified command protocol.
+    pub async fn start_exec_operation(
         &self,
-        request: CommandOperationRequest<'_>,
-    ) -> io::Result<CommandOperationHandle> {
-        command::start_command_operation_on_shared(&self.shared, request).await
+        request: ExecOperationRequest<'_>,
+    ) -> io::Result<ExecOperationHandle> {
+        exec_operation::start_exec_operation_on_shared(&self.shared, request).await
     }
 
-    /// Run a capture-only command operation with default capture limits.
-    pub async fn command_capture_default(
+    /// Run a capture-only exec operation with default capture limits.
+    pub async fn exec_operation_capture_default(
         &self,
         command: &str,
         timeout_ms: u32,
@@ -637,35 +637,35 @@ impl VsockHost {
         sudo: bool,
         label: &str,
         wait_timeout: Duration,
-    ) -> io::Result<CommandOperationResult> {
-        self.command_capture(CommandCaptureRequest {
+    ) -> io::Result<ExecOperationResult> {
+        self.exec_operation_capture(ExecCaptureRequest {
             timeout_ms,
             command,
             env,
             sudo,
             label,
-            stdout_limit_bytes: command::DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: command::DEFAULT_COMMAND_CAPTURE_LIMIT_BYTES,
+            stdout_limit_bytes: exec_operation::DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: exec_operation::DEFAULT_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
             wait_timeout,
         })
         .await
     }
 
-    /// Run a capture-only command operation with explicit stdout/stderr limits.
-    pub async fn command_capture(
+    /// Run a capture-only exec operation with explicit stdout/stderr limits.
+    pub async fn exec_operation_capture(
         &self,
-        request: CommandCaptureRequest<'_>,
-    ) -> io::Result<CommandOperationResult> {
-        command::command_capture_on_shared(&self.shared, request).await
+        request: ExecCaptureRequest<'_>,
+    ) -> io::Result<ExecOperationResult> {
+        exec_operation::exec_operation_capture_on_shared(&self.shared, request).await
     }
 
-    /// Start a streaming command operation with a bounded output event receiver.
-    pub async fn command_stream(
+    /// Start a streaming exec operation with a bounded output event receiver.
+    pub async fn exec_operation_stream(
         &self,
-        request: CommandStreamRequest<'_>,
-    ) -> io::Result<CommandOperationHandle> {
-        command::command_stream_on_shared(&self.shared, request).await
+        request: ExecStreamRequest<'_>,
+    ) -> io::Result<ExecOperationHandle> {
+        exec_operation::exec_operation_stream_on_shared(&self.shared, request).await
     }
 
     /// Execute a command on the guest.
@@ -681,12 +681,12 @@ impl VsockHost {
         env: &[(&str, &str)],
         sudo: bool,
     ) -> io::Result<ExecResult> {
-        command::exec_on_shared(&self.shared, command, timeout_ms, env, sudo).await
+        exec_operation::exec_on_shared(&self.shared, command, timeout_ms, env, sudo).await
     }
 
     /// Execute a capture-style command with explicit output limits.
-    pub async fn exec_capture(&self, request: CommandCaptureRequest<'_>) -> io::Result<ExecResult> {
-        command::exec_capture_on_shared(&self.shared, request).await
+    pub async fn exec_capture(&self, request: ExecCaptureRequest<'_>) -> io::Result<ExecResult> {
+        exec_operation::exec_capture_on_shared(&self.shared, request).await
     }
 
     /// Spawn a process on the guest and monitor for exit.

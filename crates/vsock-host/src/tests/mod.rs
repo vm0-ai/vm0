@@ -1,6 +1,6 @@
 pub(crate) mod support;
 
-mod command;
 mod connection;
+mod exec_operation;
 mod file;
 mod process;

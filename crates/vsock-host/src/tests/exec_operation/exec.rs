@@ -1,9 +1,9 @@
 use std::io;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use vsock_proto::{CommandTermination, Decoder, MSG_COMMAND_START, MSG_ERROR};
+use vsock_proto::{Decoder, ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
-use super::super::support::{host_from_stream, make_pair, mock_handshake, send_command_result};
+use super::super::support::{host_from_stream, make_pair, mock_handshake, send_exec_result};
 
 #[tokio::test]
 async fn test_exec() {
@@ -16,19 +16,19 @@ async fn test_exec() {
         let mut buf = [0u8; 4096];
         let n = guest.read(&mut buf).await.unwrap();
         let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_COMMAND_START);
+        assert_eq!(msgs[0].msg_type, MSG_EXEC_START);
 
-        let d = vsock_proto::decode_command_start(&msgs[0].payload).unwrap();
+        let d = vsock_proto::decode_exec_start(&msgs[0].payload).unwrap();
         assert_eq!(d.command, "echo hello");
         assert_eq!(d.timeout_ms, 5000);
         assert!(d.env.is_empty());
         assert!(!d.sudo);
         assert_eq!(d.label, "exec");
 
-        send_command_result(
+        send_exec_result(
             &mut guest,
             msgs[0].seq,
-            CommandTermination::Exited { exit_code: 0 },
+            ExecTermination::Exited { exit_code: 0 },
             b"hello\n",
             b"",
         )

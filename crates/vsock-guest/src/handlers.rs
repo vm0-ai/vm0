@@ -251,7 +251,7 @@ pub(crate) fn handle_decoded_write_file_message(
 
 /// Handle incoming message and return the connection-loop outcome.
 ///
-/// Command operation, `MSG_SPAWN_PROCESS`, and guarded write-file operations are
+/// Exec operation, `MSG_SPAWN_PROCESS`, and guarded write-file operations are
 /// handled separately in `handle_connection`.
 pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
