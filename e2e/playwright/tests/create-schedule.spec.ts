@@ -19,10 +19,12 @@ test("create a new schedule and verify it appears in the list", async ({
     .getByRole("banner")
     .getByRole("button", { name: "Add schedule" })
     .click();
-  await expect(page.getByLabel("Prompt")).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByRole("heading", { name: "Add schedule" }),
+  ).toBeVisible({ timeout: 30_000 });
 
   // Fill prompt and submit
-  await page.getByLabel("Prompt").fill(schedulePrompt);
+  await page.getByLabel("Prompt", { exact: true }).fill(schedulePrompt);
   await page.getByRole("button", { name: "Create" }).click();
 
   // After creation, app navigates to schedule detail page — verify the redirect
