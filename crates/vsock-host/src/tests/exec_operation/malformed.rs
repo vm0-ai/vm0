@@ -6,11 +6,11 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecTermination, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, operation_count, read_guest_message,
-    send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    assert_connection_accepts_exec_operation, normal_operation_readiness, operation_count,
+    read_guest_message, send_exec_result, setup_host_and_guest, wait_for_operation_count,
 };
 use super::start_capture_operation;
-use crate::ExecOwnedCapturedOutput;
+use crate::{ExecOwnedCapturedOutput, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn malformed_exec_error_poisons_connection() {
@@ -25,6 +25,10 @@ async fn malformed_exec_error_poisons_connection() {
     host.wait_until_closed(Duration::from_secs(5))
         .await
         .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
     let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
@@ -95,12 +99,12 @@ async fn malformed_exec_frames_after_handle_drop_are_ignored() {
     drop(handle);
     wait_for_operation_count(&host, 0).await;
 
-    let output_frame = vsock_proto::encode(MSG_EXEC_OUTPUT, msg.seq, &[0]).unwrap();
-    guest.write_all(&output_frame).await.unwrap();
-    let result_frame = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &[0]).unwrap();
-    guest.write_all(&result_frame).await.unwrap();
-
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let err = host.exec("after-drop", 5000, &[], false).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
 }
 
 #[tokio::test]

@@ -8,7 +8,10 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
-use crate::{ConnectionState, ExecResult, Shared};
+use crate::{
+    ConnectionState, ExecResult, Shared, normal_operation_transition_error,
+    operation_tracker::NormalOperationToken,
+};
 use vsock_proto::{
     ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL,
     MSG_EXEC_START, RawMessage,
@@ -166,6 +169,7 @@ impl Default for Operations {
 }
 
 struct ExecOperation {
+    normal_operation: NormalOperationToken,
     diagnostic: ExecOperationDiagnostic,
     result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
     stream_tx: Option<mpsc::Sender<ExecOutputEvent>>,
@@ -393,6 +397,7 @@ impl ExecOperationHandle {
             seq,
             &payload,
             Some(self.diagnostic.frame("cancel")),
+            None,
         )
         .await?;
         tracing::info!(
@@ -535,6 +540,7 @@ impl Drop for ExecOperationCancelOnDropGuard {
                     seq,
                     &payload,
                     Some(diagnostic.frame("drop-cancel")),
+                    None,
                 ),
             )
             .await;
@@ -837,56 +843,94 @@ pub(crate) fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
 }
 
 pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let (operation, decoded) = {
+    let Some((diagnostic, result_tx, stream_overflowed, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
                 let decoded = vsock_proto::decode_exec_result(&msg.payload)
                     .map_err(exec_operation_protocol_error)?;
-                (operations.take(msg.seq), decoded)
+                let Some(operation) = operations.take(msg.seq) else {
+                    return Ok(());
+                };
+                validate_result(&operation, &decoded)?;
+                let ExecOperation {
+                    normal_operation,
+                    diagnostic,
+                    result_tx,
+                    stream_overflowed,
+                    ..
+                } = operation;
+                normal_operation
+                    .complete()
+                    .map_err(normal_operation_transition_error)?;
+                Some((diagnostic, result_tx, stream_overflowed, decoded))
             }
-            ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => {
-                return Ok(());
-            }
+            ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
         }
+    }) else {
+        return Ok(());
     };
 
-    if let Some(operation) = operation {
-        validate_result(&operation, &decoded)?;
-        operation
-            .diagnostic
-            .log_terminal(&decoded, operation.stream_overflowed);
-        let ExecOperation {
-            result_tx,
-            stream_overflowed,
-            ..
-        } = operation;
-        let result = owned_result(decoded, stream_overflowed);
-        let _ = result_tx.send(Ok(result));
-    }
+    diagnostic.log_terminal(&decoded, stream_overflowed);
+    let result = owned_result(decoded, stream_overflowed);
+    let _ = result_tx.send(Ok(result));
 
     Ok(())
 }
 
 pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
-    let operation = {
+    let Some((diagnostic, result_tx, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Connected { operations, .. } => operations.take(msg.seq),
-            ConnectionState::Closed { .. } => None,
+            ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
+                let err = vsock_proto::decode_error(&msg.payload)
+                    .map(|message| io::Error::other(message.to_string()))
+                    .map_err(exec_operation_protocol_error)?;
+                let Some(operation) = operations.take(msg.seq) else {
+                    return Ok(false);
+                };
+                let ExecOperation {
+                    normal_operation,
+                    diagnostic,
+                    result_tx,
+                    ..
+                } = operation;
+                normal_operation
+                    .complete()
+                    .map_err(normal_operation_transition_error)?;
+                Some((diagnostic, result_tx, err))
+            }
+            ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
         }
+    }) else {
+        return Ok(false);
     };
 
-    if let Some(operation) = operation {
-        let err = vsock_proto::decode_error(&msg.payload)
-            .map(|message| io::Error::other(message.to_string()))
-            .map_err(exec_operation_protocol_error)?;
-        operation.diagnostic.log_error_response(&err);
-        let _ = operation.result_tx.send(Err(err));
-        return Ok(true);
-    }
+    diagnostic.log_error_response(&err);
+    let _ = result_tx.send(Err(err));
+    Ok(true)
+}
 
-    Ok(false)
+fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &mut *guard {
+        ConnectionState::Connected { operations, .. } => {
+            let Some(operation) = operations.get_mut(seq) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "exec operation closed before frame write",
+                ));
+            };
+            operation
+                .normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(normal_operation_transition_error)
+        }
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
 }
 
 async fn write_frame(
@@ -895,6 +939,7 @@ async fn write_frame(
     seq: u32,
     payload: &[u8],
     diagnostic: Option<ExecOperationFrameDiagnostic>,
+    normal_operation_seq: Option<u32>,
 ) -> io::Result<()> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -904,6 +949,9 @@ async fn write_frame(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
+    if let Some(normal_operation_seq) = normal_operation_seq {
+        mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
+    }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
     let result = writer.write_all(&data).await;
@@ -1089,7 +1137,9 @@ pub(crate) async fn start_exec_operation_on_shared(
     let (result_tx, result_rx) = oneshot::channel();
     let seq = shared.next_seq();
     let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
+    let normal_operation = shared.reserve_normal_operation()?;
     let operation = ExecOperation {
+        normal_operation,
         diagnostic: diagnostic.clone(),
         result_tx,
         stream_tx,
@@ -1123,6 +1173,7 @@ pub(crate) async fn start_exec_operation_on_shared(
         seq,
         &payload,
         Some(diagnostic.frame("start")),
+        Some(seq),
     )
     .await?;
     registration_guard.disarm();
@@ -1271,7 +1322,9 @@ mod tests {
 
     fn exec_operation_for_snapshot(seq: u32, label: &str) -> ExecOperation {
         let (result_tx, _result_rx) = oneshot::channel();
+        let normal_operations = crate::operation_tracker::NormalOperationTracker::new();
         ExecOperation {
+            normal_operation: normal_operations.reserve().unwrap(),
             diagnostic: ExecOperationDiagnostic::new(seq, label, &[]),
             result_tx,
             stream_tx: None,

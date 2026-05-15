@@ -10,8 +10,9 @@ use vsock_proto::{
 };
 
 use super::support::{
-    host_from_stream, make_pair, mock_handshake, normal_operation_readiness, poison_connection,
-    read_guest_message, send_exec_result,
+    fence_normal_operations, host_from_stream, make_pair, mock_handshake,
+    normal_operation_readiness, poison_connection, read_guest_message, send_exec_result,
+    setup_host_and_guest,
 };
 use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
 
@@ -115,6 +116,28 @@ async fn resume_operations_sends_request_and_accepts_empty_ack() {
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn lifecycle_request_bypasses_normal_operation_fence() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let _fence = fence_normal_operations(&host);
+
+    let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(2)).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_QUIESCE_OPERATIONS);
+    let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msg.seq, &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    quiesce_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]

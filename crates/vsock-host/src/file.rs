@@ -12,7 +12,7 @@ use vsock_proto::{
 
 use crate::{
     ExecCaptureRequest, ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput,
-    ExecStreamRequest, Shared, VsockHost, exec_operation,
+    ExecStreamRequest, Shared, VsockHost, exec_operation, normal_request_on_shared,
 };
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
@@ -26,6 +26,7 @@ static COPY_TEMP_NONCE: AtomicU64 = AtomicU64::new(1);
 /// Maximum content per write_file message. Leaves headroom below
 /// [`vsock_proto::MAX_MESSAGE_SIZE`] for the path and frame overhead.
 const WRITE_FILE_CHUNK_LIMIT: usize = 15 * 1024 * 1024;
+const WRITE_FILE_TERMINAL_MSG_TYPES: &[u8] = &[MSG_ERROR, MSG_WRITE_FILE_RESULT];
 
 /// Timeout (ms) for short helper commands (mv, rm) used during chunked writes.
 const HELPER_EXEC_TIMEOUT_MS: u32 = 5000;
@@ -529,7 +530,9 @@ impl VsockHost {
     /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
-            return self.write_file_chunk(path, content, sudo, false).await;
+            return self
+                .write_file_chunk(path, content, sudo, false, true)
+                .await;
         }
 
         // Write chunks to a per-call temp file, then atomic rename. The
@@ -543,7 +546,8 @@ impl VsockHost {
 
         let result = async {
             for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
-                self.write_file_chunk(&tmp, chunk, sudo, i > 0).await?;
+                self.write_file_chunk(&tmp, chunk, sudo, i > 0, false)
+                    .await?;
             }
             io::Result::Ok(())
         }
@@ -597,11 +601,23 @@ impl VsockHost {
         content: &[u8],
         sudo: bool,
         append: bool,
+        tracked: bool,
     ) -> io::Result<()> {
         let payload = vsock_proto::encode_write_file(path, content, sudo, append)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
-        let resp = self.request(MSG_WRITE_FILE, &payload, timeout).await?;
+        let resp = if tracked {
+            normal_request_on_shared(
+                &self.shared,
+                MSG_WRITE_FILE,
+                &payload,
+                WRITE_FILE_TERMINAL_MSG_TYPES,
+                timeout,
+            )
+            .await?
+        } else {
+            self.request(MSG_WRITE_FILE, &payload, timeout).await?
+        };
 
         if resp.msg_type == MSG_ERROR {
             let msg = vsock_proto::decode_error(&resp.payload)
