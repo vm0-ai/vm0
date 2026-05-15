@@ -1041,6 +1041,50 @@ describe("CLI auth for Stripe connector routes", () => {
     expect(calls.stop).toHaveLength(1);
   });
 
+  it("removes STRIPE_TOKEN when Stripe OAuth reconnect wins after CLI auth imported", async () => {
+    const { userId, orgId } = await setupUser();
+    mockStripeCliSandbox({ configApiKey: "rk_test_stale" });
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+    await accept(
+      client().complete({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+    await expect(stripeTokenSecret(userId, orgId)).resolves.not.toBeNull();
+
+    await store.set(
+      upsertOAuthConnector$,
+      {
+        orgId,
+        userId,
+        type: "stripe",
+        accessToken: "oauth_access",
+        userInfo: {
+          id: "acct_oauth",
+          username: null,
+          email: null,
+        },
+        oauthScopes: ["read_write"],
+      },
+      context.signal,
+    );
+
+    await expect(stripeConnector(userId, orgId)).resolves.toStrictEqual({
+      authMethod: "oauth",
+      externalId: "acct_oauth",
+    });
+    await expect(stripeTokenSecret(userId, orgId)).resolves.toBeNull();
+  });
+
   it("replaces existing Stripe OAuth local state while importing STRIPE_TOKEN", async () => {
     const { userId, orgId } = await setupUser();
     const db = store.set(writeDb$);

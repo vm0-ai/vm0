@@ -570,6 +570,55 @@ async function hasApiTokenConnectorLocalState(args: {
   return false;
 }
 
+async function deleteApiTokenConnectorLocalState(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly fields: {
+    readonly secrets: readonly string[];
+    readonly variables: readonly string[];
+  } | null;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (!args.fields) {
+    return false;
+  }
+
+  let deleted = false;
+  for (const name of args.fields.secrets) {
+    const result = await args.db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.name, name),
+          eq(secrets.type, "user"),
+        ),
+      )
+      .returning({ id: secrets.id });
+    args.signal.throwIfAborted();
+    deleted = deleted || result.length > 0;
+  }
+
+  for (const name of args.fields.variables) {
+    const result = await args.db
+      .delete(variables)
+      .where(
+        and(
+          eq(variables.orgId, args.orgId),
+          eq(variables.userId, args.userId),
+          eq(variables.name, name),
+        ),
+      )
+      .returning({ id: variables.id });
+    args.signal.throwIfAborted();
+    deleted = deleted || result.length > 0;
+  }
+
+  return deleted;
+}
+
 export const deleteZeroConnectorLocalState$ = command(
   async (
     { set },
@@ -656,38 +705,14 @@ export const deleteZeroConnectorLocalState$ = command(
       }
     }
 
-    if (fields) {
-      for (const name of fields.secrets) {
-        const result = await writeDb
-          .delete(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, args.orgId),
-              eq(secrets.userId, args.userId),
-              eq(secrets.name, name),
-              eq(secrets.type, "user"),
-            ),
-          )
-          .returning({ id: secrets.id });
-        signal.throwIfAborted();
-        deleted = deleted || result.length > 0;
-      }
-
-      for (const name of fields.variables) {
-        const result = await writeDb
-          .delete(variables)
-          .where(
-            and(
-              eq(variables.orgId, args.orgId),
-              eq(variables.userId, args.userId),
-              eq(variables.name, name),
-            ),
-          )
-          .returning({ id: variables.id });
-        signal.throwIfAborted();
-        deleted = deleted || result.length > 0;
-      }
-    }
+    deleted =
+      (await deleteApiTokenConnectorLocalState({
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        fields,
+        signal,
+      })) || deleted;
 
     if (deleted) {
       await publishUserSignal([args.userId], "connector:changed");
@@ -769,6 +794,7 @@ export const upsertOAuthConnector$ = command(
       type: args.type,
       expiresIn: args.expiresIn,
     });
+    const apiTokenFields = getApiTokenFieldsByType(args.type);
 
     await invalidateActiveCliAuthSessionsForConnectorType({
       writeDb,
@@ -832,6 +858,15 @@ export const upsertOAuthConnector$ = command(
     if (!connectorRow) {
       throw new Error("Failed to upsert connector");
     }
+
+    await deleteApiTokenConnectorLocalState({
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      fields: apiTokenFields,
+      signal,
+    });
+    signal.throwIfAborted();
 
     await publishUserSignal([args.userId], "connector:changed");
     signal.throwIfAborted();
