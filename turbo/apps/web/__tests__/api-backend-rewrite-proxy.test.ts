@@ -32,6 +32,7 @@ const { proxyRequest } =
   require("next/dist/server/lib/router-utils/proxy-request.js") as {
     readonly proxyRequest: ProxyRequest;
   };
+const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -183,6 +184,23 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/uploads/complete/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/uploads/other")).toBe(false);
+  });
+
+  it("matches only UUID-shaped zero voice-chat task rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}/tasks`,
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/voice-chat/token/tasks"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid/tasks"),
+    ).toBe(false);
   });
 
   it("forwards method, query, cookies, and request body", async () => {
