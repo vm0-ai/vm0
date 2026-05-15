@@ -1137,8 +1137,35 @@ describe("POST /api/zero/presentation-io/generate", () => {
       }),
     });
 
-    expect(response.status).toBe(200);
-    const body: unknown = await response.json();
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "presentation",
+      fixture.userId,
+    );
+
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "presentation",
+        status: "completed",
+      }),
+    );
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const statusBody: unknown = await statusResponse.json();
+    expect(statusBody).toMatchObject({
+      generationId,
+      type: "presentation",
+      status: "completed",
+    });
+    const body = readGenerationResult(statusBody);
     expect(body).toMatchObject({
       imageCount: 0,
       imageUrls: [],

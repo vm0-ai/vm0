@@ -1,8 +1,9 @@
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import {
   builtInGenerationJobs,
   type BuiltInGenerationError,
+  type BuiltInGenerationStatus,
   type BuiltInGenerationType,
 } from "@vm0/db/schema/built-in-generation-job";
 import type { ZeroBuiltInGenerationResponse } from "@vm0/api-contracts/contracts/zero-built-in-generation";
@@ -14,6 +15,21 @@ import { publishBuiltInGenerationChanged } from "../external/realtime";
 import { safeAsync } from "../utils";
 
 const L = logger("ZeroBuiltInGeneration");
+
+const ACTIVE_BUILT_IN_GENERATION_STATUSES = ["queued", "running"] as const;
+
+const BUILT_IN_GENERATION_TIMEOUT_MS_BY_TYPE = {
+  image: 15 * 60 * 1000,
+  video: 30 * 60 * 1000,
+  presentation: 60 * 60 * 1000,
+} as const satisfies Record<BuiltInGenerationType, number>;
+
+const BUILT_IN_GENERATION_TIMEOUT_ERROR: BuiltInGenerationError = Object.freeze(
+  {
+    message: "Generation timed out. Please try again.",
+    code: "GENERATION_TIMEOUT",
+  },
+);
 
 interface CreateBuiltInGenerationJobArgs {
   readonly generationId: string;
@@ -27,7 +43,7 @@ interface CreateBuiltInGenerationJobArgs {
 interface BuiltInGenerationJobRow {
   readonly id: string;
   readonly type: BuiltInGenerationType;
-  readonly status: "queued" | "running" | "completed" | "failed";
+  readonly status: BuiltInGenerationStatus;
   readonly userId: string;
   readonly result: unknown;
   readonly error: BuiltInGenerationError | null;
@@ -57,6 +73,35 @@ function serializeBuiltInGenerationJob(
     startedAt: iso(job.startedAt),
     completedAt: iso(job.completedAt),
   };
+}
+
+function isActiveBuiltInGenerationStatus(
+  status: BuiltInGenerationStatus,
+): status is (typeof ACTIVE_BUILT_IN_GENERATION_STATUSES)[number] {
+  return ACTIVE_BUILT_IN_GENERATION_STATUSES.some((activeStatus) => {
+    return activeStatus === status;
+  });
+}
+
+function builtInGenerationTimeoutCutoff(
+  type: BuiltInGenerationType,
+  referenceTime: Date,
+): Date {
+  return new Date(
+    referenceTime.getTime() - BUILT_IN_GENERATION_TIMEOUT_MS_BY_TYPE[type],
+  );
+}
+
+function isStuckBuiltInGenerationJob(
+  job: BuiltInGenerationJobRow & { readonly updatedAt: Date },
+  referenceTime: Date,
+): boolean {
+  if (!isActiveBuiltInGenerationStatus(job.status)) {
+    return false;
+  }
+  return (
+    job.updatedAt <= builtInGenerationTimeoutCutoff(job.type, referenceTime)
+  );
 }
 
 async function publishJobSafely(job: BuiltInGenerationJobRow): Promise<void> {
@@ -114,6 +159,7 @@ export const getBuiltInGenerationJob$ = command(
         result: builtInGenerationJobs.result,
         error: builtInGenerationJobs.error,
         createdAt: builtInGenerationJobs.createdAt,
+        updatedAt: builtInGenerationJobs.updatedAt,
         startedAt: builtInGenerationJobs.startedAt,
         completedAt: builtInGenerationJobs.completedAt,
       })
@@ -126,7 +172,74 @@ export const getBuiltInGenerationJob$ = command(
       )
       .limit(1);
     signal.throwIfAborted();
-    return job ? serializeBuiltInGenerationJob(job) : null;
+    if (!job) {
+      return null;
+    }
+
+    const currentTime = nowDate();
+    if (!isStuckBuiltInGenerationJob(job, currentTime)) {
+      return serializeBuiltInGenerationJob(job);
+    }
+
+    const cutoff = builtInGenerationTimeoutCutoff(job.type, currentTime);
+    const [expiredJob] = await writeDb
+      .update(builtInGenerationJobs)
+      .set({
+        status: "failed",
+        error: BUILT_IN_GENERATION_TIMEOUT_ERROR,
+        completedAt: currentTime,
+        updatedAt: currentTime,
+      })
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, args.generationId),
+          eq(builtInGenerationJobs.orgId, args.orgId),
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+          lte(builtInGenerationJobs.updatedAt, cutoff),
+        ),
+      )
+      .returning({
+        id: builtInGenerationJobs.id,
+        type: builtInGenerationJobs.type,
+        status: builtInGenerationJobs.status,
+        userId: builtInGenerationJobs.userId,
+        result: builtInGenerationJobs.result,
+        error: builtInGenerationJobs.error,
+        createdAt: builtInGenerationJobs.createdAt,
+        startedAt: builtInGenerationJobs.startedAt,
+        completedAt: builtInGenerationJobs.completedAt,
+      });
+    signal.throwIfAborted();
+    if (expiredJob) {
+      await publishJobSafely(expiredJob);
+      signal.throwIfAborted();
+      return serializeBuiltInGenerationJob(expiredJob);
+    }
+
+    const [latestJob] = await writeDb
+      .select({
+        id: builtInGenerationJobs.id,
+        type: builtInGenerationJobs.type,
+        status: builtInGenerationJobs.status,
+        userId: builtInGenerationJobs.userId,
+        result: builtInGenerationJobs.result,
+        error: builtInGenerationJobs.error,
+        createdAt: builtInGenerationJobs.createdAt,
+        startedAt: builtInGenerationJobs.startedAt,
+        completedAt: builtInGenerationJobs.completedAt,
+      })
+      .from(builtInGenerationJobs)
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, args.generationId),
+          eq(builtInGenerationJobs.orgId, args.orgId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    return latestJob ? serializeBuiltInGenerationJob(latestJob) : null;
   },
 );
 
