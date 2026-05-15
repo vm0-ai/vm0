@@ -325,8 +325,8 @@ async fn reap_orphaned_active_runs_with_firecrackers(
 mod tests {
     use super::*;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
-        StorageFingerprints,
+        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate, StorageFingerprints,
+        SyntheticParkedIdleCandidateParts,
     };
     use crate::resource_budget::ResourceBudget;
     use sandbox::SandboxFactory;
@@ -418,16 +418,17 @@ mod tests {
         let current_sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("stale-idle-owned-reaper")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: "sess-stale-idle-owned-reaper".into(),
-            sandbox_id: stale_sandbox_id,
-            profile_name: "vm0/default".into(),
-            budget_lease: lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox: Box::new(MockSandbox::new("stale-idle-owned-reaper")),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                session_id: "sess-stale-idle-owned-reaper".into(),
+                sandbox_id: stale_sandbox_id,
+                profile_name: "vm0/default".into(),
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+            });
         assert!(matches!(
             idle_pool.lock().await.park(candidate),
             ParkResult::Parked
@@ -473,16 +474,17 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("idle-owned-reaper")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: "sess-idle-owned-reaper".into(),
-            sandbox_id,
-            profile_name: "vm0/default".into(),
-            budget_lease: lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox: Box::new(MockSandbox::new("idle-owned-reaper")),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                session_id: "sess-idle-owned-reaper".into(),
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+            });
         assert!(matches!(
             idle_pool.lock().await.park(candidate),
             ParkResult::Parked

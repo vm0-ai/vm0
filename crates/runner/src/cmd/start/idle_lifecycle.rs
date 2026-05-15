@@ -179,7 +179,8 @@ mod tests {
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
+        SyntheticParkedIdleCandidateParts,
     };
     use crate::resource_budget::ResourceBudget;
 
@@ -241,16 +242,17 @@ mod tests {
     async fn idle_destroy_panic_releases_budget_lease() {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("panic-destroy")),
-            factory: Arc::new(Box::new(PanickingDestroyFactory) as Box<dyn SandboxFactory>),
-            session_id: "sess-panic".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox: Box::new(MockSandbox::new("panic-destroy")),
+                factory: Arc::new(Box::new(PanickingDestroyFactory) as Box<dyn SandboxFactory>),
+                session_id: "sess-panic".into(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default".into(),
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            });
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
@@ -282,18 +284,19 @@ mod tests {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         let destroy_count = Arc::new(AtomicUsize::new(0));
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox,
-            factory: Arc::new(Box::new(RecordingDestroyFactory {
-                destroy_count: Arc::clone(&destroy_count),
-            }) as Box<dyn SandboxFactory>),
-            session_id: "sess-stop-panic".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox,
+                factory: Arc::new(Box::new(RecordingDestroyFactory {
+                    destroy_count: Arc::clone(&destroy_count),
+                }) as Box<dyn SandboxFactory>),
+                session_id: "sess-stop-panic".into(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default".into(),
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            });
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,

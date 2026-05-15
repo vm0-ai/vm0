@@ -382,7 +382,8 @@ mod tests {
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
+        SyntheticParkedIdleCandidateParts,
     };
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
@@ -600,16 +601,17 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: "sess-idle-owned-cleanup".into(),
-            sandbox_id,
-            profile_name: "vm0/default".into(),
-            budget_lease: lease,
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                session_id: "sess-idle-owned-cleanup".into(),
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                budget_lease: lease,
+                source_ip: "10.0.0.1".into(),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            });
         assert!(matches!(
             fixture.idle_pool.lock().await.park(candidate),
             ParkResult::Parked

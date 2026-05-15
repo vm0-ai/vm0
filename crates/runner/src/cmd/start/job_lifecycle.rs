@@ -78,11 +78,11 @@ impl ActiveBudgetLease {
         Self(lease)
     }
 
-    pub(super) fn into_park_candidate_lease(self) -> BudgetLease {
+    pub(super) fn into_idle_park_lease(self) -> BudgetLease {
         self.0
     }
 
-    pub(super) fn from_rejected_park(lease: BudgetLease) -> Self {
+    pub(super) fn from_idle_park_lease(lease: BudgetLease) -> Self {
         Self(lease)
     }
 }
@@ -318,9 +318,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_ready_idle_owned_does_not_release_park_candidate_budget() {
+    async fn completion_ready_idle_owned_does_not_release_idle_park_budget() {
         let (budget, lease) = test_budget_lease();
-        let park_candidate_lease = ActiveBudgetLease::new(lease).into_park_candidate_lease();
+        let idle_park_lease = ActiveBudgetLease::new(lease).into_idle_park_lease();
         let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let dir = tempfile::tempdir().unwrap();
@@ -354,7 +354,7 @@ mod tests {
             cleanup_state.disposition(),
             RunCleanupDisposition::StatusRemoved,
         );
-        drop(park_candidate_lease);
+        drop(idle_park_lease);
         assert_eq!(budget.allocated().2, 0);
     }
 
@@ -420,7 +420,7 @@ mod tests {
 
         CompletionReady::new(
             test_completion_payload(run_id, sandbox_id),
-            BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease)),
+            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease)),
         )
         .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;

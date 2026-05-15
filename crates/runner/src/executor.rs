@@ -2980,26 +2980,27 @@ mod tests {
         session_id: &str,
     ) -> (ReusableIdleSandbox, crate::resource_budget::BudgetLease) {
         use crate::idle_pool::{
-            IdlePool, IdlePoolConfig, IdleUnparkResult, ParkCandidate, ParkCandidateParts,
-            ParkResult,
+            IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult, ParkedIdleCandidate,
+            SyntheticParkedIdleCandidateParts,
         };
 
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: std::time::Duration::from_secs(300),
             max_idle: 0,
         });
-        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: session_id.into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip,
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        });
+        let candidate =
+            ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+                sandbox,
+                factory: std::sync::Arc::new(
+                    Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+                ),
+                session_id: session_id.into(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default".into(),
+                budget_lease: test_budget_lease(),
+                source_ip,
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            });
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
         let entry = pool.take(session_id).expect("idle entry should exist");
         match entry.try_unpark().await {
@@ -3342,7 +3343,8 @@ mod tests {
     #[tokio::test]
     async fn idle_pool_park_and_reuse_cycle() {
         use crate::idle_pool::{
-            IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+            IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
+            SyntheticParkedIdleCandidateParts,
         };
 
         let dir = tempfile::tempdir().unwrap();
@@ -3372,7 +3374,7 @@ mod tests {
             max_idle: 0,
         });
 
-        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
+        let entry = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox,
             factory: std::sync::Arc::new(
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -3413,7 +3415,9 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pool_profile_mismatch_returns_none() {
-        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts};
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
+        };
 
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: std::time::Duration::from_secs(300),
@@ -3421,7 +3425,7 @@ mod tests {
         });
 
         // Park with profile "vm0/default"
-        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
+        let entry = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
             factory: std::sync::Arc::new(
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>

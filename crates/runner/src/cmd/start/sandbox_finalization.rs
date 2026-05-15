@@ -22,7 +22,8 @@ use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::idle_pool::{
-    DestroyOutcome, ParkCandidate, ParkCandidateParts, ParkResult, ParkingGate, StorageFingerprints,
+    DestroyOutcome, IdleParkActiveParts, IdleParkRequest, ParkResult, ParkingGate,
+    StorageFingerprints,
 };
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -59,7 +60,7 @@ pub(super) async fn finalize_sandbox_for_completion(
     completion_payload: CompletionPayload,
     ctx: FinalizeContext,
 ) -> CompletionReady {
-    let Some(mut sandbox) = sandbox else {
+    let Some(sandbox) = sandbox else {
         return CompletionReady::new(completion_payload, BudgetOwnership::active(active_lease));
     };
 
@@ -103,38 +104,66 @@ pub(super) async fn finalize_sandbox_for_completion(
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
-        if let Err(e) = park_sandbox_panic_safe(sandbox.as_mut()).await {
-            warn!(
-                run_id = %run_id,
-                session_id,
-                error = %e,
-                "sandbox park failed, destroying instead of parking"
-            );
-            let destroy_outcome = stop_and_destroy_sandbox(
-                sandbox,
-                &**factory,
-                ActiveCleanupContext {
+        let park_request = IdleParkRequest::new(
+            sandbox,
+            Arc::clone(&factory),
+            session_id.clone(),
+            sandbox_id,
+            profile_name.clone(),
+            active_lease.into_idle_park_lease(),
+            source_ip,
+            storage_fingerprints,
+        );
+        let candidate = match park_request.park_for_idle().await {
+            Ok(candidate) => candidate,
+            Err(failure) => {
+                let failure = failure.into_active_parts();
+                let IdleParkActiveParts {
+                    sandbox,
+                    factory: failure_factory,
+                    budget_lease,
+                } = failure.active;
+                warn!(
+                    run_id = %run_id,
+                    session_id,
+                    error = %failure.error,
+                    "sandbox park failed, destroying instead of parking"
+                );
+                let destroy_outcome = stop_and_destroy_sandbox(
+                    sandbox,
+                    &**failure_factory,
+                    ActiveCleanupContext {
+                        run_id,
+                        sandbox_id,
+                        profile_name: &profile_name,
+                        session_id: Some(&session_id),
+                        reason: "park_failed",
+                        network_log_session: network_log_session.take(),
+                        network_log_drain: network_log_drain.clone(),
+                    },
+                )
+                .await;
+                if destroy_outcome == DestroyOutcome::Completed {
+                    cleanup_state.mark_destroy_completed();
+                }
+                #[cfg(test)]
+                maybe_panic_outer_job(
+                    outer_job_panic,
+                    OuterJobPanicPoint::DestroyCompleted,
                     run_id,
-                    sandbox_id,
-                    profile_name: &profile_name,
-                    session_id: Some(&session_id),
-                    reason: "park_failed",
-                    network_log_session: network_log_session.take(),
-                    network_log_drain: network_log_drain.clone(),
-                },
-            )
-            .await;
-            if destroy_outcome == DestroyOutcome::Completed {
-                cleanup_state.mark_destroy_completed();
+                );
+                return CompletionReady::new(
+                    completion_payload,
+                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
+                );
             }
-            #[cfg(test)]
-            maybe_panic_outer_job(
-                outer_job_panic,
-                OuterJobPanicPoint::DestroyCompleted,
-                run_id,
-            );
-            BudgetOwnership::active(active_lease)
-        } else if cancel.is_cancelled() {
+        };
+        if cancel.is_cancelled() {
+            let IdleParkActiveParts {
+                sandbox,
+                factory: candidate_factory,
+                budget_lease,
+            } = candidate.into_active_parts();
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
@@ -143,7 +172,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             );
             let destroy_outcome = stop_and_destroy_sandbox(
                 sandbox,
-                &**factory,
+                &**candidate_factory,
                 ActiveCleanupContext {
                     run_id,
                     sandbox_id,
@@ -164,7 +193,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 OuterJobPanicPoint::DestroyCompleted,
                 run_id,
             );
-            BudgetOwnership::active(active_lease)
+            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease))
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             #[cfg(test)]
@@ -177,9 +206,14 @@ pub(super) async fn finalize_sandbox_for_completion(
                     "job cancelled before idle pool ownership transfer, destroying VM"
                 );
                 drop(pool);
+                let IdleParkActiveParts {
+                    sandbox,
+                    factory: candidate_factory,
+                    budget_lease,
+                } = candidate.into_active_parts();
                 let destroy_outcome = stop_and_destroy_sandbox(
                     sandbox,
-                    &**factory,
+                    &**candidate_factory,
                     ActiveCleanupContext {
                         run_id,
                         sandbox_id,
@@ -202,19 +236,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                 );
                 return CompletionReady::new(
                     completion_payload,
-                    BudgetOwnership::active(active_lease),
+                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
                 );
             }
-            let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-                sandbox,
-                factory,
-                session_id: session_id.clone(),
-                sandbox_id,
-                profile_name,
-                budget_lease: active_lease.into_park_candidate_lease(),
-                source_ip,
-                storage_fingerprints,
-            });
             match pool.park(candidate) {
                 ParkResult::Parked => {
                     info!(run_id = %run_id, session_id, "VM parked for reuse");
@@ -285,7 +309,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         OuterJobPanicPoint::DestroyCompleted,
                         run_id,
                     );
-                    BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease))
+                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease))
                 }
             }
         }
@@ -333,14 +357,6 @@ async fn close_network_log_session(
 ) {
     if let Some(session) = session {
         session.close_for_upload(run_id, drain).await;
-    }
-}
-
-async fn park_sandbox_panic_safe(sandbox: &mut dyn Sandbox) -> Result<(), String> {
-    match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err("sandbox park panicked".into()),
     }
 }
 

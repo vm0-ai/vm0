@@ -128,7 +128,9 @@ pub(super) fn collect_heartbeat_state(
 mod tests {
     use super::*;
     use crate::config;
-    use crate::idle_pool::{IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult};
+    use crate::idle_pool::{
+        IdlePoolConfig, ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
+    };
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
@@ -147,9 +149,9 @@ mod tests {
         m
     }
 
-    fn make_park_candidate(session_id: &str) -> ParkCandidate {
+    fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
-        ParkCandidate::from_parked_parts(ParkCandidateParts {
+        ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
@@ -199,7 +201,7 @@ mod tests {
             max_idle: 0,
         });
         assert!(matches!(
-            pool.park(make_park_candidate("sess-1")),
+            pool.park(make_synthetic_parked_candidate("sess-1")),
             ParkResult::Parked,
         ));
         let profiles = test_profiles();
@@ -228,8 +230,8 @@ mod tests {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
-        let _ = pool.park(make_park_candidate("sess-1"));
-        let _ = pool.park(make_park_candidate("sess-2"));
+        let _ = pool.park(make_synthetic_parked_candidate("sess-1"));
+        let _ = pool.park(make_synthetic_parked_candidate("sess-2"));
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
@@ -251,7 +253,7 @@ mod tests {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
-        let _ = pool.park(make_park_candidate("sess-1"));
+        let _ = pool.park(make_synthetic_parked_candidate("sess-1"));
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
