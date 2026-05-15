@@ -48,7 +48,7 @@ pub struct CopyFileResult {
     pub bytes_copied: u64,
 }
 
-enum CopyFileCommandStatus {
+enum CopyFileExecStatus {
     Present,
     Missing,
 }
@@ -222,12 +222,12 @@ async fn write_copy_stream_event(
     temp_file.write_all(&event.chunk).await
 }
 
-fn copy_command_stderr(result: &ExecOperationResult) -> io::Result<(Vec<u8>, bool)> {
+fn copy_exec_stderr(result: &ExecOperationResult) -> io::Result<(Vec<u8>, bool)> {
     match &result.stderr {
         ExecOwnedCapturedOutput::Captured { bytes, truncated } => Ok((bytes.clone(), *truncated)),
         ExecOwnedCapturedOutput::Discarded => Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "copy_file command discarded stderr capture",
+            "copy_file exec operation discarded stderr capture",
         )),
     }
 }
@@ -236,7 +236,7 @@ fn validate_copy_exec_result(
     path: &str,
     result: ExecOperationResult,
     missing_ok: bool,
-) -> io::Result<CopyFileCommandStatus> {
+) -> io::Result<CopyFileExecStatus> {
     if result.stream_overflowed {
         return Err(io::Error::other(
             "copy_file stream queue overflowed before all chunks were written",
@@ -245,24 +245,22 @@ fn validate_copy_exec_result(
     if !matches!(&result.stdout, ExecOwnedCapturedOutput::Discarded) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "copy_file command unexpectedly captured stdout",
+            "copy_file exec operation unexpectedly captured stdout",
         ));
     }
-    let (mut stderr, stderr_truncated) = copy_command_stderr(&result)?;
+    let (mut stderr, stderr_truncated) = copy_exec_stderr(&result)?;
     if stderr_truncated {
         exec_operation::append_diagnostic(&mut stderr, "stderr truncated");
     }
     match result.termination {
         ExecTermination::Exited { exit_code: 0 } if !stderr_truncated => {
-            Ok(CopyFileCommandStatus::Present)
+            Ok(CopyFileExecStatus::Present)
         }
         ExecTermination::Exited { exit_code: 0 } => Err(io::Error::other(format!(
             "copy_file stderr exceeded diagnostic limit for {path}: {}",
             String::from_utf8_lossy(&stderr)
         ))),
-        ExecTermination::Exited { exit_code: 66 } if missing_ok => {
-            Ok(CopyFileCommandStatus::Missing)
-        }
+        ExecTermination::Exited { exit_code: 66 } if missing_ok => Ok(CopyFileExecStatus::Missing),
         ExecTermination::Exited { exit_code: 66 } => Err(io::Error::new(
             io::ErrorKind::NotFound,
             format!("guest file not found: {path}"),
@@ -279,9 +277,12 @@ fn validate_copy_exec_result(
             "copy_file was cancelled for {path}: {}",
             result.diagnostic
         ))),
-        ExecTermination::StartFailed | ExecTermination::WaitFailed => Err(io::Error::other(
-            format!("copy_file command failed for {path}: {}", result.diagnostic),
-        )),
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            Err(io::Error::other(format!(
+                "copy_file exec operation failed for {path}: {}",
+                result.diagnostic
+            )))
+        }
     }
 }
 
@@ -350,7 +351,7 @@ impl VsockHost {
     }
 
     /// Stream a guest file to a host path and atomically rename it into place
-    /// after the command exits successfully.
+    /// after the exec operation exits successfully.
     pub async fn copy_file(
         &self,
         path: &str,
@@ -464,7 +465,7 @@ impl VsockHost {
         let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                "copy_file command did not create a stream receiver",
+                "copy_file exec operation did not create a stream receiver",
             )
         })?;
         let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
@@ -509,8 +510,8 @@ impl VsockHost {
             cancel_on_drop.disarm();
         }
         match validate_copy_exec_result(path, result, missing_ok)? {
-            CopyFileCommandStatus::Present => {}
-            CopyFileCommandStatus::Missing => return Ok(CopyFileOutcome::Missing),
+            CopyFileExecStatus::Present => {}
+            CopyFileExecStatus::Missing => return Ok(CopyFileOutcome::Missing),
         }
         temp_file.flush().await?;
 

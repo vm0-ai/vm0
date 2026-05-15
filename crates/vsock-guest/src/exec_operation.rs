@@ -560,7 +560,7 @@ fn validate_request(request: &ExecOperationWorkerRequest) -> Result<(), String> 
             && stream.chunk_limit_bytes > max_chunk
         {
             return Err(format!(
-                "command {name} stream chunk limit exceeds protocol frame budget: {} > {max_chunk}",
+                "exec {name} stream chunk limit exceeds protocol frame budget: {} > {max_chunk}",
                 stream.chunk_limit_bytes
             ));
         }
