@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  testContext,
-  uniqueId,
-} from "../../../../../../src/__tests__/test-helpers";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCallback,
+  createTestRun,
   createSignedCallbackRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { setTestRunVars } from "../../../../../../src/__tests__/db-test-seeders/runs";
@@ -13,9 +11,8 @@ import {
   getTestVoiceChatTask,
   listTestVoiceChatItems,
 } from "../../../../../../src/__tests__/db-test-assertions/voice-chat";
+import { insertTestVoiceChatTask } from "../../../../../../src/__tests__/db-test-seeders/voice-chat";
 import {
-  postRequest,
-  paramsFor,
   setupVoiceChatOrg,
   seedVoiceChatAgent,
   seedVoiceChatSession,
@@ -34,40 +31,28 @@ vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
 const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
-const { POST: createTaskPOST } =
-  await import("../../../../zero/voice-chat/[id]/tasks/route");
-
 const context = testContext();
 const CALLBACK_URL = "http://localhost/api/internal/callbacks/voice-chat";
 
 async function setupTaskWithCallback(options: { agentIdOnRun?: string }) {
-  const { userId, orgId } = await context.setupUser();
-  const { orgId: voiceChatOrgId } = await setupVoiceChatOrg(userId);
-  const { agentId } = await seedVoiceChatAgent(userId, voiceChatOrgId);
+  const { userId } = await context.setupUser();
+  const { orgId } = await setupVoiceChatOrg(userId);
+  const { agentId } = await seedVoiceChatAgent(userId, orgId);
 
   const session = await seedVoiceChatSession({
-    orgId: voiceChatOrgId,
+    orgId,
     userId,
     agentId,
   });
 
-  const taskResponse = await createTaskPOST(
-    postRequest(`/${session.id}/tasks`, {
-      prompt: "do a thing",
-      callId: uniqueId("call"),
-    }),
-    paramsFor(session.id),
-  );
-  const taskBody = (await taskResponse.json()) as {
-    task: { id: string; runId: string };
-  };
-  const taskId = taskBody.task.id;
-  const runId = taskBody.task.runId;
-
-  // Task creation schedules createZeroRun() dispatch via waitUntil() and a
-  // post-response reasoner tick via after(). Drain setup-owned async work so
-  // it cannot outlive the test that uses this helper.
-  await context.mocks.flushAfter();
+  const { runId } = await createTestRun(agentId, "do a thing", {
+    triggerSource: "voice-chat",
+  });
+  const taskId = await insertTestVoiceChatTask(session.id, {
+    status: "pending",
+    runId,
+    prompt: "do a thing",
+  });
 
   // Set vars.ZERO_AGENT_ID so the callback's readRunAgentId can resolve it.
   // Defaults to the session's agent (happy path); tests override for mismatch.

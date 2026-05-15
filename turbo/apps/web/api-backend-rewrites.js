@@ -1,3 +1,17 @@
+const UUID_SEGMENT_PATTERN =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+
+const VOICE_CHAT_TASKS_PATH_RE = new RegExp(
+  `^/api/zero/voice-chat/${UUID_SEGMENT_PATTERN}/tasks$`,
+);
+
+const DYNAMIC_REWRITE_MATCHERS = new Map([
+  [
+    "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/tasks",
+    VOICE_CHAT_TASKS_PATH_RE,
+  ],
+]);
+
 export const API_BACKEND_REWRITES = [
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
@@ -55,6 +69,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/voice-chat/:id/session-started",
     "/api/zero/voice-chat/:id/session-started",
   ],
+  [
+    "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/tasks",
+    "/api/zero/voice-chat/:id/tasks",
+  ],
   ["/api/zero/voice-chat/:id/usage", "/api/zero/voice-chat/:id/usage"],
   [
     "/api/zero/integrations/phone/:path*",
@@ -67,6 +85,11 @@ export const API_BACKEND_REWRITES = [
 
 export function matchesApiBackendRewritePath(pathname) {
   return API_BACKEND_REWRITES.some(([source]) => {
+    const dynamicMatcher = DYNAMIC_REWRITE_MATCHERS.get(source);
+    if (dynamicMatcher) {
+      return dynamicMatcher.test(pathname);
+    }
+
     if (source.endsWith("/:path*")) {
       const prefix = source.slice(0, -"/:path*".length);
       return pathname === prefix || pathname.startsWith(`${prefix}/`);

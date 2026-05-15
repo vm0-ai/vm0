@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { z } from "zod";
-import {
-  voiceChatItems,
-  voiceChatSessions,
-  voiceChatTasks,
-} from "@vm0/db/schema/voice-chat";
+import { voiceChatItems, voiceChatSessions } from "@vm0/db/schema/voice-chat";
 import type { AuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
@@ -16,11 +12,6 @@ export const appendVoiceChatItemBodySchema = z.object({
   realtimeItemId: z.string().min(1),
 });
 
-export const createVoiceChatTaskBodySchema = z.object({
-  prompt: z.string().min(1),
-  callId: z.string().min(1),
-});
-
 export const voiceChatTokenBodySchema = z.object({
   sessionId: z.uuid(),
   noiseReduction: z.enum(["near_field", "far_field"]).optional(),
@@ -28,7 +19,6 @@ export const voiceChatTokenBodySchema = z.object({
 
 type SessionRow = typeof voiceChatSessions.$inferSelect;
 type ItemRow = typeof voiceChatItems.$inferSelect;
-type TaskRow = typeof voiceChatTasks.$inferSelect;
 
 export function serializeVoiceChatSession(session: SessionRow) {
   return {
@@ -59,26 +49,6 @@ export function serializeVoiceChatItem(item: ItemRow) {
     taskId: item.taskId,
     realtimeItemId: item.realtimeItemId,
     createdAt: item.createdAt.toISOString(),
-  };
-}
-
-export function serializeVoiceChatTask(task: TaskRow) {
-  return {
-    id: task.id,
-    sessionId: task.sessionId,
-    runId: task.runId,
-    callId: task.callId,
-    prompt: task.prompt,
-    status: task.status,
-    result: task.result,
-    resultUpdatedAt: task.resultUpdatedAt
-      ? task.resultUpdatedAt.toISOString()
-      : null,
-    assistantMessages: task.assistantMessages,
-    error: task.error,
-    createdAt: task.createdAt.toISOString(),
-    startedAt: task.startedAt ? task.startedAt.toISOString() : null,
-    finishedAt: task.finishedAt ? task.finishedAt.toISOString() : null,
   };
 }
 

@@ -1,4 +1,31 @@
+import { createRequire } from "node:module";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+interface NextPathMatchOptions {
+  readonly removeUnnamedParams?: boolean;
+  readonly strict?: boolean;
+  readonly sensitive?: boolean;
+}
+
+type NextPathMatcher = (pathname: string) => false | Record<string, unknown>;
+
+interface NextPathMatchModule {
+  readonly getPathMatch: (
+    source: string,
+    options?: NextPathMatchOptions,
+  ) => NextPathMatcher;
+}
+
+const require = createRequire(import.meta.url);
+const { getPathMatch } =
+  require("next/dist/shared/lib/router/utils/path-match.js") as NextPathMatchModule;
+
+const VOICE_CHAT_TASKS_REWRITE_SOURCE =
+  "/api/zero/voice-chat/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/tasks";
+const VOICE_CHAT_TASKS_REWRITE_DESTINATION =
+  "https://api.example.test/api/zero/voice-chat/:id/tasks";
+const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 // Import the nextConfig to test headers() function
 // next.config.js exports the Sentry-wrapped config, so we need to extract headers from the raw config
@@ -50,6 +77,12 @@ function findHeader(
   return headers.find((h) => {
     return h.key === name;
   })?.value;
+}
+
+function matchesNextRewriteSource(source: string, pathname: string): boolean {
+  return Boolean(
+    getPathMatch(source, { removeUnnamedParams: true, strict: true })(pathname),
+  );
 }
 
 describe("Security Response Headers", () => {
@@ -233,6 +266,10 @@ describe("API backend rewrites", () => {
           source: "/api/zero/voice-chat",
           destination: "https://api.example.test/api/zero/voice-chat",
         },
+        {
+          source: VOICE_CHAT_TASKS_REWRITE_SOURCE,
+          destination: VOICE_CHAT_TASKS_REWRITE_DESTINATION,
+        },
       ]),
     );
   });
@@ -246,6 +283,51 @@ describe("API backend rewrites", () => {
       rewrites.some((rewrite) => {
         return rewrite.source === "/api/:path*";
       }),
+    ).toBe(false);
+  });
+
+  it("should constrain the zero voice-chat tasks rewrite to UUID task paths", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const tasksRewrite = rewrites.find((rewrite) => {
+      return rewrite.source === VOICE_CHAT_TASKS_REWRITE_SOURCE;
+    });
+
+    expect(tasksRewrite).toStrictEqual({
+      source: VOICE_CHAT_TASKS_REWRITE_SOURCE,
+      destination: VOICE_CHAT_TASKS_REWRITE_DESTINATION,
+    });
+
+    expect(
+      matchesNextRewriteSource(
+        VOICE_CHAT_TASKS_REWRITE_SOURCE,
+        `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}/tasks`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesNextRewriteSource(
+        VOICE_CHAT_TASKS_REWRITE_SOURCE,
+        "/api/zero/voice-chat/token",
+      ),
+    ).toBe(false);
+    expect(
+      matchesNextRewriteSource(
+        VOICE_CHAT_TASKS_REWRITE_SOURCE,
+        "/api/zero/voice-chat/token/tasks",
+      ),
+    ).toBe(false);
+    expect(
+      matchesNextRewriteSource(
+        VOICE_CHAT_TASKS_REWRITE_SOURCE,
+        `/api/zero/voice-chat/${VOICE_CHAT_SESSION_ID}/items`,
+      ),
+    ).toBe(false);
+    expect(
+      matchesNextRewriteSource(
+        VOICE_CHAT_TASKS_REWRITE_SOURCE,
+        "/api/zero/voice-chat/not-a-uuid/tasks",
+      ),
     ).toBe(false);
   });
 });

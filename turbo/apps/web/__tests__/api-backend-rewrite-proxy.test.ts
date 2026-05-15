@@ -161,6 +161,26 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero voice-chat tasks rewrite only for UUID task paths", () => {
+    const sessionId = "550e8400-e29b-41d4-a716-446655440000";
+
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/voice-chat/${sessionId}/tasks`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/voice-chat/token/tasks"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/voice-chat/${sessionId}/items`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/voice-chat/not-a-uuid/tasks"),
+    ).toBe(false);
+  });
+
   it("forwards method, query, cookies, and request body", async () => {
     await withRewriteProxy(
       async (request) => {
