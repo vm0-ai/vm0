@@ -248,6 +248,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/usage/insight",
         },
         {
+          source: "/api/zero/usage/runs",
+          destination: "https://api.example.test/api/zero/usage/runs",
+        },
+        {
           source: "/api/zero/video-io/generate",
           destination: "https://api.example.test/api/zero/video-io/generate",
         },

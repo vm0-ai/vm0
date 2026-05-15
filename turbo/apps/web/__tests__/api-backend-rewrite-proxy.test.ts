@@ -161,6 +161,13 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the usage runs rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/usage/runs")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/usage/runs/extra")).toBe(
+      false,
+    );
+  });
+
   it("forwards method, query, cookies, and request body", async () => {
     await withRewriteProxy(
       async (request) => {

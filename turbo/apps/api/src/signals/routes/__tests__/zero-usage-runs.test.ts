@@ -285,6 +285,135 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs[0]?.creditsCharged).toBe(50);
   });
 
+  it("filters by agentId", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const included = await store.set(
+      seedRun$,
+      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(2) },
+      context.signal,
+    );
+    const excluded = await store.set(
+      seedRun$,
+      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: included.runId,
+        creditsCharged: 50,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertModelUsage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        runId: excluded.runId,
+        creditsCharged: 100,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { agentId: included.composeId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.runs.map((run) => {
+        return run.runId;
+      }),
+    ).toStrictEqual([included.runId]);
+    expect(response.body.runs[0]?.creditsCharged).toBe(50);
+  });
+
+  it("filters by created-at date range", async () => {
+    mockClerkUserLookup();
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
+    const dateFrom = new Date("2026-01-10T00:00:00.000Z");
+    const dateTo = new Date("2026-01-11T00:00:00.000Z");
+    const before = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: new Date("2026-01-09T12:00:00.000Z"),
+      },
+      context.signal,
+    );
+    const inside = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: new Date("2026-01-10T12:00:00.000Z"),
+      },
+      context.signal,
+    );
+    const endBoundary = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: dateTo,
+      },
+      context.signal,
+    );
+    const after = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        createdAt: new Date("2026-01-11T12:00:00.000Z"),
+      },
+      context.signal,
+    );
+    for (const run of [before, inside, endBoundary, after]) {
+      await store.set(
+        insertModelUsage$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          runId: run.runId,
+          creditsCharged: 50,
+        },
+        context.signal,
+      );
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: {
+          dateFrom: dateFrom.toISOString(),
+          dateTo: dateTo.toISOString(),
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.runs.map((run) => {
+        return run.runId;
+      }),
+    ).toStrictEqual([inside.runId]);
+    expect(response.body.pagination.total).toBe(1);
+  });
+
   it("excludes runs with only pending usage events", async () => {
     mockClerkUserLookup();
     const fixture = await track(

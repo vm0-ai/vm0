@@ -1,30 +1,13 @@
-import { and, eq, gte, lt, inArray, desc, count } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   type MemberUsage,
   type UsageMembersResponse,
 } from "@vm0/api-contracts/contracts/zero-usage";
-import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
-import {
-  buildUsageEventRunUsageTotalsSubquery,
-  getMemberUsageTotals,
-  hasRunUsageTotals,
-  mergedRunCacheTokens,
-  mergedRunCreditsCharged,
-  mergedRunInputTokens,
-  mergedRunModel,
-  mergedRunOutputTokens,
-} from "./usage-reporting-ledger";
+import { getMemberUsageTotals } from "./usage-reporting-ledger";
 
 /**
  * Get per-member token usage aggregation for the current billing period.
@@ -155,143 +138,4 @@ async function resolveEmails(userIds: string[]): Promise<Map<string, string>> {
   }
 
   return emailMap;
-}
-
-interface UsageRunsOptions {
-  page: number;
-  pageSize: number;
-  agentId?: string;
-  userIds?: string[];
-  dateFrom?: string;
-  dateTo?: string;
-}
-
-/**
- * Get per-run usage records for an org with pagination and filtering.
- * Includes runs with processed run-linked usage_event records.
- */
-export async function getUsageRuns(
-  orgId: string,
-  options: UsageRunsOptions,
-): Promise<UsageRunsResponse> {
-  const db = globalThis.services.db;
-
-  const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, orgId);
-
-  // Build filter conditions
-  const conditions = [eq(agentRuns.orgId, orgId)];
-
-  if (options.agentId) {
-    conditions.push(eq(agentComposes.id, options.agentId));
-  }
-  if (options.userIds && options.userIds.length > 0) {
-    conditions.push(inArray(agentRuns.userId, options.userIds));
-  }
-  if (options.dateFrom) {
-    conditions.push(gte(agentRuns.createdAt, new Date(options.dateFrom)));
-  }
-  if (options.dateTo) {
-    conditions.push(lt(agentRuns.createdAt, new Date(options.dateTo)));
-  }
-
-  // Count query
-  const [countResult] = await db
-    .select({ total: count() })
-    .from(agentRuns)
-    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .where(and(...conditions, hasRunUsageTotals(eventUsage)));
-
-  const total = countResult?.total ?? 0;
-
-  // Data query with pagination
-  const offset = (options.page - 1) * options.pageSize;
-
-  const rows = await db
-    .select({
-      runId: agentRuns.id,
-      status: agentRuns.status,
-      createdAt: agentRuns.createdAt,
-      startedAt: agentRuns.startedAt,
-      completedAt: agentRuns.completedAt,
-      userId: agentRuns.userId,
-      prompt: agentRuns.prompt,
-      triggerSource: zeroRuns.triggerSource,
-      agentName: zeroAgents.displayName,
-      inputTokens: mergedRunInputTokens(eventUsage),
-      outputTokens: mergedRunOutputTokens(eventUsage),
-      cacheTokens: mergedRunCacheTokens(eventUsage),
-      creditsCharged: mergedRunCreditsCharged(eventUsage),
-      model: mergedRunModel(eventUsage),
-    })
-    .from(agentRuns)
-    .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(...conditions, hasRunUsageTotals(eventUsage)))
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(options.pageSize)
-    .offset(offset);
-
-  // Resolve emails
-  const uniqueUserIds = [
-    ...new Set(
-      rows.map((r) => {
-        return r.userId;
-      }),
-    ),
-  ];
-  const emailMap = await resolveEmails(uniqueUserIds);
-
-  const runs = rows.map((row) => {
-    const startedAt = row.startedAt?.toISOString() ?? null;
-    const completedAt = row.completedAt?.toISOString() ?? null;
-    const durationMs =
-      row.startedAt && row.completedAt
-        ? row.completedAt.getTime() - row.startedAt.getTime()
-        : null;
-
-    return {
-      runId: row.runId,
-      agentName: row.agentName ?? null,
-      memberEmail: emailMap.get(row.userId) ?? "unknown",
-      userId: row.userId,
-      triggerSource: row.triggerSource ?? null,
-      model: row.model ?? "unknown",
-      status: row.status,
-      prompt: row.prompt,
-      startedAt,
-      completedAt,
-      durationMs,
-      inputTokens: Number(row.inputTokens),
-      outputTokens: Number(row.outputTokens),
-      cacheTokens: Number(row.cacheTokens),
-      creditsCharged: Number(row.creditsCharged),
-      createdAt: row.createdAt.toISOString(),
-    };
-  });
-
-  return {
-    runs,
-    pagination: {
-      page: options.page,
-      pageSize: options.pageSize,
-      total,
-    },
-  };
 }
