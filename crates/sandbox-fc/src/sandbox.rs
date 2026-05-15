@@ -1427,7 +1427,7 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn park(&mut self) -> sandbox::Result<()> {
         if self.is_parked {
-            return Ok(());
+            return ensure_park_noop_state(&self.park_coordinator);
         }
 
         let coordinator = self.park_coordinator.clone();
@@ -1895,6 +1895,21 @@ fn ensure_parked_before_unpark(coordinator: &ParkCoordinator) -> sandbox::Result
                 SandboxIdleTransition::Unpark,
                 message,
             ))
+        }
+    }
+}
+
+fn ensure_park_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()> {
+    match coordinator.state() {
+        CoordinatorState::Parked => Ok(()),
+        CoordinatorState::Dirty { reason } => Err(idle_transition_error(
+            SandboxIdleTransition::Park,
+            format!("operation gate dirty while park is a no-op: {reason}"),
+        )),
+        state => {
+            let message = format!("operation gate is {state:?} while park is a no-op");
+            coordinator.mark_dirty(DirtyReason::new(message.clone()));
+            Err(idle_transition_error(SandboxIdleTransition::Park, message))
         }
     }
 }
@@ -2429,6 +2444,40 @@ mod tests {
 
     fn logged_events(events: &Arc<Mutex<Vec<&'static str>>>) -> Vec<&'static str> {
         events.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn park_noop_with_parked_gate_succeeds() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+
+        ensure_park_noop_state(&coordinator).unwrap();
+        assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+    }
+
+    #[test]
+    fn park_noop_reports_dirty_gate_instead_of_succeeding() {
+        let coordinator = ParkCoordinator::new();
+        coordinator.mark_dirty(DirtyReason::new("mark parked failed"));
+
+        assert_idle_transition(
+            ensure_park_noop_state(&coordinator),
+            SandboxIdleTransition::Park,
+        );
+    }
+
+    #[test]
+    fn park_noop_with_open_gate_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+
+        assert_idle_transition(
+            ensure_park_noop_state(&coordinator),
+            SandboxIdleTransition::Park,
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
     }
 
     #[tokio::test]
