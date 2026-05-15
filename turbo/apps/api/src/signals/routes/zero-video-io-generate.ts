@@ -35,6 +35,12 @@ import {
   markBuiltInGenerationRunning$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
+import {
+  completeRunBuiltInAdmission$,
+  isRunBuiltInAdmissionError,
+  startRunBuiltInAdmission$,
+  type RunBuiltInAdmission,
+} from "../services/zero-run-built-in-admission.service";
 
 const L = logger("ZeroVideoIoGenerate");
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
@@ -56,10 +62,13 @@ interface VideoJobArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
+  readonly admission: RunBuiltInAdmission | null;
   readonly options: VideoOptions;
   readonly pricing: VideoPricingRow;
   readonly falKey: string;
 }
+
+type AdmissionCompletionStatus = "completed" | "failed";
 
 function isGenerationError(value: unknown): value is GenerationError {
   return (
@@ -101,7 +110,11 @@ function videoRequestRecord(options: VideoOptions): Record<string, unknown> {
 }
 
 const runVideoGenerationJob$ = command(
-  async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    args: VideoJobArgs,
+    signal: AbortSignal,
+  ): Promise<AdmissionCompletionStatus> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
 
     const queueHandle = await submitFalVideoGeneration(
@@ -116,7 +129,7 @@ const runVideoGenerationJob$ = command(
         { generationId: args.generationId, error: queueHandle.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const resultBody = await waitForFalVideoResult(
@@ -131,7 +144,7 @@ const runVideoGenerationJob$ = command(
         { generationId: args.generationId, error: resultBody.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const falResult = parseFalVideoResult(resultBody, queueHandle.requestId);
@@ -141,7 +154,7 @@ const runVideoGenerationJob$ = command(
         { generationId: args.generationId, error: falResult.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const generation = await downloadFalVideo(falResult, args.options, signal);
@@ -152,7 +165,7 @@ const runVideoGenerationJob$ = command(
         { generationId: args.generationId, error: generation.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const active = await set(
@@ -161,7 +174,7 @@ const runVideoGenerationJob$ = command(
       signal,
     );
     if (!active) {
-      return;
+      return "failed";
     }
 
     const result = await set(
@@ -185,13 +198,21 @@ const runVideoGenerationJob$ = command(
       { generationId: args.generationId, result },
       signal,
     );
+    return "completed";
   },
 );
 
 const runVideoGenerationJobSafely$ = command(
   async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
     const result = await safeAsync(async () => {
-      await set(runVideoGenerationJob$, args, signal);
+      return await set(runVideoGenerationJob$, args, signal);
+    });
+    signal.throwIfAborted();
+    const admissionStatus: AdmissionCompletionStatus =
+      "ok" in result ? result.ok : "failed";
+    await set(completeRunBuiltInAdmission$, {
+      admission: args.admission,
+      status: admissionStatus,
     });
     signal.throwIfAborted();
     if ("ok" in result) {
@@ -266,6 +287,15 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
+  const admission = await set(
+    startRunBuiltInAdmission$,
+    { runId, kind: "video" },
+    signal,
+  );
+  if (isRunBuiltInAdmissionError(admission)) {
+    return admission;
+  }
+
   await set(
     createBuiltInGenerationJob$,
     {
@@ -286,6 +316,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
+        admission,
         options,
         pricing: pricingRow,
         falKey,

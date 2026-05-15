@@ -14,6 +14,10 @@ import { buildFileUrl } from "../../../../../src/lib/zero/uploads/file-url";
 import { recordGeneratedRunFile } from "../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
+import {
+  completeRunBuiltInAdmission,
+  startRunBuiltInAdmission,
+} from "../../../../../src/lib/zero/run-built-in-admission-service";
 
 export const runtime = "nodejs";
 
@@ -1265,82 +1269,97 @@ async function handlePost(request: Request): Promise<Response> {
     );
   }
 
-  const generation =
-    options.provider === "fal"
-      ? await generateFalImage(options, request.signal)
-      : await generateOpenAiImage(options, request.signal);
-  if (generation instanceof Response) return generation;
-
-  const contentType = contentTypeForFormat(generation.outputFormat);
-  const fileId = randomUUID();
-  const filename = `image-${fileId.slice(0, 8)}.${extensionForFormat(
-    generation.outputFormat,
-  )}`;
-  const s3Key = `uploads/${authCtx.userId}/${fileId}/${filename}`;
-  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  await uploadS3Buffer(bucket, s3Key, generation.imageBytes, contentType);
-  const url = buildFileUrl(authCtx.userId, fileId, filename);
-
-  await recordGeneratedRunFile({
+  const admission = await startRunBuiltInAdmission(db, {
     runId: authCtx.runId,
-    externalId: fileId,
-    userId: authCtx.userId,
-    orgId: authCtx.orgId,
-    filename,
-    contentType,
-    sizeBytes: generation.imageBytes.byteLength,
-    url,
-    s3Key,
-    metadata: imageMetadata(generation, options),
+    kind: "image",
   });
+  if (admission instanceof Response) return admission;
 
-  const usageRows = generation.billing.filter((row) => {
-    return row.quantity > 0;
-  });
+  let admissionStatus: "completed" | "failed" = "failed";
+  try {
+    const generation =
+      options.provider === "fal"
+        ? await generateFalImage(options, request.signal)
+        : await generateOpenAiImage(options, request.signal);
+    if (generation instanceof Response) return generation;
 
-  await db.insert(usageEvent).values(
-    usageRows.map((row) => {
-      return {
-        runId: authCtx.runId ?? null,
-        idempotencyKey: randomUUID(),
-        orgId: org.orgId,
-        userId: authCtx.userId,
-        kind: USAGE_KIND,
-        provider: options.model,
-        category: row.category,
-        quantity: row.quantity,
-      };
-    }),
-  );
-  await processOrgUsageEvents(org.orgId);
+    const contentType = contentTypeForFormat(generation.outputFormat);
+    const fileId = randomUUID();
+    const filename = `image-${fileId.slice(0, 8)}.${extensionForFormat(
+      generation.outputFormat,
+    )}`;
+    const s3Key = `uploads/${authCtx.userId}/${fileId}/${filename}`;
+    const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+    await uploadS3Buffer(bucket, s3Key, generation.imageBytes, contentType);
+    const url = buildFileUrl(authCtx.userId, fileId, filename);
 
-  return NextResponse.json({
-    id: fileId,
-    filename,
-    contentType,
-    size: generation.imageBytes.byteLength,
-    url,
-    creditsCharged: calculateCredits(
-      options.model,
-      generation.billing,
-      pricing,
-    ),
-    model: options.model,
-    provider: options.provider,
-    imageSize: generation.imageSize,
-    quality: generation.quality,
-    background: generation.background,
-    outputFormat: generation.outputFormat,
-    outputCompression: generation.outputCompression,
-    moderation: generation.moderation,
-    safetyTolerance: generation.safetyTolerance,
-    revisedPrompt: generation.revisedPrompt,
-    usage: generation.usage,
-    billingCategory: generation.billing[0]?.category,
-    billingQuantity: generation.billing[0]?.quantity,
-    sourceUrl: generation.sourceUrl,
-    seed: generation.seed,
-  });
+    await recordGeneratedRunFile({
+      runId: authCtx.runId,
+      externalId: fileId,
+      userId: authCtx.userId,
+      orgId: authCtx.orgId,
+      filename,
+      contentType,
+      sizeBytes: generation.imageBytes.byteLength,
+      url,
+      s3Key,
+      metadata: imageMetadata(generation, options),
+    });
+
+    const usageRows = generation.billing.filter((row) => {
+      return row.quantity > 0;
+    });
+
+    await db.insert(usageEvent).values(
+      usageRows.map((row) => {
+        return {
+          runId: authCtx.runId ?? null,
+          idempotencyKey: randomUUID(),
+          orgId: org.orgId,
+          userId: authCtx.userId,
+          kind: USAGE_KIND,
+          provider: options.model,
+          category: row.category,
+          quantity: row.quantity,
+        };
+      }),
+    );
+    await processOrgUsageEvents(org.orgId);
+    admissionStatus = "completed";
+
+    return NextResponse.json({
+      id: fileId,
+      filename,
+      contentType,
+      size: generation.imageBytes.byteLength,
+      url,
+      creditsCharged: calculateCredits(
+        options.model,
+        generation.billing,
+        pricing,
+      ),
+      model: options.model,
+      provider: options.provider,
+      imageSize: generation.imageSize,
+      quality: generation.quality,
+      background: generation.background,
+      outputFormat: generation.outputFormat,
+      outputCompression: generation.outputCompression,
+      moderation: generation.moderation,
+      safetyTolerance: generation.safetyTolerance,
+      revisedPrompt: generation.revisedPrompt,
+      usage: generation.usage,
+      billingCategory: generation.billing[0]?.category,
+      billingQuantity: generation.billing[0]?.quantity,
+      sourceUrl: generation.sourceUrl,
+      seed: generation.seed,
+    });
+  } finally {
+    await completeRunBuiltInAdmission(db, {
+      admission,
+      status: admissionStatus,
+    });
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

@@ -38,6 +38,12 @@ import {
   markBuiltInGenerationRunning$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
+import {
+  completeRunBuiltInAdmission$,
+  isRunBuiltInAdmissionError,
+  startRunBuiltInAdmission$,
+  type RunBuiltInAdmission,
+} from "../services/zero-run-built-in-admission.service";
 
 const L = logger("ZeroPresentationIoGenerate");
 const presentationBody$ = bodyResultOf(zeroPresentationIoGenerateContract.post);
@@ -59,10 +65,13 @@ interface PresentationJobArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
+  readonly admission: RunBuiltInAdmission | null;
   readonly options: PresentationOptions;
   readonly pricing: PresentationPricing;
   readonly imagePricing: ImagePricing | null;
 }
+
+type AdmissionCompletionStatus = "completed" | "failed";
 
 function isGenerationError(value: unknown): value is GenerationError {
   return (
@@ -105,7 +114,7 @@ const runPresentationGenerationJob$ = command(
     { set },
     args: PresentationJobArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<AdmissionCompletionStatus> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
 
     const openaiResponse = await fetch(OPENAI_PRESENTATION_GENERATION_URL, {
@@ -137,7 +146,7 @@ const runPresentationGenerationJob$ = command(
         },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const responseBody: unknown = await openaiResponse.json();
@@ -157,7 +166,7 @@ const runPresentationGenerationJob$ = command(
         { generationId: args.generationId, error: generation.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const activeBeforeVisuals = await set(
@@ -166,7 +175,7 @@ const runPresentationGenerationJob$ = command(
       signal,
     );
     if (!activeBeforeVisuals) {
-      return;
+      return "failed";
     }
 
     const visuals =
@@ -191,7 +200,7 @@ const runPresentationGenerationJob$ = command(
         { generationId: args.generationId, error: visuals.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const activeBeforeRecord = await set(
@@ -200,7 +209,7 @@ const runPresentationGenerationJob$ = command(
       signal,
     );
     if (!activeBeforeRecord) {
-      return;
+      return "failed";
     }
 
     const result = await set(
@@ -226,6 +235,7 @@ const runPresentationGenerationJob$ = command(
       { generationId: args.generationId, result },
       signal,
     );
+    return "completed";
   },
 );
 
@@ -236,7 +246,14 @@ const runPresentationGenerationJobSafely$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const result = await safeAsync(async () => {
-      await set(runPresentationGenerationJob$, args, signal);
+      return await set(runPresentationGenerationJob$, args, signal);
+    });
+    signal.throwIfAborted();
+    const admissionStatus: AdmissionCompletionStatus =
+      "ok" in result ? result.ok : "failed";
+    await set(completeRunBuiltInAdmission$, {
+      admission: args.admission,
+      status: admissionStatus,
     });
     signal.throwIfAborted();
     if ("ok" in result) {
@@ -313,6 +330,15 @@ const postPresentationInner$ = command(
       auth.tokenType === "zero" || auth.tokenType === "sandbox"
         ? auth.runId
         : undefined;
+    const admission = await set(
+      startRunBuiltInAdmission$,
+      { runId, kind: "presentation" },
+      signal,
+    );
+    if (isRunBuiltInAdmissionError(admission)) {
+      return admission;
+    }
+
     await set(
       createBuiltInGenerationJob$,
       {
@@ -333,6 +359,7 @@ const postPresentationInner$ = command(
           orgId: auth.orgId,
           userId: auth.userId,
           runId,
+          admission,
           options,
           pricing,
           imagePricing,

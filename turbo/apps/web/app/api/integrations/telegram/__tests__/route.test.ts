@@ -244,11 +244,12 @@ describe("/api/integrations/telegram", () => {
 
     it("includes the connected official Telegram user profile", async () => {
       const user = await context.setupUser();
+      const telegramUserId = uniqueId("official-user");
 
       await insertTestOfficialTelegramUserLink({
         orgId: user.orgId,
         vm0UserId: user.userId,
-        telegramUserId: "official-user-ada",
+        telegramUserId,
         telegramUsername: "official_ada",
         telegramDisplayName: "Official Ada",
       });
@@ -263,12 +264,12 @@ describe("/api/integrations/telegram", () => {
           kind: "official",
           isConnected: true,
           connectedUser: {
-            telegramUserId: "official-user-ada",
+            telegramUserId,
             telegramUsername: "official_ada",
             telegramDisplayName: "Official Ada",
           },
           official: expect.objectContaining({
-            linkedTelegramUserId: "official-user-ada",
+            linkedTelegramUserId: telegramUserId,
           }),
         }),
       ]);

@@ -31,6 +31,12 @@ import {
   markBuiltInGenerationRunning$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
+import {
+  completeRunBuiltInAdmission$,
+  isRunBuiltInAdmissionError,
+  startRunBuiltInAdmission$,
+  type RunBuiltInAdmission,
+} from "../services/zero-run-built-in-admission.service";
 
 const L = logger("ZeroImageIoGenerate");
 const imageBody$ = bodyResultOf(zeroImageIoGenerateContract.post);
@@ -52,9 +58,12 @@ interface ImageJobArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
+  readonly admission: RunBuiltInAdmission | null;
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
 }
+
+type AdmissionCompletionStatus = "completed" | "failed";
 
 function isGenerationError(value: unknown): value is GenerationError {
   return (
@@ -98,7 +107,11 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
 }
 
 const runImageGenerationJob$ = command(
-  async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    args: ImageJobArgs,
+    signal: AbortSignal,
+  ): Promise<AdmissionCompletionStatus> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
 
     const generation = await generateImageWithProvider(args.options, signal);
@@ -109,7 +122,7 @@ const runImageGenerationJob$ = command(
         { generationId: args.generationId, error: generation.body.error },
         signal,
       );
-      return;
+      return "failed";
     }
 
     const active = await set(
@@ -118,7 +131,7 @@ const runImageGenerationJob$ = command(
       signal,
     );
     if (!active) {
-      return;
+      return "failed";
     }
 
     const result = await set(
@@ -142,13 +155,21 @@ const runImageGenerationJob$ = command(
       { generationId: args.generationId, result },
       signal,
     );
+    return "completed";
   },
 );
 
 const runImageGenerationJobSafely$ = command(
   async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
     const result = await safeAsync(async () => {
-      await set(runImageGenerationJob$, args, signal);
+      return await set(runImageGenerationJob$, args, signal);
+    });
+    signal.throwIfAborted();
+    const admissionStatus: AdmissionCompletionStatus =
+      "ok" in result ? result.ok : "failed";
+    await set(completeRunBuiltInAdmission$, {
+      admission: args.admission,
+      status: admissionStatus,
     });
     signal.throwIfAborted();
     if ("ok" in result) {
@@ -219,6 +240,15 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
+  const admission = await set(
+    startRunBuiltInAdmission$,
+    { runId, kind: "image" },
+    signal,
+  );
+  if (isRunBuiltInAdmissionError(admission)) {
+    return admission;
+  }
+
   await set(
     createBuiltInGenerationJob$,
     {
@@ -239,6 +269,7 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
+        admission,
         options,
         pricing,
       },

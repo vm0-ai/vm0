@@ -15,6 +15,10 @@ import { buildFileUrl } from "../../../../../src/lib/zero/uploads/file-url";
 import { recordGeneratedRunFile } from "../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
+import {
+  completeRunBuiltInAdmission,
+  startRunBuiltInAdmission,
+} from "../../../../../src/lib/zero/run-built-in-admission-service";
 
 export const runtime = "nodejs";
 
@@ -218,108 +222,123 @@ async function handlePost(request: Request): Promise<Response> {
     );
   }
 
-  const openaiResponse = await fetch(OPENAI_TTS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env().OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      voice,
-      input: text,
-      ...(instructions ? { instructions } : {}),
-      response_format: RESPONSE_FORMAT,
-    }),
-    signal: request.signal,
-  });
-
-  if (!openaiResponse.ok) {
-    const errorBody = await openaiResponse.text();
-    log.error("OpenAI speech request failed", {
-      status: openaiResponse.status,
-      body: errorBody,
-    });
-    return errorResponse(
-      "Speech generation failed",
-      "INTERNAL_SERVER_ERROR",
-      500,
-    );
-  }
-
-  const audioBytes = new Uint8Array(await openaiResponse.arrayBuffer());
-  if (audioBytes.byteLength === 0) {
-    return errorResponse(
-      "Model returned empty audio",
-      "NO_AUDIO_RETURNED",
-      502,
-    );
-  }
-
-  const durationSeconds = parseWavDurationSeconds(audioBytes);
-  if (durationSeconds === null) {
-    log.error("Unable to parse generated WAV duration", {
-      byteLength: audioBytes.byteLength,
-    });
-    return errorResponse(
-      "Could not determine generated audio duration",
-      "AUDIO_DURATION_UNKNOWN",
-      502,
-    );
-  }
-
-  const expectedCredits = Math.ceil(
-    (durationSeconds * pricing.unitPrice) / pricing.unitSize,
-  );
-
-  const fileId = randomUUID();
-  const filename = `voice-${fileId.slice(0, 8)}.wav`;
-  const s3Key = `uploads/${authCtx.userId}/${fileId}/${filename}`;
-  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  await uploadS3Buffer(bucket, s3Key, Buffer.from(audioBytes), CONTENT_TYPE);
-  const url = buildFileUrl(authCtx.userId, fileId, filename);
-
-  await recordGeneratedRunFile({
+  const admission = await startRunBuiltInAdmission(db, {
     runId: authCtx.runId,
-    externalId: fileId,
-    userId: authCtx.userId,
-    orgId: authCtx.orgId,
-    filename,
-    contentType: CONTENT_TYPE,
-    sizeBytes: audioBytes.byteLength,
-    url,
-    s3Key,
-    metadata: {
-      generatedBy: "zero-official-voice",
+    kind: "voice",
+  });
+  if (admission instanceof Response) return admission;
+
+  let admissionStatus: "completed" | "failed" = "failed";
+  try {
+    const openaiResponse = await fetch(OPENAI_TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env().OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        voice,
+        input: text,
+        ...(instructions ? { instructions } : {}),
+        response_format: RESPONSE_FORMAT,
+      }),
+      signal: request.signal,
+    });
+
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      log.error("OpenAI speech request failed", {
+        status: openaiResponse.status,
+        body: errorBody,
+      });
+      return errorResponse(
+        "Speech generation failed",
+        "INTERNAL_SERVER_ERROR",
+        500,
+      );
+    }
+
+    const audioBytes = new Uint8Array(await openaiResponse.arrayBuffer());
+    if (audioBytes.byteLength === 0) {
+      return errorResponse(
+        "Model returned empty audio",
+        "NO_AUDIO_RETURNED",
+        502,
+      );
+    }
+
+    const durationSeconds = parseWavDurationSeconds(audioBytes);
+    if (durationSeconds === null) {
+      log.error("Unable to parse generated WAV duration", {
+        byteLength: audioBytes.byteLength,
+      });
+      return errorResponse(
+        "Could not determine generated audio duration",
+        "AUDIO_DURATION_UNKNOWN",
+        502,
+      );
+    }
+
+    const expectedCredits = Math.ceil(
+      (durationSeconds * pricing.unitPrice) / pricing.unitSize,
+    );
+
+    const fileId = randomUUID();
+    const filename = `voice-${fileId.slice(0, 8)}.wav`;
+    const s3Key = `uploads/${authCtx.userId}/${fileId}/${filename}`;
+    const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+    await uploadS3Buffer(bucket, s3Key, Buffer.from(audioBytes), CONTENT_TYPE);
+    const url = buildFileUrl(authCtx.userId, fileId, filename);
+
+    await recordGeneratedRunFile({
+      runId: authCtx.runId,
+      externalId: fileId,
+      userId: authCtx.userId,
+      orgId: authCtx.orgId,
+      filename,
+      contentType: CONTENT_TYPE,
+      sizeBytes: audioBytes.byteLength,
+      url,
+      s3Key,
+      metadata: {
+        generatedBy: "zero-official-voice",
+        model: MODEL,
+        voice,
+        durationSeconds,
+      },
+    });
+
+    await db.insert(usageEvent).values({
+      runId: authCtx.runId ?? null,
+      idempotencyKey: randomUUID(),
+      orgId: org.orgId,
+      userId: authCtx.userId,
+      kind: USAGE_KIND,
+      provider: USAGE_PROVIDER,
+      category: USAGE_CATEGORY,
+      quantity: durationSeconds,
+    });
+    await processOrgUsageEvents(org.orgId);
+    admissionStatus = "completed";
+
+    return NextResponse.json({
+      id: fileId,
+      filename,
+      contentType: CONTENT_TYPE,
+      size: audioBytes.byteLength,
+      url,
+      durationSeconds,
+      creditsCharged: expectedCredits,
       model: MODEL,
       voice,
-      durationSeconds,
-    },
-  });
-
-  await db.insert(usageEvent).values({
-    runId: authCtx.runId ?? null,
-    idempotencyKey: randomUUID(),
-    orgId: org.orgId,
-    userId: authCtx.userId,
-    kind: USAGE_KIND,
-    provider: USAGE_PROVIDER,
-    category: USAGE_CATEGORY,
-    quantity: durationSeconds,
-  });
-  await processOrgUsageEvents(org.orgId);
-
-  return NextResponse.json({
-    id: fileId,
-    filename,
-    contentType: CONTENT_TYPE,
-    size: audioBytes.byteLength,
-    url,
-    durationSeconds,
-    creditsCharged: expectedCredits,
-    model: MODEL,
-    voice,
-  });
+    });
+  } finally {
+    await completeRunBuiltInAdmission(db, {
+      admission,
+      status: admissionStatus,
+    });
+  }
 }
 
 export async function POST(request: Request): Promise<Response> {

@@ -18,15 +18,108 @@ import {
   parseSpeechWavDurationSeconds,
   recordGeneratedSpeech$,
   serviceUnavailable,
+  type SpeechPricing,
   SPEECH_MAX_INPUT_TOKENS,
   SPEECH_RESPONSE_FORMAT,
   speechPricing$,
   VOICE_IO_TTS_MODEL,
 } from "../services/zero-voice-io-post.service";
 import { env } from "../../lib/env";
+import {
+  completeRunBuiltInAdmission$,
+  isRunBuiltInAdmissionError,
+  startRunBuiltInAdmission$,
+} from "../services/zero-run-built-in-admission.service";
+import { safeAsync } from "../utils";
 
 const L = logger("ZeroVoiceIoSpeech");
 const speechBody$ = bodyResultOf(zeroVoiceIoSpeechContract.post);
+
+interface GenerateSpeechResponseArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string | undefined;
+  readonly text: string;
+  readonly voice: string;
+  readonly instructions: string | undefined;
+  readonly pricing: SpeechPricing;
+}
+
+const generateSpeechResponse$ = command(
+  async ({ set }, args: GenerateSpeechResponseArgs, signal: AbortSignal) => {
+    const openaiResponse = await fetch(OPENAI_AUDIO_SPEECH_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: VOICE_IO_TTS_MODEL,
+        voice: args.voice,
+        input: args.text,
+        ...(args.instructions ? { instructions: args.instructions } : {}),
+        response_format: SPEECH_RESPONSE_FORMAT,
+      }),
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      signal.throwIfAborted();
+      L.error("OpenAI speech request failed", {
+        status: openaiResponse.status,
+        body: errorBody,
+      });
+      return {
+        admissionStatus: "failed" as const,
+        response: internalError("Speech generation failed"),
+      };
+    }
+
+    const audioBytes = new Uint8Array(await openaiResponse.arrayBuffer());
+    signal.throwIfAborted();
+    if (audioBytes.byteLength === 0) {
+      return {
+        admissionStatus: "failed" as const,
+        response: badGateway("Model returned empty audio", "NO_AUDIO_RETURNED"),
+      };
+    }
+
+    const durationSeconds = parseSpeechWavDurationSeconds(audioBytes);
+    if (durationSeconds === null) {
+      L.error("Unable to parse generated WAV duration", {
+        byteLength: audioBytes.byteLength,
+      });
+      return {
+        admissionStatus: "failed" as const,
+        response: badGateway(
+          "Could not determine generated audio duration",
+          "AUDIO_DURATION_UNKNOWN",
+        ),
+      };
+    }
+
+    const body = await set(
+      recordGeneratedSpeech$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        voice: args.voice,
+        audioBytes,
+        durationSeconds,
+        pricing: args.pricing,
+      },
+      signal,
+    );
+
+    return {
+      admissionStatus: "completed" as const,
+      response: { status: 200 as const, body },
+    };
+  },
+);
 
 const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -78,69 +171,51 @@ const postSpeechInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const openaiResponse = await fetch(OPENAI_AUDIO_SPEECH_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env("OPENAI_API_KEY")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: VOICE_IO_TTS_MODEL,
-      voice,
-      input: text,
-      ...(instructions ? { instructions } : {}),
-      response_format: SPEECH_RESPONSE_FORMAT,
-    }),
-    signal,
-  });
-  signal.throwIfAborted();
-
-  if (!openaiResponse.ok) {
-    const errorBody = await openaiResponse.text();
-    signal.throwIfAborted();
-    L.error("OpenAI speech request failed", {
-      status: openaiResponse.status,
-      body: errorBody,
-    });
-    return internalError("Speech generation failed");
-  }
-
-  const audioBytes = new Uint8Array(await openaiResponse.arrayBuffer());
-  signal.throwIfAborted();
-  if (audioBytes.byteLength === 0) {
-    return badGateway("Model returned empty audio", "NO_AUDIO_RETURNED");
-  }
-
-  const durationSeconds = parseSpeechWavDurationSeconds(audioBytes);
-  if (durationSeconds === null) {
-    L.error("Unable to parse generated WAV duration", {
-      byteLength: audioBytes.byteLength,
-    });
-    return badGateway(
-      "Could not determine generated audio duration",
-      "AUDIO_DURATION_UNKNOWN",
-    );
-  }
-
   const runId =
     auth.tokenType === "zero" || auth.tokenType === "sandbox"
       ? auth.runId
       : undefined;
-  const result = await set(
-    recordGeneratedSpeech$,
-    {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      runId,
-      voice,
-      audioBytes,
-      durationSeconds,
-      pricing,
-    },
+  const admission = await set(
+    startRunBuiltInAdmission$,
+    { runId, kind: "voice" },
     signal,
   );
+  if (isRunBuiltInAdmissionError(admission)) {
+    return admission;
+  }
 
-  return { status: 200 as const, body: result };
+  const result = await safeAsync(async () => {
+    return await set(
+      generateSpeechResponse$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        runId,
+        text,
+        voice,
+        instructions,
+        pricing,
+      },
+      signal,
+    );
+  });
+  signal.throwIfAborted();
+
+  if ("error" in result) {
+    await set(completeRunBuiltInAdmission$, {
+      admission,
+      status: "failed",
+    });
+    signal.throwIfAborted();
+    throw result.error;
+  }
+
+  await set(completeRunBuiltInAdmission$, {
+    admission,
+    status: result.ok.admissionStatus,
+  });
+  signal.throwIfAborted();
+  return result.ok.response;
 });
 
 export const zeroVoiceIoSpeechRoutes: readonly RouteEntry[] = [

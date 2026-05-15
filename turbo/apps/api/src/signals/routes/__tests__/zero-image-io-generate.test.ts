@@ -9,6 +9,7 @@ import { createApp } from "../../../app-factory";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
@@ -557,6 +558,78 @@ describe("POST /api/zero/image-io/generate", () => {
       error: {
         message: "Image generation pricing is not configured",
         code: "NOT_CONFIGURED",
+      },
+    });
+    expect(calledOpenAi).toBeFalsy();
+  });
+
+  it("limits run-scoped zero token image generations after three active built-ins", async () => {
+    const fixture = await track(seedImageFixture({ withPricing: true }));
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "web",
+      },
+      context.signal,
+    );
+    await store
+      .set(writeDb$)
+      .insert(runBuiltInAdmissions)
+      .values([
+        {
+          runId,
+          kind: "image",
+          status: "active",
+          expiresAt: new Date(now() + 60_000),
+        },
+        {
+          runId,
+          kind: "video",
+          status: "active",
+          expiresAt: new Date(now() + 60_000),
+        },
+        {
+          runId,
+          kind: "presentation",
+          status: "active",
+          expiresAt: new Date(now() + 60_000),
+        },
+      ]);
+
+    let calledOpenAi = false;
+    server.use(
+      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+        calledOpenAi = true;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ prompt: "a limited run image" }),
+    });
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message:
+          "This run has too many built-in generations in progress. Wait for one to finish and try again.",
+        code: "BUILT_IN_RUN_CONCURRENCY_LIMIT",
       },
     });
     expect(calledOpenAi).toBeFalsy();
