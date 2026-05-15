@@ -72,14 +72,71 @@ function routeFilesUnder(directory: string): readonly string[] {
   return routeFiles;
 }
 
+function jsStringValue(
+  expression: string,
+  constants: ReadonlyMap<string, string>,
+): string | undefined {
+  if (expression.startsWith('"') && expression.endsWith('"')) {
+    const parsed: unknown = JSON.parse(expression);
+    return typeof parsed === "string" ? parsed : undefined;
+  }
+
+  if (expression.startsWith("`") && expression.endsWith("`")) {
+    let isResolved = true;
+    const value = expression
+      .slice(1, -1)
+      .replace(/\$\{([A-Z0-9_]+)\}/gu, (_match, name: string) => {
+        const value = constants.get(name);
+        if (value === undefined) {
+          isResolved = false;
+          return "";
+        }
+        return value;
+      });
+    return isResolved ? value : undefined;
+  }
+
+  return constants.get(expression);
+}
+
+function apiBackendRewriteConstants(
+  source: string,
+): ReadonlyMap<string, string> {
+  const constants = new Map<string, string>();
+  const constantPattern = /const\s+([A-Z0-9_]+)\s*=\s*("[^"]+"|`[^`]+`);/gu;
+  let foundNewConstant = true;
+
+  while (foundNewConstant) {
+    foundNewConstant = false;
+    let match = constantPattern.exec(source);
+    while (match) {
+      const [, name, expression] = match;
+      if (name && expression && !constants.has(name)) {
+        const value = jsStringValue(expression, constants);
+        if (value !== undefined) {
+          constants.set(name, value);
+          foundNewConstant = true;
+        }
+      }
+      match = constantPattern.exec(source);
+    }
+  }
+
+  return constants;
+}
+
 function apiBackendRewriteSources(): readonly string[] {
   const source = readFileSync(WEB_API_REWRITES_PATH, "utf8");
+  const constants = apiBackendRewriteConstants(source);
   const sources: string[] = [];
-  const rewriteEntryPattern = /\[\s*"([^"]+)"\s*,\s*"[^"]+"\s*,?\s*\]/gu;
+  const rewriteEntryPattern =
+    /\[\s*("[^"]+"|`[^`]+`|[A-Z0-9_]+)\s*,\s*"[^"]+"/gu;
   let match = rewriteEntryPattern.exec(source);
 
   while (match) {
-    const sourcePath = match[1];
+    const sourcePath = match[1]
+      ? jsStringValue(match[1], constants)
+      : undefined;
     if (sourcePath) {
       sources.push(sourcePath);
     }
