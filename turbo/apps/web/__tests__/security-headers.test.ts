@@ -70,15 +70,6 @@ async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
   return rewrites.beforeFiles ?? [];
 }
 
-async function getApiBackendRewriteMatcher(): Promise<
-  (pathname: string) => boolean
-> {
-  const rewriteModule = (await import("../api-backend-rewrites.js")) as {
-    matchesApiBackendRewritePath: (pathname: string) => boolean;
-  };
-  return rewriteModule.matchesApiBackendRewritePath;
-}
-
 function findHeader(
   headers: Array<{ key: string; value: string }>,
   name: string,
@@ -332,8 +323,6 @@ describe("API backend rewrites", () => {
   });
 
   it("should match the zero web download route for middleware pass-through", async () => {
-    const matchesApiBackendRewritePath = await getApiBackendRewriteMatcher();
-
     expect(matchesApiBackendRewritePath("/api/zero/web/download-file")).toBe(
       true,
     );
