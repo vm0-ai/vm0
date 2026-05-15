@@ -572,7 +572,7 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
 }
 
 #[tokio::test]
-async fn copy_file_cancellation_cancels_guest_command_and_removes_temp() {
+async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let unique = std::time::SystemTime::now()

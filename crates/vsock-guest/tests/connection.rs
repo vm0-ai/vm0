@@ -352,9 +352,9 @@ fn read_exec_result(
                 }
                 MSG_ERROR => {
                     let error = vsock_proto::decode_error(&msg.payload).unwrap();
-                    panic!("unexpected command error for seq={seq}: {error}");
+                    panic!("unexpected exec operation error for seq={seq}: {error}");
                 }
-                other => panic!("unexpected command response type: 0x{other:02X}"),
+                other => panic!("unexpected exec operation response type: 0x{other:02X}"),
             }
         }
     }
@@ -383,9 +383,9 @@ fn read_exec_output_chunk(stream: &mut impl std::io::Read, seq: u32) -> ExecOutp
                 MSG_EXEC_RESULT => panic!("unexpected exec result before output"),
                 MSG_ERROR => {
                     let error = vsock_proto::decode_error(&msg.payload).unwrap();
-                    panic!("unexpected command error for seq={seq}: {error}");
+                    panic!("unexpected exec operation error for seq={seq}: {error}");
                 }
-                other => panic!("unexpected command response type: 0x{other:02X}"),
+                other => panic!("unexpected exec operation response type: 0x{other:02X}"),
             }
         }
     }
@@ -631,8 +631,8 @@ fn exec_operation_stream_handles_more_chunks_than_output_queue_capacity() {
 
 #[test]
 fn exec_operation_stream_disconnect_cancels_child() {
-    let pid_path = unique_pid_path("command-stream-disconnect");
-    let fifo_path = unique_tmp_path("command-stream-disconnect", ".fifo");
+    let pid_path = unique_pid_path("exec-operation-stream-disconnect");
+    let fifo_path = unique_tmp_path("exec-operation-stream-disconnect", ".fifo");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -664,14 +664,14 @@ fn exec_operation_stream_disconnect_cancels_child() {
 
     drop(host_stream);
     let _ = handle.join();
-    wait_for_pid_exit(pid, "command stream host disconnect");
+    wait_for_pid_exit(pid, "exec operation stream host disconnect");
     child_guard.disarm();
 }
 
 #[test]
 fn exec_operation_rejects_output_policies_that_cannot_fit_protocol_frames_without_running() {
-    let capture_marker = unique_tmp_path("command-huge-capture-policy", ".marker");
-    let stream_marker = unique_tmp_path("command-huge-stream-policy", ".marker");
+    let capture_marker = unique_tmp_path("exec-operation-huge-capture-policy", ".marker");
+    let stream_marker = unique_tmp_path("exec-operation-huge-stream-policy", ".marker");
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start(
@@ -888,7 +888,7 @@ fn exec_operation_invalid_env_returns_start_failed_without_leaking_value() {
 
 #[test]
 fn exec_operation_explicit_cancel_kills_child_and_returns_cancelled() {
-    let pid_path = unique_pid_path("command-cancel");
+    let pid_path = unique_pid_path("exec-operation-cancel");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -911,7 +911,7 @@ fn exec_operation_explicit_cancel_kills_child_and_returns_cancelled() {
     let (_chunks, result) = read_exec_result(&mut host_stream, 111);
 
     assert_eq!(result.termination, ExecTermination::Cancelled);
-    wait_for_pid_exit(pid, "command explicit cancel");
+    wait_for_pid_exit(pid, "exec operation explicit cancel");
     child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
@@ -919,7 +919,7 @@ fn exec_operation_explicit_cancel_kills_child_and_returns_cancelled() {
 
 #[test]
 fn exec_operation_connection_close_cancels_child() {
-    let pid_path = unique_pid_path("command-connection-close");
+    let pid_path = unique_pid_path("exec-operation-connection-close");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -940,13 +940,13 @@ fn exec_operation_connection_close_cancels_child() {
 
     drop(host_stream);
     let _ = handle.join();
-    wait_for_pid_exit(pid, "command host disconnect");
+    wait_for_pid_exit(pid, "exec operation host disconnect");
     child_guard.disarm();
 }
 
 #[test]
 fn exec_operation_duplicate_start_returns_error_without_cancelling_active_exec_operation() {
-    let pid_path = unique_pid_path("command-duplicate");
+    let pid_path = unique_pid_path("exec-operation-duplicate");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -982,7 +982,7 @@ fn exec_operation_duplicate_start_returns_error_without_cancelling_active_exec_o
     send_exec_cancel(&mut host_stream, 113);
     let (_chunks, result) = read_exec_result(&mut host_stream, 113);
     assert_eq!(result.termination, ExecTermination::Cancelled);
-    wait_for_pid_exit(pid, "command duplicate cleanup");
+    wait_for_pid_exit(pid, "exec operation duplicate cleanup");
     child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
@@ -990,8 +990,8 @@ fn exec_operation_duplicate_start_returns_error_without_cancelling_active_exec_o
 
 #[test]
 fn exec_operation_different_sequences_run_concurrently_and_cancel_independently() {
-    let pid_path = unique_pid_path("command-concurrent");
-    let fifo_path = unique_tmp_path("command-concurrent", ".fifo");
+    let pid_path = unique_pid_path("exec-operation-concurrent");
+    let fifo_path = unique_tmp_path("exec-operation-concurrent", ".fifo");
     let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -1012,7 +1012,7 @@ fn exec_operation_different_sequences_run_concurrently_and_cancel_independently(
     let pid = child_guard.read_pid();
     assert!(
         pid_alive(pid),
-        "first command should remain active while second exec starts"
+        "first exec operation should remain active while second exec starts"
     );
 
     send_exec_start(
@@ -1028,13 +1028,13 @@ fn exec_operation_different_sequences_run_concurrently_and_cancel_independently(
     assert_eq!(second.stdout, Some(b"second".to_vec()));
     assert!(
         pid_alive(pid),
-        "second command completion should not cancel first command"
+        "second exec operation completion should not cancel first exec operation"
     );
 
     send_exec_cancel(&mut host_stream, 120);
     let (_chunks, first) = read_exec_result(&mut host_stream, 120);
     assert_eq!(first.termination, ExecTermination::Cancelled);
-    wait_for_pid_exit(pid, "command concurrent cleanup");
+    wait_for_pid_exit(pid, "exec operation concurrent cleanup");
     child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
@@ -2046,8 +2046,8 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
     host_stream
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
-    let orphan = OrphanProcessGuard::new("orphan-command-sleep");
-    let command = orphan_sleep_command("orphan-command", orphan.pid_path());
+    let orphan = OrphanProcessGuard::new("orphan-exec-operation-sleep");
+    let command = orphan_sleep_command("orphan-exec-operation", orphan.pid_path());
     let start = Instant::now();
     send_exec_start(
         &mut host_stream,
@@ -2063,8 +2063,8 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     let stdout = result.stdout.unwrap_or_default();
     assert!(
-        String::from_utf8_lossy(&stdout).contains("orphan-command"),
-        "expected stdout to contain 'orphan-command', got: {:?}",
+        String::from_utf8_lossy(&stdout).contains("orphan-exec-operation"),
+        "expected stdout to contain 'orphan-exec-operation', got: {:?}",
         String::from_utf8_lossy(&stdout),
     );
     assert!(

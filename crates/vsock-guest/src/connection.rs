@@ -34,10 +34,10 @@ enum ConnectionEnd {
     Shutdown,
 }
 
-/// Signals all command work spawned for this host connection when the
+/// Signals all exec operation work spawned for this host connection when the
 /// connection loop exits. `run()` may reconnect after a close, but in-flight
-/// commands belong to the old connection and should not survive into the next
-/// one.
+/// exec operations belong to the old connection and should not survive into
+/// the next one.
 struct ConnectionCancelGuard(Arc<AtomicBool>);
 
 impl Drop for ConnectionCancelGuard {
