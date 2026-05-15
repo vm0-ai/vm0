@@ -1753,35 +1753,53 @@ impl Drop for ParkBoundaryGuard {
     }
 }
 
-struct UnparkReopenGuard {
-    coordinator: ParkCoordinator,
-    armed: bool,
+enum UnparkBoundaryGuardState {
+    FirecrackerResumeStarted,
+    FirecrackerResumed,
+    Disarmed,
 }
 
-impl UnparkReopenGuard {
+struct UnparkBoundaryGuard {
+    coordinator: ParkCoordinator,
+    state: UnparkBoundaryGuardState,
+}
+
+impl UnparkBoundaryGuard {
     fn new(coordinator: ParkCoordinator) -> Self {
         Self {
             coordinator,
-            armed: true,
+            state: UnparkBoundaryGuardState::FirecrackerResumeStarted,
         }
+    }
+
+    fn mark_firecracker_resumed(&mut self) {
+        self.state = UnparkBoundaryGuardState::FirecrackerResumed;
     }
 
     fn mark_dirty(mut self, reason: impl Into<String>) {
         self.coordinator.mark_dirty(DirtyReason::new(reason));
-        self.armed = false;
+        self.state = UnparkBoundaryGuardState::Disarmed;
     }
 
-    fn disarm(mut self) {
-        self.armed = false;
+    fn disarm(&mut self) {
+        self.state = UnparkBoundaryGuardState::Disarmed;
     }
 }
 
-impl Drop for UnparkReopenGuard {
+impl Drop for UnparkBoundaryGuard {
     fn drop(&mut self) {
-        if self.armed {
-            self.coordinator.mark_dirty(DirtyReason::new(
-                "unpark attempt dropped after Firecracker resume before guest operations reopened",
-            ));
+        match self.state {
+            UnparkBoundaryGuardState::FirecrackerResumeStarted => {
+                self.coordinator.mark_dirty(DirtyReason::new(
+                    "unpark attempt dropped during Firecracker resume before guest operations reopened",
+                ));
+            }
+            UnparkBoundaryGuardState::FirecrackerResumed => {
+                self.coordinator.mark_dirty(DirtyReason::new(
+                    "unpark attempt dropped after Firecracker resume before guest operations reopened",
+                ));
+            }
+            UnparkBoundaryGuardState::Disarmed => {}
         }
     }
 }
@@ -1853,8 +1871,12 @@ where
 {
     ensure_parked_before_unpark(coordinator)?;
 
-    unpark_firecracker().await?;
-    let guard = UnparkReopenGuard::new(coordinator.clone());
+    let mut guard = UnparkBoundaryGuard::new(coordinator.clone());
+    if let Err(error) = unpark_firecracker().await {
+        guard.disarm();
+        return Err(error);
+    }
+    guard.mark_firecracker_resumed();
 
     if let Err(error) = resume_guest().await {
         let message = format!("guest resume failed during unpark: {error}");
@@ -2942,6 +2964,46 @@ mod tests {
             }
         }
 
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_cancel_during_firecracker_unpark_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+        let (firecracker_started_tx, firecracker_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let unpark = unpark_with_ready_for_operations(
+                &coordinator,
+                || async move {
+                    firecracker_events
+                        .lock()
+                        .unwrap()
+                        .push("firecracker_unpark");
+                    let _ = firecracker_started_tx.send(());
+                    std::future::pending::<sandbox::Result<()>>().await
+                },
+                || async move {
+                    resume_events.lock().unwrap().push("guest_resume");
+                    Ok(())
+                },
+            );
+            tokio::pin!(unpark);
+
+            tokio::select! {
+                result = &mut unpark => panic!("unpark completed unexpectedly: {result:?}"),
+                result = firecracker_started_rx => result.unwrap(),
+            }
+        }
+
+        assert_eq!(logged_events(&events), vec!["firecracker_unpark"]);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
