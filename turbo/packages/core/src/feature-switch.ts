@@ -201,8 +201,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Enable remote-agent device pairing and local Codex/Claude host heartbeat endpoints.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",

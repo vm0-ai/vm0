@@ -68,6 +68,10 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
+  it("should enable remote agent globally", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.RemoteAgent, {})).toBe(true);
+  });
+
   it("should enable CLI auth switches for staff orgs only by default", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuth, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);

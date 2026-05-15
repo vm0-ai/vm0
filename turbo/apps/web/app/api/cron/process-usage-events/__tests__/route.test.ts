@@ -103,7 +103,7 @@ describe("GET /api/cron/process-usage-events", () => {
   });
 
   it("charges model token categories with legacy per-token rounding", async () => {
-    const provider = "claude-sonnet-4-6";
+    const provider = uniqueId("legacy-token-provider");
     const events = [
       {
         category: TOKEN_CATEGORY_INPUT,
