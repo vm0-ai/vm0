@@ -368,6 +368,7 @@ const getComputerConnectorInner$ = computed(async (get) => {
       orgId: auth.orgId,
       userId: auth.userId,
       type: "computer",
+      includeHiddenStoredConnector: true,
     }),
   );
   if (!connector) {

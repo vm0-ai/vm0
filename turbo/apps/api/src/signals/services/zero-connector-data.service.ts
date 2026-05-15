@@ -369,6 +369,7 @@ export function zeroConnectorByType(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: ConnectorType;
+  readonly includeHiddenStoredConnector?: boolean;
 }): Computed<Promise<ConnectorResponse | null>> {
   return computed(async (get): Promise<ConnectorResponse | null> => {
     const overrides = await get(
@@ -381,7 +382,10 @@ export function zeroConnectorByType(args: {
     });
     const storedConnector = await get(storedConnectorByType(args));
     if (storedConnector) {
-      if (storedConnectorTypeIsVisible(args.type, featureStates)) {
+      if (
+        args.includeHiddenStoredConnector ||
+        storedConnectorTypeIsVisible(args.type, featureStates)
+      ) {
         return storedConnector;
       }
     }
