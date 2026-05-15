@@ -614,6 +614,47 @@ async fn signal_handler_panic_cancels_active_jobs() {
     .await;
 }
 
+#[tokio::test]
+async fn graceful_shutdown_aborts_signal_handler_task() {
+    struct ReleaseOnDrop(Arc<tokio::sync::Semaphore>);
+
+    impl Drop for ReleaseOnDrop {
+        fn drop(&mut self) {
+            self.0.add_permits(1);
+        }
+    }
+
+    let started = Arc::new(tokio::sync::Notify::new());
+    let dropped = Arc::new(tokio::sync::Semaphore::new(0));
+    let handler_task = {
+        let started = Arc::clone(&started);
+        let dropped = Arc::clone(&dropped);
+        tokio::spawn(async move {
+            let _guard = ReleaseOnDrop(dropped);
+            started.notify_one();
+            std::future::pending::<()>().await;
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(2), started.notified())
+        .await
+        .expect("signal handler test task should start");
+
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    config.signal_source = SignalSource::Override(SignalController {
+        mode_rx: env.mode_tx.subscribe(),
+        lifecycle: env.lifecycle.clone(),
+        handler_task: Some(SignalHandlerTask::new(handler_task)),
+    });
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    shutdown(&env, run_handle).await;
+
+    let _permit = dropped
+        .try_acquire()
+        .expect("graceful shutdown should await signal handler task abort");
+}
+
 async fn assert_signal_handler_task_end_cancels_active_jobs(
     handler_task: tokio::task::JoinHandle<()>,
     trigger_handler_task_end: impl FnOnce(),
