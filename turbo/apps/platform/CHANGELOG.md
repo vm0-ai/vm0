@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.357.4](https://github.com/vm0-ai/vm0/compare/app-v0.357.3...app-v0.357.4) (2026-05-15)
+
+
+### Refactoring
+
+* split connect modal auth content ([#13478](https://github.com/vm0-ai/vm0/issues/13478)) ([0a3ecc7](https://github.com/vm0-ai/vm0/commit/0a3ecc70dabeb0cc040788d78bf07539ff429c99))
+
 ## [0.357.3](https://github.com/vm0-ai/vm0/compare/app-v0.357.2...app-v0.357.3) (2026-05-15)
 
 

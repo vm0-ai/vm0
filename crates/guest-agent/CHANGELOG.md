@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.5...guest-agent-v0.31.6) (2026-05-15)
+
+
+### Refactoring
+
+* **guest-agent:** extract cli framework behavior ([#13481](https://github.com/vm0-ai/vm0/issues/13481)) ([0550ed2](https://github.com/vm0-ai/vm0/commit/0550ed2f6c27cc7799bdd7f8e9df32cc03796568))
+
 ## [0.31.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.4...guest-agent-v0.31.5) (2026-05-15)
 
 
