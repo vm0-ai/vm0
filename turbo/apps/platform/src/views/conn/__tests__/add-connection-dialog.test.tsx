@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
@@ -23,8 +24,17 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 const context = testContext();
 const mockApi = createMockApi(context);
 
-async function openConnectModal(connectorType: ConnectorType) {
-  detachedSetupPage({ context, path: "/connectors" });
+async function openConnectModal(
+  connectorType: ConnectorType,
+  options: {
+    featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  } = {},
+) {
+  detachedSetupPage({
+    context,
+    path: "/connectors",
+    ...options,
+  });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Connectors" }),
@@ -76,6 +86,20 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
     });
 
+    expect(screen.getByText("Save")).toBeInTheDocument();
+  });
+
+  it("shows OAuth and API token choices when both auth methods are available", async () => {
+    await openConnectModal("deel", {
+      featureSwitches: { [FeatureSwitchKey.DeelConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with Deel")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("or")).toBeInTheDocument();
+    expect(screen.getByText("API Token")).toBeInTheDocument();
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 });

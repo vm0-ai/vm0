@@ -157,6 +157,19 @@ type SubmitApiTokenFn = (
   signal: AbortSignal,
 ) => Promise<void>;
 
+type ConnectAndSettleFn = (
+  type: ConnectorType,
+  onSuccess: () => void | Promise<void>,
+  options: PostConnectOptions,
+  signal: AbortSignal,
+) => Promise<void>;
+
+type ConnectModalContentProps = {
+  item: ConnectorTypeWithStatus;
+  onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // API Token form (shown inside connect modal)
 // ---------------------------------------------------------------------------
@@ -582,27 +595,11 @@ function LocalBrowserConnectContent({
 // Connect modal content (OAuth button + token form, or just token form)
 // ---------------------------------------------------------------------------
 
-function ConnectModalContent({
+function getConnectorSpecificConnectContent({
   item,
   onSuccess,
   showPermissionDialogOnConnect,
-}: {
-  item: ConnectorTypeWithStatus;
-  onSuccess: () => void | Promise<void>;
-  showPermissionDialogOnConnect: boolean;
-}) {
-  const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
-  const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
-  const pageSignal = useGet(pageSignal$);
-  const pollingType = useGet(pollingConnectorType$);
-  const settling = settleLoadable.state === "loading";
-  const credentialSubmitting = apiTokenLoadable.state === "loading";
-  const isPolling = pollingType === item.type;
-
-  const config = CONNECTOR_TYPES[item.type];
-  const hasOAuth = item.availableAuthMethods.includes("oauth");
-  const hasApiToken = item.availableAuthMethods.includes("api-token");
-
+}: ConnectModalContentProps) {
   if (item.type === REMOTE_AGENT_CONNECTOR_TYPE) {
     return (
       <RemoteAgentConnectContent
@@ -623,6 +620,16 @@ function ConnectModalContent({
     );
   }
 
+  return null;
+}
+
+function getOAuthProgressContent({
+  isPolling,
+  settling,
+}: {
+  isPolling: boolean;
+  settling: boolean;
+}) {
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
     const standaloneHint = isStandaloneMode()
@@ -639,6 +646,74 @@ function ConnectModalContent({
     );
   }
 
+  return null;
+}
+
+function OAuthConnectButton({
+  item,
+  label,
+  onSuccess,
+  showPermissionDialogOnConnect,
+  connectAndSettle,
+  signal,
+}: ConnectModalContentProps & {
+  label: string;
+  connectAndSettle: ConnectAndSettleFn;
+  signal: AbortSignal;
+}) {
+  return (
+    <Button
+      variant="outline"
+      onClick={() => {
+        return detach(
+          connectAndSettle(
+            item.type,
+            onSuccess,
+            {
+              showPermissionDialog: showPermissionDialogOnConnect,
+            },
+            signal,
+          ),
+          Reason.DomCallback,
+        );
+      }}
+      className="w-full"
+    >
+      Sign in with {label}
+    </Button>
+  );
+}
+
+function AuthMethodDivider() {
+  return (
+    <div className="relative">
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full zero-border-t" />
+      </div>
+      <div className="relative flex justify-center text-xs">
+        <span className="bg-background px-2 text-muted-foreground">or</span>
+      </div>
+    </div>
+  );
+}
+
+function StandardConnectMethodsContent({
+  item,
+  onSuccess,
+  showPermissionDialogOnConnect,
+  connectAndSettle,
+  submitApiToken,
+  credentialSubmitting,
+  signal,
+}: ConnectModalContentProps & {
+  connectAndSettle: ConnectAndSettleFn;
+  submitApiToken: SubmitApiTokenFn;
+  credentialSubmitting: boolean;
+  signal: AbortSignal;
+}) {
+  const config = CONNECTOR_TYPES[item.type];
+  const hasOAuth = item.availableAuthMethods.includes("oauth");
+  const hasApiToken = item.availableAuthMethods.includes("api-token");
   const isGoogleOAuth = hasOAuth && isGoogleOAuthConnector(item.type);
 
   return (
@@ -646,37 +721,17 @@ function ConnectModalContent({
       {isGoogleOAuth && <GoogleOAuthNotice />}
 
       {hasOAuth && (
-        <Button
-          variant="outline"
-          onClick={() => {
-            return detach(
-              connectAndSettle(
-                item.type,
-                onSuccess,
-                {
-                  showPermissionDialog: showPermissionDialogOnConnect,
-                },
-                pageSignal,
-              ),
-              Reason.DomCallback,
-            );
-          }}
-          className="w-full"
-        >
-          Sign in with {config.label}
-        </Button>
+        <OAuthConnectButton
+          item={item}
+          label={config.label}
+          onSuccess={onSuccess}
+          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+          connectAndSettle={connectAndSettle}
+          signal={signal}
+        />
       )}
 
-      {hasOAuth && hasApiToken && (
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full zero-border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-background px-2 text-muted-foreground">or</span>
-          </div>
-        </div>
-      )}
+      {hasOAuth && hasApiToken && <AuthMethodDivider />}
 
       {hasApiToken && (
         <ApiTokenForm
@@ -689,6 +744,46 @@ function ConnectModalContent({
         />
       )}
     </div>
+  );
+}
+
+function ConnectModalContent({
+  item,
+  onSuccess,
+  showPermissionDialogOnConnect,
+}: ConnectModalContentProps) {
+  const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
+  const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
+  const pageSignal = useGet(pageSignal$);
+  const pollingType = useGet(pollingConnectorType$);
+  const settling = settleLoadable.state === "loading";
+  const credentialSubmitting = apiTokenLoadable.state === "loading";
+  const isPolling = pollingType === item.type;
+
+  const connectorSpecificContent = getConnectorSpecificConnectContent({
+    item,
+    onSuccess,
+    showPermissionDialogOnConnect,
+  });
+  if (connectorSpecificContent) {
+    return connectorSpecificContent;
+  }
+
+  const progressContent = getOAuthProgressContent({ isPolling, settling });
+  if (progressContent) {
+    return progressContent;
+  }
+
+  return (
+    <StandardConnectMethodsContent
+      item={item}
+      onSuccess={onSuccess}
+      showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+      connectAndSettle={connectAndSettle}
+      submitApiToken={submitApiToken}
+      credentialSubmitting={credentialSubmitting}
+      signal={pageSignal}
+    />
   );
 }
 
