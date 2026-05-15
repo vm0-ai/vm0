@@ -277,19 +277,14 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 else {
                     continue;
                 };
-                let process_control_guard = match d.control_nonce {
-                    Some(nonce) => match process_control_registry.register(msg.seq, nonce) {
-                        Ok(guard) => Some(guard),
-                        Err(()) => {
-                            send_error_response(
-                                msg.seq,
-                                "process operation already active",
-                                &writer,
-                            )?;
-                            continue;
-                        }
-                    },
-                    None => None,
+                let process_control_guard = match process_control_registry
+                    .register(msg.seq, d.control_nonce)
+                {
+                    Ok(guard) => Some(guard),
+                    Err(()) => {
+                        send_error_response(msg.seq, "process operation already active", &writer)?;
+                        continue;
+                    }
                 };
                 // handle_spawn_process writes the response itself (before
                 // spawning the streaming thread) to prevent a race where

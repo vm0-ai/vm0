@@ -10,7 +10,16 @@ use crate::writer::GuestWriter;
 
 #[derive(Clone, Default)]
 pub(crate) struct ProcessControlRegistry {
-    inner: Arc<Mutex<HashMap<u32, ProcessControlNonce>>>,
+    inner: Arc<Mutex<HashMap<u32, ProcessControlEntry>>>,
+}
+
+/// Active `spawn_process` registration for a seq.
+///
+/// Operations without a control nonce still reserve their seq so malformed or
+/// duplicate spawn requests cannot run concurrently under the same routing key.
+enum ProcessControlEntry {
+    NoControl,
+    WithNonce(ProcessControlNonce),
 }
 
 pub(crate) struct ProcessControlGuard {
@@ -23,13 +32,17 @@ impl ProcessControlRegistry {
     pub(crate) fn register(
         &self,
         seq: u32,
-        control_nonce: ProcessControlNonce,
+        control_nonce: Option<ProcessControlNonce>,
     ) -> Result<ProcessControlGuard, ()> {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
             return Err(());
         }
-        active.insert(seq, control_nonce);
+        let entry = match control_nonce {
+            Some(nonce) => ProcessControlEntry::WithNonce(nonce),
+            None => ProcessControlEntry::NoControl,
+        };
+        active.insert(seq, entry);
         Ok(ProcessControlGuard {
             registry: self.clone(),
             seq,
@@ -58,7 +71,13 @@ impl ProcessControlRegistry {
         control_nonce: ProcessControlNonce,
     ) -> (ProcessControlStatus, &'static str) {
         let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(expected_nonce) = guard.get(&target_seq) else {
+        let Some(entry) = guard.get(&target_seq) else {
+            return (
+                ProcessControlStatus::Inactive,
+                "process operation is not active",
+            );
+        };
+        let ProcessControlEntry::WithNonce(expected_nonce) = entry else {
             return (
                 ProcessControlStatus::Inactive,
                 "process operation is not active",
@@ -123,7 +142,7 @@ mod tests {
     #[test]
     fn registered_operation_rejects_nonce_mismatch() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, NONCE).unwrap();
+        let _guard = registry.register(7, Some(NONCE)).unwrap();
         let wrong_nonce = *b"fedcba9876543210";
 
         let (status, diagnostic) = registry.status_for(7, wrong_nonce);
@@ -135,7 +154,7 @@ mod tests {
     #[test]
     fn released_operation_is_inactive() {
         let registry = ProcessControlRegistry::default();
-        let guard = registry.register(7, NONCE).unwrap();
+        let guard = registry.register(7, Some(NONCE)).unwrap();
 
         guard.release();
         let (status, diagnostic) = registry.status_for(7, NONCE);
@@ -147,7 +166,7 @@ mod tests {
     #[test]
     fn valid_operation_is_currently_unsupported_until_sink_is_wired() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, NONCE).unwrap();
+        let _guard = registry.register(7, Some(NONCE)).unwrap();
 
         let (status, diagnostic) = registry.status_for(7, NONCE);
 
@@ -158,14 +177,25 @@ mod tests {
     #[test]
     fn duplicate_active_sequence_is_rejected_until_guard_releases() {
         let registry = ProcessControlRegistry::default();
-        let first = registry.register(7, NONCE).unwrap();
+        let first = registry.register(7, Some(NONCE)).unwrap();
 
-        assert!(registry.register(7, *b"fedcba9876543210").is_err());
+        assert!(registry.register(7, Some(*b"fedcba9876543210")).is_err());
         let (status, diagnostic) = registry.status_for(7, NONCE);
         assert_eq!(status, ProcessControlStatus::Unsupported);
         assert_eq!(diagnostic, "process control sink is not configured");
 
         first.release();
-        assert!(registry.register(7, *b"fedcba9876543210").is_ok());
+        assert!(registry.register(7, None).is_ok());
+    }
+
+    #[test]
+    fn operation_without_control_nonce_still_reserves_sequence() {
+        let registry = ProcessControlRegistry::default();
+        let _guard = registry.register(7, None).unwrap();
+
+        assert!(registry.register(7, Some(NONCE)).is_err());
+        let (status, diagnostic) = registry.status_for(7, NONCE);
+        assert_eq!(status, ProcessControlStatus::Inactive);
+        assert_eq!(diagnostic, "process operation is not active");
     }
 }

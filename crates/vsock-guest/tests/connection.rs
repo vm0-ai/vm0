@@ -1731,6 +1731,25 @@ fn process_control_duplicate_spawn_seq_returns_error_without_replacing_active_no
 }
 
 #[test]
+fn duplicate_spawn_seq_without_control_nonce_returns_error() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process(&mut host_stream, 41, "sleep 60", None, 5000);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 41);
+
+    send_spawn_process(&mut host_stream, 41, "printf duplicate", None, 5000);
+    let duplicate = read_message(&mut host_stream);
+    assert_eq!(duplicate.msg_type, MSG_ERROR);
+    assert_eq!(duplicate.seq, 41);
+    let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
+    assert!(error.contains("already active"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn process_control_without_registered_nonce_returns_inactive() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 

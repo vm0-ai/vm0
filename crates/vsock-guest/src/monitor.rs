@@ -736,7 +736,8 @@ mod tests {
         const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
 
         let registry = ProcessControlRegistry::default();
-        let guard_slot = new_process_control_guard_slot(Some(registry.register(7, NONCE).unwrap()));
+        let guard_slot =
+            new_process_control_guard_slot(Some(registry.register(7, Some(NONCE)).unwrap()));
         let task_guard_slot = guard_slot.clone();
 
         let result = FailingThreadSpawner::fail_once("test-monitor").spawn_unit(
