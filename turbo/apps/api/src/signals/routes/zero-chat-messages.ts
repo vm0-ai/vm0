@@ -41,7 +41,8 @@ import {
 import { now, nowDate } from "../external/time";
 import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
 import { env } from "../../lib/env";
-import { createAgentRun$ } from "../services/agent-run-create.service";
+import type { AuthContext } from "../../types/auth";
+import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -176,6 +177,7 @@ interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
+type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 type SignalGetter = {
   <T>(signal: import("ccstate").Computed<T>): T;
@@ -184,6 +186,7 @@ type SignalGetter = {
 
 interface NormalSendArgs {
   readonly body: NormalSendBody;
+  readonly auth: OrganizationAuthContext;
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
@@ -1953,20 +1956,15 @@ const createNormalChatRun$ = command(
     }
 
     const runResult = await set(
-      createAgentRun$,
+      createZeroRun$,
       {
-        userId: args.userId,
-        orgId: args.orgId,
+        auth: args.auth,
         apiStartTime: args.apiStartTime,
         chatThreadId: prepared.thread.threadId,
-        includeZeroTokenSecret: true,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
-        modelProviderType:
-          providerAdmission.effectiveModelProvider ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
-        validateEnvironmentReferences: false,
         callbacks: [
           {
             url: chatCallbackUrl(),
@@ -1979,20 +1977,22 @@ const createNormalChatRun$ = command(
         ],
         body: {
           prompt: fullPrompt,
-          agentComposeId: args.body.agentId,
+          agentId: args.body.agentId,
           ...(prepared.thread.sessionId
             ? { sessionId: prepared.thread.sessionId }
             : {}),
-          triggerSource: "web" as const,
-          appendSystemPrompt: buildAppendSystemPrompt(
-            prepared.thread.incompleteContext,
-            prepared.priorContext,
-            prepared.goalSetup.goalContext,
-          ),
-          vars: { ZERO_AGENT_ID: args.body.agentId },
+          ...(providerAdmission.effectiveModelProvider
+            ? { modelProvider: providerAdmission.effectiveModelProvider }
+            : {}),
           debugNoMockClaude: args.body.debugNoMockClaude,
           debugNoMockCodex: args.body.debugNoMockCodex,
         },
+        triggerSource: "web",
+        appendSystemPrompt: buildAppendSystemPrompt(
+          prepared.thread.incompleteContext,
+          prepared.priorContext,
+          prepared.goalSetup.goalContext,
+        ),
       },
       signal,
     );
@@ -2103,6 +2103,7 @@ const sendChatMessageInner$ = command(
       sendNormalMessage$,
       {
         body: body.data,
+        auth,
         userId: auth.userId,
         orgId: auth.orgId,
         apiStartTime: now(),

@@ -1199,6 +1199,57 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("mounts custom skills for deepseek web chat runs", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await writeDb
+      .update(zeroAgents)
+      .set({ customSkills: ["pp"] })
+      .where(eq(zeroAgents.id, fixture.agentId));
+    await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "anthropic-api-key",
+      isDefault: true,
+      secretValue: "default-anthropic-key",
+    });
+    const deepseekProviderId = await seedModelProvider(
+      fixture,
+      "deepseek-v4-flash",
+      {
+        type: "deepseek-api-key",
+        isDefault: false,
+        secretValue: "selected-deepseek-key",
+      },
+    );
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "use the pp skill",
+      modelSelection: {
+        modelProviderId: deepseekProviderId,
+        selectedModel: "deepseek-v4-pro",
+      },
+    });
+
+    const [run] = await writeDb
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+    const volumes = run?.additionalVolumes ?? [];
+    expect(volumes).toContainEqual(
+      expect.objectContaining({
+        name: "custom-skill@pp",
+        mountPath: "/home/user/.claude/skills/pp",
+      }),
+    );
+    expect(
+      volumes.some((volume) => {
+        return volume.mountPath === "/home/user/.claude/skills/deep-dive";
+      }),
+    ).toBeTruthy();
+  });
+
   it("honors org-scoped model-first route credentials during run creation", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);

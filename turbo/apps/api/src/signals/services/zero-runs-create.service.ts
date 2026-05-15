@@ -6,6 +6,7 @@ import {
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
   toFirewallPolicies,
@@ -580,6 +581,9 @@ export const createZeroRun$ = command(
         | "agentphoneHandle"
       >;
       readonly callbacks?: readonly RunCallback[];
+      readonly chatThreadId?: string;
+      readonly modelProviderId?: string;
+      readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
       readonly selectedModelOverride?: string;
       readonly zeroRunMetadata?: ZeroRunMetadata;
     },
@@ -657,10 +661,13 @@ export const createZeroRun$ = command(
           appendSystemPrompt: args.appendSystemPrompt,
         }),
         apiStartTime: args.apiStartTime,
-        modelProviderId: agent.modelProviderId ?? undefined,
+        modelProviderId:
+          args.modelProviderId ?? agent.modelProviderId ?? undefined,
+        modelProviderCredentialScope: args.modelProviderCredentialScope,
         modelProviderType: args.body.modelProvider,
         selectedModelOverride:
           args.selectedModelOverride ?? agent.selectedModel ?? undefined,
+        chatThreadId: args.chatThreadId,
         extraEnvironment: { ZERO_AGENT_ID: agent.id },
         callbacks: [
           ...(callbacksForTriggerAgent(triggerAgentId) ?? []),
