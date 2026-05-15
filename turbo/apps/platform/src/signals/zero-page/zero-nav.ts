@@ -111,6 +111,7 @@ export type ZeroAccountAction =
   | "manage"
   | "apiKeys"
   | "usage"
+  | "lab"
   | "signout";
 
 export const handleZeroAccountAction$ = command(
@@ -129,6 +130,10 @@ export const handleZeroAccountAction$ = command(
     }
     if (action === "usage") {
       set(detachedNavigateTo$, ROUTES.usage);
+      return;
+    }
+    if (action === "lab") {
+      set(detachedNavigateTo$, ROUTES.lab);
     }
   },
 );

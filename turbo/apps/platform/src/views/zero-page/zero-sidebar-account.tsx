@@ -11,6 +11,7 @@ import {
   IconDatabaseExport,
   IconKey,
   IconChartBar,
+  IconFlask,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -188,9 +189,11 @@ function CurrentAccountHeader({
 
 function PreferencesGroup({
   hidePreferences,
+  labEnabled,
   onAccountAction,
 }: {
   hidePreferences: boolean;
+  labEnabled: boolean;
   onAccountAction: (action: ZeroAccountAction) => void;
 }) {
   if (hidePreferences) {
@@ -224,6 +227,21 @@ function PreferencesGroup({
         />
         <span>Usage</span>
       </DropdownMenuItem>
+      {labEnabled && (
+        <DropdownMenuItem
+          onClick={() => {
+            return onAccountAction("lab");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconFlask
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span>Lab</span>
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator />
     </>
   );
@@ -394,6 +412,7 @@ export function AccountDropdown({
   const apiBase = useLastResolved(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
+  const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
 
   const current = accounts.find((a) => {
     return a.isActive;
@@ -454,6 +473,7 @@ export function AccountDropdown({
         />
         <PreferencesGroup
           hidePreferences={hidePreferences}
+          labEnabled={labEnabled}
           onAccountAction={handleAccountAction}
         />
         <AccountManagementGroup

@@ -18,9 +18,7 @@ import {
   IconChevronRight,
   IconLayoutSidebarLeftCollapse,
   IconPlug,
-  IconFlask,
   IconSparkles,
-  IconMenu2,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -28,10 +26,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -120,7 +114,6 @@ interface FooterNavItem {
   readonly label: string;
   readonly icon: NavIcon;
   readonly iconImg: string | undefined;
-  readonly featureGate: FeatureSwitchKey | undefined;
 }
 
 const FOOTER_NAV = [
@@ -131,16 +124,6 @@ const FOOTER_NAV = [
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
-    featureGate: undefined,
-  },
-  {
-    id: "lab",
-    activeKeys: ["lab"],
-    pathname: "/_/lab",
-    label: "Lab",
-    icon: IconFlask as NavIcon,
-    iconImg: undefined,
-    featureGate: FeatureSwitchKey.Lab,
   },
 ] as const satisfies readonly FooterNavItem[];
 
@@ -212,46 +195,12 @@ function SidebarNavContent() {
   const manageNav = MANAGE_NAV.filter((item) => {
     return item.id !== "activities" || features?.[FeatureSwitchKey.ZeroDebug];
   });
-  const footerNav = FOOTER_NAV.filter((item) => {
-    return !item.featureGate || features?.[item.featureGate];
-  }).map((item) => {
+  const footerNav = FOOTER_NAV.map((item) => {
     return {
       ...item,
       label: item.label.replace("Zero", defaultDisplayName),
     };
   });
-  const footerNavRegular = footerNav.filter((item) => {
-    return !item.featureGate;
-  });
-  const footerNavGated = footerNav.filter((item) => {
-    return Boolean(item.featureGate);
-  });
-  const isGatedActive =
-    activeId !== null &&
-    footerNavGated.some((item) => {
-      return (item.activeKeys as readonly RouteKey[]).includes(activeId);
-    });
-  const renderGatedDropdownItems = () => {
-    return footerNavGated.map(({ id, activeKeys, label, icon: Icon }) => {
-      const isActive =
-        activeId !== null &&
-        (activeKeys as readonly RouteKey[]).includes(activeId);
-      return (
-        <DropdownMenuItem
-          key={id}
-          onSelect={() => {
-            onSelect(id);
-          }}
-          className={`gap-2 px-2 py-1.5 rounded-md ${
-            isActive ? "bg-gray-200 text-gray-900" : ""
-          }`}
-        >
-          <Icon size={16} className="shrink-0" />
-          <span className="truncate flex-1">{label}</span>
-        </DropdownMenuItem>
-      );
-    });
-  };
 
   const allNavItems = [
     ...manageNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
@@ -264,7 +213,7 @@ function SidebarNavContent() {
       label: "New chat",
       icon: IconEdit as NavIcon,
     },
-    ...footerNavRegular.map(({ id, activeKeys, pathname: p, label, icon }) => {
+    ...footerNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
       return { id, activeKeys, pathname: p, label, icon };
     }),
   ];
@@ -347,39 +296,6 @@ function SidebarNavContent() {
                     </div>
                   );
                 },
-              )}
-              {footerNavGated.length > 0 && (
-                <div className="flex w-full shrink-0 justify-center">
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                              isGatedActive
-                                ? "bg-gray-200 text-gray-900"
-                                : "text-sidebar-foreground hover:bg-sidebar-accent"
-                            }`}
-                          >
-                            <IconMenu2 size={16} className="shrink-0" />
-                          </button>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p className="text-xs">More</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent
-                      side="right"
-                      align="end"
-                      sideOffset={8}
-                      className="w-[220px]"
-                    >
-                      {renderGatedDropdownItems()}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
               )}
             </TooltipProvider>
           </nav>
@@ -543,7 +459,7 @@ function SidebarNavContent() {
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
-            {footerNavRegular.map(
+            {footerNav.map(
               ({
                 id,
                 activeKeys,
@@ -595,31 +511,6 @@ function SidebarNavContent() {
                   </Link>
                 );
               },
-            )}
-            {footerNavGated.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                      isGatedActive
-                        ? "bg-gray-200 text-gray-900 font-medium"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                  >
-                    <IconMenu2 size={16} className="shrink-0" />
-                    <span className="truncate flex-1">More</span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={8}
-                  className="w-[220px]"
-                >
-                  {renderGatedDropdownItems()}
-                </DropdownMenuContent>
-              </DropdownMenu>
             )}
             <div className="h-px bg-border/30 mx-1 my-1" />
             {/* Insights + Account */}
