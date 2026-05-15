@@ -1097,6 +1097,35 @@ fn exec_operation_seq_zero_start_and_cancel_return_error() {
 }
 
 #[test]
+fn process_messages_seq_zero_return_error() {
+    const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
+
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_spawn_process_with_control_nonce(&mut host_stream, 0, "printf should-not-run", NONCE);
+    let spawn_error = read_message(&mut host_stream);
+    assert_eq!(spawn_error.msg_type, MSG_ERROR);
+    assert_eq!(spawn_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&spawn_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    send_process_control(&mut host_stream, 0, 1, NONCE, "message-zero");
+    let control_error = read_message(&mut host_stream);
+    assert_eq!(control_error.msg_type, MSG_ERROR);
+    assert_eq!(control_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&control_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
     let (handle, mut host_stream) = start_guest_connection();
 

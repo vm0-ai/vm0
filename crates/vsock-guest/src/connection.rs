@@ -264,6 +264,10 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
                 cancel_exec_operation(&exec_operation_registry, msg.seq);
             } else if msg.msg_type == MSG_SPAWN_PROCESS {
+                if msg.seq == 0 {
+                    send_error_response(0, "spawn process requires non-zero sequence", &writer)?;
+                    continue;
+                }
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
                     continue;
                 }
@@ -306,6 +310,10 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     connection_cancel.clone(),
                 )?;
             } else if msg.msg_type == MSG_PROCESS_CONTROL {
+                if msg.seq == 0 {
+                    send_error_response(0, "process control requires non-zero sequence", &writer)?;
+                    continue;
+                }
                 handle_process_control(msg.seq, &msg.payload, &process_control_registry, &writer)?;
             } else if msg.msg_type == MSG_WRITE_FILE {
                 if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
