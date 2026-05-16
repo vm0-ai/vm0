@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Button,
+  Input,
   RunningIndicator,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -541,7 +542,7 @@ function ChatThreadRenameDialog() {
           </DialogDescription>
         </DialogHeader>
         <div className="py-2">
-          <input
+          <Input
             type="text"
             autoFocus
             value={renameDialogInput}
@@ -554,7 +555,6 @@ function ChatThreadRenameDialog() {
               }
             }}
             placeholder="Chat title"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
         <DialogFooter>
