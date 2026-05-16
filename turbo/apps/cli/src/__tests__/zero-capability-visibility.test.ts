@@ -14,6 +14,7 @@ function buildZeroToken(payload: Record<string, unknown>): string {
 function buildCommands(): Command[] {
   return [
     new Command("org"),
+    new Command("model"),
     new Command("agent"),
     new Command("connector"),
     new Command("logs"),
@@ -136,6 +137,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toEqual([
+      "model",
       "agent",
       "schedule",
       "whoami",
@@ -188,7 +190,19 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["whoami", "web"]);
+    expect(visibleCommandNames(prog)).toEqual(["model", "whoami", "web"]);
+  });
+
+  it("should show model command even without model-provider capabilities", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: [],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("model");
   });
 
   it("should show slack when slack:write capability is present", () => {
@@ -342,6 +356,17 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the model help example in sandbox help", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: [],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Manage model keys?",
+    );
+  });
+
   it("should hide telegram when file read and telegram write capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -490,7 +515,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["schedule", "whoami", "web"]);
+    expect(visibleCommandNames(prog)).toEqual([
+      "model",
+      "schedule",
+      "whoami",
+      "web",
+    ]);
     expect(hiddenCommandNames(prog)).toContain("agent");
   });
 
