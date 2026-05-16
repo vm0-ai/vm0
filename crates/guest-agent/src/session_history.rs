@@ -1,7 +1,7 @@
 //! Session-history reader — abstracts over Claude (literal jsonl path) and
 //! codex (`CODEX_SEARCH:{dir}:{id}` marker → recursive scan + optional zstd decode).
 //!
-//! `events::capture_session_metadata` writes one of two payloads to
+//! The event metadata capture path writes one of two payloads to
 //! `paths::session_history_path_file()`:
 //!
 //! - Claude: a literal filesystem path to the `.jsonl` history file.

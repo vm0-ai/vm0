@@ -47,8 +47,8 @@ pub async fn send_event(
 ///
 /// Returns `None` if there is no API token (local/test mode) or the event
 /// should not be posted. This function does not perform filesystem or network
-/// I/O; session metadata capture happens in `capture_session_metadata`, and
-/// network delivery happens in `post_event` / `send_event`.
+/// I/O; session metadata capture is handled separately before payload
+/// preparation, and network delivery happens in `post_event` / `send_event`.
 pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Option<Value> {
     // No API token → local/test mode; skip posting events.
     if !env::has_api() {
@@ -263,7 +263,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
-pub fn capture_session_metadata(event: &Value) {
+pub(crate) fn capture_session_metadata(event: &Value) {
     let parsed = match Framework::from_env() {
         Framework::ClaudeCode => extract_claude_session_id(event),
         Framework::Codex => extract_codex_thread_id(event),
