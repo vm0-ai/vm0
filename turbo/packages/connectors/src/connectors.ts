@@ -58,6 +58,7 @@ import { localAgent } from "./connectors/local-agent";
 import { serpapi } from "./connectors/serpapi";
 import { salesforce } from "./connectors/salesforce";
 import { reddit } from "./connectors/reddit";
+import { reap } from "./connectors/reap";
 import { strava } from "./connectors/strava";
 import { x } from "./connectors/x";
 import { neon } from "./connectors/neon";
@@ -477,6 +478,7 @@ const CONNECTOR_TYPES_DEF = {
   ...serpapi,
   ...salesforce,
   ...reddit,
+  ...reap,
   ...strava,
   ...x,
   ...neon,

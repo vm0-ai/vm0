@@ -119,6 +119,7 @@ import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { codexOauthHandler } from "./providers/codex-oauth-handler";
 import { redditHandler } from "./providers/reddit-handler";
+import { reapHandler } from "./providers/reap-handler";
 import { localAgentHandler } from "./providers/local-agent-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
@@ -315,6 +316,7 @@ export const PROVIDER_HANDLERS: Record<
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
+  reap: reapHandler,
   "local-browser": localBrowserHandler,
   "local-agent": localAgentHandler,
   reportei: reporteiHandler,

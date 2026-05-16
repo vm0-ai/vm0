@@ -154,6 +154,7 @@ const CONNECTOR_ICON_COLORFUL = {
   posthog: true,
   qdrant: true,
   qiita: true,
+  reap: true,
   reddit: true,
   reportei: true,
   salesforce: true,

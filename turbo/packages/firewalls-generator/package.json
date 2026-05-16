@@ -144,6 +144,7 @@
     "generate:pushinator": "tsx src/index.ts pushinator",
     "generate:qdrant": "tsx src/index.ts qdrant",
     "generate:qiita": "tsx src/index.ts qiita",
+    "generate:reap": "tsx src/index.ts reap",
     "generate:reddit": "tsx src/index.ts reddit",
     "generate:replicate": "tsx src/index.ts replicate",
     "generate:reportei": "tsx src/index.ts reportei",
