@@ -964,7 +964,9 @@ async fn send_event_captures_session_metadata_before_masking() {
     let _ = std::fs::remove_file(hist_file);
 
     let mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/events");
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""session_id":"***""#);
         then.status(200);
     });
 
@@ -984,7 +986,7 @@ async fn send_event_captures_session_metadata_before_masking() {
     mock.assert_calls_async(1).await;
     assert_eq!(
         event["session_id"], "***",
-        "webhook event payload should still be masked"
+        "send_event should leave the caller's event masked after payload preparation"
     );
 
     let stored = std::fs::read_to_string(sid_file).unwrap();
