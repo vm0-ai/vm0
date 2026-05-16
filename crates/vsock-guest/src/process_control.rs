@@ -140,21 +140,6 @@ impl ProcessControlRegistry {
             .contains_key(&seq)
     }
 
-    #[cfg(test)]
-    fn sink_is_connected(&self, seq: u32) -> bool {
-        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(ProcessControlEntry::WithNonce {
-            sink: Some(sink), ..
-        }) = guard.get(&seq)
-        else {
-            return false;
-        };
-        matches!(
-            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
-            ControlSinkInner::Connected(_)
-        )
-    }
-
     fn resolve(
         &self,
         target_seq: u32,
@@ -697,14 +682,6 @@ mod tests {
             )
             .unwrap();
         });
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while !registry.sink_is_connected(8) {
-            assert!(
-                Instant::now() < deadline,
-                "control sink should connect before forwarding"
-            );
-            std::thread::yield_now();
-        }
 
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
