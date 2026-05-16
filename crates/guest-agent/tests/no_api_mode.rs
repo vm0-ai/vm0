@@ -34,6 +34,7 @@ fn cleanup_session_files() {
 }
 
 fn cleanup_run_files(ops_file: &str) {
+    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
     let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
     cleanup_session_files();
     let _ = std::fs::remove_file(ops_file);
