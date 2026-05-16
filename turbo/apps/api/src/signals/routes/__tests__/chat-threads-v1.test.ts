@@ -967,8 +967,8 @@ describe("POST /api/v1/chat-threads/messages", () => {
       "encryptedSecrets" in job.executionContext &&
       typeof (job.executionContext as { encryptedSecrets: unknown })
         .encryptedSecrets === "string"
-        ? ((job.executionContext as { encryptedSecrets: string })
-            .encryptedSecrets)
+        ? (job.executionContext as { encryptedSecrets: string })
+            .encryptedSecrets
         : null;
     const secrets = decryptSecretsMap(encryptedSecrets);
     expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
