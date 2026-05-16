@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.155.0](https://github.com/vm0-ai/vm0/compare/cli-v9.154.2...cli-v9.155.0) (2026-05-16)
+
+
+### Features
+
+* add local-agent Claude args ([#13520](https://github.com/vm0-ai/vm0/issues/13520)) ([e79c7b6](https://github.com/vm0-ai/vm0/commit/e79c7b6b2af7e2d07d7554257f94d2fd2cf96e7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.29.0
+    * @vm0/connectors bumped to 1.13.0
+    * @vm0/core bumped to 8.279.0
+
 ## [9.154.2](https://github.com/vm0-ai/vm0/compare/cli-v9.154.1...cli-v9.154.2) (2026-05-15)
 
 
