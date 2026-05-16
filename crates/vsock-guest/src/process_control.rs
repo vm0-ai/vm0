@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex, TryLockError};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -54,9 +54,14 @@ struct ControlSinkState {
     pending: AtomicUsize,
 }
 
+struct ConnectedControlSink {
+    stream: Arc<Mutex<UnixStream>>,
+    shutdown: UnixStream,
+}
+
 enum ControlSinkInner {
     Waiting,
-    Connected(Arc<Mutex<UnixStream>>),
+    Connected(ConnectedControlSink),
     Failed(String),
     Closed,
 }
@@ -253,14 +258,27 @@ impl ControlSinkState {
             let _ = stream.shutdown(std::net::Shutdown::Both);
             return;
         }
+        let connected = match ConnectedControlSink::new(stream) {
+            Ok(connected) => connected,
+            Err(error) => {
+                let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+                if !matches!(*guard, ControlSinkInner::Closed) {
+                    *guard = ControlSinkInner::Failed(format!(
+                        "failed to clone process control sink: {error}"
+                    ));
+                }
+                self.ready.notify_all();
+                return;
+            }
+        };
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if !self.active.load(Ordering::Acquire) {
-            let _ = stream.shutdown(std::net::Shutdown::Both);
+            connected.shutdown();
             *guard = ControlSinkInner::Closed;
             self.ready.notify_all();
             return;
         }
-        *guard = ControlSinkInner::Connected(Arc::new(Mutex::new(stream)));
+        *guard = ControlSinkInner::Connected(connected);
         self.ready.notify_all();
     }
 
@@ -268,42 +286,26 @@ impl ControlSinkState {
         if !self.active.load(Ordering::Acquire) {
             return;
         }
-        let stream = {
-            let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            let stream = match &*guard {
-                ControlSinkInner::Connected(stream) => Some(Arc::clone(stream)),
-                ControlSinkInner::Waiting
-                | ControlSinkInner::Failed(_)
-                | ControlSinkInner::Closed => None,
-            };
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if let ControlSinkInner::Connected(connected) = &*guard {
+            connected.shutdown();
+        }
+        {
             if !matches!(*guard, ControlSinkInner::Closed) {
                 *guard = ControlSinkInner::Failed(message);
             }
             self.ready.notify_all();
-            stream
-        };
-        if let Some(stream) = stream {
-            shutdown_stream_if_unlocked(&stream);
         }
     }
 
     fn close(&self) {
         self.active.store(false, Ordering::Release);
-        let stream = {
-            let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            let stream = match &*guard {
-                ControlSinkInner::Connected(stream) => Some(Arc::clone(stream)),
-                ControlSinkInner::Waiting
-                | ControlSinkInner::Failed(_)
-                | ControlSinkInner::Closed => None,
-            };
-            *guard = ControlSinkInner::Closed;
-            self.ready.notify_all();
-            stream
-        };
-        if let Some(stream) = stream {
-            shutdown_stream_if_unlocked(&stream);
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if let ControlSinkInner::Connected(connected) = &*guard {
+            connected.shutdown();
         }
+        *guard = ControlSinkInner::Closed;
+        self.ready.notify_all();
     }
 
     fn wait_for_stream(
@@ -322,7 +324,7 @@ impl ControlSinkState {
                 ));
             }
             match &*guard {
-                ControlSinkInner::Connected(stream) => return Ok(Arc::clone(stream)),
+                ControlSinkInner::Connected(connected) => return Ok(Arc::clone(&connected.stream)),
                 ControlSinkInner::Waiting => {
                     let now = Instant::now();
                     if now >= deadline {
@@ -403,16 +405,17 @@ impl ControlSinkState {
     }
 }
 
-fn shutdown_stream_if_unlocked(stream: &Arc<Mutex<UnixStream>>) {
-    match stream.try_lock() {
-        Ok(stream) => {
-            let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
-        Err(TryLockError::Poisoned(error)) => {
-            let stream = error.into_inner();
-            let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
-        Err(TryLockError::WouldBlock) => {}
+impl ConnectedControlSink {
+    fn new(stream: UnixStream) -> io::Result<Self> {
+        let shutdown = stream.try_clone()?;
+        Ok(Self {
+            stream: Arc::new(Mutex::new(stream)),
+            shutdown,
+        })
+    }
+
+    fn shutdown(&self) {
+        let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
     }
 }
 
@@ -1110,7 +1113,7 @@ mod tests {
         let (stream, _peer) = UnixStream::pair().unwrap();
         sink.connect(stream);
         let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-            ControlSinkInner::Connected(stream) => Arc::clone(stream),
+            ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
         let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
@@ -1142,7 +1145,7 @@ mod tests {
         let (stream, _peer) = UnixStream::pair().unwrap();
         sink.connect(stream);
         let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-            ControlSinkInner::Connected(stream) => Arc::clone(stream),
+            ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
         let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
@@ -1175,7 +1178,7 @@ mod tests {
         peer.set_nonblocking(true).unwrap();
         sink.connect(stream);
         let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-            ControlSinkInner::Connected(stream) => Arc::clone(stream),
+            ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
         let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
@@ -1208,6 +1211,66 @@ mod tests {
         assert_eq!(diagnostic, "process operation is not active");
 
         let err = process_control_ipc::read_request(&mut peer).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+        assert!(matches!(
+            err.kind(),
+            io::ErrorKind::WouldBlock
+                | io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::ConnectionReset
+        ));
+    }
+
+    #[test]
+    fn close_interrupts_inflight_control_request() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, mut peer) = UnixStream::pair().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        sink.connect(stream);
+        let pending_slot = sink.reserve_pending_slot().unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+
+        let worker = std::thread::spawn({
+            let sink = Arc::clone(&sink);
+            move || {
+                forward_control_request(
+                    sink,
+                    pending_slot,
+                    OwnedProcessControlRequest {
+                        response_seq: 18,
+                        target_seq: 9,
+                        control_nonce: NONCE,
+                        message_id: "msg-inflight-close".to_owned(),
+                        payload: b"payload".to_vec(),
+                    },
+                    GuestWriter::new(guest),
+                );
+                done_tx.send(()).unwrap();
+            }
+        });
+
+        let request = process_control_ipc::read_request(&mut peer).unwrap();
+        assert_eq!(request.message_id, "msg-inflight-close");
+
+        sink.close();
+        done_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("close should interrupt an in-flight control read");
+        worker.join().unwrap();
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 18);
+        assert_eq!(status, ProcessControlStatus::Inactive);
+        assert_eq!(message_id, "msg-inflight-close");
+        assert_eq!(diagnostic, "process operation is not active");
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
     }
 }
