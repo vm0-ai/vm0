@@ -15,7 +15,7 @@ use crate::operation_tracker::NormalOperationReadiness;
 
 #[tokio::test]
 async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let writer_guard = host.shared.writer.lock().await;
     let task = {
@@ -44,7 +44,7 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
     };
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(
         msg.msg_type, MSG_EXEC_START,
         "start frame should not be written"
@@ -64,10 +64,10 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
 
 #[tokio::test]
 async fn exec_operation_handle_drop_after_full_write_marks_not_parkable() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "drop-after-write").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     drop(handle);
     assert_eq!(operation_count(&host), 0);
@@ -86,14 +86,14 @@ async fn exec_operation_handle_drop_after_full_write_marks_not_parkable() {
 
 #[tokio::test]
 async fn exec_cancel_sends_cancel_and_waits_for_cancelled_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = start_capture_operation(&host, "cancel").await;
-    let start = read_guest_message(&mut guest, &mut decoder).await;
+    let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
     let cancel_task =
         tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
-    let cancel = read_guest_message(&mut guest, &mut decoder).await;
+    let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
     vsock_proto::decode_exec_cancel(&cancel.payload).unwrap();
@@ -105,10 +105,10 @@ async fn exec_cancel_sends_cancel_and_waits_for_cancelled_result() {
 
 #[tokio::test]
 async fn exec_cancel_after_terminal_result_returns_result_without_cancel_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "already-done").await;
-    let start = read_guest_message(&mut guest, &mut decoder).await;
+    let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
     send_exec_result(
         &mut guest,
@@ -126,20 +126,20 @@ async fn exec_cancel_after_terminal_result_returns_result_without_cancel_frame()
         .unwrap();
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_cancel_non_cancelled_terminal_result_cleans_operation_without_poisoning() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "cancel-race").await;
-    let start = read_guest_message(&mut guest, &mut decoder).await;
+    let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
     let cancel_task =
         tokio::spawn(async move { handle.cancel_and_wait(Duration::from_secs(5)).await });
-    let cancel = read_guest_message(&mut guest, &mut decoder).await;
+    let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
 
@@ -156,18 +156,18 @@ async fn exec_cancel_non_cancelled_terminal_result_cleans_operation_without_pois
     assert_eq!(operation_count(&host), 0);
     assert!(is_connected(&host));
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_cancel_result_timeout_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = start_capture_operation(&host, "cancel-timeout").await;
-    let start = read_guest_message(&mut guest, &mut decoder).await;
+    let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
 
     let cancel_task = tokio::spawn(async move { handle.cancel_and_wait(Duration::ZERO).await });
-    let cancel = read_guest_message(&mut guest, &mut decoder).await;
+    let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
 
@@ -180,7 +180,7 @@ async fn exec_cancel_result_timeout_poisons_connection() {
 
 #[tokio::test]
 async fn exec_operation_frame_write_guard_started_drop_poisons_connection() {
-    let (host, _guest, _decoder) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_guest().await;
     exec_operation_impl::test_support::drop_started_frame_write_guard(Arc::clone(&host.shared));
     host.wait_until_closed(Duration::from_secs(5))
         .await

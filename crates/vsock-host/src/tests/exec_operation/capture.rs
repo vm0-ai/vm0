@@ -16,7 +16,7 @@ use crate::{ExecCaptureRequest, ExecOperationRequest, ExecOwnedCapturedOutput};
 
 #[tokio::test]
 async fn exec_operation_capture_sends_start_and_receives_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let task = {
         let host = Arc::clone(&host);
@@ -36,7 +36,7 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
         })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.timeout_ms, 7000);
@@ -78,7 +78,7 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
 
 #[tokio::test]
 async fn exec_start_sends_expected_exit_codes() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
 
     let handle = host
         .start_exec_operation(ExecOperationRequest {
@@ -95,7 +95,7 @@ async fn exec_start_sends_expected_exit_codes() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
 
@@ -116,7 +116,7 @@ async fn exec_start_sends_expected_exit_codes() {
 
 #[tokio::test]
 async fn exec_operation_capture_repeated_short_operations_soak() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     for i in 0..8 {
@@ -136,7 +136,7 @@ async fn exec_operation_capture_repeated_short_operations_soak() {
             .await
             .unwrap();
 
-        let msg = read_guest_message(&mut guest, &mut decoder).await;
+        let msg = read_guest_message(&mut guest).await;
         assert_eq!(msg.msg_type, MSG_EXEC_START);
         let stdout = format!("ok-{i}");
         send_exec_result(
@@ -160,12 +160,12 @@ async fn exec_operation_capture_repeated_short_operations_soak() {
         assert!(is_connected(&host));
     }
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_operation_capture_large_stdout_stderr_within_limits_soak() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let stdout = vec![b'o'; 64 * 1024];
     let stderr = vec![b'e'; 64 * 1024];
     let handle = host
@@ -187,7 +187,7 @@ async fn exec_operation_capture_large_stdout_stderr_within_limits_soak() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     send_exec_result(
         &mut guest,
@@ -219,7 +219,7 @@ async fn exec_operation_capture_large_stdout_stderr_within_limits_soak() {
 
 #[tokio::test]
 async fn exec_result_preserves_non_default_metadata() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
@@ -234,7 +234,7 @@ async fn exec_result_preserves_non_default_metadata() {
         })
         .await
         .unwrap();
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
 
     let payload = vsock_proto::encode_exec_result(
@@ -267,7 +267,7 @@ async fn exec_result_preserves_non_default_metadata() {
 
 #[tokio::test]
 async fn exec_result_capture_for_discard_policy_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
@@ -283,7 +283,7 @@ async fn exec_result_capture_for_discard_policy_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Exited { exit_code: 0 },
         1,
@@ -306,7 +306,7 @@ async fn exec_result_capture_for_discard_policy_poisons_connection() {
 
 #[tokio::test]
 async fn exec_result_over_capture_limit_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
@@ -322,7 +322,7 @@ async fn exec_result_over_capture_limit_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Exited { exit_code: 0 },
         1,
@@ -345,7 +345,7 @@ async fn exec_result_over_capture_limit_poisons_connection() {
 
 #[tokio::test]
 async fn exec_result_discard_for_capture_policy_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
@@ -361,7 +361,7 @@ async fn exec_result_discard_for_capture_policy_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Exited { exit_code: 0 },
         1,
@@ -381,7 +381,7 @@ async fn exec_result_discard_for_capture_policy_poisons_connection() {
 
 #[tokio::test]
 async fn exec_result_zero_capture_limit_accepts_empty_capture() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .start_exec_operation(ExecOperationRequest {
             timeout_ms: 5000,
@@ -397,7 +397,7 @@ async fn exec_result_zero_capture_limit_accepts_empty_capture() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Exited { exit_code: 0 },
         1,
@@ -434,11 +434,11 @@ async fn exec_result_zero_capture_limit_accepts_empty_capture() {
 
 #[tokio::test]
 async fn exec_operations_dispatch_out_of_order_results_by_seq() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let first = start_capture_operation(&host, "cmd-a").await;
     let second = start_capture_operation(&host, "cmd-b").await;
 
-    let mut messages = read_guest_messages(&mut guest, &mut decoder, 2).await;
+    let mut messages = read_guest_messages(&mut guest, 2).await;
     let msg_a = messages.remove(0);
     let msg_b = messages.remove(0);
     assert_eq!(msg_a.msg_type, MSG_EXEC_START);
