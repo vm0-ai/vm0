@@ -69,6 +69,22 @@ struct OwnedProcessControlRequest {
     payload: Vec<u8>,
 }
 
+struct PendingControlSlot {
+    sink: Arc<ControlSinkState>,
+}
+
+impl PendingControlSlot {
+    fn new(sink: Arc<ControlSinkState>) -> Self {
+        Self { sink }
+    }
+}
+
+impl Drop for PendingControlSlot {
+    fn drop(&mut self) {
+        self.sink.pending.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 impl ProcessControlRegistry {
     pub(crate) fn register(
         &self,
@@ -440,6 +456,7 @@ fn forward_control_request(
     request: OwnedProcessControlRequest,
     writer: GuestWriter,
 ) {
+    let _pending_slot = PendingControlSlot::new(Arc::clone(&sink));
     let OwnedProcessControlRequest {
         response_seq,
         target_seq,
@@ -495,7 +512,6 @@ fn forward_control_request(
         }
     };
 
-    sink.pending.fetch_sub(1, Ordering::AcqRel);
     if mark_failed {
         sink.fail(diagnostic.clone());
     }
