@@ -17,6 +17,16 @@ pub struct ControlHandle {
     shutdown: CancellationToken,
 }
 
+struct StreamSlotCleanup {
+    stream: Arc<Mutex<Option<UnixStream>>>,
+}
+
+impl Drop for StreamSlotCleanup {
+    fn drop(&mut self) {
+        let _ = self.stream.lock().unwrap_or_else(|e| e.into_inner()).take();
+    }
+}
+
 impl ControlHandle {
     pub fn spawn(shutdown: CancellationToken) -> Option<Self> {
         let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
@@ -75,6 +85,9 @@ fn run_inner(
     stream.set_write_timeout(Some(CONTROL_WRITE_TIMEOUT))?;
     process_control_ipc::write_hello(&mut stream)?;
     *stream_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(shutdown_stream);
+    let _stream_slot_cleanup = StreamSlotCleanup {
+        stream: Arc::clone(&stream_slot),
+    };
     log_info!(LOG_TAG, "Process control task connected");
 
     while !shutdown.is_cancelled() {
@@ -173,5 +186,33 @@ mod tests {
             panic!("control handle join should wake idle reader: {error}");
         }
         joiner.join().unwrap();
+    }
+
+    #[test]
+    fn control_task_clears_shutdown_stream_when_reader_exits() {
+        let nonce = *b"8899aabbccddeeff";
+        let endpoint = process_control_ipc::endpoint_name(44, &nonce);
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let shutdown = CancellationToken::new();
+        let stream_slot = Arc::new(Mutex::new(None));
+        let worker_slot = Arc::clone(&stream_slot);
+        let worker = thread::spawn({
+            let endpoint = endpoint.clone();
+            move || run_inner(&endpoint, shutdown, worker_slot)
+        });
+
+        let mut stream =
+            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
+                .expect("control task should connect");
+        process_control_ipc::read_hello(&mut stream).unwrap();
+        drop(stream);
+
+        worker.join().unwrap().unwrap();
+        assert!(
+            stream_slot
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        );
     }
 }
