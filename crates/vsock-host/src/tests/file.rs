@@ -805,6 +805,34 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
 }
 
 #[tokio::test]
+async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/blocked.txt", b"hello", false).await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+}
+
+#[tokio::test]
 async fn write_file_connection_close_after_request_marks_tracker_not_parkable() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
