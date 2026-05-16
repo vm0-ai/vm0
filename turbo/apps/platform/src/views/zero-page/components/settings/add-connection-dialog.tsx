@@ -60,7 +60,7 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 import { getCliAuthConnectMethodContentComponent } from "./cli-auth-connect-methods.tsx";
-import { renderConnectorHelpMarkdown } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.ts";
 
 // ---------------------------------------------------------------------------
 // Connected status text helper
@@ -246,12 +246,7 @@ function ApiTokenForm({
         </p>
       )}
       {apiTokenConfig.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderConnectorHelpMarkdown(apiTokenConfig.helpText),
-          }}
-        />
+        <ConnectorHelpText text={apiTokenConfig.helpText} />
       )}
       {secretEntries.map(([name, secretConfig]) => {
         return (
@@ -320,12 +315,7 @@ function LocalAgentConnectContent({
   return (
     <div ref={watchHostsRef} className="flex flex-col gap-3">
       {localAgentConfig?.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderConnectorHelpMarkdown(localAgentConfig.helpText),
-          }}
-        />
+        <ConnectorHelpText text={localAgentConfig.helpText} />
       )}
 
       <div className="mt-1 flex items-center justify-between gap-3">
@@ -564,12 +554,7 @@ function LocalBrowserConnectContent({
   return (
     <div ref={watchConnectionRef} className="flex flex-col gap-3">
       {localBrowserConfig?.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderConnectorHelpMarkdown(localBrowserConfig.helpText),
-          }}
-        />
+        <ConnectorHelpText text={localBrowserConfig.helpText} />
       )}
 
       <LocalBrowserExtensionPanel

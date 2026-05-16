@@ -1,41 +1,123 @@
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import { cn } from "@vm0/ui";
+import { createElement, Fragment, type ReactNode } from "react";
 
-function renderInlineConnectorHelpMarkdown(text: string): string {
-  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)"\s]+)\)/g;
-  let rendered = "";
+const DEFAULT_CONNECTOR_HELP_TEXT_CLASS =
+  "text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline";
+
+function renderBoldConnectorHelpMarkdown(
+  text: string,
+  keyPrefix: string,
+): ReactNode[] {
+  const boldPattern = /\*\*([^*]+)\*\*/g;
+  const nodes: ReactNode[] = [];
   let lastIndex = 0;
 
-  for (const match of text.matchAll(linkPattern)) {
-    rendered += renderBoldConnectorHelpMarkdown(
-      text.slice(lastIndex, match.index),
+  for (const match of text.matchAll(boldPattern)) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    nodes.push(
+      createElement(
+        "strong",
+        { key: `${keyPrefix}-strong-${match.index}` },
+        match[1],
+      ),
     );
-    rendered += `<a href="${escapeHtml(match[2])}" target="_blank" rel="noopener noreferrer" class="text-primary underline">${renderBoldConnectorHelpMarkdown(match[1])}</a>`;
     lastIndex = match.index + match[0].length;
   }
 
-  rendered += renderBoldConnectorHelpMarkdown(text.slice(lastIndex));
-  return rendered;
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
 }
 
-function renderBoldConnectorHelpMarkdown(text: string): string {
-  return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+function renderInlineConnectorHelpMarkdown(
+  text: string,
+  keyPrefix: string,
+): ReactNode[] {
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)"\s]+)\)/g;
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(linkPattern)) {
+    nodes.push(
+      ...renderBoldConnectorHelpMarkdown(
+        text.slice(lastIndex, match.index),
+        `${keyPrefix}-text-${lastIndex}`,
+      ),
+    );
+    nodes.push(
+      createElement(
+        "a",
+        {
+          key: `${keyPrefix}-link-${match.index}`,
+          href: match[2],
+          target: "_blank",
+          rel: "noopener noreferrer",
+          className: "text-primary underline",
+        },
+        ...renderBoldConnectorHelpMarkdown(
+          match[1],
+          `${keyPrefix}-link-${match.index}-label`,
+        ),
+      ),
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  nodes.push(
+    ...renderBoldConnectorHelpMarkdown(
+      text.slice(lastIndex),
+      `${keyPrefix}-text-${lastIndex}`,
+    ),
+  );
+
+  return nodes;
 }
 
-export function renderConnectorHelpMarkdown(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => {
-      if (line.startsWith("> ")) {
-        return `<div class="pl-3 border-l-2 border-muted text-muted-foreground">${renderInlineConnectorHelpMarkdown(line.slice(2))}</div>`;
-      }
-      return renderInlineConnectorHelpMarkdown(line);
-    })
-    .join("\n");
+export function ConnectorHelpText({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const children: ReactNode[] = [];
+  const lines = text.split("\n");
+
+  for (const [index, line] of lines.entries()) {
+    if (line.startsWith("> ")) {
+      children.push(
+        createElement(
+          "div",
+          {
+            key: `line-${index}`,
+            className: "pl-3 border-l-2 border-muted text-muted-foreground",
+          },
+          ...renderInlineConnectorHelpMarkdown(line.slice(2), `line-${index}`),
+        ),
+      );
+    } else {
+      children.push(
+        createElement(
+          Fragment,
+          { key: `line-${index}` },
+          ...renderInlineConnectorHelpMarkdown(line, `line-${index}`),
+        ),
+      );
+    }
+    if (index < lines.length - 1) {
+      children.push("\n");
+    }
+  }
+
+  return createElement(
+    "div",
+    {
+      className: cn(DEFAULT_CONNECTOR_HELP_TEXT_CLASS, className),
+    },
+    children,
+  );
 }

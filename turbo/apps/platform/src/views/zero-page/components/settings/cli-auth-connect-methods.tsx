@@ -16,7 +16,7 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
-import { renderConnectorHelpMarkdown } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.ts";
 
 type CliAuthConnectMethodContentProps = {
   item: ConnectorTypeWithStatus;
@@ -213,12 +213,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
   return (
     <div className="flex flex-col gap-3">
       {cliAuthConfig.helpText && (
-        <div
-          className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
-          dangerouslySetInnerHTML={{
-            __html: renderConnectorHelpMarkdown(cliAuthConfig.helpText),
-          }}
-        />
+        <ConnectorHelpText text={cliAuthConfig.helpText} />
       )}
 
       {!pendingState && (

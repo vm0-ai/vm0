@@ -1,25 +1,41 @@
 import { describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { createElement } from "react";
 
-import { renderConnectorHelpMarkdown } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.ts";
 
-describe("renderConnectorHelpMarkdown", () => {
+describe("ConnectorHelpText", () => {
   it("renders supported connector help markdown", () => {
-    expect(
-      renderConnectorHelpMarkdown(
-        "Use **test mode** and [open docs](https://example.com/docs).\n> Keep this key private.",
-      ),
-    ).toBe(
-      'Use <strong>test mode</strong> and <a href="https://example.com/docs" target="_blank" rel="noopener noreferrer" class="text-primary underline">open docs</a>.\n<div class="pl-3 border-l-2 border-muted text-muted-foreground">Keep this key private.</div>',
+    render(
+      createElement(ConnectorHelpText, {
+        text: "Use **test mode** and [open docs](https://example.com/docs).\n> Keep this key private.",
+      }),
+    );
+
+    const boldText = screen.getByText("test mode");
+    expect(boldText.tagName).toBe("STRONG");
+
+    const link = screen.getByRole("link", { name: "open docs" });
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+
+    expect(screen.getByText("Keep this key private.")).toHaveClass(
+      "border-l-2",
     );
   });
 
-  it("escapes unsupported or unsafe HTML", () => {
-    expect(
-      renderConnectorHelpMarkdown(
-        '<img src=x onerror=alert(1)> [bad <b>label</b>](https://example.com/" onclick="alert(1)) **<script>bad()</script>**',
-      ),
-    ).toBe(
-      "&lt;img src=x onerror=alert(1)&gt; [bad &lt;b&gt;label&lt;/b&gt;](https://example.com/&quot; onclick=&quot;alert(1)) <strong>&lt;script&gt;bad()&lt;/script&gt;</strong>",
+  it("renders unsupported or unsafe HTML as text", () => {
+    const { container } = render(
+      createElement(ConnectorHelpText, {
+        text: '<img src=x onerror=alert(1)> [bad <b>label</b>](https://example.com/" onclick="alert(1)) **<script>bad()</script>**',
+      }),
     );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container).toHaveTextContent("<img src=x onerror=alert(1)>");
+    expect(container).toHaveTextContent("<script>bad()</script>");
   });
 });
