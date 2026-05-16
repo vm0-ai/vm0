@@ -82,12 +82,12 @@ fn run_inner(
 ) -> io::Result<()> {
     let mut stream = process_control_ipc::connect_abstract(endpoint)?;
     let shutdown_stream = stream.try_clone()?;
-    stream.set_write_timeout(Some(CONTROL_WRITE_TIMEOUT))?;
-    process_control_ipc::write_hello(&mut stream)?;
     *stream_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(shutdown_stream);
     let _stream_slot_cleanup = StreamSlotCleanup {
         stream: Arc::clone(&stream_slot),
     };
+    stream.set_write_timeout(Some(CONTROL_WRITE_TIMEOUT))?;
+    process_control_ipc::write_hello(&mut stream)?;
     log_info!(LOG_TAG, "Process control task connected");
 
     while !shutdown.is_cancelled() {
