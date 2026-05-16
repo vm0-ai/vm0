@@ -162,7 +162,7 @@ where
     let effective_env = if let Some(endpoint) = process_control_bootstrap_endpoint.as_deref() {
         env_with_control = Vec::with_capacity(env.len() + 1);
         env_with_control.extend_from_slice(env);
-        env_with_control.push((guest_control::BOOTSTRAP_ENV, endpoint));
+        env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
         env_with_control.as_slice()
     } else {
         env

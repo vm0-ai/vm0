@@ -15,7 +15,7 @@ pub struct ControlHandle {
 
 impl ControlHandle {
     pub fn spawn(shutdown: CancellationToken) -> Option<Self> {
-        let endpoint = match std::env::var(guest_control::BOOTSTRAP_ENV) {
+        let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
             Ok(endpoint) if !endpoint.is_empty() => endpoint,
             _ => return None,
         };
@@ -46,20 +46,20 @@ fn run(endpoint: String, shutdown: CancellationToken) {
 }
 
 fn run_inner(endpoint: &str, shutdown: CancellationToken) -> io::Result<()> {
-    let mut stream = guest_control::connect_abstract(endpoint)?;
+    let mut stream = process_control_ipc::connect_abstract(endpoint)?;
     stream.set_read_timeout(Some(CONTROL_READ_TIMEOUT))?;
     stream.set_write_timeout(Some(CONTROL_WRITE_TIMEOUT))?;
-    guest_control::write_hello(&mut stream)?;
+    process_control_ipc::write_hello(&mut stream)?;
     log_info!(LOG_TAG, "Process control task connected");
 
     while !shutdown.is_cancelled() {
-        match guest_control::read_request(&mut stream) {
+        match process_control_ipc::read_request(&mut stream) {
             Ok(request) => {
-                guest_control::write_response(
+                process_control_ipc::write_response(
                     &mut stream,
-                    &guest_control::ControlResponse {
+                    &process_control_ipc::ControlResponse {
                         message_id: request.message_id,
-                        status: guest_control::ControlResponseStatus::Accepted,
+                        status: process_control_ipc::ControlResponseStatus::Accepted,
                         diagnostic: String::new(),
                     },
                 )?;
@@ -97,8 +97,8 @@ mod tests {
     #[test]
     fn control_task_accepts_request_until_shutdown() {
         let nonce = *b"0123456789abcdef";
-        let endpoint = guest_control::endpoint_name(42, &nonce);
-        let listener = guest_control::bind_abstract_listener(&endpoint).unwrap();
+        let endpoint = process_control_ipc::endpoint_name(42, &nonce);
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
         let shutdown = CancellationToken::new();
         let worker_shutdown = shutdown.clone();
         let worker = thread::spawn({
@@ -106,22 +106,23 @@ mod tests {
             move || run_inner(&endpoint, worker_shutdown)
         });
 
-        let mut stream = guest_control::accept_with_timeout(&listener, Duration::from_secs(1))
-            .expect("control task should connect");
-        guest_control::read_hello(&mut stream).unwrap();
-        guest_control::write_request(
+        let mut stream =
+            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
+                .expect("control task should connect");
+        process_control_ipc::read_hello(&mut stream).unwrap();
+        process_control_ipc::write_request(
             &mut stream,
-            &guest_control::ControlRequest {
+            &process_control_ipc::ControlRequest {
                 message_id: "msg-1".to_owned(),
                 payload: b"opaque".to_vec(),
             },
         )
         .unwrap();
-        let response = guest_control::read_response(&mut stream).unwrap();
+        let response = process_control_ipc::read_response(&mut stream).unwrap();
         assert_eq!(response.message_id, "msg-1");
         assert_eq!(
             response.status,
-            guest_control::ControlResponseStatus::Accepted
+            process_control_ipc::ControlResponseStatus::Accepted
         );
 
         shutdown.cancel();

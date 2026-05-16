@@ -4,7 +4,7 @@ version = "0.17.0"
 edition.workspace = true
 
 [dependencies]
-guest-control.workspace = true
+process-control-ipc.workspace = true
 libc.workspace = true
 vsock-proto.workspace = true
 

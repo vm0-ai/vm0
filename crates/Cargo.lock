@@ -1256,12 +1256,12 @@ dependencies = [
  "chrono",
  "flate2",
  "guest-common",
- "guest-control",
  "hex",
  "http-body 1.0.1",
  "httpmock",
  "libc",
  "pin-project-lite",
+ "process-control-ipc",
  "reqwest",
  "serde",
  "serde_json",
@@ -1282,13 +1282,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
-]
-
-[[package]]
-name = "guest-control"
-version = "0.1.0"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -2289,6 +2282,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "process-control-ipc"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -3650,8 +3650,8 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 name = "vsock-guest"
 version = "0.17.0"
 dependencies = [
- "guest-control",
  "libc",
+ "process-control-ipc",
  "vsock-proto",
 ]
 

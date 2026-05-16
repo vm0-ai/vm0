@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use guest_control::{ControlRequest, ControlResponseStatus};
+use process_control_ipc::{ControlRequest, ControlResponseStatus};
 use vsock_proto::{MSG_PROCESS_CONTROL_RESULT, ProcessControlNonce, ProcessControlStatus};
 
 use crate::error::to_io_error;
@@ -77,8 +77,8 @@ impl ProcessControlRegistry {
     ) -> io::Result<ProcessControlRegistration> {
         let (entry, bootstrap_endpoint) = match control_nonce {
             Some(nonce) if control_sink => {
-                let endpoint = guest_control::endpoint_name(seq, &nonce);
-                let listener = guest_control::bind_abstract_listener(&endpoint)?;
+                let endpoint = process_control_ipc::endpoint_name(seq, &nonce);
+                let listener = process_control_ipc::bind_abstract_listener(&endpoint)?;
                 let sink = Arc::new(ControlSinkState::new());
                 let accept_sink = Arc::clone(&sink);
                 thread::Builder::new()
@@ -338,12 +338,12 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
             ));
         }
         let poll_timeout = deadline.duration_since(now).min(Duration::from_millis(100));
-        match guest_control::accept_with_timeout(&listener, poll_timeout) {
+        match process_control_ipc::accept_with_timeout(&listener, poll_timeout) {
             Ok(mut stream) => {
                 break stream
                     .set_read_timeout(Some(CONTROL_IO_TIMEOUT))
                     .and_then(|()| stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT)))
-                    .and_then(|()| guest_control::read_hello(&mut stream))
+                    .and_then(|()| process_control_ipc::read_hello(&mut stream))
                     .map(|()| stream);
             }
             Err(error) if is_timeout(&error) => continue,
@@ -380,8 +380,8 @@ fn forward_control_request(
             message_id: request.message_id.clone(),
             payload: request.payload.clone(),
         };
-        match guest_control::write_request(&mut stream, &request_frame)
-            .and_then(|()| guest_control::read_response(&mut stream))
+        match process_control_ipc::write_request(&mut stream, &request_frame)
+            .and_then(|()| process_control_ipc::read_response(&mut stream))
         {
             Ok(response) if response.message_id != request.message_id => (
                 ProcessControlStatus::SinkError,
@@ -593,16 +593,16 @@ mod tests {
         let registration = registry.register(8, Some(FORWARD_NONCE), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let client = std::thread::spawn(move || {
-            let mut stream = guest_control::connect_abstract(&endpoint).unwrap();
-            guest_control::write_hello(&mut stream).unwrap();
-            let request = guest_control::read_request(&mut stream).unwrap();
+            let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+            process_control_ipc::write_hello(&mut stream).unwrap();
+            let request = process_control_ipc::read_request(&mut stream).unwrap();
             assert_eq!(request.message_id, "msg-1");
             assert_eq!(request.payload, b"payload");
-            guest_control::write_response(
+            process_control_ipc::write_response(
                 &mut stream,
-                &guest_control::ControlResponse {
+                &process_control_ipc::ControlResponse {
                     message_id: request.message_id,
-                    status: guest_control::ControlResponseStatus::Accepted,
+                    status: process_control_ipc::ControlResponseStatus::Accepted,
                     diagnostic: String::new(),
                 },
             )
