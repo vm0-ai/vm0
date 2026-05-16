@@ -92,6 +92,15 @@ describe("getAvailableConnectorAuthMethods", () => {
       }),
     ).toStrictEqual(["api-token", "cli-auth"]);
   });
+
+  it("exposes BentoML API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("bentoml", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethods("bentoml", {
+        [FeatureSwitchKey.BentomlConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
 });
 
 describe("getConnectorManagedSecretNames", () => {

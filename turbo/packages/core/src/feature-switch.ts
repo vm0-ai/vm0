@@ -44,6 +44,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
+  [FeatureSwitchKey.BentomlConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the BentoML model serving connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Canva design connector",
