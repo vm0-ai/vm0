@@ -312,17 +312,23 @@ describe("Vercel sandbox client test override", () => {
     });
   });
 
-  it("waits for Vercel commands without the SDK wait stream", async () => {
+  it("streams Vercel command logs while waiting without the SDK wait stream", async () => {
     const mocks = getApiTestMocks();
-    mocks.vercelSandbox.waitCommand.mockResolvedValue({
-      cmdId: "cmd_mock",
-      exitCode: 3,
-    });
+    const calls: string[] = [];
     mocks.vercelSandbox.logs.mockImplementation(async function* () {
+      calls.push("logs");
       await Promise.resolve();
       yield { stream: "stdout", data: "hello " };
       yield { stream: "stderr", data: "warning" };
       yield { stream: "stdout", data: "world" };
+    });
+    mocks.vercelSandbox.waitCommand.mockImplementation(async () => {
+      calls.push("wait");
+      await Promise.resolve();
+      return {
+        cmdId: "cmd_mock",
+        exitCode: 3,
+      };
     });
 
     const result = await getVercelSandboxClient().runCommand(sandboxHandle(), {
@@ -339,12 +345,19 @@ describe("Vercel sandbox client test override", () => {
       detached: true,
       signal: undefined,
     });
+    const waitSignal = (
+      mocks.vercelSandbox.waitCommand.mock.calls[0]?.[1] as
+        | { readonly signal?: AbortSignal }
+        | undefined
+    )?.signal;
+    expect(waitSignal).toBeInstanceOf(AbortSignal);
     expect(mocks.vercelSandbox.waitCommand).toHaveBeenCalledWith("cmd_mock", {
-      signal: undefined,
+      signal: waitSignal,
     });
     expect(mocks.vercelSandbox.logs).toHaveBeenCalledWith("cmd_mock", {
-      signal: undefined,
+      signal: waitSignal,
     });
+    expect(calls).toStrictEqual(["logs", "wait"]);
     expect(result).toStrictEqual({
       sandboxId: sandboxHandle().sandboxId,
       commandId: "cmd_mock",
