@@ -24,8 +24,11 @@ import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-b
 import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
+  connectorCliAuthState$,
+  connectFlowType$,
   pollingConnectorType$,
   connectAndSettle$,
+  runConnectorConnectSuccess$,
   submitApiToken$,
   setTokenFormValue$,
   clearTokenForm$,
@@ -48,6 +51,7 @@ import {
   localAgentHostsWatcherRef$,
   localAgentHosts$,
   type LocalBrowserExtensionStatus,
+  type ConnectorCliAuthState,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
@@ -170,6 +174,18 @@ type ConnectMethodContentEntry = {
   authMethod: ConnectorAuthMethodType;
   Content: ConnectMethodContentComponent;
 };
+
+function connectorCliAuthFlowIsActive(
+  state: ConnectorCliAuthState,
+  type: ConnectorType,
+): boolean {
+  return (
+    state.connectorType === type &&
+    (state.status === "starting" ||
+      state.status === "pending" ||
+      state.status === "polling")
+  );
+}
 
 // ---------------------------------------------------------------------------
 // API Token form (shown inside connect modal)
@@ -868,12 +884,16 @@ function ConnectModalContent({
 }: ConnectModalContentProps) {
   const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
   const [apiTokenLoadable, submitApiToken] = useLoadableSet(submitApiToken$);
+  const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingConnectorType$);
   const settling = settleLoadable.state === "loading";
   const credentialSubmitting = apiTokenLoadable.state === "loading";
   const isPolling = pollingType === item.type;
   const entries = getConnectMethodContentEntries(item);
+  const onConnectSuccess = async () => {
+    await runConnectSuccess(item.type, onSuccess, pageSignal);
+  };
 
   const progressContent = item.availableAuthMethods.includes("oauth")
     ? getOAuthProgressContent({
@@ -888,7 +908,7 @@ function ConnectModalContent({
   return (
     <StandardConnectMethodsContent
       item={item}
-      onSuccess={onSuccess}
+      onSuccess={onConnectSuccess}
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectAndSettle={connectAndSettle}
       submitApiToken={submitApiToken}
@@ -915,6 +935,9 @@ export function ConnectModal({
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const clearConnectorCliAuth = useSet(clearConnectorCliAuth$);
+  const connectFlowType = useGet(connectFlowType$);
+  const pollingType = useGet(pollingConnectorType$);
+  const connectorCliAuthState = useGet(connectorCliAuthState$);
 
   const item = connectorTypes?.find((c) => {
     return c.type === selectedType;
@@ -925,6 +948,10 @@ export function ConnectModal({
   }
 
   const config = CONNECTOR_TYPES[selectedType];
+  const connectFlowActive =
+    connectFlowType === selectedType ||
+    pollingType === selectedType ||
+    connectorCliAuthFlowIsActive(connectorCliAuthState, selectedType);
 
   return (
     <Dialog
@@ -936,7 +963,15 @@ export function ConnectModal({
         }
       }}
     >
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-md"
+        aria-describedby={undefined}
+        onInteractOutside={(event) => {
+          if (connectFlowActive) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">

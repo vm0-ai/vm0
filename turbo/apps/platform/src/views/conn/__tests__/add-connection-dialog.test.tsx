@@ -572,6 +572,53 @@ describe("connect modal - state management", () => {
     });
   });
 
+  it("closes on outside click when no connection flow is active", async () => {
+    await openConnectModal("axiom");
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    click(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the dialog open on outside click while a connection flow is active", async () => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+    setMockStripeCliAuthCompleteResponse({
+      status: "pending",
+      errorMessage: null,
+    });
+
+    await openConnectModal("stripe", {
+      featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
+    });
+
+    click(getButtonByText(/Test mode/));
+    click(getButtonByText("Sign in with Stripe"));
+
+    await waitFor(() => {
+      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
+    });
+
+    click(document.body);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
+
+    click(screen.getByLabelText(/close/i));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("clears Stripe CLI auth state when the dialog closes", async () => {
     vi.spyOn(window, "open").mockReturnValue(null);
 
