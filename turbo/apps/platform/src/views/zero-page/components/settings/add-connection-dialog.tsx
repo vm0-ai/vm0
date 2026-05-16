@@ -60,7 +60,7 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
 import { getCliAuthConnectMethodContentComponent } from "./cli-auth-connect-methods.tsx";
-import { ConnectorHelpText } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 // ---------------------------------------------------------------------------
 // Connected status text helper

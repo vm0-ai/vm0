@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { createElement } from "react";
 
-import { ConnectorHelpText } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 describe("ConnectorHelpText", () => {
   it("renders supported connector help markdown", () => {
     render(
-      createElement(ConnectorHelpText, {
-        text: "Use **test mode** and [open docs](https://example.com/docs).\n> Keep this key private.",
-      }),
+      <ConnectorHelpText
+        text={
+          "Use **test mode** and [open docs](https://example.com/docs).\n> Keep this key private."
+        }
+      />,
     );
 
     const boldText = screen.getByText("test mode");
@@ -27,9 +28,11 @@ describe("ConnectorHelpText", () => {
 
   it("renders unsupported or unsafe HTML as text", () => {
     const { container } = render(
-      createElement(ConnectorHelpText, {
-        text: '<img src=x onerror=alert(1)> [bad <b>label</b>](https://example.com/" onclick="alert(1)) **<script>bad()</script>**',
-      }),
+      <ConnectorHelpText
+        text={
+          '<img src=x onerror=alert(1)> [bad <b>label</b>](https://example.com/" onclick="alert(1)) **<script>bad()</script>**'
+        }
+      />,
     );
 
     expect(container.querySelector("img")).toBeNull();

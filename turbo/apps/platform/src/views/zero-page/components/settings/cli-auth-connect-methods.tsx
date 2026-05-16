@@ -16,7 +16,7 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { onDomEventFn } from "../../../../signals/utils.ts";
-import { ConnectorHelpText } from "./connector-help-text.ts";
+import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 type CliAuthConnectMethodContentProps = {
   item: ConnectorTypeWithStatus;

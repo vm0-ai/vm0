@@ -1,5 +1,5 @@
 import { cn } from "@vm0/ui";
-import { createElement, Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 const DEFAULT_CONNECTOR_HELP_TEXT_CLASS =
   "text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline";
@@ -17,11 +17,7 @@ function renderBoldConnectorHelpMarkdown(
       nodes.push(text.slice(lastIndex, match.index));
     }
     nodes.push(
-      createElement(
-        "strong",
-        { key: `${keyPrefix}-strong-${match.index}` },
-        match[1],
-      ),
+      <strong key={`${keyPrefix}-strong-${match.index}`}>{match[1]}</strong>,
     );
     lastIndex = match.index + match[0].length;
   }
@@ -49,20 +45,18 @@ function renderInlineConnectorHelpMarkdown(
       ),
     );
     nodes.push(
-      createElement(
-        "a",
-        {
-          key: `${keyPrefix}-link-${match.index}`,
-          href: match[2],
-          target: "_blank",
-          rel: "noopener noreferrer",
-          className: "text-primary underline",
-        },
-        ...renderBoldConnectorHelpMarkdown(
+      <a
+        key={`${keyPrefix}-link-${match.index}`}
+        href={match[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline"
+      >
+        {renderBoldConnectorHelpMarkdown(
           match[1],
           `${keyPrefix}-link-${match.index}-label`,
-        ),
-      ),
+        )}
+      </a>,
     );
     lastIndex = match.index + match[0].length;
   }
@@ -90,22 +84,18 @@ export function ConnectorHelpText({
   for (const [index, line] of lines.entries()) {
     if (line.startsWith("> ")) {
       children.push(
-        createElement(
-          "div",
-          {
-            key: `line-${index}`,
-            className: "pl-3 border-l-2 border-muted text-muted-foreground",
-          },
-          ...renderInlineConnectorHelpMarkdown(line.slice(2), `line-${index}`),
-        ),
+        <div
+          key={`line-${index}`}
+          className="pl-3 border-l-2 border-muted text-muted-foreground"
+        >
+          {renderInlineConnectorHelpMarkdown(line.slice(2), `line-${index}`)}
+        </div>,
       );
     } else {
       children.push(
-        createElement(
-          Fragment,
-          { key: `line-${index}` },
-          ...renderInlineConnectorHelpMarkdown(line, `line-${index}`),
-        ),
+        <span key={`line-${index}`}>
+          {renderInlineConnectorHelpMarkdown(line, `line-${index}`)}
+        </span>,
       );
     }
     if (index < lines.length - 1) {
@@ -113,11 +103,9 @@ export function ConnectorHelpText({
     }
   }
 
-  return createElement(
-    "div",
-    {
-      className: cn(DEFAULT_CONNECTOR_HELP_TEXT_CLASS, className),
-    },
-    children,
+  return (
+    <div className={cn(DEFAULT_CONNECTOR_HELP_TEXT_CLASS, className)}>
+      {children}
+    </div>
   );
 }
