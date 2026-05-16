@@ -1173,8 +1173,17 @@ function createConnectorCliAuthRequestId(type: ConnectorType): string {
   return `${type}-cli-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function userFacingConnectorCliAuthMessage(message: string): string {
+  return message
+    .replaceAll("Stripe CLI", "Stripe")
+    .replaceAll("CLI auth", "connection")
+    .replaceAll("cli auth", "connection");
+}
+
 function cliAuthErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "CLI auth failed";
+  return error instanceof Error
+    ? userFacingConnectorCliAuthMessage(error.message)
+    : "Connection failed";
 }
 
 function isCurrentConnectorCliAuthRequest(
@@ -1313,7 +1322,9 @@ const pollConnectorCliAuthBrowserVerification$ = command(
       set(internalConnectorCliAuthState$, {
         ...current,
         status: "pending",
-        errorMessage: completeResult.errorMessage,
+        errorMessage: completeResult.errorMessage
+          ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
+          : null,
       });
 
       const remainingMs = expiresAtMs - Date.now();
@@ -1332,7 +1343,7 @@ const pollConnectorCliAuthBrowserVerification$ = command(
         status: "expired",
         connectorType: type,
         mode: latest.mode,
-        message: "CLI auth session expired. Start again to retry.",
+        message: "Connection session expired. Start again to retry.",
       });
     }
     return false;

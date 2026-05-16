@@ -213,7 +213,7 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("Stripe CLI")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sign in with Stripe")).not.toBeInTheDocument();
   });
 
   it("shows Stripe CLI auth in the Stripe modal when enabled", async () => {
@@ -224,7 +224,7 @@ describe("connect modal - content by auth method", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
     expect(
       screen.getByRole("heading", { name: "API Key" }),
@@ -240,7 +240,7 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("Stripe CLI")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sign in with Stripe")).not.toBeInTheDocument();
   });
 });
 
@@ -392,10 +392,10 @@ describe("connect modal - interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
-    const startButton = getButtonByText("Select a mode to start CLI auth");
+    const startButton = getButtonByText("Select a mode to continue");
     expect(startButton).toBeDisabled();
 
     expect(getButtonByText(/Test mode/)).toHaveTextContent(
@@ -406,7 +406,7 @@ describe("connect modal - interactions", () => {
     );
 
     click(getButtonByText(/Test mode/));
-    const selectedModeStartButton = getButtonByText("Start Stripe CLI auth");
+    const selectedModeStartButton = getButtonByText("Sign in with Stripe");
     expect(selectedModeStartButton).toBeEnabled();
 
     click(selectedModeStartButton);
@@ -443,11 +443,11 @@ describe("connect modal - interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     click(getButtonByText(/Test mode/));
-    click(getButtonByText("Start Stripe CLI auth"));
+    click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
@@ -484,23 +484,21 @@ describe("connect modal - interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     click(getButtonByText(/Test mode/));
-    click(getButtonByText("Start Stripe CLI auth"));
+    click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          "Stripe CLI config did not contain a test mode API key",
-        ),
+        screen.getByText("Stripe config did not contain a test mode API key"),
       ).toBeInTheDocument();
     });
 
     expect(completeCalls).toBe(1);
     expect(screen.queryByText("Open approval page")).not.toBeInTheDocument();
-    expect(getButtonByText("Start Stripe CLI auth")).toBeEnabled();
+    expect(getButtonByText("Sign in with Stripe")).toBeEnabled();
 
     click(screen.getByLabelText(/close/i));
     await waitFor(() => {
@@ -516,11 +514,11 @@ describe("connect modal - interactions", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     click(getButtonByText(/Test mode/));
-    click(getButtonByText("Start Stripe CLI auth"));
+    click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
@@ -582,11 +580,11 @@ describe("connect modal - state management", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     click(getButtonByText(/Test mode/));
-    click(getButtonByText("Start Stripe CLI auth"));
+    click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
@@ -601,11 +599,11 @@ describe("connect modal - state management", () => {
     context.store.set(setSelectedConnectorType$, "stripe");
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
-    expect(getButtonByText("Select a mode to start CLI auth")).toBeDisabled();
+    expect(getButtonByText("Select a mode to continue")).toBeDisabled();
   });
 
   it("clears Stripe CLI auth state when switching connectors", async () => {
@@ -616,11 +614,11 @@ describe("connect modal - state management", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
+      expect(screen.getByText("Sign in with Stripe")).toBeInTheDocument();
     });
 
     click(getButtonByText(/Test mode/));
-    click(getButtonByText("Start Stripe CLI auth"));
+    click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();

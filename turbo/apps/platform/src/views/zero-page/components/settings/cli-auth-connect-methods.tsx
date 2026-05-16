@@ -187,7 +187,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
   if (!cliAuthConfig) {
     return (
       <p className="text-sm text-muted-foreground">
-        CLI auth is not configured for this connector.
+        This connection method is not configured for this connector.
       </p>
     );
   }
@@ -240,8 +240,8 @@ function BrowserVerificationCliAuthConnectMethodContent({
             runLoadable.state === "loading"
               ? "Starting..."
               : requiresMode && !cliAuthState.mode
-                ? "Select a mode to start CLI auth"
-                : `Start ${cliAuthConfig.label} auth`}
+                ? "Select a mode to continue"
+                : cliAuthConfig.label}
           </Button>
         </>
       )}
