@@ -440,6 +440,13 @@ fn forward_control_request(
     request: OwnedProcessControlRequest,
     writer: GuestWriter,
 ) {
+    let OwnedProcessControlRequest {
+        response_seq,
+        target_seq,
+        control_nonce,
+        message_id,
+        payload,
+    } = request;
     let (status, diagnostic, mark_failed) = {
         match sink.wait_for_stream(CONTROL_IO_TIMEOUT) {
             Ok(stream) => {
@@ -452,17 +459,17 @@ fn forward_control_request(
                     )
                 } else {
                     let request_frame = ControlRequest {
-                        message_id: request.message_id.clone(),
-                        payload: request.payload.clone(),
+                        message_id: message_id.clone(),
+                        payload,
                     };
                     match process_control_ipc::write_request(&mut stream, &request_frame)
                         .and_then(|()| process_control_ipc::read_response(&mut stream))
                     {
-                        Ok(response) if response.message_id != request.message_id => (
+                        Ok(response) if response.message_id != message_id => (
                             ProcessControlStatus::SinkError,
                             format!(
                                 "process control sink message id mismatch: expected {}, got {}",
-                                request.message_id, response.message_id
+                                message_id, response.message_id
                             ),
                             true,
                         ),
@@ -503,19 +510,15 @@ fn forward_control_request(
             )
         };
         let result_payload = vsock_proto::encode_process_control_result(
-            request.target_seq,
-            request.control_nonce,
-            &request.message_id,
+            target_seq,
+            control_nonce,
+            &message_id,
             status,
             diagnostic,
         )
         .map_err(to_io_error)?;
-        vsock_proto::encode(
-            MSG_PROCESS_CONTROL_RESULT,
-            request.response_seq,
-            &result_payload,
-        )
-        .map_err(to_io_error)
+        vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, response_seq, &result_payload)
+            .map_err(to_io_error)
     });
     if let Err(error) = result {
         log(
