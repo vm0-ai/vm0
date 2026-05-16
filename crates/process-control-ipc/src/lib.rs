@@ -626,6 +626,19 @@ mod tests {
     }
 
     #[test]
+    fn read_request_rejects_wrong_frame_version() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let body = [FRAME_VERSION + 1, FRAME_REQUEST];
+        a.write_all(&(body.len() as u32).to_be_bytes()).unwrap();
+        a.write_all(&body).unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "invalid control frame version");
+    }
+
+    #[test]
     fn read_request_rejects_trailing_bytes() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         let mut payload = Vec::new();
