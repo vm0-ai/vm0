@@ -95,7 +95,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
         guest_agent::cli::execute_cli(
             &masker,
             common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
+            HttpClient::with_retry_delay(Duration::ZERO)?,
         ),
     )
     .await
