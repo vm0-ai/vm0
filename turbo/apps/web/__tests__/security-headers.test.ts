@@ -29,6 +29,12 @@ const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/user-model-preference/extra",
   "/api/zero/user-preferences",
 ] as const;
+const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
+const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
+const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/push-subscriptions/extra",
+  "/api/zero/push-subscription",
+] as const;
 const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
@@ -341,6 +347,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/uploads/prepare",
         },
         {
+          source: PUSH_SUBSCRIPTIONS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/push-subscriptions",
+        },
+        {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/user-model-preference",
@@ -392,6 +402,29 @@ describe("API backend rewrites", () => {
         },
       ]),
     );
+  });
+
+  it("should match only the exact push subscriptions rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === PUSH_SUBSCRIPTIONS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: PUSH_SUBSCRIPTIONS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/push-subscriptions",
+    });
+
+    const matcher = getPathMatch(PUSH_SUBSCRIPTIONS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(PUSH_SUBSCRIPTIONS_PATH)).toStrictEqual({});
+    for (const pathname of PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact user model preference rewrite", async () => {

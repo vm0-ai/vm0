@@ -1,5 +1,6 @@
 import { initServices } from "../../lib/init-services";
 import { and, eq, or } from "drizzle-orm";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { users } from "@vm0/db/schema/user";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -50,6 +51,29 @@ export async function insertUserCacheEntry(entry: {
     name: entry.name ?? null,
     cachedAt: entry.cachedAt ?? new Date(),
   });
+}
+
+/**
+ * Insert or update a push subscription for testing.
+ * @why-db-direct Push subscriptions are now API-backend authoritative; web callback tests seed the DB fixture directly
+ */
+export async function insertTestPushSubscription(args: {
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}): Promise<void> {
+  await globalThis.services.db
+    .insert(pushSubscriptions)
+    .values(args)
+    .onConflictDoUpdate({
+      target: pushSubscriptions.endpoint,
+      set: {
+        userId: args.userId,
+        p256dh: args.p256dh,
+        auth: args.auth,
+      },
+    });
 }
 
 /**
