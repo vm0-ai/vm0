@@ -10,12 +10,15 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
+import { now } from "../../external/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -31,6 +34,10 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
 const seedModelPolicyFixture$ = command(
   async (
     { set },
@@ -45,6 +52,12 @@ const seedModelPolicyFixture$ = command(
       orgId,
       userId,
       switches,
+    });
+    signal.throwIfAborted();
+    await writeDb.insert(orgMembersCache).values({
+      orgId,
+      userId,
+      role: "admin",
     });
     signal.throwIfAborted();
 
@@ -67,6 +80,10 @@ const deleteModelPolicyFixture$ = command(
     await writeDb
       .delete(modelProviders)
       .where(eq(modelProviders.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb
       .delete(userFeatureSwitches)
@@ -208,6 +225,31 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.model;
       }),
     ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
+    expect(response.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+  });
+
+  it("allows zero tokens to read policy controls without a model-provider capability", async () => {
+    const fixture = await seedFixture({});
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await accept(
+      apiClient().list({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );

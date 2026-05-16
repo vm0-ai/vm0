@@ -155,7 +155,7 @@ function buildAgentToolsPrompt(): string {
     "- Discover available commands: `zero --help`.",
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup -- they are not available.",
-    "- Model settings / Bring your own LLM keys are workspace model-provider settings, separate from connectors. Discover them with `zero model --help`; the app UI path is Organization Settings -> Models.",
+    "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration with `zero agent edit --help`.",
   ].join("\n");

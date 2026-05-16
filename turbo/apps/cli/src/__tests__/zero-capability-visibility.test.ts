@@ -15,6 +15,7 @@ function buildCommands(): Command[] {
   return [
     new Command("org"),
     new Command("model"),
+    new Command("model-provider"),
     new Command("agent"),
     new Command("connector"),
     new Command("logs"),
@@ -123,6 +124,8 @@ describe("registerZeroCommands", () => {
   });
 
   it("should not hide any commands when ZERO_TOKEN is absent", () => {
+    vi.stubEnv("ZERO_TOKEN", undefined);
+
     const prog = buildProgram();
     expect(hiddenCommandNames(prog)).toEqual([]);
   });
@@ -138,6 +141,7 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toEqual([
       "model",
+      "model-provider",
       "agent",
       "schedule",
       "whoami",
@@ -190,10 +194,15 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(visibleCommandNames(prog)).toEqual(["model", "whoami", "web"]);
+    expect(visibleCommandNames(prog)).toEqual([
+      "model",
+      "model-provider",
+      "whoami",
+      "web",
+    ]);
   });
 
-  it("should show model command even without model-provider capabilities", () => {
+  it("should show model commands even without model-provider capabilities", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: [],
@@ -203,6 +212,7 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("model");
+    expect(visibleCommandNames(prog)).toContain("model-provider");
   });
 
   it("should show slack when slack:write capability is present", () => {
@@ -363,7 +373,10 @@ describe("registerZeroCommands", () => {
     });
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
-      "Manage model keys?",
+      "List models?",
+    );
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Model routing?",
     );
   });
 
@@ -517,6 +530,7 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toEqual([
       "model",
+      "model-provider",
       "schedule",
       "whoami",
       "web",

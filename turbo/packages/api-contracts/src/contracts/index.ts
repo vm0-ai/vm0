@@ -450,6 +450,7 @@ export {
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
+  VM0_MODEL_CREDIT_MULTIPLIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getFrameworkForType,
@@ -470,6 +471,7 @@ export {
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
+  getVm0ModelMultiplier,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
