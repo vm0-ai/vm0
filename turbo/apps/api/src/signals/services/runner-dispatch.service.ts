@@ -11,7 +11,7 @@ const L = logger("RunnerDispatch");
 
 const STALE_THRESHOLD_MS = 60_000;
 
-export async function findBestRunner(
+async function findBestRunner(
   db: ReadonlyDb,
   group: string,
   profile: string,
