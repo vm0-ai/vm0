@@ -54,6 +54,12 @@ const VOICE_CHAT_TOKEN_PATH = "/api/zero/voice-chat/token";
 const VOICE_CHAT_ITEM_APPEND_PATH = `${VOICE_CHAT_SESSION_PATH}/items`;
 const VOICE_CHAT_TASKS_PATH = `${VOICE_CHAT_SESSION_PATH}/tasks`;
 const VOICE_CHAT_TRIGGER_REASONING_PATH = `${VOICE_CHAT_SESSION_PATH}/trigger-reasoning`;
+const STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE =
+  "/api/zero/connectors/stripe/cli-auth/sessions";
+const STRIPE_CLI_AUTH_SESSIONS_PATH =
+  "/api/zero/connectors/stripe/cli-auth/sessions";
+const STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH =
+  "/api/zero/connectors/stripe/cli-auth/sessions/complete";
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -284,6 +290,11 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/user/export",
         },
         {
+          source: STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/connectors/stripe/cli-auth/sessions",
+        },
+        {
           source: "/api/zero/devices/bb0/confirm",
           destination: "https://api.example.test/api/zero/devices/bb0/confirm",
         },
@@ -402,6 +413,38 @@ describe("API backend rewrites", () => {
         },
       ]),
     );
+  });
+
+  it("should match only the exact Stripe CLI auth sessions rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE;
+    });
+    const exactIndex = rewrites.findIndex((entry) => {
+      return entry.source === STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE;
+    });
+    const childIndex = rewrites.findIndex((entry) => {
+      return (
+        entry.source === `${STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE}/:path*`
+      );
+    });
+    expect(rewrite).toStrictEqual({
+      source: STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/stripe/cli-auth/sessions",
+    });
+    expect(exactIndex).toBeGreaterThanOrEqual(0);
+    expect(childIndex).toBeGreaterThan(exactIndex);
+
+    const matcher = getPathMatch(STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(STRIPE_CLI_AUTH_SESSIONS_PATH)).toStrictEqual({});
+    expect(matcher(STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH)).toBe(false);
   });
 
   it("should match only the exact push subscriptions rewrite", async () => {
