@@ -76,41 +76,38 @@ impl ProcessControlRegistry {
         control_nonce: Option<ProcessControlNonce>,
         control_sink: bool,
     ) -> io::Result<ProcessControlRegistration> {
-        let (entry, bootstrap_endpoint) = match control_nonce {
+        let (bootstrap_endpoint, accept_sink) = match control_nonce {
             Some(nonce) if control_sink => {
                 let endpoint = process_control_ipc::endpoint_name(seq, &nonce);
-                let listener = process_control_ipc::bind_abstract_listener(&endpoint)?;
                 let sink = Arc::new(ControlSinkState::new());
-                let accept_sink = Arc::clone(&sink);
-                thread::Builder::new()
-                    .name(THREAD_PROCESS_CONTROL_ACCEPT.to_owned())
-                    .spawn(move || accept_control_sink(listener, accept_sink))?;
-                (
+                self.insert(
+                    seq,
                     ProcessControlEntry::WithNonce {
                         nonce,
-                        sink: Some(sink),
+                        sink: Some(Arc::clone(&sink)),
                     },
-                    Some(endpoint),
-                )
+                )?;
+                (Some(endpoint), Some(sink))
             }
-            Some(nonce) => (ProcessControlEntry::WithNonce { nonce, sink: None }, None),
-            None => (ProcessControlEntry::NoControl, None),
+            Some(nonce) => {
+                self.insert(seq, ProcessControlEntry::WithNonce { nonce, sink: None })?;
+                (None, None)
+            }
+            None => {
+                self.insert(seq, ProcessControlEntry::NoControl)?;
+                (None, None)
+            }
         };
 
-        let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if active.contains_key(&seq) {
-            if let ProcessControlEntry::WithNonce {
-                sink: Some(sink), ..
-            } = &entry
-            {
-                sink.close();
-            }
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "process operation already active",
-            ));
+        let start_result = match (&bootstrap_endpoint, accept_sink) {
+            (Some(endpoint), Some(sink)) => start_control_sink_accept_thread(endpoint, sink),
+            _ => Ok(()),
+        };
+        if let Err(error) = start_result {
+            self.remove(seq);
+            return Err(error);
         }
-        active.insert(seq, entry);
+
         Ok(ProcessControlRegistration {
             guard: ProcessControlGuard {
                 registry: self.clone(),
@@ -119,6 +116,15 @@ impl ProcessControlRegistry {
             },
             bootstrap_endpoint,
         })
+    }
+
+    fn insert(&self, seq: u32, entry: ProcessControlEntry) -> io::Result<()> {
+        let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if active.contains_key(&seq) {
+            return Err(operation_already_active_error());
+        }
+        active.insert(seq, entry);
+        Ok(())
     }
 
     fn remove(&self, seq: u32) {
@@ -183,6 +189,21 @@ impl ProcessControlEntry {
             sink.close();
         }
     }
+}
+
+fn operation_already_active_error() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "process operation already active",
+    )
+}
+
+fn start_control_sink_accept_thread(endpoint: &str, sink: Arc<ControlSinkState>) -> io::Result<()> {
+    let listener = process_control_ipc::bind_abstract_listener(endpoint)?;
+    thread::Builder::new()
+        .name(THREAD_PROCESS_CONTROL_ACCEPT.to_owned())
+        .spawn(move || accept_control_sink(listener, sink))?;
+    Ok(())
 }
 
 impl ProcessControlGuard {
@@ -634,6 +655,25 @@ mod tests {
 
         first.guard.release();
         assert!(registry.register(7, None, false).is_ok());
+    }
+
+    #[test]
+    fn duplicate_control_sink_sequence_is_rejected_without_rebinding_endpoint() {
+        const SINK_NONCE: ProcessControlNonce = *b"8899aabbccddeeff";
+
+        let registry = ProcessControlRegistry::default();
+        let first = registry.register(14, Some(SINK_NONCE), true).unwrap();
+
+        let error = match registry.register(14, Some(SINK_NONCE), true) {
+            Ok(_) => panic!("expected duplicate process control registration to fail"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(error.to_string(), "process operation already active");
+        assert!(registry.resolve(14, SINK_NONCE).is_ok());
+
+        first.guard.release();
     }
 
     #[test]
