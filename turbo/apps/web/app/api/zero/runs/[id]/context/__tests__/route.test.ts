@@ -112,6 +112,38 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(data.featureFlags).toEqual({ computerUse: true, voiceChat: false });
   });
 
+  it("should drop non-string environment values from the snapshot", async () => {
+    const userId = uniqueId("zctx-mixed");
+    await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
+    const { runId } = await seedTestRun(userId, compose.composeId, {
+      status: "running",
+      prompt: "test prompt",
+    });
+
+    const snapshot = makeSnapshot(runId, userId);
+    const corruptedSnapshot = {
+      ...snapshot,
+      environment: {
+        NODE_ENV: "production",
+        API_KEY: "***",
+        // Simulates Axiom returning a non-string value (e.g. null after
+        // serialize/round-trip) — the route must not fail response validation.
+        AGENTMAIL_API_KEY: null,
+      },
+    } as unknown as RunContextSnapshot;
+    context.mocks.axiom.queryAxiom.mockResolvedValue([corruptedSnapshot]);
+
+    const response = await GET(createTestRequest(contextUrl(runId)));
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.environment).toEqual({
+      NODE_ENV: "production",
+      API_KEY: "***",
+    });
+  });
+
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("zctx-nf");
     await setupOrg(userId);

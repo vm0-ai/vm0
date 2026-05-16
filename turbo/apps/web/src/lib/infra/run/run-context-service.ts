@@ -15,5 +15,27 @@ export async function queryRunContext(
 | limit 1`;
 
   const results = await queryAxiom<RunContextSnapshot>(apl);
-  return results[0] ?? null;
+  const snapshot = results[0];
+  if (!snapshot) {
+    return null;
+  }
+  // Axiom can return entries whose values lost their string type during
+  // serialize/round-trip (e.g. ingested as empty strings, returned as null).
+  // The ts-rest response schema requires Record<string, string>, so drop any
+  // non-string values to keep the contract intact.
+  return { ...snapshot, environment: filterStringValues(snapshot.environment) };
+}
+
+function filterStringValues(
+  value: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  if (!value) {
+    return {};
+  }
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] => {
+      return typeof entry[1] === "string";
+    },
+  );
+  return Object.fromEntries(entries);
 }
