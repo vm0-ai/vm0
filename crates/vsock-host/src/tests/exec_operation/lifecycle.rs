@@ -17,9 +17,9 @@ use crate::{
 
 #[tokio::test]
 async fn exec_operation_wait_timeout_cleans_operation_state() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = start_capture_operation(&host, "timeout").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     assert_eq!(operation_count(&host), 1);
 
@@ -35,10 +35,10 @@ async fn exec_operation_wait_timeout_cleans_operation_state() {
 
 #[tokio::test]
 async fn exec_error_response_completes_operation_without_timeout() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "error-response").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
 
     let payload = vsock_proto::encode_error("exec operation already active");
@@ -50,12 +50,12 @@ async fn exec_error_response_completes_operation_without_timeout() {
     assert_eq!(err.to_string(), "exec operation already active");
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_operation_connection_close_wakes_result_and_stream() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -74,7 +74,7 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
         .await
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
 
     drop(guest);
@@ -89,7 +89,7 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
 
 #[tokio::test]
 async fn exec_start_after_connection_close_returns_connection_reset() {
-    let (host, guest, _decoder) = setup_host_and_guest().await;
+    let (host, guest) = setup_host_and_guest().await;
     drop(guest);
     host.wait_until_closed(Duration::from_secs(5))
         .await
@@ -118,7 +118,7 @@ async fn exec_start_after_connection_close_returns_connection_reset() {
 
 #[tokio::test]
 async fn host_drop_closes_active_exec_result_and_stream() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -137,7 +137,7 @@ async fn host_drop_closes_active_exec_result_and_stream() {
         .await
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
 
     drop(host);
@@ -152,9 +152,9 @@ async fn host_drop_closes_active_exec_result_and_stream() {
 
 #[tokio::test]
 async fn exec_output_after_result_does_not_poison_or_resurrect_state() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = start_capture_operation(&host, "done").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_result(
         &mut guest,
         msg.seq,
@@ -178,7 +178,7 @@ async fn exec_output_after_result_does_not_poison_or_resurrect_state() {
     .await;
 
     let exec_task = tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await });
-    let exec_msg = read_guest_message(&mut guest, &mut decoder).await;
+    let exec_msg = read_guest_message(&mut guest).await;
     assert_eq!(exec_msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&exec_msg.payload).unwrap();
     assert_eq!(decoded.command, "echo ok");
@@ -196,10 +196,10 @@ async fn exec_output_after_result_does_not_poison_or_resurrect_state() {
 
 #[tokio::test]
 async fn duplicate_exec_result_after_completion_is_ignored() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "duplicate-result").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
 
     send_exec_result(
@@ -229,5 +229,5 @@ async fn duplicate_exec_result_after_completion_is_ignored() {
     )
     .await;
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }

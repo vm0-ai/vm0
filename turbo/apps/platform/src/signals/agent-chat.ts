@@ -115,9 +115,8 @@ export interface ChatThread {
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
   /**
-   * Per-thread model override. Both fields set together or both null. When
-   * set, the send route uses this combination, overriding the agent and org
-   * defaults, for the next run.
+   * Per-thread selected model pin. Provider routing is resolved from the
+   * current org policy when sending.
    */
   modelProviderId: string | null;
   selectedModel: string | null;

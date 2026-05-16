@@ -12,7 +12,7 @@ use crate::{ExecOperationRequest, ExecStreamRequest, exec_operation as exec_oper
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -38,12 +38,12 @@ async fn exec_operation_stream_rejects_zero_capacity_without_sending_frame() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -69,12 +69,12 @@ async fn exec_operation_stream_rejects_oversized_capacity_without_sending_frame(
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_start_stream_policy_uses_default_receiver() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let mut handle = host
@@ -97,7 +97,7 @@ async fn exec_start_stream_policy_uses_default_receiver() {
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     send_exec_output(
         &mut guest,
@@ -125,7 +125,7 @@ async fn exec_start_stream_policy_uses_default_receiver() {
 
 #[tokio::test]
 async fn exec_start_rejects_receiver_without_stream_policy() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -148,12 +148,12 @@ async fn exec_start_rejects_receiver_without_stream_policy() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_rejects_non_streaming_policy() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -176,12 +176,12 @@ async fn exec_operation_stream_rejects_non_streaming_policy() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_start_encode_error_does_not_register_or_send_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -207,12 +207,12 @@ async fn exec_start_encode_error_does_not_register_or_send_frame() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_start_rejects_zero_timeout_without_sending_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = match host
@@ -235,12 +235,12 @@ async fn exec_start_rejects_zero_timeout_without_sending_frame() {
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -263,7 +263,7 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     send_exec_output(
         &mut guest,
@@ -309,7 +309,7 @@ async fn exec_operation_stream_dispatches_stdout_stderr_and_closes_on_result() {
 
 #[tokio::test]
 async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -329,7 +329,7 @@ async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -366,7 +366,7 @@ async fn exec_operation_stream_full_channel_closes_stream_and_marks_result() {
 
 #[tokio::test]
 async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -386,7 +386,7 @@ async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result()
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     for output_seq in 0..32 {
         send_exec_output(
@@ -424,7 +424,7 @@ async fn exec_operation_stream_many_chunks_soak_does_not_block_terminal_result()
 
 #[tokio::test]
 async fn exec_output_for_non_streamed_side_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -443,7 +443,7 @@ async fn exec_output_for_non_streamed_side_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -463,7 +463,7 @@ async fn exec_output_for_non_streamed_side_poisons_connection() {
 
 #[tokio::test]
 async fn exec_output_seq_gap_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -482,7 +482,7 @@ async fn exec_output_seq_gap_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -502,7 +502,7 @@ async fn exec_output_seq_gap_poisons_connection() {
 
 #[tokio::test]
 async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -522,7 +522,7 @@ async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
         .unwrap();
     let mut rx = handle.take_stream_receiver().unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", true).await;
     send_discarded_exec_result(
         &mut guest,
@@ -541,7 +541,7 @@ async fn exec_output_zero_stream_limit_accepts_empty_truncation_marker() {
 
 #[tokio::test]
 async fn exec_output_empty_non_truncated_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -560,7 +560,7 @@ async fn exec_output_empty_non_truncated_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", false).await;
 
     host.wait_until_closed(Duration::from_secs(5))
@@ -572,7 +572,7 @@ async fn exec_output_empty_non_truncated_poisons_connection() {
 
 #[tokio::test]
 async fn exec_output_over_requested_chunk_limit_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -591,7 +591,7 @@ async fn exec_output_over_requested_chunk_limit_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -611,7 +611,7 @@ async fn exec_output_over_requested_chunk_limit_poisons_connection() {
 
 #[tokio::test]
 async fn exec_output_over_requested_stream_limit_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -630,7 +630,7 @@ async fn exec_output_over_requested_stream_limit_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -659,7 +659,7 @@ async fn exec_output_over_requested_stream_limit_poisons_connection() {
 
 #[tokio::test]
 async fn exec_output_after_truncation_poisons_connection() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -678,7 +678,7 @@ async fn exec_output_after_truncation_poisons_connection() {
         .await
         .unwrap();
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(&mut guest, msg.seq, 0, ExecOutputStream::Stdout, b"", true).await;
     send_exec_output(
         &mut guest,
@@ -699,7 +699,7 @@ async fn exec_output_after_truncation_poisons_connection() {
 
 #[tokio::test]
 async fn exec_operation_stream_dropped_receiver_does_not_block_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let mut handle = host
         .exec_operation_stream(ExecStreamRequest {
             timeout_ms: 5000,
@@ -719,7 +719,7 @@ async fn exec_operation_stream_dropped_receiver_does_not_block_result() {
         .unwrap();
     drop(handle.take_stream_receiver());
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,

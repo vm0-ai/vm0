@@ -211,10 +211,9 @@ const chatThreadDetailSchema = z.object({
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   /**
-   * Per-thread model pin. Provider-first threads store modelProviderId +
-   * selectedModel together; model-first threads can store selectedModel with
-   * route metadata and a null modelProviderId. When set, the send route uses
-   * this pin instead of drifting with current defaults.
+   * Per-thread selected model pin. Provider route fields are retained for
+   * backwards-compatible responses but model-first sends re-resolve provider
+   * routing from current org policy.
    */
   modelProviderId: z.string().nullable().optional(),
   modelProviderType: modelProviderTypeSchema.nullable().optional(),

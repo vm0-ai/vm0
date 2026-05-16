@@ -50,14 +50,14 @@ async fn test_exec() {
 
 #[tokio::test]
 async fn exec_operation_tracks_until_terminal_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let exec_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("echo tracked", 5000, &[], false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -86,7 +86,7 @@ async fn exec_operation_tracks_until_terminal_result() {
 /// guest-side orphan when the host's outer timeout fires.
 #[tokio::test]
 async fn test_exec_rejects_zero_timeout() {
-    let (host, _guest, _decoder) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_guest().await;
 
     let err = host.exec("echo hi", 0, &[], false).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
@@ -120,14 +120,14 @@ async fn test_exec_error_response() {
 
 #[tokio::test]
 async fn exec_operation_error_response_releases_tracker() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let exec_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("badcmd", 5000, &[], false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -148,10 +148,10 @@ async fn exec_operation_error_response_releases_tracker() {
 
 #[tokio::test]
 async fn dropping_exec_handle_after_start_marks_tracker_not_parkable() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "drop-after-start").await;
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     assert_eq!(
         normal_operation_readiness(&host),

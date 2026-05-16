@@ -6,8 +6,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::Instant;
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, ExecOutputStream, ExecTermination, MSG_EXEC_OUTPUT,
-    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
+    Decoder, ExecCapturedOutput, ExecOutputStream, ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE,
+    MIN_BODY_SIZE, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
+    RawMessage,
 };
 
 use crate::{
@@ -72,43 +73,59 @@ pub(crate) fn drop_started_pending_normal_request_write_guard(host: &VsockHost) 
     drop(guard);
 }
 
-pub(crate) async fn read_guest_message(
-    stream: &mut UnixStream,
-    decoder: &mut Decoder,
-) -> RawMessage {
-    let mut buf = [0u8; 4096];
-    loop {
-        let n = stream.read(&mut buf).await.unwrap();
-        assert_ne!(n, 0, "connection closed before message");
-        let mut msgs = decoder.decode(&buf[..n]).unwrap();
-        if !msgs.is_empty() {
-            return msgs.remove(0);
-        }
+pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
+    let mut header = [0u8; HEADER_SIZE];
+    stream.read_exact(&mut header).await.unwrap();
+
+    let body_len = u32::from_be_bytes(header) as usize;
+    assert!(
+        (MIN_BODY_SIZE..=MAX_MESSAGE_SIZE).contains(&body_len),
+        "invalid message body length: {body_len}",
+    );
+
+    let mut body = vec![0u8; body_len];
+    stream.read_exact(&mut body).await.unwrap();
+
+    RawMessage {
+        msg_type: body[0],
+        seq: u32::from_be_bytes(body[1..MIN_BODY_SIZE].try_into().unwrap()),
+        payload: body[MIN_BODY_SIZE..].to_vec(),
     }
 }
 
-pub(crate) async fn read_guest_messages(
-    stream: &mut UnixStream,
-    decoder: &mut Decoder,
-    count: usize,
-) -> Vec<RawMessage> {
+pub(crate) async fn read_guest_messages(stream: &mut UnixStream, count: usize) -> Vec<RawMessage> {
     let mut messages = Vec::new();
-    let mut buf = [0u8; 4096];
     while messages.len() < count {
-        let n = stream.read(&mut buf).await.unwrap();
-        assert_ne!(n, 0, "connection closed before messages");
-        messages.extend(decoder.decode(&buf[..n]).unwrap());
+        messages.push(read_guest_message(stream).await);
     }
     messages
 }
 
-pub(crate) async fn setup_host_and_guest() -> (VsockHost, UnixStream, Decoder) {
+#[tokio::test]
+async fn read_guest_message_preserves_coalesced_frames() {
+    let (mut writer, mut reader) = make_pair();
+    let mut frames = vsock_proto::encode(MSG_EXEC_START, 7, b"first").unwrap();
+    frames.extend_from_slice(&vsock_proto::encode(MSG_EXEC_RESULT, 8, b"second").unwrap());
+    writer.write_all(&frames).await.unwrap();
+
+    let first = read_guest_message(&mut reader).await;
+    let second = read_guest_message(&mut reader).await;
+
+    assert_eq!(first.msg_type, MSG_EXEC_START);
+    assert_eq!(first.seq, 7);
+    assert_eq!(first.payload, b"first");
+    assert_eq!(second.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(second.seq, 8);
+    assert_eq!(second.payload, b"second");
+}
+
+pub(crate) async fn setup_host_and_guest() -> (VsockHost, UnixStream) {
     let (host_stream, mut guest) = make_pair();
     let host_task = tokio::spawn(async move { host_from_stream(host_stream).await.unwrap() });
     let mut decoder = Decoder::new();
     mock_handshake(&mut guest, &mut decoder).await;
     let host = host_task.await.unwrap();
-    (host, guest, decoder)
+    (host, guest)
 }
 
 fn exec_result_payload(termination: ExecTermination, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
@@ -209,13 +226,12 @@ pub(crate) async fn wait_for_operation_count(host: &VsockHost, expected: usize) 
 pub(crate) async fn assert_connection_accepts_exec_operation(
     host: &Arc<VsockHost>,
     guest: &mut UnixStream,
-    decoder: &mut Decoder,
 ) {
     let exec_task = {
         let host = Arc::clone(host);
         tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
     };
-    let msg = read_guest_message(guest, decoder).await;
+    let msg = read_guest_message(guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.command, "echo ok");

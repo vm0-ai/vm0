@@ -20,7 +20,7 @@ use crate::{CopyFileOptions, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
-    let (host, _guest, _decoder) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_guest().await;
     let err = host
         .copy_file(
             "/tmp/large.log",
@@ -40,14 +40,14 @@ async fn copy_file_rejects_max_bytes_above_stream_budget() {
 
 #[tokio::test]
 async fn read_file_returns_content_and_missing() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let read_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.read_file("/tmp/session.txt", 1024, 5000).await })
     };
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "read-file");
@@ -68,7 +68,7 @@ async fn read_file_returns_content_and_missing() {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.read_file("/tmp/missing.txt", 1024, 5000).await })
     };
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
@@ -86,10 +86,10 @@ async fn read_file_returns_content_and_missing() {
 
 #[tokio::test]
 async fn read_file_errors_on_truncated_stdout() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let read_task = tokio::spawn(async move { host.read_file("/tmp/large.txt", 5, 5000).await });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let payload = vsock_proto::encode_exec_result(
         ExecTermination::Exited { exit_code: 0 },
@@ -113,7 +113,7 @@ async fn read_file_errors_on_truncated_stdout() {
 
 #[tokio::test]
 async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let err = host.read_file("/tmp/empty.txt", 0, 5000).await.unwrap_err();
@@ -128,16 +128,16 @@ async fn read_file_rejects_invalid_max_bytes_without_sending_frame() {
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(operation_count(&host), 0);
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn read_file_quotes_guest_path_with_single_quote() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let read_task =
         tokio::spawn(async move { host.read_file("/tmp/session'one.txt", 1024, 5000).await });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(
@@ -159,7 +159,7 @@ async fn read_file_quotes_guest_path_with_single_quote() {
 
 #[tokio::test]
 async fn copy_file_streams_to_temp_then_renames() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -182,7 +182,7 @@ async fn copy_file_streams_to_temp_then_renames() {
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "copy-file");
@@ -239,7 +239,7 @@ async fn copy_file_streams_to_temp_then_renames() {
 
 #[tokio::test]
 async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_parent() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -282,12 +282,12 @@ async fn copy_file_rejects_invalid_options_without_sending_frame_or_creating_par
     assert!(!dir.exists());
     assert_eq!(operation_count(&host), 0);
 
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -312,7 +312,7 @@ async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(
@@ -344,7 +344,7 @@ async fn copy_file_creates_parent_and_quotes_guest_path_with_single_quote() {
 
 #[tokio::test]
 async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -371,7 +371,7 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -382,7 +382,7 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
     )
     .await;
 
-    let cancel = read_guest_message(&mut guest, &mut decoder).await;
+    let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, msg.seq);
     send_stream_exec_result(&mut guest, msg.seq, ExecTermination::Cancelled, b"").await;
@@ -403,7 +403,7 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
 
 #[tokio::test]
 async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -430,7 +430,7 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     send_exec_output(
         &mut guest,
         msg.seq,
@@ -464,7 +464,7 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
 
 #[tokio::test]
 async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -490,7 +490,7 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
@@ -518,7 +518,7 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
 
 #[tokio::test]
 async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_removes_temp() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -545,7 +545,7 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
         .await
     });
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert!(decoded.expected_exit_codes.is_empty());
@@ -573,7 +573,7 @@ async fn copy_file_missing_without_missing_ok_preserves_existing_file_and_remove
 
 #[tokio::test]
 async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -602,7 +602,7 @@ async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() 
             .await
     });
 
-    let start = read_guest_message(&mut guest, &mut decoder).await;
+    let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
     let temp_paths: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
@@ -618,7 +618,7 @@ async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() 
     copy_task.abort();
     assert!(copy_task.await.unwrap_err().is_cancelled());
 
-    let cancel = read_guest_message(&mut guest, &mut decoder).await;
+    let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
     assert_eq!(cancel.seq, start.seq);
     assert!(!host_path.exists());
@@ -666,14 +666,14 @@ async fn test_write_file() {
 
 #[tokio::test]
 async fn write_file_tracks_until_result() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"hello", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -693,14 +693,14 @@ async fn write_file_tracks_until_result() {
 
 #[tokio::test]
 async fn write_file_guest_failure_releases_tracker() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -721,14 +721,14 @@ async fn write_file_guest_failure_releases_tracker() {
 
 #[tokio::test]
 async fn write_file_error_response_releases_tracker() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -749,14 +749,14 @@ async fn write_file_error_response_releases_tracker() {
 
 #[tokio::test]
 async fn write_file_unexpected_response_keeps_tracker_fail_closed() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -776,14 +776,14 @@ async fn write_file_unexpected_response_keeps_tracker_fail_closed() {
 
 #[tokio::test]
 async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),
@@ -806,7 +806,7 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
 
 #[tokio::test]
 async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let writer_guard = host.shared.writer.lock().await;
     let write_task = {
@@ -829,19 +829,19 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
     );
 
     drop(writer_guard);
-    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
 #[tokio::test]
 async fn write_file_connection_close_after_request_marks_tracker_not_parkable() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_WRITE_FILE);
     assert_eq!(
         normal_operation_readiness(&host),

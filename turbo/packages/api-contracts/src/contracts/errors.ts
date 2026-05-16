@@ -89,7 +89,7 @@ export const RUN_ERROR_GUIDANCE: Record<
   NO_MODEL_PROVIDER: {
     title: "No model provider configured",
     guidance: "Configure a model provider to start running agents.",
-    cliHint: "zero org model-provider setup",
+    cliHint: "zero model-provider set --help",
   },
   INSUFFICIENT_CREDITS: {
     title: "Credits depleted",

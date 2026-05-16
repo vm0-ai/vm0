@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.7...guest-agent-v0.31.8) (2026-05-16)
+
+
+### Documentation
+
+* **guest-agent:** document cli module boundaries ([#13531](https://github.com/vm0-ai/vm0/issues/13531)) ([5fdedd4](https://github.com/vm0-ai/vm0/commit/5fdedd493b951ddb83a2ccd18b26897e85e473e4))
+
 ## [0.31.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.6...guest-agent-v0.31.7) (2026-05-16)
 
 

@@ -114,7 +114,7 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn
@@ -125,7 +125,7 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
         assert_eq!(decoded_control.target_seq, spawn.seq);
@@ -175,7 +175,7 @@ async fn test_spawn_process_concurrent_controls_route_by_request_seq() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -184,7 +184,7 @@ async fn test_spawn_process_concurrent_controls_route_by_request_seq() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let controls = read_guest_messages(&mut guest, &mut decoder, 2).await;
+        let controls = read_guest_messages(&mut guest, 2).await;
         let mut seen = Vec::new();
         for control in controls {
             assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
@@ -257,7 +257,7 @@ async fn test_spawn_process_control_inactive_status_returns_not_found() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -266,7 +266,7 @@ async fn test_spawn_process_control_inactive_status_returns_not_found() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
         assert_eq!(decoded_control.target_seq, spawn.seq);
         assert_eq!(decoded_control.control_nonce, control_nonce);
@@ -307,7 +307,7 @@ async fn test_spawn_process_control_nonce_mismatch_status_returns_permission_den
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -316,7 +316,7 @@ async fn test_spawn_process_control_nonce_mismatch_status_returns_permission_den
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
         assert_eq!(decoded_control.control_nonce, control_nonce);
 
@@ -356,7 +356,7 @@ async fn test_spawn_process_control_unsupported_status_returns_unsupported() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -365,7 +365,7 @@ async fn test_spawn_process_control_unsupported_status_returns_unsupported() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
 
         send_process_control_result(
@@ -404,7 +404,7 @@ async fn test_spawn_process_control_malformed_result_poisons_connection() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -413,7 +413,7 @@ async fn test_spawn_process_control_malformed_result_poisons_connection() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
 
         send_process_control_result(
@@ -460,7 +460,7 @@ async fn test_spawn_process_control_result_nonce_mismatch_poisons_connection() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let mut wrong_nonce = decoded_spawn.control_nonce.unwrap();
@@ -470,7 +470,7 @@ async fn test_spawn_process_control_result_nonce_mismatch_poisons_connection() {
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
 
         send_process_control_result(
@@ -517,7 +517,7 @@ async fn test_spawn_process_control_result_message_id_mismatch_poisons_connectio
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -526,7 +526,7 @@ async fn test_spawn_process_control_result_message_id_mismatch_poisons_connectio
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
 
         send_process_control_result(
@@ -573,16 +573,16 @@ async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let payload = vsock_proto::encode_spawn_process_result(45);
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let control = read_guest_message(&mut guest, &mut decoder).await;
+        let control = read_guest_message(&mut guest).await;
         assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
 
-        let exec = read_guest_message(&mut guest, &mut decoder).await;
+        let exec = read_guest_message(&mut guest).await;
         assert_eq!(exec.msg_type, MSG_EXEC_START);
         send_exec_result(
             &mut guest,

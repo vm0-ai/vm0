@@ -230,7 +230,15 @@ export interface ConnectorOAuthConfig {
  * CLI auth configuration for connectors that can import credentials through a
  * provider CLI.
  */
+export type ConnectorCliAuthFlow = "browser-verification";
+
 export interface ConnectorCliAuthConfig {
+  /**
+   * Frontend flow used to guide the user through the provider CLI login.
+   * Provider-specific API calls are adapted separately; this only describes
+   * the reusable user interaction pattern.
+   */
+  flow: ConnectorCliAuthFlow;
   modes?: readonly {
     value: string;
     label: string;
@@ -618,6 +626,18 @@ const CONNECTOR_TYPES_DEF = {
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
+export type ConnectorCliAuthConnectorType = {
+  [Type in ConnectorType]: "cli-auth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
+    ? Type
+    : never;
+}[ConnectorType];
+export type ConnectorBrowserVerificationCliAuthConnectorType = {
+  [Type in ConnectorCliAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type] extends {
+    readonly cliAuth: { readonly flow: "browser-verification" };
+  }
+    ? Type
+    : never;
+}[ConnectorCliAuthConnectorType];
 
 export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> =
   CONNECTOR_TYPES_DEF;

@@ -120,7 +120,7 @@ async fn resume_operations_sends_request_and_accepts_empty_ack() {
 
 #[tokio::test]
 async fn lifecycle_request_bypasses_normal_operation_fence() {
-    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let _fence = fence_normal_operations(&host);
 
@@ -132,7 +132,7 @@ async fn lifecycle_request_bypasses_normal_operation_fence() {
         tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(2)).await })
     };
 
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_QUIESCE_OPERATIONS);
     let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msg.seq, &[]).unwrap();
     guest.write_all(&resp).await.unwrap();
@@ -231,7 +231,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let quiesce = read_guest_message(&mut guest, &mut decoder).await;
+        let quiesce = read_guest_message(&mut guest).await;
         assert_eq!(quiesce.msg_type, MSG_QUIESCE_OPERATIONS);
         quiesce_seen_tx.send(()).unwrap();
 
@@ -239,7 +239,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
         let late = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, quiesce.seq, &[]).unwrap();
         guest.write_all(&late).await.unwrap();
 
-        let resume = read_guest_message(&mut guest, &mut decoder).await;
+        let resume = read_guest_message(&mut guest).await;
         assert_eq!(resume.msg_type, MSG_RESUME_OPERATIONS);
         let resp = vsock_proto::encode(MSG_OPERATIONS_RESUMED, resume.seq, &[]).unwrap();
         guest.write_all(&resp).await.unwrap();
@@ -393,7 +393,7 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
 
 #[tokio::test]
 async fn cancelled_normal_request_frame_write_poisons_connection() {
-    let (host, _guest, _decoder) = setup_host_and_guest().await;
+    let (host, _guest) = setup_host_and_guest().await;
 
     drop_started_pending_normal_request_write_guard(&host);
 

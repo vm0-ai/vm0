@@ -63,21 +63,15 @@ export const chatThreads = pgTable(
      */
     lastReadMessageId: uuid("last_read_message_id"),
     /**
-     * Per-thread model pin. Written at thread creation from the agent's
-     * configured provider/model so subsequent runs are immune to later
-     * agent-level provider changes. NULL only for legacy / default-claude-code
-     * agents that have no provider configured at create time.
-     *
-     * Intentionally **not** a foreign key: when the referenced provider is
-     * deleted, the column must retain the now-stale UUID so the run resolver
-     * can detect the orphan-pinned state and surface a clear `PROVIDER_DELETED`
-     * error rather than silently falling back to the agent's current provider.
+     * Legacy provider pin columns. Model-first chat threads now persist only
+     * selectedModel and re-resolve provider routing from org policy for each run.
      */
     modelProviderId: uuid("model_provider_id"),
     modelProviderType: varchar("model_provider_type", { length: 50 }),
     modelProviderCredentialScope: varchar("model_provider_credential_scope", {
       length: 20,
     }),
+    /** Per-thread selected model pin. Provider routing is resolved per run. */
     selectedModel: varchar("selected_model", { length: 255 }),
     /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.

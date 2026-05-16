@@ -14,6 +14,8 @@ describe("zero CLI program", () => {
   it("should register all expected zero commands", () => {
     const expectedCommands = [
       "org",
+      "model",
+      "model-provider",
       "agent",
       "chat",
       "connector",
@@ -59,7 +61,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 24 commands", () => {
-    expect(commandNames).toHaveLength(24);
+  it("should have exactly 26 commands", () => {
+    expect(commandNames).toHaveLength(26);
   });
 });

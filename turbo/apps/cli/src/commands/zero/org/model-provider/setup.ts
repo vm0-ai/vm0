@@ -21,11 +21,19 @@ import {
   collectSecrets,
 } from "../../../../lib/domain/model-provider/shared";
 
-async function handleInteractiveMode(): Promise<SetupInput | null> {
+interface CreateSetupCommandOptions {
+  commandPrefix?: string;
+  description?: string;
+  scopeLabel?: string;
+}
+
+async function handleInteractiveMode(
+  commandPrefix: string,
+): Promise<SetupInput | null> {
   if (!isInteractive()) {
     throw new Error("Interactive mode requires a TTY", {
       cause: new Error(
-        'Use non-interactive mode: zero org model-provider setup --type <type> --secret "<value>"',
+        `Use non-interactive mode: ${commandPrefix} --type <type> --secret "<value>"`,
       ),
     });
   }
@@ -164,67 +172,83 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   return { type, secret, isInteractiveMode: true };
 }
 
-export const setupCommand = new Command()
-  .name("setup")
-  .description("Configure an org-level model provider")
-  .option("-t, --type <type>", "Provider type (for non-interactive mode)")
-  .option(
-    "-s, --secret <value>",
-    "Secret value (can be used multiple times, supports VALUE or KEY=VALUE format)",
-    collectSecrets,
-    [],
-  )
-  .option(
-    "-a, --auth-method <method>",
-    "Auth method (required for multi-auth providers like aws-bedrock)",
-  )
-  .action(
-    withErrorHandler(
-      async (options: {
-        type?: string;
-        secret?: string[];
-        authMethod?: string;
-      }) => {
-        let input: SetupInput;
-        const secretArgs = options.secret ?? [];
+export function createSetupCommand(
+  options: CreateSetupCommandOptions = {},
+): Command {
+  const commandPrefix =
+    options.commandPrefix ?? "zero org model-provider setup";
+  const description =
+    options.description ?? "Configure an org-level model provider";
+  const scopeLabel = options.scopeLabel ?? "Org";
 
-        if (options.type && secretArgs.length > 0) {
-          input = handleNonInteractiveMode({
-            type: options.type,
-            secret: secretArgs,
-            authMethod: options.authMethod,
-            commandPrefix: "zero org model-provider setup",
-          });
-        } else if (options.type || secretArgs.length > 0) {
-          throw new Error("Both --type and --secret are required");
-        } else {
-          const result = await handleInteractiveMode();
-          if (result === null) {
+  return new Command()
+    .name("setup")
+    .description(description)
+    .option("-t, --type <type>", "Provider type (for non-interactive mode)")
+    .option(
+      "-s, --secret <value>",
+      "Secret value (can be used multiple times, supports VALUE or KEY=VALUE format)",
+      collectSecrets,
+      [],
+    )
+    .option(
+      "-a, --auth-method <method>",
+      "Auth method (required for multi-auth providers like aws-bedrock)",
+    )
+    .action(
+      withErrorHandler(
+        async (options: {
+          type?: string;
+          secret?: string[];
+          authMethod?: string;
+        }) => {
+          let input: SetupInput;
+          const secretArgs = options.secret ?? [];
+
+          if (options.type && secretArgs.length > 0) {
+            input = handleNonInteractiveMode({
+              type: options.type,
+              secret: secretArgs,
+              authMethod: options.authMethod,
+              commandPrefix,
+            });
+          } else if (options.type || secretArgs.length > 0) {
+            throw new Error("Both --type and --secret are required");
+          } else {
+            const result = await handleInteractiveMode(commandPrefix);
+            if (result === null) {
+              return;
+            }
+            input = result;
+          }
+
+          // Handle "keep existing secret" flow
+          if (input.keepExistingSecret) {
+            console.log(
+              chalk.green(
+                `✓ ${scopeLabel} model provider "${input.type}" unchanged`,
+              ),
+            );
             return;
           }
-          input = result;
-        }
 
-        // Handle "keep existing secret" flow
-        if (input.keepExistingSecret) {
+          // Standard upsert flow with secret
+          const { created } = await upsertZeroOrgModelProvider({
+            type: input.type,
+            secret: input.secret,
+            authMethod: input.authMethod,
+            secrets: input.secrets,
+          });
+
+          const action = created ? "created" : "updated";
           console.log(
-            chalk.green(`✓ Org model provider "${input.type}" unchanged`),
+            chalk.green(
+              `✓ ${scopeLabel} model provider "${input.type}" ${action}`,
+            ),
           );
-          return;
-        }
+        },
+      ),
+    );
+}
 
-        // Standard upsert flow with secret
-        const { created } = await upsertZeroOrgModelProvider({
-          type: input.type,
-          secret: input.secret,
-          authMethod: input.authMethod,
-          secrets: input.secrets,
-        });
-
-        const action = created ? "created" : "updated";
-        console.log(
-          chalk.green(`✓ Org model provider "${input.type}" ${action}`),
-        );
-      },
-    ),
-  );
+export const setupCommand = createSetupCommand();

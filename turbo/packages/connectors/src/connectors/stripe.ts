@@ -41,13 +41,14 @@ export const stripe = {
       },
       "cli-auth": {
         featureFlag: FeatureSwitchKey.CliAuthStripe,
-        label: "Stripe CLI",
-        helpText: "Sign in with the Stripe CLI to import an API key.",
+        label: "Sign in with Stripe",
+        helpText: "Approve access in Stripe to import an API key.",
         secrets: {},
       },
     },
     defaultAuthMethod: "oauth",
     cliAuth: {
+      flow: "browser-verification",
       modes: [
         {
           value: "test",

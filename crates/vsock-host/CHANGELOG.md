@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.16.0...vsock-host-v0.16.1) (2026-05-16)
+
+
+### Refactoring
+
+* **vsock-host:** track bounded normal operations ([#13484](https://github.com/vm0-ai/vm0/issues/13484)) ([6f8b45d](https://github.com/vm0-ai/vm0/commit/6f8b45dab63700a536b4f39e2812907f2abeea02))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.15.3...vsock-host-v0.16.0) (2026-05-15)
 
 

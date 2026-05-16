@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.371.0](https://github.com/vm0-ai/vm0/compare/web-v12.370.0...web-v12.371.0) (2026-05-16)
+
+
+### Features
+
+* expose model and provider routing commands ([#13519](https://github.com/vm0-ai/vm0/issues/13519)) ([25eaf85](https://github.com/vm0-ai/vm0/commit/25eaf85d1c576ce679c32d1beecbdc470bbf09a0))
+
+
+### Bug Fixes
+
+* re-resolve chat thread providers ([#13545](https://github.com/vm0-ai/vm0/issues/13545)) ([08b13c8](https://github.com/vm0-ai/vm0/commit/08b13c8d2c7e7c12c650a613b86d3d3d7ec928d4))
+
+
+### Refactoring
+
+* proxy push subscriptions to api ([#13536](https://github.com/vm0-ai/vm0/issues/13536)) ([9fb1698](https://github.com/vm0-ai/vm0/commit/9fb1698d300ff994c60267083e015580a43b854c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.0
+    * @vm0/connectors bumped to 1.14.0
+    * @vm0/core bumped to 8.280.0
+    * @vm0/db bumped to 1.14.5
+
 ## [12.370.0](https://github.com/vm0-ai/vm0/compare/web-v12.369.5...web-v12.370.0) (2026-05-16)
 
 

@@ -1059,7 +1059,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
 
     describe("per-run model selection (composer picker)", () => {
-      it("persists modelSelection onto the thread", async () => {
+      it("persists only the selected model onto the thread", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -1083,7 +1083,7 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
@@ -1116,7 +1116,7 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
         await expect(
           getTestUserSelectedModel(user.orgId, user.userId),
@@ -1146,11 +1146,6 @@ describe("POST /api/zero/chat/messages", () => {
       });
 
       it("leaves the thread override untouched when modelSelection is omitted", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
-
         const first = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1169,7 +1164,7 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await first.json();
 
         // Second send omits modelSelection — the server must keep the
-        // previously-saved override instead of resetting it.
+        // previously-saved model while re-resolving the provider route.
         const second = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1184,7 +1179,7 @@ describe("POST /api/zero/chat/messages", () => {
         expect(second.status).toBe(201);
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
@@ -1299,11 +1294,6 @@ describe("POST /api/zero/chat/messages", () => {
       });
 
       it("accepts matching modelSelection after a freshly-created thread is auto-pinned", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
-
         // Create a thread with no modelSelection. Model-first pins the first
         // effective model immediately so follow-up sends do not drift.
         const create = await POST(
@@ -1324,7 +1314,7 @@ describe("POST /api/zero/chat/messages", () => {
         expect(completedRun.status).toBe("completed");
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-sonnet-4-6");
 
         // A matching explicit modelSelection remains accepted.
@@ -1591,11 +1581,6 @@ describe("POST /api/zero/chat/messages", () => {
 
     describe("model-first thread pin / orphan provider", () => {
       it("pins thread to the explicitly selected model on creation", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
-
         const response = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1614,16 +1599,11 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
-      it("keeps thread pinned to original provider after defaults change", async () => {
-        const originalProviderId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
-
+      it("keeps thread pinned to original model after defaults change", async () => {
         const create = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1644,7 +1624,7 @@ describe("POST /api/zero/chat/messages", () => {
         await setTestRunStatus(runId, "completed");
 
         // Org admin switches defaults after the thread is created; the thread
-        // must keep its original pin.
+        // must keep its original model but re-resolve provider routing.
         await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
 
         const followUp = await POST(
@@ -1657,11 +1637,11 @@ describe("POST /api/zero/chat/messages", () => {
         expect(followUp.status).toBe(201);
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(originalProviderId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
-      it("returns 422 PROVIDER_DELETED when the pinned provider is gone", async () => {
+      it("returns 422 PROVIDER_DELETED when the current model policy provider is gone", async () => {
         const providerId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -1688,10 +1668,11 @@ describe("POST /api/zero/chat/messages", () => {
         const completedRun = await getTestRun(runId);
         expect(completedRun.status).toBe("completed");
 
-        // Provider is deleted by the org admin between sends. The thread must
-        // surface PROVIDER_DELETED rather than silently fall back.
+        // Provider is deleted by the org admin between sends. The current model
+        // policy still references it, so the resolver must surface
+        // PROVIDER_DELETED rather than silently fall back.
         const pinnedOverride = await getTestChatThreadModelOverride(threadId);
-        expect(pinnedOverride.modelProviderId).toBe(providerId);
+        expect(pinnedOverride.modelProviderId).toBeNull();
         expect(pinnedOverride.selectedModel).toBe("claude-opus-4-7");
 
         await deleteTestModelProvider(providerId);
@@ -1707,18 +1688,14 @@ describe("POST /api/zero/chat/messages", () => {
         const data = await followUp.json();
         expect(data.error.code).toBe("PROVIDER_DELETED");
 
-        // The thread row keeps the now-stale UUID so the resolver can
-        // detect the orphan-pin state on later sends.
+        // The thread row keeps only the selected model; the current policy is
+        // what carries the now-stale provider reference.
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-opus-4-7");
       });
 
       it("pins the workspace default when no user preference exists", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
         const response = await POST(
           createTestRequest(URL, {
             method: "POST",
@@ -1730,15 +1707,11 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(providerId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-sonnet-4-6");
       });
 
       it("keeps an inherited workspace pin when the user preference later changes", async () => {
-        const providerId = await getTestModelProviderIdByType(
-          user.orgId,
-          "anthropic-api-key",
-        );
         // Create the thread with no explicit modelSelection. Model-first pins
         // the inherited workspace default on the first user message.
         const create = await POST(
@@ -1752,7 +1725,7 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await create.json();
 
         const before = await getTestChatThreadModelOverride(threadId);
-        expect(before.modelProviderId).toBe(providerId);
+        expect(before.modelProviderId).toBeNull();
         expect(before.selectedModel).toBe("claude-sonnet-4-6");
 
         // Now change the user's preference and resend without a per-run
@@ -1774,7 +1747,7 @@ describe("POST /api/zero/chat/messages", () => {
         expect(followUp.status).toBe(201);
 
         const after = await getTestChatThreadModelOverride(threadId);
-        expect(after.modelProviderId).toBe(providerId);
+        expect(after.modelProviderId).toBeNull();
         expect(after.selectedModel).toBe("claude-sonnet-4-6");
       });
     });
@@ -1809,7 +1782,7 @@ describe("POST /api/zero/chat/messages", () => {
         const { threadId } = await response.json();
 
         const override = await getTestChatThreadModelOverride(threadId);
-        expect(override.modelProviderId).toBe(orgProviderId);
+        expect(override.modelProviderId).toBeNull();
         expect(override.selectedModel).toBe("claude-sonnet-4-6");
       });
     });
@@ -1961,16 +1934,16 @@ describe("POST /api/zero/chat/messages", () => {
         expect(job!.executionContext.cliAgentType).toBe("codex");
       });
 
-      it("returns PROVIDER_DELETED when a pinned provider is deleted before continuation", async () => {
+      it("returns PROVIDER_DELETED when the current model policy provider is deleted before continuation", async () => {
         const { agentId: composeAgentId } = await createTestCompose(
           uniqueId("continue-codex-mismatch"),
           { noEnvironmentBlock: true },
         );
 
-        // On the first message the thread is pinned to the model-first route
-        // for openai-api-key (codex). Deleting that provider before the
-        // continuation must fail admission with PROVIDER_DELETED instead of
-        // drifting to a different default.
+        // On the first message the thread stores the selected model from the
+        // openai-api-key (codex) route. Deleting that model's current provider
+        // before continuation must fail admission with PROVIDER_DELETED instead
+        // of drifting to a different workspace default.
         const anthropicId = await getTestModelProviderIdByType(
           user.orgId,
           "anthropic-api-key",
@@ -1995,8 +1968,9 @@ describe("POST /api/zero/chat/messages", () => {
         const { agentSessionId } = await completeTestRun(user.userId, runId);
         await setTestSessionFramework(agentSessionId, "codex");
 
-        // Delete the pinned provider and create a different workspace route.
-        // The stored thread pin must still win and surface PROVIDER_DELETED.
+        // Delete the selected model's provider and create a different workspace
+        // default. The thread's model pin must still resolve that model's
+        // current policy and surface PROVIDER_DELETED.
         const codexId = await getTestModelProviderIdByType(
           user.orgId,
           "openai-api-key",

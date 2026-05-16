@@ -11,10 +11,7 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import {
-  modelProviderCredentialScopeSchema,
-  modelProviderTypeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -254,9 +251,6 @@ function ownedChatThread(
         agentComposeId: chatThreads.agentComposeId,
         draftContent: chatThreads.draftContent,
         draftAttachments: chatThreads.draftAttachments,
-        modelProviderId: chatThreads.modelProviderId,
-        modelProviderType: chatThreads.modelProviderType,
-        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
         selectedModel: chatThreads.selectedModel,
         orgId: zeroAgents.orgId,
         lastReadMessageId: chatThreads.lastReadMessageId,
@@ -282,9 +276,9 @@ function ownedChatThread(
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
-      modelProviderId: thread.modelProviderId ?? null,
-      modelProviderType: thread.modelProviderType ?? null,
-      modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: thread.selectedModel ?? null,
       orgId: thread.orgId ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
@@ -300,12 +294,7 @@ function firstRunModelPinForThread(
 ): Computed<Promise<ChatThreadModelPin | null>> {
   return computed(async (get): Promise<ChatThreadModelPin | null> => {
     const [run] = await get(db$)
-      .select({
-        modelProviderId: zeroRuns.modelProviderId,
-        modelProviderType: zeroRuns.modelProvider,
-        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-        selectedModel: zeroRuns.selectedModel,
-      })
+      .select({ selectedModel: zeroRuns.selectedModel })
       .from(chatMessages)
       .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
       .where(
@@ -322,7 +311,12 @@ function firstRunModelPinForThread(
     if (!run?.selectedModel) {
       return null;
     }
-    return run;
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: run.selectedModel,
+    };
   });
 }
 
@@ -333,10 +327,9 @@ function effectiveModelFirstThreadPin(params: {
   return computed(async (get): Promise<ChatThreadModelPin | null> => {
     if (params.thread.selectedModel !== null) {
       return {
-        modelProviderId: params.thread.modelProviderId,
-        modelProviderType: params.thread.modelProviderType,
-        modelProviderCredentialScope:
-          params.thread.modelProviderCredentialScope,
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
         selectedModel: params.thread.selectedModel,
       };
     }
@@ -684,18 +677,9 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
-      modelProviderId: modelPin?.modelProviderId ?? thread.modelProviderId,
-      modelProviderType: formatLatestSessionProviderType(
-        modelPin?.modelProviderType ?? thread.modelProviderType,
-      ),
-      modelProviderCredentialScope:
-        (modelPin?.modelProviderCredentialScope ??
-          thread.modelProviderCredentialScope) === null
-          ? null
-          : (modelProviderCredentialScopeSchema.safeParse(
-              modelPin?.modelProviderCredentialScope ??
-                thread.modelProviderCredentialScope,
-            ).data ?? null),
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: modelPin?.selectedModel ?? thread.selectedModel,
       renamedAt: thread.renamedAt?.toISOString() ?? null,
     };

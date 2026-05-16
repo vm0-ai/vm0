@@ -27,6 +27,8 @@ import { zeroWebCommand } from "./commands/zero/web";
 import { zeroLocalAgentCommand } from "./commands/zero/local-agent";
 import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
 import { zeroHostCommand } from "./commands/zero/host";
+import { zeroModelCommand } from "./commands/zero/model";
+import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -49,6 +51,8 @@ const COMMAND_CAPABILITY_MAP: Record<
   run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
+  model: null,
+  "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
   chat: "chat-message:write",
@@ -67,6 +71,8 @@ const COMMAND_CAPABILITY_MAP: Record<
 
 const DEFAULT_COMMANDS: Command[] = [
   zeroOrgCommand,
+  zeroModelCommand,
+  zeroModelProviderCommand,
   zeroAgentCommand,
   zeroConnectorCommand,
   zeroDoctorCommand,
@@ -122,6 +128,8 @@ export function buildZeroHelpText(
     "  Upload AgentPhone?     zero phone upload-file --help",
     "  Download AgentPhone?   zero phone download-file --help",
     "  Set up a schedule?     zero schedule setup --help",
+    "  List models?          zero model ls",
+    "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage custom skills?  zero skill --help",
     "  Generate image?        zero built-in generate image --help",

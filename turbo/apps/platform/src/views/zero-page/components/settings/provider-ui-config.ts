@@ -1,5 +1,6 @@
 import {
   MODEL_PROVIDER_TYPES,
+  getVm0ModelMultiplier,
   getSecretNameForType,
   hasAuthMethods,
   type ModelProviderType,
@@ -223,30 +224,4 @@ export function getModelBrandIconType(
 ): ModelProviderType {
   return MODEL_BRAND_ICON[model];
 }
-
-/**
- * Credit multiplier for Built-in model offerings, normalized so Claude Sonnet 4.6 = 1x.
- * Sourced from vendor/OpenRouter per-token USD pricing and normalized via a
- * blended (input + 5× output) cost against Sonnet 4.6 ($3/$15 per M), rounded
- * to 1 decimal. Only applies to the `vm0` provider type; BYOK providers pay
- * the vendor directly and do not carry a platform multiplier.
- */
-const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
-  "claude-opus-4-6": 1.7,
-  "claude-opus-4-7": 1.7,
-  "claude-sonnet-4-6": 1,
-  "glm-5.1": 0.4,
-  "claude-haiku-4-5": 0.3,
-  "kimi-k2.6": 0.3,
-  "deepseek-v4-pro": 0.06,
-  "kimi-k2.5": 0.2,
-  "MiniMax-M2.7": 0.1,
-  "deepseek-v4-flash": 0.02,
-  "gpt-5.5": 2,
-  "gpt-5.4": 1,
-  "gpt-5.4-mini": 0.3,
-});
-
-export function getVm0ModelMultiplier(model: string): number | undefined {
-  return VM0_MODEL_CREDIT_MULTIPLIER[model];
-}
+export { getVm0ModelMultiplier };

@@ -185,6 +185,15 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the push subscriptions rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/push-subscriptions")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/push-subscriptions/extra"),
+    ).toBe(false);
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

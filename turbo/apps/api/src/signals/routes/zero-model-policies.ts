@@ -69,7 +69,11 @@ export const zeroModelPoliciesRoutes: readonly RouteEntry[] = [
   {
     route: zeroModelPoliciesMainContract.list,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        acceptAnySandboxCapability: true,
+      },
       listModelPoliciesInner$,
     ),
   },

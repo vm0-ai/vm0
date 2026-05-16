@@ -89,6 +89,9 @@ export {
   deleteZeroOrgModelProvider,
 } from "./domains/zero-org-model-providers";
 
+// Domain modules - Zero Model Policies
+export { listZeroModelPolicies } from "./domains/zero-model-policies";
+
 // Domain modules - Zero Agents
 export {
   createZeroAgent,

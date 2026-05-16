@@ -37,6 +37,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/user/export", "/api/user/export"],
   ["/api/v1/audio/transcriptions", "/api/v1/audio/transcriptions"],
   [
+    "/api/zero/connectors/stripe/cli-auth/sessions",
+    "/api/zero/connectors/stripe/cli-auth/sessions",
+  ],
+  [
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
@@ -87,6 +91,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
+  ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/voice-chat", "/api/zero/voice-chat"],

@@ -211,8 +211,9 @@ export async function getTestModelProviderIdByType(
 }
 
 /**
- * Read the per-thread model override (modelProviderId, selectedModel) written
- * by the chat-messages send route when the composer's picker is active.
+ * Read the per-thread selected model override written by the chat-messages send
+ * route when the composer's picker is active. Provider IDs should remain null
+ * because provider routing is re-resolved per run.
  */
 export async function getTestChatThreadModelOverride(
   threadId: string,

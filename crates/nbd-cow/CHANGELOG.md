@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.22](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.21...nbd-cow-v0.4.22) (2026-05-16)
+
+
+### Refactoring
+
+* deduplicate nbd-cow nla builders ([#13547](https://github.com/vm0-ai/vm0/issues/13547)) ([71ea676](https://github.com/vm0-ai/vm0/commit/71ea6762f139009f6fae4433dd6c1d75dc74db1c))
+
 ## [0.4.21](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.20...nbd-cow-v0.4.21) (2026-05-14)
 
 

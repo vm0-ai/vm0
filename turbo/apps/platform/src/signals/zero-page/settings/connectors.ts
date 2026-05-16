@@ -1,9 +1,11 @@
 import { command, computed, state } from "ccstate";
+import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodType,
+  type ConnectorBrowserVerificationCliAuthConnectorType,
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
@@ -33,6 +35,7 @@ import {
   zeroSecretsContract,
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
+import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -44,12 +47,19 @@ import {
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
-import { zeroClient$ } from "../../api-client.ts";
-import { jsonParseOr, onRef, resetSignal, withCleanup } from "../../utils.ts";
+import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
+import {
+  jsonParseOr,
+  onRef,
+  resetSignal,
+  settle,
+  withCleanup,
+} from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
 import { sanitizeTokenInputRecord } from "./token-input.ts";
+import { IN_VITEST } from "../../../env.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
@@ -72,6 +82,12 @@ const CONNECTOR_LIST_API_AUTH_METHOD_TYPES = [
 type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
+
+type StripeCliAuthMode = "test" | "live";
+
+function isStripeCliAuthMode(value: string): value is StripeCliAuthMode {
+  return value === "test" || value === "live";
+}
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -389,14 +405,92 @@ export const setConnectorsSearch$ = command(({ set }, v: string) => {
 // ---------------------------------------------------------------------------
 
 const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
+
+export type ConnectorCliAuthState =
+  | {
+      readonly status: "idle";
+      readonly connectorType: ConnectorType | null;
+      readonly mode: string | null;
+    }
+  | {
+      readonly status: "starting";
+      readonly connectorType: ConnectorType;
+      readonly mode: string | null;
+      readonly requestId: string;
+    }
+  | {
+      readonly status: "pending";
+      readonly connectorType: ConnectorType;
+      readonly mode: string | null;
+      readonly requestId: string;
+      readonly sessionToken: string;
+      readonly browserUrl: string;
+      readonly verificationText: string;
+      readonly expiresAtMs: number;
+      readonly pollIntervalMs: number;
+      readonly approvalOpened: boolean;
+      readonly errorMessage: string | null;
+    }
+  | {
+      readonly status: "polling";
+      readonly connectorType: ConnectorType;
+      readonly mode: string | null;
+      readonly requestId: string;
+      readonly sessionToken: string;
+      readonly browserUrl: string;
+      readonly verificationText: string;
+      readonly expiresAtMs: number;
+      readonly pollIntervalMs: number;
+      readonly approvalOpened: boolean;
+      readonly errorMessage: string | null;
+    }
+  | {
+      readonly status: "error";
+      readonly connectorType: ConnectorType | null;
+      readonly mode: string | null;
+      readonly message: string;
+    }
+  | {
+      readonly status: "expired";
+      readonly connectorType: ConnectorType;
+      readonly mode: string | null;
+      readonly message: string;
+    };
+
+type ConnectorConnectFlowState = {
+  readonly type: ConnectorType;
+  readonly id: string;
+};
+
+function createIdleConnectorCliAuthState(
+  connectorType: ConnectorType | null = null,
+  mode: string | null = null,
+): ConnectorCliAuthState {
+  return { status: "idle", connectorType, mode };
+}
+
+const internalConnectorCliAuthState$ = state<ConnectorCliAuthState>(
+  createIdleConnectorCliAuthState(),
+);
+const resetConnectorCliAuthFlowSignal$ = resetSignal();
+
 export const selectedConnectorType$ = computed((get) => {
   return get(internalSelectedConnectorType$);
 });
 export const setSelectedConnectorType$ = command(
-  ({ set }, type: ConnectorType | null) => {
+  ({ get, set }, type: ConnectorType | null) => {
     set(internalSelectedConnectorType$, type);
+    const current = get(internalConnectorCliAuthState$);
+    if (type !== current.connectorType) {
+      set(resetConnectorCliAuthFlowSignal$);
+      set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
+    }
   },
 );
+
+export const connectorCliAuthState$ = computed((get) => {
+  return get(internalConnectorCliAuthState$);
+});
 
 // ---------------------------------------------------------------------------
 // Scope review modal state
@@ -475,50 +569,61 @@ export const submitApiToken$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
-    const secretsClient = createClient(zeroSecretsContract);
-    const variablesClient = createClient(zeroVariablesContract);
-    const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
-    const secrets = sanitizeTokenInputRecord(inputSecrets);
-    for (const [name, value] of Object.entries(secrets)) {
-      if (!value) {
-        continue;
-      }
-      const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
-      if (isVariable) {
-        await accept(
-          variablesClient.set({
-            body: { name, value },
-            fetchOptions: { signal },
-          }),
-          [200, 201],
-        );
-      } else {
-        await accept(
-          secretsClient.set({
-            body: { name, value },
-            fetchOptions: { signal },
-          }),
-          [200, 201],
-        );
-      }
-      signal.throwIfAborted();
-    }
-    signal.throwIfAborted();
-    set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, type]);
-    });
-    set(reloadConnectors$);
-    // Show in connections list
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(type);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
-      id: `connector-connected-${type}`,
-    });
-    if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, type);
-    }
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const secretsClient = createClient(zeroSecretsContract);
+        const variablesClient = createClient(zeroVariablesContract);
+        const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
+        const secrets = sanitizeTokenInputRecord(inputSecrets);
+        for (const [name, value] of Object.entries(secrets)) {
+          if (!value) {
+            continue;
+          }
+          const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
+          if (isVariable) {
+            await accept(
+              variablesClient.set({
+                body: { name, value },
+                fetchOptions: { signal },
+              }),
+              [200, 201],
+            );
+          } else {
+            await accept(
+              secretsClient.set({
+                body: { name, value },
+                fetchOptions: { signal },
+              }),
+              [200, 201],
+            );
+          }
+          signal.throwIfAborted();
+        }
+        signal.throwIfAborted();
+        set(internalJustConnectedTypes$, (prev) => {
+          return new Set([...prev, type]);
+        });
+        set(reloadConnectors$);
+        // Show in connections list
+        const hidden = new Set(get(hiddenConnectorTypes$));
+        hidden.delete(type);
+        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+        toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
+          id: `connector-connected-${type}`,
+        });
+        if (options.showPermissionDialog) {
+          set(internalPermissionDialogType$, type);
+        }
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+      },
+    );
   },
 );
 
@@ -527,10 +632,39 @@ export const submitApiToken$ = command(
 // ---------------------------------------------------------------------------
 
 const internalPollingType$ = state<ConnectorType | null>(null);
+const internalConnectFlowState$ = state<ConnectorConnectFlowState | null>(null);
 
 export const pollingConnectorType$ = computed((get) => {
   return get(internalPollingType$);
 });
+
+export const connectFlowType$ = computed((get) => {
+  return get(internalConnectFlowState$)?.type ?? null;
+});
+
+export const runConnectorConnectSuccess$ = command(
+  async (
+    { set },
+    type: ConnectorType,
+    onSuccess: () => void | Promise<void>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        signal.throwIfAborted();
+        await onSuccess();
+        signal.throwIfAborted();
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+      },
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Optimistic connected state — bridges the gap between connect success and
@@ -836,38 +970,49 @@ export const connectLocalAgentConnector$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroLocalAgentConnectorContract, {
-      apiBase: "api",
-    });
-    await accept(
-      client.create({
-        body: {},
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
+    const flow = createConnectorConnectFlowState(LOCAL_AGENT_CONNECTOR_TYPE);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroLocalAgentConnectorContract, {
+          apiBase: "api",
+        });
+        await accept(
+          client.create({
+            body: {},
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
 
-    set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, LOCAL_AGENT_CONNECTOR_TYPE]);
-    });
-    set(reloadConnectors$);
-    set(reloadLocalAgentHosts$);
+        set(internalJustConnectedTypes$, (prev) => {
+          return new Set([...prev, LOCAL_AGENT_CONNECTOR_TYPE]);
+        });
+        set(reloadConnectors$);
+        set(reloadLocalAgentHosts$);
 
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(LOCAL_AGENT_CONNECTOR_TYPE);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+        const hidden = new Set(get(hiddenConnectorTypes$));
+        hidden.delete(LOCAL_AGENT_CONNECTOR_TYPE);
+        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
 
-    toast.success(
-      `${CONNECTOR_TYPES[LOCAL_AGENT_CONNECTOR_TYPE].label} connected`,
-      {
-        id: `connector-connected-${LOCAL_AGENT_CONNECTOR_TYPE}`,
+        toast.success(
+          `${CONNECTOR_TYPES[LOCAL_AGENT_CONNECTOR_TYPE].label} connected`,
+          {
+            id: `connector-connected-${LOCAL_AGENT_CONNECTOR_TYPE}`,
+          },
+        );
+        if (options.showPermissionDialog) {
+          set(internalPermissionDialogType$, LOCAL_AGENT_CONNECTOR_TYPE);
+        }
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
       },
     );
-    if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, LOCAL_AGENT_CONNECTOR_TYPE);
-    }
   },
 );
 
@@ -877,38 +1022,49 @@ export const connectLocalBrowserConnector$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroLocalBrowserConnectorContract, {
-      apiBase: "api",
-    });
-    await accept(
-      client.create({
-        body: {},
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
+    const flow = createConnectorConnectFlowState(LOCAL_BROWSER_CONNECTOR_TYPE);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        const createClient = get(zeroClient$);
+        const client = createClient(zeroLocalBrowserConnectorContract, {
+          apiBase: "api",
+        });
+        await accept(
+          client.create({
+            body: {},
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        signal.throwIfAborted();
 
-    set(internalJustConnectedTypes$, (prev) => {
-      return new Set([...prev, LOCAL_BROWSER_CONNECTOR_TYPE]);
-    });
-    set(reloadConnectors$);
-    set(reloadLocalBrowserHosts$);
+        set(internalJustConnectedTypes$, (prev) => {
+          return new Set([...prev, LOCAL_BROWSER_CONNECTOR_TYPE]);
+        });
+        set(reloadConnectors$);
+        set(reloadLocalBrowserHosts$);
 
-    const hidden = new Set(get(hiddenConnectorTypes$));
-    hidden.delete(LOCAL_BROWSER_CONNECTOR_TYPE);
-    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+        const hidden = new Set(get(hiddenConnectorTypes$));
+        hidden.delete(LOCAL_BROWSER_CONNECTOR_TYPE);
+        set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
 
-    toast.success(
-      `${CONNECTOR_TYPES[LOCAL_BROWSER_CONNECTOR_TYPE].label} connected`,
-      {
-        id: `connector-connected-${LOCAL_BROWSER_CONNECTOR_TYPE}`,
+        toast.success(
+          `${CONNECTOR_TYPES[LOCAL_BROWSER_CONNECTOR_TYPE].label} connected`,
+          {
+            id: `connector-connected-${LOCAL_BROWSER_CONNECTOR_TYPE}`,
+          },
+        );
+        if (options.showPermissionDialog) {
+          set(internalPermissionDialogType$, LOCAL_BROWSER_CONNECTOR_TYPE);
+        }
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
       },
     );
-    if (options.showPermissionDialog) {
-      set(internalPermissionDialogType$, LOCAL_BROWSER_CONNECTOR_TYPE);
-    }
   },
 );
 
@@ -974,6 +1130,439 @@ export const setPermissionDialogType$ = command(
       set(resetPermissionDialog$);
     }
     set(internalPermissionDialogType$, type);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// CLI auth browser-verification flow state
+// ---------------------------------------------------------------------------
+
+const CLI_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
+
+type CliAuthBrowserVerificationStartResult = {
+  readonly mode: string | null;
+  readonly sessionToken: string;
+  readonly browserUrl: string;
+  readonly verificationText: string;
+  readonly expiresInMs: number;
+  readonly pollIntervalMs: number;
+};
+
+type CliAuthBrowserVerificationCompleteResult =
+  | { readonly status: "pending"; readonly errorMessage: string | null }
+  | { readonly status: "complete" };
+
+type CliAuthBrowserVerificationAdapter = {
+  readonly isMode: (mode: string) => boolean;
+  readonly start: (args: {
+    readonly createClient: ZeroClientFactory;
+    readonly mode: string | null;
+    readonly signal: AbortSignal;
+  }) => Promise<CliAuthBrowserVerificationStartResult>;
+  readonly complete: (args: {
+    readonly createClient: ZeroClientFactory;
+    readonly sessionToken: string;
+    readonly signal: AbortSignal;
+  }) => Promise<CliAuthBrowserVerificationCompleteResult>;
+};
+
+type PollConnectorCliAuthBrowserVerificationArgs = {
+  readonly type: ConnectorType;
+  readonly requestId: string;
+  readonly adapter: CliAuthBrowserVerificationAdapter;
+  readonly createClient: ZeroClientFactory;
+  readonly expiresAtMs: number;
+  readonly pollIntervalMs: number;
+  readonly options: PostConnectOptions;
+};
+
+function secondsToMilliseconds(value: number): number {
+  return Math.max(0, value * 1000);
+}
+
+const CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS = {
+  stripe: {
+    isMode: isStripeCliAuthMode,
+    start: async ({ createClient, mode, signal }) => {
+      if (!mode || !isStripeCliAuthMode(mode)) {
+        throw new Error("Select a valid CLI auth mode");
+      }
+      const client = createClient(zeroCliAuthStripeContract);
+      const result = await accept(
+        client.start({
+          body: { mode },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      return {
+        mode: result.body.mode,
+        sessionToken: result.body.sessionToken,
+        browserUrl: result.body.browserUrl,
+        verificationText: result.body.verificationCode,
+        expiresInMs: secondsToMilliseconds(result.body.expiresIn),
+        pollIntervalMs: secondsToMilliseconds(result.body.interval),
+      };
+    },
+    complete: async ({ createClient, sessionToken, signal }) => {
+      const client = createClient(zeroCliAuthStripeContract);
+      const result = await accept(
+        client.complete({
+          body: { sessionToken },
+          fetchOptions: { signal },
+        }),
+        [200],
+        { toast: false },
+      );
+      if (result.body.status === "pending") {
+        return {
+          status: "pending",
+          errorMessage: result.body.errorMessage,
+        };
+      }
+      return { status: "complete" };
+    },
+  },
+} satisfies Record<
+  ConnectorBrowserVerificationCliAuthConnectorType,
+  CliAuthBrowserVerificationAdapter
+>;
+
+function getCliAuthBrowserVerificationAdapter(
+  type: ConnectorType,
+): CliAuthBrowserVerificationAdapter | null {
+  if (type in CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS) {
+    return CLI_AUTH_BROWSER_VERIFICATION_ADAPTERS[
+      type as ConnectorBrowserVerificationCliAuthConnectorType
+    ];
+  }
+  return null;
+}
+
+function createConnectorCliAuthRequestId(type: ConnectorType): string {
+  return `${type}-cli-auth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createConnectorConnectFlowState(
+  type: ConnectorType,
+): ConnectorConnectFlowState {
+  return {
+    type,
+    id: `${type}-connect-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  };
+}
+
+function userFacingConnectorCliAuthMessage(message: string): string {
+  return message
+    .replaceAll("Stripe CLI", "Stripe")
+    .replaceAll("CLI auth", "connection")
+    .replaceAll("cli auth", "connection");
+}
+
+function cliAuthErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? userFacingConnectorCliAuthMessage(error.message)
+    : "Connection failed";
+}
+
+function isCurrentConnectorCliAuthRequest(
+  state: ConnectorCliAuthState,
+  type: ConnectorType,
+  requestId: string,
+): state is Extract<
+  ConnectorCliAuthState,
+  { readonly status: "pending" | "polling" }
+> {
+  return (
+    (state.status === "pending" || state.status === "polling") &&
+    state.connectorType === type &&
+    state.requestId === requestId
+  );
+}
+
+function getConnectorCliAuthMode(
+  type: ConnectorType,
+  state: ConnectorCliAuthState,
+): string | null {
+  return state.connectorType === type ? state.mode : null;
+}
+
+function connectorCliAuthRequiresMode(type: ConnectorType): boolean {
+  return (CONNECTOR_TYPES[type].cliAuth?.modes?.length ?? 0) > 0;
+}
+
+function connectorCliAuthModeIsAllowed(
+  type: ConnectorType,
+  mode: string,
+): boolean {
+  const adapter = getCliAuthBrowserVerificationAdapter(type);
+  return adapter?.isMode(mode) ?? false;
+}
+
+export const setConnectorCliAuthMode$ = command(
+  ({ set }, type: ConnectorType, mode: string | null) => {
+    if (mode !== null && !connectorCliAuthModeIsAllowed(type, mode)) {
+      return;
+    }
+    set(resetConnectorCliAuthFlowSignal$);
+    set(
+      internalConnectorCliAuthState$,
+      createIdleConnectorCliAuthState(type, mode),
+    );
+  },
+);
+
+export const clearConnectorCliAuth$ = command(({ set }) => {
+  set(resetConnectorCliAuthFlowSignal$);
+  set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
+});
+
+const finishConnectorCliAuthConnection$ = command(
+  ({ get, set }, type: ConnectorType, options: PostConnectOptions) => {
+    set(internalJustConnectedTypes$, (prev) => {
+      return new Set([...prev, type]);
+    });
+    set(reloadConnectors$);
+
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+
+    toast.success(`${CONNECTOR_TYPES[type].label} connected`, {
+      id: `connector-connected-${type}`,
+    });
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
+    set(internalConnectorCliAuthState$, createIdleConnectorCliAuthState());
+    return true;
+  },
+);
+
+const pollConnectorCliAuthBrowserVerification$ = command(
+  async (
+    { get, set },
+    {
+      type,
+      requestId,
+      adapter,
+      createClient,
+      expiresAtMs,
+      pollIntervalMs,
+      options,
+    }: PollConnectorCliAuthBrowserVerificationArgs,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    while (Date.now() < expiresAtMs) {
+      const latest = get(internalConnectorCliAuthState$);
+      if (!isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
+        return false;
+      }
+
+      if (!latest.approvalOpened) {
+        const remainingMs = expiresAtMs - Date.now();
+        if (remainingMs <= 0) {
+          break;
+        }
+        await delay(Math.min(CLI_AUTH_MIN_POLL_INTERVAL_MS, remainingMs), {
+          signal,
+        });
+        signal.throwIfAborted();
+        continue;
+      }
+
+      set(internalConnectorCliAuthState$, {
+        ...latest,
+        status: "polling",
+      });
+
+      const completeSettled = await settle(
+        adapter.complete({
+          createClient,
+          sessionToken: latest.sessionToken,
+          signal,
+        }),
+        signal,
+      );
+      const completeResult = completeSettled.ok
+        ? completeSettled.value
+        : {
+            status: "error" as const,
+            message: cliAuthErrorMessage(completeSettled.error),
+          };
+
+      const current = get(internalConnectorCliAuthState$);
+      if (!isCurrentConnectorCliAuthRequest(current, type, requestId)) {
+        return false;
+      }
+
+      if (completeResult.status === "complete") {
+        return set(finishConnectorCliAuthConnection$, type, options);
+      }
+
+      if (completeResult.status === "error") {
+        set(internalConnectorCliAuthState$, {
+          status: "error",
+          connectorType: type,
+          mode: current.mode,
+          message: completeResult.message,
+        });
+        return false;
+      }
+
+      set(internalConnectorCliAuthState$, {
+        ...current,
+        status: "pending",
+        errorMessage: completeResult.errorMessage
+          ? userFacingConnectorCliAuthMessage(completeResult.errorMessage)
+          : null,
+      });
+
+      const remainingMs = expiresAtMs - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+      await delay(Math.min(pollIntervalMs, remainingMs), {
+        signal,
+      });
+      signal.throwIfAborted();
+    }
+
+    const latest = get(internalConnectorCliAuthState$);
+    if (isCurrentConnectorCliAuthRequest(latest, type, requestId)) {
+      set(internalConnectorCliAuthState$, {
+        status: "expired",
+        connectorType: type,
+        mode: latest.mode,
+        message: "Connection session expired. Start again to retry.",
+      });
+    }
+    return false;
+  },
+);
+
+export const openConnectorCliAuthApprovalPage$ = command(
+  ({ get, set }, type: ConnectorType): boolean => {
+    const current = get(internalConnectorCliAuthState$);
+    if (
+      (current.status !== "pending" && current.status !== "polling") ||
+      current.connectorType !== type
+    ) {
+      return false;
+    }
+
+    const approvalWindow = window.open(current.browserUrl, "_blank");
+    if (!approvalWindow) {
+      set(internalConnectorCliAuthState$, {
+        ...current,
+        errorMessage: "Could not open the approval page. Try again.",
+      });
+      return false;
+    }
+
+    approvalWindow.opener = null;
+    set(internalConnectorCliAuthState$, {
+      ...current,
+      approvalOpened: true,
+      errorMessage: null,
+    });
+    return true;
+  },
+);
+
+export const runConnectorCliAuth$ = command(
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const adapter = getCliAuthBrowserVerificationAdapter(type);
+    if (!adapter || get(internalSelectedConnectorType$) !== type) {
+      return false;
+    }
+
+    const initialState = get(internalConnectorCliAuthState$);
+    const selectedMode = getConnectorCliAuthMode(type, initialState);
+    if (connectorCliAuthRequiresMode(type) && !selectedMode) {
+      return false;
+    }
+
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
+    return await withCleanup(
+      (async () => {
+        const requestId = createConnectorCliAuthRequestId(type);
+        const flowSignal = set(resetConnectorCliAuthFlowSignal$, signal);
+        set(internalConnectorCliAuthState$, {
+          status: "starting",
+          connectorType: type,
+          mode: selectedMode,
+          requestId,
+        });
+
+        const createClient = get(zeroClient$);
+        const startSettled = await settle(
+          adapter.start({
+            createClient,
+            mode: selectedMode,
+            signal: flowSignal,
+          }),
+          flowSignal,
+        );
+        const startResult = startSettled.ok ? startSettled.value : null;
+        if (!startSettled.ok && get(internalSelectedConnectorType$) === type) {
+          set(internalConnectorCliAuthState$, {
+            status: "error",
+            connectorType: type,
+            mode: selectedMode,
+            message: cliAuthErrorMessage(startSettled.error),
+          });
+        }
+        signal.throwIfAborted();
+        if (!startResult || get(internalSelectedConnectorType$) !== type) {
+          return false;
+        }
+
+        const expiresAtMs = Date.now() + startResult.expiresInMs;
+        const pollIntervalMs = Math.max(
+          startResult.pollIntervalMs,
+          CLI_AUTH_MIN_POLL_INTERVAL_MS,
+        );
+        set(internalConnectorCliAuthState$, {
+          status: "pending",
+          connectorType: type,
+          mode: startResult.mode,
+          requestId,
+          sessionToken: startResult.sessionToken,
+          browserUrl: startResult.browserUrl,
+          verificationText: startResult.verificationText,
+          expiresAtMs,
+          pollIntervalMs,
+          approvalOpened: false,
+          errorMessage: null,
+        });
+
+        return await set(
+          pollConnectorCliAuthBrowserVerification$,
+          {
+            type,
+            requestId,
+            adapter,
+            createClient,
+            expiresAtMs,
+            pollIntervalMs,
+            options,
+          },
+          flowSignal,
+        );
+      })(),
+      () => {
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
+        });
+      },
+    );
   },
 );
 
@@ -1061,6 +1650,8 @@ export const connectConnector$ = command(
     const baseUrl = await get(apiBaseForNavigation$);
     signal.throwIfAborted();
 
+    const flow = createConnectorConnectFlowState(type);
+    set(internalConnectFlowState$, flow);
     set(internalPollingType$, type);
 
     return await withCleanup(
@@ -1204,6 +1795,9 @@ export const connectConnector$ = command(
       () => {
         set(internalPollingType$, (current) => {
           return current === type ? null : current;
+        });
+        set(internalConnectFlowState$, (current) => {
+          return current?.id === flow.id ? null : current;
         });
       },
     );
