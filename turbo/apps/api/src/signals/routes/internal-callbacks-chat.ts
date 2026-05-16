@@ -5,9 +5,11 @@ import {
   chatCallbackPayloadSchema,
   internalCallbacksChatContract,
 } from "@vm0/api-contracts/contracts/internal-callbacks-chat";
+import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -118,7 +120,7 @@ interface QueuedUserMessage {
   readonly attachFiles: readonly string[] | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
   readonly goalRemainingTurns: number | null;
   readonly goalOriginMessageId: string | null;
@@ -163,6 +165,15 @@ function chatCallbackUrl(): string {
   return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
 }
 
+function parseModelProviderCredentialScope(
+  value: string | null,
+): ModelProviderCredentialScope | null {
+  if (value === null || value === "org" || value === "member") {
+    return value;
+  }
+  throw new Error(`Unknown model provider credential scope "${value}"`);
+}
+
 function buildQueuedCreateAgentRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
@@ -172,6 +183,11 @@ function buildQueuedCreateAgentRunArgs(
     orgId: input.orgId,
     apiStartTime,
     chatThreadId: input.threadId,
+    modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
+    modelProviderType: input.queuedMessage.modelProviderType ?? undefined,
+    modelProviderCredentialScope:
+      input.queuedMessage.modelProviderCredentialScope ?? undefined,
+    selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
     includeZeroTokenSecret: true,
     callbacks: [
       {
@@ -769,9 +785,9 @@ async function nextQueuedUserMessage(
       id: chatMessages.id,
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+      modelProviderId: sql<null>`NULL`,
+      modelProviderType: sql<null>`NULL`,
+      modelProviderCredentialScope: sql<null>`NULL`,
       selectedModel: chatThreads.selectedModel,
       goalRemainingTurns: chatMessages.goalRemainingTurns,
       goalOriginMessageId: chatMessages.goalOriginMessageId,
@@ -797,6 +813,46 @@ async function nextQueuedUserMessage(
     .limit(1);
 
   return message ?? null;
+}
+
+async function resolveQueuedMessageModelPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly queuedMessage: QueuedUserMessage;
+}): Promise<QueuedUserMessage> {
+  if (!params.queuedMessage.selectedModel) {
+    return params.queuedMessage;
+  }
+
+  const [policy] = await params.db
+    .select({
+      model: orgModelPolicies.model,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+    })
+    .from(orgModelPolicies)
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, params.orgId),
+        eq(orgModelPolicies.model, params.queuedMessage.selectedModel),
+      ),
+    )
+    .limit(1);
+
+  if (!policy) {
+    return params.queuedMessage;
+  }
+
+  return {
+    ...params.queuedMessage,
+    modelProviderId: policy.modelProviderId ?? null,
+    modelProviderType: policy.defaultProviderType,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
+    selectedModel: policy.model,
+  };
 }
 
 async function chatThreadForRunFromDb(
@@ -1007,6 +1063,11 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     });
     return;
   }
+  const resolvedQueuedMessage = await resolveQueuedMessageModelPin({
+    db: args.db,
+    orgId: agent.orgId,
+    queuedMessage,
+  });
 
   const [sessionId, incompleteRows] = await Promise.all([
     latestSessionIdForThreadFromDb(args.db, threadId),
@@ -1017,22 +1078,26 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   );
 
   const resolvedAttachFiles =
-    queuedMessage.attachFiles && queuedMessage.attachFiles.length > 0
-      ? await args.getResolvedAttachFiles(userId, queuedMessage.attachFiles)
+    resolvedQueuedMessage.attachFiles &&
+    resolvedQueuedMessage.attachFiles.length > 0
+      ? await args.getResolvedAttachFiles(
+          userId,
+          resolvedQueuedMessage.attachFiles,
+        )
       : [];
   const attachFiles =
     resolvedAttachFiles.length > 0
       ? resolvedAttachFiles
-      : fallbackAttachFiles(queuedMessage.attachFiles);
-  const content = queuedMessage.content ?? "";
+      : fallbackAttachFiles(resolvedQueuedMessage.attachFiles);
+  const content = resolvedQueuedMessage.content ?? "";
   const fullPrompt =
     attachFiles.length === 0
       ? content
       : `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 
   const goalContext =
-    queuedMessage.goalRemainingTurns !== null
-      ? { remainingTurns: queuedMessage.goalRemainingTurns }
+    resolvedQueuedMessage.goalRemainingTurns !== null
+      ? { remainingTurns: resolvedQueuedMessage.goalRemainingTurns }
       : null;
 
   const run = await args.createRun({
@@ -1043,7 +1108,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     sessionId,
     appendSystemPrompt: buildAppendSystemPrompt(incompleteContext, goalContext),
     threadId,
-    queuedMessage,
+    queuedMessage: resolvedQueuedMessage,
   });
   if (!run) {
     return;

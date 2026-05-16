@@ -10,7 +10,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { secrets } from "@vm0/db/schema/secret";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
@@ -23,6 +26,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import { clearAllDetached } from "../../utils";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -31,6 +35,7 @@ const store = createStore();
 
 const PATH = "/api/internal/callbacks/chat";
 const TEST_CALLBACK_SECRET = "test-callback-secret";
+const ORG_SENTINEL_USER_ID = "__org__";
 
 interface ChatCallbackFixture {
   readonly userId: string;
@@ -195,6 +200,13 @@ async function deleteFixture(fixture: ChatCallbackFixture): Promise<void> {
     .delete(agentSessions)
     .where(eq(agentSessions.userId, fixture.userId));
   await db.delete(chatThreads).where(eq(chatThreads.id, fixture.threadId));
+  await db
+    .delete(orgModelPolicies)
+    .where(eq(orgModelPolicies.orgId, fixture.orgId));
+  await db
+    .delete(modelProviders)
+    .where(eq(modelProviders.orgId, fixture.orgId));
+  await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
   await db
     .delete(agentComposeVersions)
@@ -353,6 +365,47 @@ describe("POST /api/internal/callbacks/chat", () => {
   it("auto-sends the oldest queued user message after a terminal callback", async () => {
     const fixture = await track(seedChatCallbackFixture());
     const db = store.set(writeDb$);
+    const selectedModel = "claude-sonnet-4-6";
+    const [secret] = await db
+      .insert(secrets)
+      .values({
+        name: "ANTHROPIC_API_KEY",
+        encryptedValue: encryptSecretForTests("queued-byok-key"),
+        type: "model-provider",
+        userId: ORG_SENTINEL_USER_ID,
+        orgId: fixture.orgId,
+      })
+      .returning({ id: secrets.id });
+    const [provider] = await db
+      .insert(modelProviders)
+      .values({
+        type: "anthropic-api-key",
+        secretId: secret!.id,
+        isDefault: false,
+        selectedModel,
+        userId: ORG_SENTINEL_USER_ID,
+        orgId: fixture.orgId,
+      })
+      .returning({ id: modelProviders.id });
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: selectedModel,
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: provider!.id,
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+    await db
+      .update(chatThreads)
+      .set({
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        modelProviderType: "vm0",
+        modelProviderCredentialScope: "org",
+        selectedModel,
+      })
+      .where(eq(chatThreads.id, fixture.threadId));
     const [queued] = await db
       .insert(chatMessages)
       .values({
@@ -415,11 +468,23 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
 
     const [zeroRun] = await db
-      .select({ chatThreadId: zeroRuns.chatThreadId })
+      .select({
+        chatThreadId: zeroRuns.chatThreadId,
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, claimed!.runId!))
       .limit(1);
-    expect(zeroRun?.chatThreadId).toBe(fixture.threadId);
+    expect(zeroRun).toStrictEqual({
+      chatThreadId: fixture.threadId,
+      modelProvider: "anthropic-api-key",
+      modelProviderId: provider!.id,
+      modelProviderCredentialScope: "org",
+      selectedModel,
+    });
     await clearAllDetached();
   });
 

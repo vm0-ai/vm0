@@ -8,6 +8,7 @@ import {
   updateTestChatThreadTitle,
   insertTestChatMessage,
   setTestChatThreadRenamedAt,
+  setTestChatThreadModelPin,
   setTestRunModelProvider,
   setTestRunSelectedModel,
   insertOrgModelPolicy,
@@ -261,7 +262,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(data.renamedAt).toBe("2025-06-01T12:00:00.000Z");
   });
 
-  it("returns the first run model for unpinned model-first threads", async () => {
+  it("returns the first run model without preserving its provider route", async () => {
     await insertOrgModelPolicy({
       orgId: testOrgId,
       model: "claude-opus-4-7",
@@ -313,7 +314,42 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(response.status).toBe(200);
     expect(data.selectedModel).toBe("claude-opus-4-7");
     expect(data.modelProviderId).toBeNull();
-    expect(data.modelProviderType).toBe("vm0");
+    expect(data.modelProviderType).toBeNull();
+    expect(data.modelProviderCredentialScope).toBeNull();
+  });
+
+  it("ignores stale provider route columns stored on the thread row", async () => {
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Stale provider route",
+        }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    await setTestChatThreadModelPin(threadId, {
+      modelProviderId: "00000000-0000-4000-a000-000000000123",
+      modelProviderType: "vm0",
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.selectedModel).toBe("claude-sonnet-4-6");
+    expect(data.modelProviderId).toBeNull();
+    expect(data.modelProviderType).toBeNull();
+    expect(data.modelProviderCredentialScope).toBeNull();
   });
 
   it("should return chat messages after run completes", async () => {

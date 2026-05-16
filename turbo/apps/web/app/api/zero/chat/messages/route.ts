@@ -619,14 +619,12 @@ function resolvedPin(
   };
 }
 
-function normalizeStoredModelFirstPin(pin: ThreadModelPin): ThreadModelPin {
-  if (pin.modelProviderType !== "vm0" || pin.modelProviderId === null) {
-    return pin;
-  }
-
+function modelOnlyThreadPin(selectedModel: string | null): ThreadModelPin {
   return {
-    ...pin,
     modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel,
   };
 }
 
@@ -634,31 +632,21 @@ async function getStoredThreadModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [thread] = await globalThis.services.db
-    .select({
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      selectedModel: chatThreads.selectedModel,
-    })
+    .select({ selectedModel: chatThreads.selectedModel })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
   if (!thread || thread.selectedModel === null) {
     return null;
   }
-  return thread;
+  return modelOnlyThreadPin(thread.selectedModel);
 }
 
 async function getFirstRunModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [run] = await globalThis.services.db
-    .select({
-      modelProviderId: zeroRuns.modelProviderId,
-      modelProviderType: zeroRuns.modelProvider,
-      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      selectedModel: zeroRuns.selectedModel,
-    })
+    .select({ selectedModel: zeroRuns.selectedModel })
     .from(chatMessages)
     .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
     .where(
@@ -674,7 +662,7 @@ async function getFirstRunModelPin(
   if (!run?.selectedModel) {
     return null;
   }
-  return run;
+  return modelOnlyThreadPin(run.selectedModel);
 }
 
 async function getExistingModelFirstThreadPin(
@@ -694,23 +682,18 @@ async function persistModelFirstThreadPinIfUnset(
     return pin;
   }
 
-  const [updated] = await globalThis.services.db
+  await globalThis.services.db
     .update(chatThreads)
     .set({
-      modelProviderId: pin.modelProviderId,
-      modelProviderType: pin.modelProviderType,
-      modelProviderCredentialScope: pin.modelProviderCredentialScope,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: pin.selectedModel,
       updatedAt: new Date(),
     })
     .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
-    .returning({
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      selectedModel: chatThreads.selectedModel,
-    });
-  return updated ?? (await getStoredThreadModelPin(threadId)) ?? pin;
+    .returning({ selectedModel: chatThreads.selectedModel });
+  return pin;
 }
 
 async function resolveStoredModelFirstPin(params: {
@@ -718,32 +701,27 @@ async function resolveStoredModelFirstPin(params: {
   userId: string;
   pin: ThreadModelPin;
 }): Promise<ThreadModelPin> {
-  const pin = normalizeStoredModelFirstPin(params.pin);
   const route = await resolveModelFirstRouteDescriptor({
     orgId: params.orgId,
     userId: params.userId,
-    selectedModel: pin.selectedModel,
-    providerType: pin.modelProviderType ?? undefined,
-    credentialScope: pin.modelProviderCredentialScope ?? undefined,
-    modelProviderId: pin.modelProviderId ?? undefined,
+    selectedModel: params.pin.selectedModel,
   });
   return pinFromModelFirstRoute(route);
 }
 
 /**
- * Persist the composer's per-run override onto the thread row and return the
- * effective override to use for this run. Model-first pins the first effective
- * user-message model to the
- * thread so later sends do not drift with the user's current model preference.
+ * Persist only the selected model onto the thread row and return the effective
+ * provider route to use for this run. Model-first threads should retain the
+ * conversation's model while re-resolving provider routing from current org
+ * policy on each send.
  * `null` or `undefined` for `modelSelection` means "inherit" — older clients
  * that never saw the field and newer clients explicitly choosing "Use default"
  * both get the thread/user/workspace fall-through.
  *
- * When a thread already has a model-first pin, reuse it so later sends do not
- * drift with the user's current model preference. `forceNewSession` is the
- * explicit escape hatch for mid-thread model changes: the caller has already
- * cleared the stale thread pin, so resolve from the incoming selection/current
- * model policy instead.
+ * When a thread already has a model-first pin, reuse only its selected model.
+ * `forceNewSession` is the explicit escape hatch for mid-thread model changes:
+ * the caller has already cleared the stale thread pin, so resolve from the
+ * incoming selection/current model policy instead.
  */
 async function resolveRunModelOverride(
   orgId: string,
@@ -783,9 +761,9 @@ async function resolveRunModelOverride(
 }
 
 /**
- * Once a thread has stored modelProviderId + selectedModel, those values are
- * immutable unless the composer explicitly requests `forceNewSession`, so this
- * guard rejects out-of-band/manual API callers that try to change or clear them.
+ * Once a thread has stored selectedModel, it is immutable unless the composer
+ * explicitly requests `forceNewSession`, so this guard rejects out-of-band/manual
+ * API callers that try to change or clear it.
  */
 async function rejectIfThreadModelLocked(
   threadId: string,

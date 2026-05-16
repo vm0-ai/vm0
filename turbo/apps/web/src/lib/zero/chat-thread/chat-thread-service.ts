@@ -55,11 +55,8 @@ function visibleChatMessageCondition() {
 /**
  * Create a new chat thread.
  *
- * `pin`: when provided, eager-pins the thread to a specific model provider /
- * selected-model combination at insert time so subsequent runs stay on the
- * thread's first effective model. Omitting `pin` (or passing both fields as
- * null) leaves the row unpinned so the caller can resolve from user preference
- * and workspace default policy.
+ * `pin`: when provided, stores only the selected model on the thread. Provider
+ * routing is intentionally re-resolved from the current org policy for each run.
  */
 export async function createChatThread(
   userId: string,
@@ -80,9 +77,9 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
-      modelProviderId: pin?.modelProviderId ?? null,
-      modelProviderType: pin?.modelProviderType ?? null,
-      modelProviderCredentialScope: pin?.modelProviderCredentialScope ?? null,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: pin?.selectedModel ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -212,12 +209,7 @@ export async function getFirstRunModelPinForThread(
   threadId: string,
 ): Promise<ChatThreadModelPin | null> {
   const [run] = await globalThis.services.db
-    .select({
-      modelProviderId: zeroRuns.modelProviderId,
-      modelProviderType: zeroRuns.modelProvider,
-      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      selectedModel: zeroRuns.selectedModel,
-    })
+    .select({ selectedModel: zeroRuns.selectedModel })
     .from(chatMessages)
     .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
     .where(
@@ -234,7 +226,12 @@ export async function getFirstRunModelPinForThread(
   if (!run?.selectedModel) {
     return null;
   }
-  return run;
+  return {
+    modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel: run.selectedModel,
+  };
 }
 
 /**
@@ -311,9 +308,6 @@ export async function getChatThread(
       agentComposeId: chatThreads.agentComposeId,
       draftContent: chatThreads.draftContent,
       draftAttachments: chatThreads.draftAttachments,
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
       selectedModel: chatThreads.selectedModel,
       orgId: zeroAgents.orgId,
       lastReadMessageId: chatThreads.lastReadMessageId,
@@ -339,9 +333,9 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
-    modelProviderId: thread.modelProviderId ?? null,
-    modelProviderType: thread.modelProviderType ?? null,
-    modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
+    modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
     selectedModel: thread.selectedModel ?? null,
     orgId: thread.orgId ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,

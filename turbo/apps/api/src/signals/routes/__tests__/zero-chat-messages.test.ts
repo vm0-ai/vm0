@@ -1318,6 +1318,122 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("re-resolves provider route for an existing model-first thread", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await seedVm0Credits(fixture, 1000);
+    await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "vm0",
+      userId: ORG_SENTINEL_USER_ID,
+      isDefault: false,
+    });
+    await seedVm0ApiKey(fixture, "claude-sonnet-4-6");
+    await writeDb.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "start on built-in",
+      modelSelection: {
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "completed");
+
+    const byokProviderId = await seedModelProvider(
+      fixture,
+      "claude-sonnet-4-6",
+      {
+        type: "anthropic-api-key",
+        userId: ORG_SENTINEL_USER_ID,
+        isDefault: false,
+        secretValue: "org-anthropic-key",
+      },
+    );
+    await writeDb
+      .update(orgModelPolicies)
+      .set({
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: byokProviderId,
+        updatedByUserId: fixture.userId,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, fixture.orgId),
+          eq(orgModelPolicies.model, "claude-sonnet-4-6"),
+        ),
+      );
+
+    const second = await send({
+      agentId: fixture.agentId,
+      prompt: "continue same model after provider switch",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+
+    const [thread] = await writeDb
+      .select({
+        modelProviderId: chatThreads.modelProviderId,
+        modelProviderType: chatThreads.modelProviderType,
+        modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
+        selectedModel: chatThreads.selectedModel,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, first.body.threadId))
+      .limit(1);
+    expect(thread).toMatchObject({
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const [run] = await writeDb
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, second.body.runId!))
+      .limit(1);
+    expect(run).toStrictEqual({
+      modelProvider: "anthropic-api-key",
+      modelProviderId: byokProviderId,
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, second.body.runId!))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      ANTHROPIC_API_KEY: "org-anthropic-key",
+    });
+  });
+
   it("runs VM0 GPT model-first routes with the Codex runtime framework", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1496,7 +1612,7 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
-  it("returns 422 when a thread pin points at a deleted provider", async () => {
+  it("re-resolves current policy when the first provider is deleted", async () => {
     const fixture = await track(seedFixture());
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");
 
@@ -1510,24 +1626,50 @@ describe("POST /api/zero/chat/messages", () => {
     });
     await clearAllDetached();
     await setRunStatus(first.body.runId!, "completed");
+    const replacementProviderId = await seedModelProvider(
+      fixture,
+      "claude-sonnet-4-6",
+      {
+        userId: ORG_SENTINEL_USER_ID,
+        isDefault: false,
+        secretValue: "replacement-provider-key",
+      },
+    );
+    await store.set(writeDb$).insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: replacementProviderId,
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
     await store
       .set(writeDb$)
       .delete(modelProviders)
       .where(eq(modelProviders.id, providerId));
 
-    const response = await accept(
-      client().send({
-        headers: authHeaders(),
-        body: {
-          agentId: fixture.agentId,
-          prompt: "follow up",
-          threadId: first.body.threadId,
-        },
-      }),
-      [422],
-    );
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "follow up",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
 
-    expect(response.body.error.code).toBe("PROVIDER_DELETED");
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        modelProviderId: zeroRuns.modelProviderId,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, response.body.runId!))
+      .limit(1);
+    expect(run).toStrictEqual({
+      modelProviderId: replacementProviderId,
+      selectedModel: "claude-sonnet-4-6",
+    });
   });
 
   it("derives the runner framework from the compose content", async () => {

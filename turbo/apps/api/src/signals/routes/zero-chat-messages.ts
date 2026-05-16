@@ -115,17 +115,12 @@ function parseModelProviderCredentialScope(
   throw new Error(`Unknown model provider credential scope "${value}"`);
 }
 
-function threadModelPinFromRow(row: {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: string | null;
-  readonly selectedModel: string | null;
-}): ThreadModelPin {
+function modelOnlyThreadPin(selectedModel: string | null): ThreadModelPin {
   return {
-    ...row,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      row.modelProviderCredentialScope,
-    ),
+    modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel,
   };
 }
 
@@ -792,19 +787,14 @@ async function getStoredThreadModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [thread] = await db
-    .select({
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      selectedModel: chatThreads.selectedModel,
-    })
+    .select({ selectedModel: chatThreads.selectedModel })
     .from(chatThreads)
     .where(eq(chatThreads.id, threadId))
     .limit(1);
   if (!thread?.selectedModel) {
     return null;
   }
-  return threadModelPinFromRow(thread);
+  return modelOnlyThreadPin(thread.selectedModel);
 }
 
 async function modelProviderPinAvailable(params: {
@@ -835,12 +825,7 @@ async function getFirstRunModelPin(
   threadId: string,
 ): Promise<ThreadModelPin | null> {
   const [run] = await db
-    .select({
-      modelProviderId: zeroRuns.modelProviderId,
-      modelProviderType: zeroRuns.modelProvider,
-      modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
-      selectedModel: zeroRuns.selectedModel,
-    })
+    .select({ selectedModel: zeroRuns.selectedModel })
     .from(chatMessages)
     .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
     .where(
@@ -856,7 +841,7 @@ async function getFirstRunModelPin(
   if (!run?.selectedModel) {
     return null;
   }
-  return threadModelPinFromRow(run);
+  return modelOnlyThreadPin(run.selectedModel);
 }
 
 async function existingModelFirstThreadPin(
@@ -983,19 +968,12 @@ async function persistThreadPinIfUnset(
   if (!pin.selectedModel) {
     return pin;
   }
-  const [updated] = await db
+  await db
     .update(chatThreads)
-    .set({ ...pin, updatedAt: nowDate() })
+    .set({ ...modelOnlyThreadPin(pin.selectedModel), updatedAt: nowDate() })
     .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
-    .returning({
-      modelProviderId: chatThreads.modelProviderId,
-      modelProviderType: chatThreads.modelProviderType,
-      modelProviderCredentialScope: chatThreads.modelProviderCredentialScope,
-      selectedModel: chatThreads.selectedModel,
-    });
-  return updated
-    ? threadModelPinFromRow(updated)
-    : ((await getStoredThreadModelPin(db, threadId)) ?? pin);
+    .returning({ selectedModel: chatThreads.selectedModel });
+  return pin;
 }
 
 async function resolveRunModelPin(params: {
@@ -1156,9 +1134,9 @@ async function createChatThread(
       userId: args.userId,
       agentComposeId: args.agentId,
       title: null,
-      modelProviderId: args.pin.modelProviderId,
-      modelProviderType: args.pin.modelProviderType,
-      modelProviderCredentialScope: args.pin.modelProviderCredentialScope,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
       selectedModel: args.pin.selectedModel,
     })
     .returning({ id: chatThreads.id });
