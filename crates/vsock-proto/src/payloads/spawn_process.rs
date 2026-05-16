@@ -523,6 +523,18 @@ mod tests {
     }
 
     #[test]
+    fn decode_spawn_process_rejects_control_sink_without_nonce() {
+        let mut payload = encode_spawn_process(1000, "cmd", &[], false, true, None).unwrap();
+        payload[4] |= SPAWN_PROCESS_FLAG_CONTROL_SINK;
+
+        let err = decode_spawn_process_error(&payload);
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("spawn_process control sink requires nonce")
+        ));
+    }
+
+    #[test]
     fn decode_spawn_process_rejects_trailing_bytes_after_log_path() {
         let mut payload =
             encode_spawn_process(1000, "cmd", &[], false, true, Some("/tmp/log")).unwrap();

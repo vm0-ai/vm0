@@ -525,6 +525,61 @@ mod tests {
     }
 
     #[test]
+    fn read_request_rejects_oversized_frame_before_body() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        a.write_all(&((MAX_FRAME_BYTES as u32) + 1).to_be_bytes())
+            .unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "invalid control frame length");
+    }
+
+    #[test]
+    fn read_request_rejects_wrong_frame_kind() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        write_frame(&mut a, FRAME_RESPONSE, &[]).unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "expected control request frame");
+    }
+
+    #[test]
+    fn read_request_rejects_trailing_bytes() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&5u16.to_be_bytes());
+        payload.extend_from_slice(b"msg-1");
+        payload.extend_from_slice(&0u32.to_be_bytes());
+        payload.push(0);
+        write_frame(&mut a, FRAME_REQUEST, &payload).unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "control frame trailing bytes");
+    }
+
+    #[test]
+    fn read_response_rejects_unknown_status() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&5u16.to_be_bytes());
+        payload.extend_from_slice(b"msg-1");
+        payload.push(0xFF);
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        write_frame(&mut a, FRAME_RESPONSE, &payload).unwrap();
+
+        let err = read_response(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "invalid control response status");
+    }
+
+    #[test]
     fn abstract_socket_connects() {
         let name = format!(
             "vm0-test-{}-{}",
