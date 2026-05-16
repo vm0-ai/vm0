@@ -36,6 +36,6 @@
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",
     "typescript": "5.9.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
