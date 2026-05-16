@@ -52,7 +52,7 @@ import {
   generateAndPersistChatThreadTitleFromCallback,
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 
 const log = logger("callback:chat");
 const GOAL_DONE_SENTINEL = "[GOAL_DONE]";
@@ -431,17 +431,12 @@ async function handleCompletedChatCallback(args: {
   }
 
   waitUntil(
-    (async () => {
-      const result = await safeAsync(() => {
-        return recordLastEventToComplete(args.db, args.runId);
+    tapError(recordLastEventToComplete(args.db, args.runId), (error) => {
+      log.warn("Failed to record last_event_to_complete", {
+        runId: args.runId,
+        error,
       });
-      if ("error" in result) {
-        log.warn("Failed to record last_event_to_complete", {
-          runId: args.runId,
-          error: result.error,
-        });
-      }
-    })(),
+    }),
   );
 
   await args.saveRunSummary(lastResultText ?? "");

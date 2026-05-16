@@ -463,12 +463,9 @@ async function configureTelegramBot(args: {
 }
 
 async function publishTelegramOrgChanged(orgId: string): Promise<void> {
-  const result = await safeAsync(() => {
-    return publishOrgSignal(orgId, "telegram:changed");
+  await tapError(publishOrgSignal(orgId, "telegram:changed"), (error) => {
+    log.warn("Failed to publish Telegram org change", { error });
   });
-  if ("error" in result) {
-    log.warn("Failed to publish Telegram org change", { error: result.error });
-  }
 }
 
 async function buildStatusResponse(
@@ -1264,24 +1261,23 @@ async function postTelegramMessage(args: {
   readonly replyToMessageId?: number;
   readonly replyMarkup?: TelegramReplyMarkup;
 }): Promise<void> {
-  const result = await safeAsync(() => {
-    return sendMessage(args.botToken, args.chatId, args.text, {
+  const result = await tapError(
+    sendMessage(args.botToken, args.chatId, args.text, {
       replyToMessageId: args.replyToMessageId,
       replyMarkup: args.replyMarkup,
-    });
-  });
-  if ("error" in result) {
-    log.warn("Failed to send Telegram message", {
-      chatId: args.chatId,
-      error: result.error,
-    });
-    return;
-  }
-  if (result.ok.kind === "telegram-error") {
+    }),
+    (error) => {
+      log.warn("Failed to send Telegram message", {
+        chatId: args.chatId,
+        error,
+      });
+    },
+  );
+  if (result?.kind === "telegram-error") {
     log.warn("Telegram rejected message", {
       chatId: args.chatId,
-      status: result.ok.status,
-      description: result.ok.description,
+      status: result.status,
+      description: result.description,
     });
   }
 }
@@ -1290,15 +1286,12 @@ async function sendTypingActionSafely(
   botToken: string,
   chatId: string,
 ): Promise<void> {
-  const result = await safeAsync(() => {
-    return sendChatAction(botToken, chatId, "typing");
-  });
-  if ("error" in result) {
+  await tapError(sendChatAction(botToken, chatId, "typing"), (error) => {
     log.debug("Failed to send Telegram typing action", {
       chatId,
-      error: result.error,
+      error,
     });
-  }
+  });
 }
 
 async function resolveUserLink(args: {
