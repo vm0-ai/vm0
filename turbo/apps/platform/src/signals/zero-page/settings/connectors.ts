@@ -1427,7 +1427,7 @@ const pollConnectorCliAuthBrowserVerification$ = command(
 );
 
 function openConnectorCliAuthBrowserUrl(browserUrl: string): boolean {
-  return window.open(browserUrl, "_blank") !== null;
+  return window.open(browserUrl, "_blank", "noopener,noreferrer") !== null;
 }
 
 export const runConnectorCliAuth$ = command(

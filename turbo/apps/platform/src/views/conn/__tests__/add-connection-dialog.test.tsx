@@ -532,6 +532,7 @@ describe("connect modal - interactions", () => {
     expect(openSpy).toHaveBeenCalledWith(
       "https://dashboard.stripe.com/stripecli/confirm_auth",
       "_blank",
+      "noopener,noreferrer",
     );
     expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
 
