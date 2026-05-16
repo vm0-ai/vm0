@@ -411,23 +411,20 @@ function QueuedMessagesStrip({
   if (!items || items.length === 0) {
     return null;
   }
+  const count = items.length;
+  const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
-    <div className="relative z-0 mx-5 -mb-6 rounded-xl zero-border bg-muted/30 shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-5 pt-3 pb-1.5">
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-card shadow-sm zero-border">
+      <div className="flex items-center gap-2 px-5 pt-3 pb-2">
         <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
         </span>
-        <span className="text-xs font-medium text-foreground/85 tracking-[0.01em]">
-          Queued
-        </span>
-        <span className="text-xs text-muted-foreground/60">
-          · {items.length}
-        </span>
+        <span className="text-sm font-medium text-foreground/85">{label}</span>
       </div>
       <div
-        className="max-h-24 divide-y divide-border/40 overflow-y-auto pb-7"
+        className="max-h-[200px] divide-y divide-border/40 overflow-y-auto pb-7"
         role="list"
       >
         {items.map((item) => {
@@ -436,12 +433,12 @@ function QueuedMessagesStrip({
               key={item.id}
               role="listitem"
               aria-label="Queued message"
-              className="group flex min-h-8 items-center gap-2 px-5 py-2 font-serif text-[13px] italic text-muted-foreground"
+              className="group flex min-h-10 items-center gap-2 px-5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/40"
             >
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
                 type="button"
-                className="shrink-0 rounded p-1 text-muted-foreground/45 opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   onRemove?.(item.id);
                 }}
