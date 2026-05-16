@@ -786,6 +786,93 @@ mod tests {
     }
 
     #[test]
+    fn non_terminal_control_responses_do_not_close_sink() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"aa22cc44ee66ff88";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(11, Some(FORWARD_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let client = std::thread::spawn(move || {
+            let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+            process_control_ipc::write_hello(&mut stream).unwrap();
+
+            let request = process_control_ipc::read_request(&mut stream).unwrap();
+            assert_eq!(request.message_id, "msg-rejected");
+            process_control_ipc::write_response(
+                &mut stream,
+                &process_control_ipc::ControlResponse {
+                    message_id: request.message_id,
+                    status: process_control_ipc::ControlResponseStatus::Rejected,
+                    diagnostic: "denied".to_owned(),
+                },
+            )
+            .unwrap();
+
+            let request = process_control_ipc::read_request(&mut stream).unwrap();
+            assert_eq!(request.message_id, "msg-error");
+            process_control_ipc::write_response(
+                &mut stream,
+                &process_control_ipc::ControlResponse {
+                    message_id: request.message_id,
+                    status: process_control_ipc::ControlResponseStatus::Error,
+                    diagnostic: "temporary error".to_owned(),
+                },
+            )
+            .unwrap();
+
+            let request = process_control_ipc::read_request(&mut stream).unwrap();
+            assert_eq!(request.message_id, "msg-after-error");
+            process_control_ipc::write_response(
+                &mut stream,
+                &process_control_ipc::ControlResponse {
+                    message_id: request.message_id,
+                    status: process_control_ipc::ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap();
+        });
+
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+
+        let payload =
+            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-rejected", b"payload")
+                .unwrap();
+        handle_process_control(21, &payload, &registry, &writer).unwrap();
+        let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
+        assert_eq!(seq, 21);
+        assert_eq!(status, ProcessControlStatus::Rejected);
+        assert_eq!(message_id, "msg-rejected");
+        assert_eq!(diagnostic, "denied");
+
+        let payload =
+            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-error", b"payload")
+                .unwrap();
+        handle_process_control(22, &payload, &registry, &writer).unwrap();
+        let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
+        assert_eq!(seq, 22);
+        assert_eq!(status, ProcessControlStatus::SinkError);
+        assert_eq!(message_id, "msg-error");
+        assert_eq!(diagnostic, "temporary error");
+
+        let payload =
+            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-after-error", b"payload")
+                .unwrap();
+        handle_process_control(23, &payload, &registry, &writer).unwrap();
+        let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
+        assert_eq!(seq, 23);
+        assert_eq!(status, ProcessControlStatus::Delivered);
+        assert_eq!(message_id, "msg-after-error");
+        assert_eq!(diagnostic, "");
+
+        let sink = registry.resolve(11, FORWARD_NONCE).unwrap();
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+        client.join().unwrap();
+    }
+
+    #[test]
     fn pending_process_control_returns_inactive_when_operation_releases() {
         const FORWARD_NONCE: ProcessControlNonce = *b"0011223344556677";
 
