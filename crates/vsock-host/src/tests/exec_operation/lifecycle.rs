@@ -26,6 +26,10 @@ async fn exec_operation_wait_timeout_cleans_operation_state() {
     let err = handle.wait(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
     assert!(is_connected(&host));
 }
 

@@ -33,6 +33,10 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     task.abort();
     let _ = task.await;
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert!(is_connected(&host));
 
     drop(writer_guard);
@@ -67,6 +71,12 @@ async fn exec_operation_handle_drop_after_full_write_marks_not_parkable() {
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     drop(handle);
     assert_eq!(operation_count(&host), 0);
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("drop must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after handle drop: {err}"),
+    }
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
