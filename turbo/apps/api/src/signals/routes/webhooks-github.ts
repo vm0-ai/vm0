@@ -49,10 +49,16 @@ async function verifyGitHubWebhookSignature(args: {
     .update(args.body)
     .digest("hex")}`;
 
+  // timingSafeEqual throws synchronously when the buffers differ in length —
+  // wrap in an async IIFE so the throw becomes a rejection settle can observe.
   const result = await settle(
-    Promise.resolve(
-      timingSafeEqual(Buffer.from(args.signature), Buffer.from(expected)),
-    ),
+    (async (): Promise<boolean> => {
+      await Promise.resolve();
+      return timingSafeEqual(
+        Buffer.from(args.signature),
+        Buffer.from(expected),
+      );
+    })(),
   );
   return result.ok ? result.value : false;
 }

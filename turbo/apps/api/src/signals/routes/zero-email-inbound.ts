@@ -641,8 +641,14 @@ const handleInboundRoute$ = command(
     const rawBody = await req.text();
     signal.throwIfAborted();
 
+    // verifyResendWebhook is a synchronous svix verifier that throws on bad
+    // signatures — wrap in an async IIFE so the throw becomes a rejection
+    // settle can observe.
     const payloadResult = await settle(
-      Promise.resolve(verifyResendWebhook(rawBody, svixHeaders)),
+      (async (): Promise<unknown> => {
+        await Promise.resolve();
+        return verifyResendWebhook(rawBody, svixHeaders);
+      })(),
     );
     signal.throwIfAborted();
     if (!payloadResult.ok) {

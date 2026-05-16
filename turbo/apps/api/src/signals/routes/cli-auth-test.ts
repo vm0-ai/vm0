@@ -328,8 +328,13 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if ("authJson" in bodyResult.data) {
     const { authJson } = bodyResult.data;
+    // parseCodexAuthJson is synchronous and throws on invalid input — wrap
+    // in an async IIFE so the throw becomes a rejection settle can observe.
     const parsedResult = await settle(
-      Promise.resolve(parseCodexAuthJson(authJson)),
+      (async (): Promise<ReturnType<typeof parseCodexAuthJson>> => {
+        await Promise.resolve();
+        return parseCodexAuthJson(authJson);
+      })(),
     );
     signal.throwIfAborted();
     if (!parsedResult.ok) {

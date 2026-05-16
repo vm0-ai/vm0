@@ -1159,8 +1159,13 @@ export async function resolveFirewallAuth(
       };
     }
 > {
+  // decryptSecretsMap is synchronous and throws on malformed input — wrap in
+  // an async IIFE so the throw becomes a rejection settle can observe.
   const decryptedResult = await settle(
-    Promise.resolve(decryptSecretsMap(body.encryptedSecrets)),
+    (async (): Promise<Record<string, string> | null> => {
+      await Promise.resolve();
+      return decryptSecretsMap(body.encryptedSecrets);
+    })(),
   );
   const decryptedSecrets = decryptedResult.ok ? decryptedResult.value : null;
 
