@@ -14,6 +14,7 @@ import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   chatThreadV1GetContract,
@@ -24,10 +25,17 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import {
+  decryptSecretValue,
+  decryptSecretsMap,
+} from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
+import {
+  signPatJwtForTests,
+  signSandboxJwtForTests,
+  verifyZeroToken,
+} from "../../auth/tokens";
 
 interface PatFixture {
   readonly token: string;
@@ -166,18 +174,27 @@ async function deleteThreadFixture(fixture: ThreadFixture): Promise<void> {
     .where(eq(agentComposes.id, fixture.composeId));
 }
 
+function vm0Template(expression: string): string {
+  return `$${expression}`;
+}
+
 async function seedRunnableAgentFixture(
   pat: PatFixture,
 ): Promise<RunnableAgentFixture> {
   const composeId = randomUUID();
   const versionId = randomUUID();
+  const name = `compose-${composeId.slice(0, 8)}`;
   const writeDb = store.set(writeDb$);
   const content = {
     version: "1.0",
     agents: {
-      main: {
+      [name]: {
         framework: "claude-code",
-        environment: { ANTHROPIC_API_KEY: "test-key" },
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          ZERO_AGENT_ID: vm0Template("{{ vars.ZERO_AGENT_ID }}"),
+          ZERO_TOKEN: vm0Template("{{ secrets.ZERO_TOKEN }}"),
+        },
         experimental_runner: { group: "vm0/test" },
       },
     },
@@ -187,7 +204,7 @@ async function seedRunnableAgentFixture(
     id: composeId,
     userId: pat.userId,
     orgId: pat.orgId,
-    name: `compose-${composeId.slice(0, 8)}`,
+    name,
     headVersionId: versionId,
   });
   await writeDb.insert(agentComposeVersions).values({
@@ -195,6 +212,16 @@ async function seedRunnableAgentFixture(
     composeId,
     content,
     createdBy: pat.userId,
+  });
+  // V1 send routes through createZeroRun$, which requires the agent compose
+  // to also be registered as a Zero agent. Mirrors fixtures used by the
+  // non-v1 chat tests.
+  await writeDb.insert(zeroAgents).values({
+    id: composeId,
+    orgId: pat.orgId,
+    owner: pat.userId,
+    name,
+    visibility: "public",
   });
 
   return { composeId, versionId };
@@ -713,6 +740,84 @@ describe("POST /api/v1/chat-threads/messages", () => {
     }
   });
 
+  it("returns 401 with web's 'API key required' phrasing when no Authorization header is provided", async () => {
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({ headers: {}, body: { prompt: "hello" } }),
+      [401],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "API key required",
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  it("returns 401 for an opaque bearer token", async () => {
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    await accept(
+      client.send({
+        headers: { authorization: "Bearer ak_unknown_opaque_secret" },
+        body: { prompt: "hello" },
+      }),
+      [401],
+    );
+  });
+
+  it("returns 401 when the PAT row has been revoked", async () => {
+    const pat = await seedPatFixture();
+    await deletePatFixture(pat);
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "hello" },
+      }),
+      [401],
+    );
+  });
+
+  it("returns 401 when the PAT is expired", async () => {
+    const pat = await seedExpiredPatFixture();
+    pats.push(pat);
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "hello" },
+      }),
+      [401],
+    );
+  });
+
+  it("returns 403 when authenticated with a sandbox token", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const runId = randomUUID();
+    const nowSeconds = currentSecond();
+    const sandboxToken = signSandboxJwtForTests({
+      scope: "sandbox",
+      userId,
+      orgId,
+      runId,
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({
+        headers: { authorization: `Bearer ${sandboxToken}` },
+        body: { prompt: "hello" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
   it("creates a thread, run, chat callback, user message, and runner job", async () => {
     const pat = await seedPatFixture();
     pats.push(pat);
@@ -823,6 +928,145 @@ describe("POST /api/v1/chat-threads/messages", () => {
       null,
     );
     expect(response.body.createdAt).toStrictEqual(expect.any(String));
+  });
+
+  it("injects a ZERO_TOKEN sandbox secret into the runner execution context", async () => {
+    const pat = await seedPatFixture();
+    pats.push(pat);
+    const agent = await seedRunnableAgentFixture(pat);
+    await setDefaultAgent(pat, agent);
+    agents.push(agent);
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "needs zero token" },
+      }),
+      [201],
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [message] = await writeDb
+      .select({ runId: chatMessages.runId })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, response.body.messageId))
+      .limit(1);
+    if (!message?.runId) {
+      throw new Error("Expected user message to reference a run");
+    }
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, message.runId))
+      .limit(1);
+    const encryptedSecrets =
+      typeof job?.executionContext === "object" &&
+      job.executionContext !== null &&
+      "encryptedSecrets" in job.executionContext &&
+      typeof (job.executionContext as { encryptedSecrets: unknown })
+        .encryptedSecrets === "string"
+        ? ((job.executionContext as { encryptedSecrets: string })
+            .encryptedSecrets)
+        : null;
+    const secrets = decryptSecretsMap(encryptedSecrets);
+    expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
+    const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
+    expect(zeroAuth?.userId).toBe(pat.userId);
+    expect(zeroAuth?.orgId).toBe(pat.orgId);
+  });
+
+  it("does not require unconfigured connector environment refs before creating a chat run", async () => {
+    const pat = await seedPatFixture();
+    pats.push(pat);
+    const agent = await seedRunnableAgentFixture(pat);
+    await setDefaultAgent(pat, agent);
+    agents.push(agent);
+    const writeDb = store.set(writeDb$);
+    // Reproduce the production regression: the org's default agent references
+    // integration vars/secrets the caller has not provided. Before this route
+    // was wired through createZeroRun$, strict env-ref validation rejected the
+    // run with HTTP 400 "Missing required values: vars.*".
+    await writeDb
+      .update(agentComposeVersions)
+      .set({
+        content: {
+          version: "1.0",
+          agents: {
+            main: {
+              framework: "claude-code",
+              environment: {
+                ANTHROPIC_API_KEY: "test-key",
+                ZERO_AGENT_ID: vm0Template("{{ vars.ZERO_AGENT_ID }}"),
+                ZERO_TOKEN: vm0Template("{{ secrets.ZERO_TOKEN }}"),
+                JIRA_EMAIL: vm0Template("{{ vars.JIRA_EMAIL }}"),
+                GITLAB_HOST: vm0Template("{{ vars.GITLAB_HOST }}"),
+                GH_TOKEN: vm0Template("{{ secrets.GH_TOKEN }}"),
+                SLACK_TOKEN: vm0Template("{{ secrets.SLACK_TOKEN }}"),
+              },
+              experimental_runner: { group: "vm0/test" },
+            },
+          },
+        },
+      })
+      .where(eq(agentComposeVersions.id, agent.versionId));
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "use the default zero agent" },
+      }),
+      [201],
+    );
+
+    expect(response.body.messageId).toStrictEqual(expect.any(String));
+    expect(response.body.threadId).toStrictEqual(expect.any(String));
+  });
+
+  it("mounts custom skills configured on the agent", async () => {
+    const pat = await seedPatFixture();
+    pats.push(pat);
+    const agent = await seedRunnableAgentFixture(pat);
+    await setDefaultAgent(pat, agent);
+    agents.push(agent);
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(zeroAgents)
+      .set({ customSkills: ["pp"] })
+      .where(eq(zeroAgents.id, agent.composeId));
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "use the pp skill" },
+      }),
+      [201],
+    );
+
+    const [message] = await writeDb
+      .select({ runId: chatMessages.runId })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, response.body.messageId))
+      .limit(1);
+    if (!message?.runId) {
+      throw new Error("Expected user message to reference a run");
+    }
+
+    const [run] = await writeDb
+      .select({ additionalVolumes: agentRuns.additionalVolumes })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, message.runId))
+      .limit(1);
+    const volumes = run?.additionalVolumes ?? [];
+    expect(volumes).toContainEqual(
+      expect.objectContaining({
+        name: "custom-skill@pp",
+        mountPath: "/home/user/.claude/skills/pp",
+      }),
+    );
   });
 
   it("continues an existing thread from the latest session", async () => {
