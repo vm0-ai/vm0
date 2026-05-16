@@ -55,6 +55,10 @@ impl ControlHandle {
     }
 
     pub fn join(mut self) {
+        self.shutdown_and_join();
+    }
+
+    fn shutdown_and_join(&mut self) {
         self.shutdown.cancel();
         let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(stream) = stream {
@@ -65,6 +69,12 @@ impl ControlHandle {
         {
             log_warn!(LOG_TAG, "Process control task panicked: {error:?}");
         }
+    }
+}
+
+impl Drop for ControlHandle {
+    fn drop(&mut self) {
+        self.shutdown_and_join();
     }
 }
 
@@ -186,6 +196,33 @@ mod tests {
             panic!("control handle join should wake idle reader: {error}");
         }
         joiner.join().unwrap();
+    }
+
+    #[test]
+    fn control_handle_drop_wakes_idle_reader() {
+        let nonce = *b"0011223344556677";
+        let endpoint = process_control_ipc::endpoint_name(45, &nonce);
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let shutdown = CancellationToken::new();
+        let handle = ControlHandle::spawn_endpoint(endpoint, shutdown).unwrap();
+
+        let mut stream =
+            process_control_ipc::accept_with_timeout(&listener, Duration::from_secs(1))
+                .expect("control task should connect");
+        process_control_ipc::read_hello(&mut stream).unwrap();
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let dropper = thread::spawn(move || {
+            drop(handle);
+            done_tx.send(()).unwrap();
+        });
+
+        if let Err(error) = done_rx.recv_timeout(Duration::from_secs(1)) {
+            drop(stream);
+            dropper.join().unwrap();
+            panic!("control handle drop should wake idle reader: {error}");
+        }
+        dropper.join().unwrap();
     }
 
     #[test]
