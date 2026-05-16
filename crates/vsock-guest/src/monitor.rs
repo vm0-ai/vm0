@@ -770,6 +770,48 @@ mod tests {
     }
 
     #[test]
+    fn spawn_process_control_endpoint_overrides_existing_env() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        handle_spawn_process_with_spawner(
+            SpawnProcessRequest {
+                timeout_ms: 5000,
+                command: "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"",
+                env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],
+                sudo: false,
+                stream_stdout: false,
+                stdout_log_path: None,
+                process_control_guard: None,
+                process_control_bootstrap_endpoint: Some("fresh-endpoint".to_owned()),
+            },
+            12,
+            operation_guard(),
+            writer,
+            cancel,
+            SystemThreadSpawner,
+        )
+        .unwrap();
+
+        let result = read_message(&mut host);
+        assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+        assert_eq!(result.seq, 12);
+        let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
+
+        let exit = read_message(&mut host);
+        assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        assert_eq!(exit.seq, 12);
+        let (exit_pid, code, stdout, stderr) =
+            vsock_proto::decode_process_exit(&exit.payload).unwrap();
+        assert_eq!(exit_pid, pid);
+        assert_eq!(code, 0);
+        assert_eq!(stdout, b"fresh-endpoint");
+        assert!(stderr.is_empty(), "unexpected stderr: {stderr:?}");
+    }
+
+    #[test]
     fn oversized_process_exit_sends_fallback_and_releases_operation() {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();

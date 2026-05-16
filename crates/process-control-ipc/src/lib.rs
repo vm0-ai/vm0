@@ -529,6 +529,58 @@ mod tests {
     }
 
     #[test]
+    fn request_rejects_invalid_message_id_lengths() {
+        let (mut stream, _peer) = UnixStream::pair().unwrap();
+
+        for message_id in ["".to_owned(), "x".repeat(MAX_MESSAGE_ID_BYTES + 1)] {
+            let err = write_request(
+                &mut stream,
+                &ControlRequest {
+                    message_id,
+                    payload: Vec::new(),
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(err.to_string(), "invalid control message id length");
+        }
+    }
+
+    #[test]
+    fn response_rejects_invalid_message_id_and_large_diagnostic() {
+        let (mut stream, _peer) = UnixStream::pair().unwrap();
+
+        for message_id in ["".to_owned(), "x".repeat(MAX_MESSAGE_ID_BYTES + 1)] {
+            let err = write_response(
+                &mut stream,
+                &ControlResponse {
+                    message_id,
+                    status: ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(err.to_string(), "invalid control message id length");
+        }
+
+        let err = write_response(
+            &mut stream,
+            &ControlResponse {
+                message_id: "msg-1".to_owned(),
+                status: ControlResponseStatus::Error,
+                diagnostic: "x".repeat(MAX_DIAGNOSTIC_BYTES + 1),
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "control diagnostic too large");
+    }
+
+    #[test]
     fn abstract_socket_rejects_invalid_names() {
         for name in ["", "bad\0name"] {
             let err = bind_abstract_listener(name).unwrap_err();
@@ -586,6 +638,32 @@ mod tests {
     }
 
     #[test]
+    fn read_request_rejects_empty_and_invalid_utf8_message_id() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0u16.to_be_bytes());
+        payload.extend_from_slice(&0u32.to_be_bytes());
+        write_frame(&mut a, FRAME_REQUEST, &payload).unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "control request message id empty");
+
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&1u16.to_be_bytes());
+        payload.push(0xFF);
+        payload.extend_from_slice(&0u32.to_be_bytes());
+        write_frame(&mut a, FRAME_REQUEST, &payload).unwrap();
+
+        let err = read_request(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "control request message id invalid utf-8");
+    }
+
+    #[test]
     fn read_response_rejects_unknown_status() {
         let (mut a, mut b) = UnixStream::pair().unwrap();
         let mut payload = Vec::new();
@@ -599,6 +677,38 @@ mod tests {
 
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
         assert_eq!(err.to_string(), "invalid control response status");
+    }
+
+    #[test]
+    fn read_response_rejects_large_and_invalid_utf8_diagnostic() {
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let diagnostic = "x".repeat(MAX_DIAGNOSTIC_BYTES + 1);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&5u16.to_be_bytes());
+        payload.extend_from_slice(b"msg-1");
+        payload.push(RESPONSE_ERROR);
+        payload.extend_from_slice(&(diagnostic.len() as u16).to_be_bytes());
+        payload.extend_from_slice(diagnostic.as_bytes());
+        write_frame(&mut a, FRAME_RESPONSE, &payload).unwrap();
+
+        let err = read_response(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "control response diagnostic too large");
+
+        let (mut a, mut b) = UnixStream::pair().unwrap();
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&5u16.to_be_bytes());
+        payload.extend_from_slice(b"msg-1");
+        payload.push(RESPONSE_ERROR);
+        payload.extend_from_slice(&1u16.to_be_bytes());
+        payload.push(0xFF);
+        write_frame(&mut a, FRAME_RESPONSE, &payload).unwrap();
+
+        let err = read_response(&mut b).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "control response diagnostic invalid utf-8");
     }
 
     #[test]
