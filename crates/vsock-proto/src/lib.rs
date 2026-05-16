@@ -72,8 +72,8 @@ pub use payloads::process::{
     ProcessExit, decode_process_exit, decode_stdout_chunk, encode_process_exit, encode_stdout_chunk,
 };
 pub use payloads::process_control::{
-    DecodedProcessControl, DecodedProcessControlResult, PROCESS_CONTROL_NONCE_LEN,
-    ProcessControlNonce, ProcessControlStatus, decode_process_control,
+    DecodedProcessControl, DecodedProcessControlResult, PROCESS_CONTROL_MAX_PAYLOAD_BYTES,
+    PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce, ProcessControlStatus, decode_process_control,
     decode_process_control_result, encode_process_control, encode_process_control_result,
 };
 pub use payloads::spawn_process::{

@@ -5,6 +5,9 @@ use crate::read::{
 };
 
 pub const PROCESS_CONTROL_NONCE_LEN: usize = 16;
+/// Mirrors `process_control_ipc::MAX_CONTROL_PAYLOAD_BYTES` so host-side
+/// encoding rejects requests that the guest-side local IPC channel cannot carry.
+pub const PROCESS_CONTROL_MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 
 pub type ProcessControlNonce = [u8; PROCESS_CONTROL_NONCE_LEN];
 
@@ -112,6 +115,9 @@ pub fn encode_process_control(
             "process_control message_id empty",
         ));
     }
+    if payload.len() > PROCESS_CONTROL_MAX_PAYLOAD_BYTES {
+        return Err(ProtocolError::PayloadTooLarge("payload", payload.len()));
+    }
     let message_id_len = ensure_u16_len("message_id", message_id.len())?;
     let payload_len = ensure_u32_len("payload", payload.len())?;
     let total_len = encoded_control_len(message_id.len(), payload.len())?;
@@ -166,6 +172,11 @@ pub fn decode_process_control(payload: &[u8]) -> Result<DecodedProcessControl<'_
         &mut offset,
         "process_control payload_len truncated",
     )? as usize;
+    if payload_len > PROCESS_CONTROL_MAX_PAYLOAD_BYTES {
+        return Err(ProtocolError::InvalidPayload(
+            "process_control payload too large",
+        ));
+    }
     let message_payload = read_slice(
         payload,
         &mut offset,
@@ -310,6 +321,24 @@ mod tests {
         let decoded = decode_process_control(&encoded).unwrap();
 
         assert_eq!(decoded.payload, b"");
+    }
+
+    #[test]
+    fn process_control_rejects_payload_over_local_ipc_limit() {
+        let too_large = vec![0; PROCESS_CONTROL_MAX_PAYLOAD_BYTES + 1];
+        let err = encode_process_control(7, NONCE, "msg-1", &too_large).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::PayloadTooLarge("payload", size) if size == too_large.len()
+        ));
+
+        let mut encoded = encode_process_control(7, NONCE, "msg-1", b"hello").unwrap();
+        let payload_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN + 2 + "msg-1".len();
+        encoded[payload_len_offset..payload_len_offset + 4]
+            .copy_from_slice(&((PROCESS_CONTROL_MAX_PAYLOAD_BYTES as u32) + 1).to_be_bytes());
+
+        let err = decode_process_control(&encoded).unwrap_err();
+        assert_invalid_payload(err, "process_control payload too large");
     }
 
     #[test]

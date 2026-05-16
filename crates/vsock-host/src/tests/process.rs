@@ -710,6 +710,58 @@ async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_control_rejects_payload_over_local_ipc_limit_before_send() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let payload = vsock_proto::encode_spawn_process_result(51);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let exec = read_guest_message(&mut guest, &mut decoder).await;
+        assert_eq!(exec.msg_type, MSG_EXEC_START);
+        send_exec_result(
+            &mut guest,
+            exec.seq,
+            ExecTermination::Exited { exit_code: 0 },
+            b"ok",
+            b"",
+        )
+        .await;
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let too_large = vec![0; vsock_proto::PROCESS_CONTROL_MAX_PAYLOAD_BYTES + 1];
+    let err = handle
+        .control("message-too-large", &too_large, Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(
+        err.to_string().contains("payload field too large"),
+        "unexpected error: {err}",
+    );
+    assert_eq!(registration_counts(&host), (0, 1, 0));
+
+    let exec_result = host.exec("echo ok", 5000, &[], false).await.unwrap();
+    assert_eq!(exec_result.stdout, b"ok");
+    drop(handle);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
 async fn test_exit_event_before_wait() {
     let (host_stream, mut guest) = make_pair();
 
