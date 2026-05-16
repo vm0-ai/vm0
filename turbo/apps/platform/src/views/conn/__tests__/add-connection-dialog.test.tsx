@@ -417,6 +417,11 @@ describe("connect modal - interactions", () => {
       "href",
       "https://dashboard.stripe.com/stripecli/confirm_auth",
     );
+    await waitFor(() => {
+      expect(
+        screen.getByText("Open the approval page to continue."),
+      ).toBeInTheDocument();
+    });
 
     click(screen.getByLabelText(/close/i));
 

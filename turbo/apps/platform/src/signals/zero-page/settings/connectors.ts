@@ -423,6 +423,7 @@ export type ConnectorCliAuthState =
       readonly expiresAtMs: number;
       readonly pollIntervalMs: number;
       readonly autoOpenAttempted: boolean;
+      readonly autoOpenFailed: boolean;
       readonly errorMessage: string | null;
     }
   | {
@@ -436,6 +437,7 @@ export type ConnectorCliAuthState =
       readonly expiresAtMs: number;
       readonly pollIntervalMs: number;
       readonly autoOpenAttempted: boolean;
+      readonly autoOpenFailed: boolean;
       readonly errorMessage: string | null;
     }
   | {
@@ -1337,6 +1339,10 @@ const pollConnectorCliAuthBrowserVerification$ = command(
   },
 );
 
+function openConnectorCliAuthBrowserUrl(browserUrl: string): boolean {
+  return window.open(browserUrl, "_blank") !== null;
+}
+
 export const runConnectorCliAuth$ = command(
   async (
     { get, set },
@@ -1405,6 +1411,7 @@ export const runConnectorCliAuth$ = command(
       expiresAtMs,
       pollIntervalMs,
       autoOpenAttempted: false,
+      autoOpenFailed: false,
       errorMessage: null,
     });
 
@@ -1421,11 +1428,14 @@ export const runConnectorCliAuth$ = command(
     if (!isCurrentConnectorCliAuthRequest(afterDelayState, type, requestId)) {
       return false;
     }
-    window.open(startResult.browserUrl, "_blank");
+    const browserOpened = openConnectorCliAuthBrowserUrl(
+      startResult.browserUrl,
+    );
     set(internalConnectorCliAuthState$, {
       ...afterDelayState,
       status: "pending",
       autoOpenAttempted: true,
+      autoOpenFailed: !browserOpened,
     });
 
     return await set(

@@ -107,8 +107,9 @@ function BrowserVerificationPendingPanel({
 }: {
   pendingState: BrowserVerificationPendingState;
 }) {
-  const statusText =
-    pendingState.status === "polling"
+  const statusText = pendingState.autoOpenFailed
+    ? "Open the approval page to continue."
+    : pendingState.status === "polling"
       ? "Checking connection..."
       : pendingState.autoOpenAttempted
         ? "Waiting for approval..."
