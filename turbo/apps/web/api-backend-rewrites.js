@@ -37,6 +37,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/user/export", "/api/user/export"],
   ["/api/v1/audio/transcriptions", "/api/v1/audio/transcriptions"],
   [
+    "/api/zero/connectors/stripe/cli-auth/sessions",
+    "/api/zero/connectors/stripe/cli-auth/sessions",
+  ],
+  [
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
