@@ -1,4 +1,19 @@
-//! CLI command building and execution for Claude Code / Codex.
+//! Public facade for CLI setup and execution.
+//!
+//! This module keeps the external `guest_agent::cli` boundary stable while
+//! private submodules own focused execution policies:
+//!
+//! - `codex_setup`: pre-exec Codex auth/bootstrap.
+//! - `command`: Claude Code and Codex command construction.
+//! - `diagnostics`: bounded stderr tail collection.
+//! - `event_delivery`: event sender watermark state.
+//! - `framework`: Claude-vs-Codex behavior switches.
+//! - `termination`: process-group termination FSM.
+//!
+//! `execute_cli` intentionally remains the orchestration owner for process
+//! spawn, stdout JSONL reading, event sender shutdown, heartbeat races, and
+//! child reaping. Branch ordering and deadline reset timing in that control
+//! flow are part of the runtime contract.
 
 mod codex_setup;
 mod command;
