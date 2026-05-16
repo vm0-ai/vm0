@@ -414,26 +414,23 @@ function QueuedMessagesStrip({
   const count = items.length;
   const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
-    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-card shadow-sm zero-border">
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm">
       <div className="flex items-center gap-2 px-5 pt-3 pb-2">
         <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
         </span>
-        <span className="text-sm font-medium text-foreground/85">{label}</span>
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
-      <div
-        className="max-h-[200px] divide-y divide-border/40 overflow-y-auto pb-7"
-        role="list"
-      >
+      <div className="max-h-[200px] overflow-y-auto px-2 pb-7" role="list">
         {items.map((item) => {
           return (
             <div
               key={item.id}
               role="listitem"
               aria-label="Queued message"
-              className="group flex min-h-10 items-center gap-2 px-5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/40"
+              className="group flex min-h-10 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
             >
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
