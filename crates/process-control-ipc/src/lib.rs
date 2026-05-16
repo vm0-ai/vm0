@@ -441,13 +441,17 @@ fn read_u8(payload: &[u8], offset: &mut usize, label: &'static str) -> io::Resul
 }
 
 fn read_u16(payload: &[u8], offset: &mut usize, label: &'static str) -> io::Result<u16> {
-    let bytes = read_bytes(payload, offset, 2, label)?;
-    Ok(u16::from_be_bytes(bytes.try_into().unwrap_or([0; 2])))
+    let bytes: [u8; 2] = read_bytes(payload, offset, 2, label)?
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("{label} truncated")))?;
+    Ok(u16::from_be_bytes(bytes))
 }
 
 fn read_u32(payload: &[u8], offset: &mut usize, label: &'static str) -> io::Result<u32> {
-    let bytes = read_bytes(payload, offset, 4, label)?;
-    Ok(u32::from_be_bytes(bytes.try_into().unwrap_or([0; 4])))
+    let bytes: [u8; 4] = read_bytes(payload, offset, 4, label)?
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("{label} truncated")))?;
+    Ok(u32::from_be_bytes(bytes))
 }
 
 fn read_bytes<'a>(
