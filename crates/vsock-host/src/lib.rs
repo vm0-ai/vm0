@@ -565,6 +565,7 @@ async fn normal_request_raw_on_shared(
     }
     write_guard.mark_returned();
     drop(writer);
+    drop(write_guard);
 
     tokio::select! {
         biased;
