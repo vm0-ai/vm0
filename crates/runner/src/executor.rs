@@ -3084,6 +3084,7 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert!(calls[0].streams_stdout);
         assert!(calls[0].guest_log_path.is_none());
+        assert_eq!(calls[0].control, SpawnProcessControl::Enabled);
     }
 
     #[tokio::test]

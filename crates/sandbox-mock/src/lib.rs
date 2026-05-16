@@ -55,6 +55,7 @@ pub struct ExecMatcher {
 pub struct SpawnProcessCall {
     pub streams_stdout: bool,
     pub guest_log_path: Option<String>,
+    pub control: SpawnProcessControl,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -866,6 +867,7 @@ impl Sandbox for MockSandbox {
                 .push(SpawnProcessCall {
                     streams_stdout: request.output.streams_stdout(),
                     guest_log_path: request.output.guest_log_path().map(str::to_owned),
+                    control: request.control,
                 });
         }
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -878,10 +880,16 @@ impl Sandbox for MockSandbox {
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
+        let control = (request.control == SpawnProcessControl::Enabled).then(|| {
+            GuestProcessControlHandle::new(|message_id, _payload, _timeout| {
+                Box::pin(async move { Ok(ProcessControlAck { message_id }) })
+            })
+        });
+
         Ok(GuestProcessHandle::new(
             1,
             request.output.streams_stdout().then_some(rx),
-            None,
+            control,
             Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
         ))
     }
@@ -2217,17 +2225,60 @@ mod tests {
                 SpawnProcessCall {
                     streams_stdout: false,
                     guest_log_path: None,
+                    control: SpawnProcessControl::None,
                 },
                 SpawnProcessCall {
                     streams_stdout: true,
                     guest_log_path: None,
+                    control: SpawnProcessControl::None,
                 },
                 SpawnProcessCall {
                     streams_stdout: true,
                     guest_log_path: Some("/tmp/guest.log".to_string()),
+                    control: SpawnProcessControl::None,
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn spawn_process_returns_control_handle_when_requested() {
+        let runtime = MockSandboxRuntime::new();
+        let factory = runtime.create_factory(test_factory_config()).await.unwrap();
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+
+        let without_control = sandbox
+            .spawn_process(&SpawnProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnProcessOutputMode::Buffered,
+                control: SpawnProcessControl::None,
+            })
+            .await
+            .unwrap();
+        assert!(without_control.control_handle().is_none());
+
+        let with_control = sandbox
+            .spawn_process(&SpawnProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: SpawnProcessOutputMode::Buffered,
+                control: SpawnProcessControl::Enabled,
+            })
+            .await
+            .unwrap();
+        let control = with_control
+            .control_handle()
+            .expect("enabled control should expose a handle");
+        let ack = control
+            .control("msg-1", b"payload", Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(ack.message_id, "msg-1");
     }
 
     #[tokio::test]
