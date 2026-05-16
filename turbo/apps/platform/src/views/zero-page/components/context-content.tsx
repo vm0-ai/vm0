@@ -27,7 +27,7 @@ function KeyValueTable({
   keyLabel = "Name",
   valueLabel = "Value",
 }: {
-  data: Record<string, string>;
+  data: Record<string, string | null>;
   keyLabel?: string;
   valueLabel?: string;
 }) {
@@ -49,7 +49,7 @@ function KeyValueTable({
             <TableRow key={key}>
               <TableCell className="font-mono text-xs">{key}</TableCell>
               <TableCell className="font-mono text-xs break-all">
-                {value}
+                {value ?? <span className="text-muted-foreground">—</span>}
               </TableCell>
             </TableRow>
           );
