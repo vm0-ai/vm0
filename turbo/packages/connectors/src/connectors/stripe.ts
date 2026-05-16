@@ -48,6 +48,7 @@ export const stripe = {
     },
     defaultAuthMethod: "oauth",
     cliAuth: {
+      flow: "browser-verification",
       modes: [
         {
           value: "test",

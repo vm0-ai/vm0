@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import {
+  CONNECTOR_AUTH_METHOD_TYPES,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodType,
   type ConnectorType,
@@ -35,6 +36,7 @@ import {
   pairLocalBrowserExtension$,
   tokenFormValuesFor$,
   selectedConnectorType$,
+  clearConnectorCliAuth$,
   isStandaloneMode,
   LOCAL_AGENT_CONNECTOR_TYPE,
   LOCAL_BROWSER_CONNECTOR_TYPE,
@@ -53,31 +55,8 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
-
-// ---------------------------------------------------------------------------
-// Inline markdown renderer for help text
-// ---------------------------------------------------------------------------
-
-// Only intended for trusted, source-controlled help text from
-// `CONNECTOR_TYPES[*].authMethods.*.helpText`. Do NOT feed user-supplied
-// strings into this renderer — the `[text]`, `**bold**`, and `> quote`
-// captures are verbatim-injected and would permit HTML smuggling.
-function renderMarkdown(text: string): string {
-  return text
-    .replace(
-      // Only http(s) URLs are turned into anchors; other schemes fall through
-      // as literal text. `"` is also excluded from the href charclass so a
-      // stray quote cannot break out of the href attribute and inject
-      // siblings like `onclick` when feeding `dangerouslySetInnerHTML`.
-      /\[([^\]]+)\]\((https?:\/\/[^)"]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline">$1</a>',
-    )
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(
-      /^> (.+)$/gm,
-      '<div class="pl-3 border-l-2 border-muted text-muted-foreground">$1</div>',
-    );
-}
+import { getCliAuthConnectMethodContentComponent } from "./cli-auth-connect-methods.tsx";
+import { renderConnectorHelpMarkdown } from "./connector-help-text.ts";
 
 // ---------------------------------------------------------------------------
 // Connected status text helper
@@ -254,7 +233,7 @@ function ApiTokenForm({
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
-            __html: renderMarkdown(apiTokenConfig.helpText),
+            __html: renderConnectorHelpMarkdown(apiTokenConfig.helpText),
           }}
         />
       )}
@@ -328,7 +307,7 @@ function LocalAgentConnectContent({
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
-            __html: renderMarkdown(localAgentConfig.helpText),
+            __html: renderConnectorHelpMarkdown(localAgentConfig.helpText),
           }}
         />
       )}
@@ -572,7 +551,7 @@ function LocalBrowserConnectContent({
         <div
           className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line [&_a]:text-primary [&_a]:underline"
           dangerouslySetInnerHTML={{
-            __html: renderMarkdown(localBrowserConfig.helpText),
+            __html: renderConnectorHelpMarkdown(localBrowserConfig.helpText),
           }}
         />
       )}
@@ -688,19 +667,6 @@ function OAuthConnectButton({
   );
 }
 
-function AuthMethodDivider() {
-  return (
-    <div className="relative">
-      <div className="absolute inset-0 flex items-center">
-        <span className="w-full zero-border-t" />
-      </div>
-      <div className="relative flex justify-center text-xs">
-        <span className="bg-background px-2 text-muted-foreground">or</span>
-      </div>
-    </div>
-  );
-}
-
 function OAuthConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthConnectButton
@@ -755,7 +721,7 @@ function getConnectMethodContentComponent(
       return ApiTokenConnectMethodContent;
     }
     case "cli-auth": {
-      return null;
+      return getCliAuthConnectMethodContentComponent(item.type);
     }
     case "api": {
       return getApiConnectContentComponent(item.type);
@@ -766,10 +732,50 @@ function getConnectMethodContentComponent(
 function getConnectMethodContentEntries(
   item: ConnectorTypeWithStatus,
 ): ConnectMethodContentEntry[] {
-  return item.availableAuthMethods.flatMap((authMethod) => {
+  return CONNECTOR_AUTH_METHOD_TYPES.filter((authMethod) => {
+    return item.availableAuthMethods.includes(authMethod);
+  }).flatMap((authMethod) => {
     const Content = getConnectMethodContentComponent(item, authMethod);
     return Content ? [{ authMethod, Content }] : [];
   });
+}
+
+function AuthMethodDivider() {
+  return (
+    <div className="relative py-1">
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full zero-border-t" />
+      </div>
+      <div className="relative flex justify-center text-xs">
+        <span className="bg-background px-2 text-muted-foreground">or</span>
+      </div>
+    </div>
+  );
+}
+
+function ConnectMethodHeading({
+  item,
+  authMethod,
+  show,
+}: {
+  item: ConnectorTypeWithStatus;
+  authMethod: ConnectorAuthMethodType;
+  show: boolean;
+}) {
+  if (!show) {
+    return null;
+  }
+
+  const methodConfig = CONNECTOR_TYPES[item.type].authMethods[authMethod];
+  if (!methodConfig) {
+    return null;
+  }
+
+  return (
+    <h3 className="text-sm font-medium text-foreground">
+      {methodConfig.label}
+    </h3>
+  );
 }
 
 function ConnectMethodsContent({
@@ -793,14 +799,24 @@ function ConnectMethodsContent({
     return <UnavailableConnectMethodsContent />;
   }
 
-  return entries.map(({ authMethod, Content }, index) => {
-    return (
-      <div key={authMethod} className="contents">
-        {index > 0 && <AuthMethodDivider />}
-        <Content {...props} />
-      </div>
-    );
-  });
+  const showMethodHeadings = entries.length > 1;
+  return (
+    <>
+      {entries.map(({ authMethod, Content }, index) => {
+        return (
+          <div key={authMethod} className="flex flex-col gap-3">
+            {index > 0 && <AuthMethodDivider />}
+            <ConnectMethodHeading
+              item={props.item}
+              authMethod={authMethod}
+              show={showMethodHeadings}
+            />
+            <Content {...props} />
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 function StandardConnectMethodsContent({
@@ -811,13 +827,14 @@ function StandardConnectMethodsContent({
   submitApiToken,
   credentialSubmitting,
   signal,
+  entries,
 }: ConnectModalContentProps & {
   connectAndSettle: ConnectAndSettleFn;
   submitApiToken: SubmitApiTokenFn;
   credentialSubmitting: boolean;
   signal: AbortSignal;
+  entries: readonly ConnectMethodContentEntry[];
 }) {
-  const entries = getConnectMethodContentEntries(item);
   const isGoogleOAuth =
     entries.some((entry) => {
       return entry.authMethod === "oauth";
@@ -856,6 +873,7 @@ function ConnectModalContent({
   const settling = settleLoadable.state === "loading";
   const credentialSubmitting = apiTokenLoadable.state === "loading";
   const isPolling = pollingType === item.type;
+  const entries = getConnectMethodContentEntries(item);
 
   const progressContent = item.availableAuthMethods.includes("oauth")
     ? getOAuthProgressContent({
@@ -876,6 +894,7 @@ function ConnectModalContent({
       submitApiToken={submitApiToken}
       credentialSubmitting={credentialSubmitting}
       signal={pageSignal}
+      entries={entries}
     />
   );
 }
@@ -895,6 +914,7 @@ export function ConnectModal({
 }) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
+  const clearConnectorCliAuth = useSet(clearConnectorCliAuth$);
 
   const item = connectorTypes?.find((c) => {
     return c.type === selectedType;
@@ -910,7 +930,10 @@ export function ConnectModal({
     <Dialog
       open
       onOpenChange={(open) => {
-        return !open && onClose();
+        if (!open) {
+          clearConnectorCliAuth();
+          onClose();
+        }
       }}
     >
       <DialogContent className="max-w-md" aria-describedby={undefined}>
@@ -934,6 +957,7 @@ export function ConnectModal({
           showPermissionDialogOnConnect={showPermissionDialogOnConnect}
           onSuccess={async () => {
             await onSuccess?.();
+            clearConnectorCliAuth();
             onClose();
           }}
         />

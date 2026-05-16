@@ -66,6 +66,7 @@ describe("connector auth method config", () => {
     expect(method).toBeDefined();
     expect(method?.secrets).toStrictEqual({});
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
+    expect(CONNECTOR_TYPES.stripe.cliAuth?.flow).toBe("browser-verification");
     expect(CONNECTOR_TYPES.stripe.cliAuth?.modes).toStrictEqual([
       {
         value: "test",
