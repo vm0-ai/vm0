@@ -38,7 +38,10 @@ use tokio::sync::{Notify, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
-use operation_tracker::NormalOperationTracker;
+use operation_tracker::{
+    NormalOperationRejection, NormalOperationToken, NormalOperationTracker,
+    NormalOperationTransitionError,
+};
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
     MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
@@ -79,8 +82,8 @@ pub struct ExecResult {
 /// without taking the corresponding lock.
 enum ConnectionState {
     Connected {
-        /// Pending request responses: seq → oneshot sender.
-        pending: HashMap<u32, oneshot::Sender<RawMessage>>,
+        /// Pending request responses: seq → response route.
+        pending: HashMap<u32, PendingResponse>,
         /// Active exec-operation state owned by the exec_operation module.
         operations: exec_operation::Operations,
         /// Active spawn_process operation state owned by the process module.
@@ -138,6 +141,18 @@ struct PendingRequestGuard {
     seq: u32,
 }
 
+struct PendingResponse {
+    response_tx: oneshot::Sender<RawMessage>,
+    normal_operation: Option<NormalOperationToken>,
+    normal_terminal_msg_types: &'static [u8],
+}
+
+struct PendingNormalRequestWriteGuard {
+    shared: Arc<Shared>,
+    write_started: bool,
+    write_returned: bool,
+}
+
 impl PendingRequestGuard {
     fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self { shared, seq }
@@ -147,6 +162,32 @@ impl PendingRequestGuard {
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
         self.shared.remove_pending(self.seq);
+    }
+}
+
+impl PendingNormalRequestWriteGuard {
+    fn new(shared: Arc<Shared>) -> Self {
+        Self {
+            shared,
+            write_started: false,
+            write_returned: false,
+        }
+    }
+
+    fn mark_started(&mut self) {
+        self.write_started = true;
+    }
+
+    fn mark_returned(&mut self) {
+        self.write_returned = true;
+    }
+}
+
+impl Drop for PendingNormalRequestWriteGuard {
+    fn drop(&mut self) {
+        if self.write_started && !self.write_returned {
+            self.shared.poison_connection();
+        }
     }
 }
 
@@ -176,10 +217,6 @@ impl Shared {
     }
 
     fn close_with_reason(&self, reason: &'static str, kind: ConnectionCloseKind) {
-        match kind {
-            ConnectionCloseKind::Closed => self.normal_operations.mark_closed(),
-            ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
-        }
         let maps_to_drop = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             match std::mem::replace(
@@ -193,6 +230,12 @@ impl Shared {
                     operations,
                     process,
                 } => {
+                    // Serialize tracker close/poison with terminal dispatch,
+                    // which completes tracker tokens under this same state lock.
+                    match kind {
+                        ConnectionCloseKind::Closed => self.normal_operations.mark_closed(),
+                        ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
+                    }
                     let exec_operation_snapshot = operations.close_snapshot();
                     let (closed_process, process_maps) = process.close();
                     *guard = ConnectionState::Closed {
@@ -233,6 +276,12 @@ impl Shared {
         if let ConnectionState::Connected { operations, .. } = &mut *guard {
             operations.remove(seq);
         }
+    }
+
+    fn reserve_normal_operation(&self) -> io::Result<NormalOperationToken> {
+        self.normal_operations
+            .reserve()
+            .map_err(normal_operation_rejection_error)
     }
 }
 
@@ -344,15 +393,38 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
-                let response_sender = {
+                let mut normal_operation_transition_failed = false;
+                let pending_response = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     match &mut *guard {
-                        ConnectionState::Connected { pending, .. } => pending.remove(&msg.seq),
+                        ConnectionState::Connected { pending, .. } => {
+                            if let Some(mut pending_response) = pending.remove(&msg.seq) {
+                                if pending_response
+                                    .normal_terminal_msg_types
+                                    .contains(&msg.msg_type)
+                                    && let Some(normal_operation) =
+                                        pending_response.normal_operation.take()
+                                    && normal_operation
+                                        .complete()
+                                        .map_err(normal_operation_transition_error)
+                                        .is_err()
+                                {
+                                    normal_operation_transition_failed = true;
+                                }
+                                Some(pending_response)
+                            } else {
+                                None
+                            }
+                        }
                         ConnectionState::Closed { .. } => None,
                     }
                 };
-                if let Some(tx) = response_sender {
-                    let _ = tx.send(msg);
+                if normal_operation_transition_failed {
+                    shared.poison_connection();
+                    return;
+                }
+                if let Some(pending_response) = pending_response {
+                    let _ = pending_response.response_tx.send(msg);
                 }
             }
         }
@@ -401,7 +473,14 @@ async fn request_raw_on_shared(
                 ));
             }
             ConnectionState::Connected { pending, .. } => {
-                pending.insert(seq, tx);
+                pending.insert(
+                    seq,
+                    PendingResponse {
+                        response_tx: tx,
+                        normal_operation: None,
+                        normal_terminal_msg_types: &[],
+                    },
+                );
             }
         }
     }
@@ -426,6 +505,133 @@ async fn request_raw_on_shared(
             Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
         }
     }
+}
+
+async fn normal_request_on_shared(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    payload: &[u8],
+    terminal_msg_types: &'static [u8],
+    timeout: Duration,
+) -> io::Result<RawMessage> {
+    let seq = shared.next_seq();
+    normal_request_raw_on_shared(shared, msg_type, seq, payload, terminal_msg_types, timeout).await
+}
+
+async fn normal_request_raw_on_shared(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    terminal_msg_types: &'static [u8],
+    timeout: Duration,
+) -> io::Result<RawMessage> {
+    let data = vsock_proto::encode(msg_type, seq, payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    let normal_operation = shared.reserve_normal_operation()?;
+
+    let (tx, rx) = oneshot::channel();
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { pending, .. } => {
+                pending.insert(
+                    seq,
+                    PendingResponse {
+                        response_tx: tx,
+                        normal_operation: Some(normal_operation),
+                        normal_terminal_msg_types: terminal_msg_types,
+                    },
+                );
+            }
+        }
+    }
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+
+    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
+    let mut writer = shared.writer.lock().await;
+    mark_pending_normal_operation_possible_guest_write(shared, seq)?;
+    write_guard.mark_started();
+    if let Err(error) = writer.write_all(&data).await {
+        write_guard.mark_returned();
+        shared.poison_connection();
+        return Err(error);
+    }
+    write_guard.mark_returned();
+    drop(writer);
+    drop(write_guard);
+
+    tokio::select! {
+        biased;
+        result = rx => {
+            result.map_err(|_| io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))
+        }
+        _ = tokio::time::sleep(timeout) => {
+            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+        }
+    }
+}
+
+fn mark_pending_normal_operation_possible_guest_write(
+    shared: &Arc<Shared>,
+    seq: u32,
+) -> io::Result<()> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &mut *guard {
+        ConnectionState::Connected { pending, .. } => {
+            let Some(pending_response) = pending.get_mut(&seq) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "normal request closed before frame write",
+                ));
+            };
+            let Some(normal_operation) = pending_response.normal_operation.as_mut() else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "normal request missing operation token",
+                ));
+            };
+            normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(normal_operation_transition_error)
+        }
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
+}
+
+fn normal_operation_rejection_error(error: NormalOperationRejection) -> io::Error {
+    match error {
+        NormalOperationRejection::Fenced => io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "normal operations are currently fenced",
+        ),
+        NormalOperationRejection::NotParkable => io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "normal operations are not available on this connection",
+        ),
+        NormalOperationRejection::Closed => {
+            io::Error::new(io::ErrorKind::ConnectionReset, "connection closed")
+        }
+    }
+}
+
+fn normal_operation_transition_error(error: NormalOperationTransitionError) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("normal operation transition failed: {error:?}"),
+    )
 }
 
 fn protocol_invalid_data(error: impl ToString) -> io::Error {

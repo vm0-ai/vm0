@@ -5,11 +5,13 @@ use std::time::Duration;
 use vsock_proto::{ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, operation_count, read_guest_message,
-    send_exec_result, setup_host_and_guest, wait_for_operation_count,
+    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
+    operation_count, read_guest_message, send_exec_result, setup_host_and_guest,
+    wait_for_operation_count,
 };
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
+use crate::operation_tracker::NormalOperationReadiness;
 
 #[tokio::test]
 async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
@@ -31,6 +33,10 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     task.abort();
     let _ = task.await;
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert!(is_connected(&host));
 
     drop(writer_guard);
@@ -57,7 +63,7 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
 }
 
 #[tokio::test]
-async fn exec_operation_handle_drop_after_full_write_sends_no_cancel() {
+async fn exec_operation_handle_drop_after_full_write_marks_not_parkable() {
     let (host, mut guest, mut decoder) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let handle = start_capture_operation(&host, "drop-after-write").await;
@@ -65,26 +71,16 @@ async fn exec_operation_handle_drop_after_full_write_sends_no_cancel() {
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     drop(handle);
     assert_eq!(operation_count(&host), 0);
-
-    let exec_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await })
-    };
-    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    let mut buf = [0u8; 1024];
+    match guest.try_read(&mut buf) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("drop must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after handle drop: {err}"),
+    }
     assert_eq!(
-        msg.msg_type, MSG_EXEC_START,
-        "drop must not send exec cancel"
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
     );
-    send_exec_result(
-        &mut guest,
-        msg.seq,
-        ExecTermination::Exited { exit_code: 0 },
-        b"ok",
-        b"",
-    )
-    .await;
-    let exec_result = exec_task.await.unwrap().unwrap();
-    assert_eq!(exec_result.stdout, b"ok");
     assert!(is_connected(&host));
 }
 

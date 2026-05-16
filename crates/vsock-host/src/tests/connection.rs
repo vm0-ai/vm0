@@ -10,8 +10,9 @@ use vsock_proto::{
 };
 
 use super::support::{
-    host_from_stream, make_pair, mock_handshake, normal_operation_readiness, poison_connection,
-    read_guest_message, send_exec_result,
+    drop_started_pending_normal_request_write_guard, fence_normal_operations, host_from_stream,
+    make_pair, mock_handshake, normal_operation_readiness, poison_connection, read_guest_message,
+    send_exec_result, setup_host_and_guest,
 };
 use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
 
@@ -115,6 +116,28 @@ async fn resume_operations_sends_request_and_accepts_empty_ack() {
     host.resume_operations(Duration::from_secs(2))
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn lifecycle_request_bypasses_normal_operation_fence() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let _fence = fence_normal_operations(&host);
+
+    let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(2)).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_QUIESCE_OPERATIONS);
+    let resp = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, msg.seq, &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    quiesce_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]
@@ -318,6 +341,33 @@ async fn connection_close_marks_normal_operations_closed() {
 }
 
 #[tokio::test]
+async fn late_poison_after_connection_close_does_not_reclassify_readiness() {
+    let (host_stream, mut guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+
+    poison_connection(&host);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+    guest_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn connection_poison_marks_normal_operations_not_parkable() {
     let (host_stream, mut guest) = make_pair();
 
@@ -339,6 +389,21 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_normal_request_frame_write_poisons_connection() {
+    let (host, _guest, _decoder) = setup_host_and_guest().await;
+
+    drop_started_pending_normal_request_write_guard(&host);
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 /// Two concurrent exec calls get the correct response matched by seq.

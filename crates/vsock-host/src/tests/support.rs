@@ -10,7 +10,10 @@ use vsock_proto::{
     MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
 };
 
-use crate::{ConnectionState, VsockHost, operation_tracker::NormalOperationReadiness};
+use crate::{
+    ConnectionState, VsockHost,
+    operation_tracker::{NormalOperationFence, NormalOperationReadiness},
+};
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
@@ -52,8 +55,21 @@ pub(crate) fn normal_operation_readiness(host: &VsockHost) -> NormalOperationRea
     host.shared.normal_operations.readiness()
 }
 
+pub(crate) fn fence_normal_operations(host: &VsockHost) -> NormalOperationFence {
+    host.shared
+        .normal_operations
+        .try_fence()
+        .expect("normal operations should fence")
+}
+
 pub(crate) fn poison_connection(host: &VsockHost) {
     host.shared.poison_connection();
+}
+
+pub(crate) fn drop_started_pending_normal_request_write_guard(host: &VsockHost) {
+    let mut guard = crate::PendingNormalRequestWriteGuard::new(Arc::clone(&host.shared));
+    guard.mark_started();
+    drop(guard);
 }
 
 pub(crate) async fn read_guest_message(

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.279.0](https://github.com/vm0-ai/vm0/compare/core-v8.278.2...core-v8.279.0) (2026-05-16)
+
+
+### Features
+
+* add bentoml connector ([#13514](https://github.com/vm0-ai/vm0/issues/13514)) ([e7ec435](https://github.com/vm0-ai/vm0/commit/e7ec4354623dbbd00c92dec28e20252db661698e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.29.0
+    * @vm0/connectors bumped to 1.13.0
+
 ## [8.278.2](https://github.com/vm0-ai/vm0/compare/core-v8.278.1...core-v8.278.2) (2026-05-15)
 
 

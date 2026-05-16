@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.370.0](https://github.com/vm0-ai/vm0/compare/web-v12.369.5...web-v12.370.0) (2026-05-16)
+
+
+### Features
+
+* support custom connector host wildcards ([#13513](https://github.com/vm0-ai/vm0/issues/13513)) ([2416d13](https://github.com/vm0-ai/vm0/commit/2416d13aea112966572d48334c1ff80e690ae3a5))
+
+
+### Refactoring
+
+* proxy user model preference to api ([#13523](https://github.com/vm0-ai/vm0/issues/13523)) ([fdbb539](https://github.com/vm0-ai/vm0/commit/fdbb53963075023dbc15c760adf0bbb991660af4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.29.0
+    * @vm0/connectors bumped to 1.13.0
+    * @vm0/core bumped to 8.279.0
+    * @vm0/db bumped to 1.14.4
+
 ## [12.369.5](https://github.com/vm0-ai/vm0/compare/web-v12.369.4...web-v12.369.5) (2026-05-15)
 
 

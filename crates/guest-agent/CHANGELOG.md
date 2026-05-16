@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.6...guest-agent-v0.31.7) (2026-05-16)
+
+
+### Refactoring
+
+* **guest-agent:** extract cli termination fsm ([#13493](https://github.com/vm0-ai/vm0/issues/13493)) ([f35b86f](https://github.com/vm0-ai/vm0/commit/f35b86f3b070e089d6ede4ebe5f54328934538dc))
+
 ## [0.31.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.5...guest-agent-v0.31.6) (2026-05-15)
 
 
