@@ -23,6 +23,12 @@ const { getPathMatch } =
   };
 
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
+const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
+const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/user-model-preference/extra",
+  "/api/zero/user-preferences",
+] as const;
 const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
@@ -335,6 +341,11 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/uploads/prepare",
         },
         {
+          source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/user-model-preference",
+        },
+        {
           source: "/api/zero/user-preferences",
           destination: "https://api.example.test/api/zero/user-preferences",
         },
@@ -381,6 +392,29 @@ describe("API backend rewrites", () => {
         },
       ]),
     );
+  });
+
+  it("should match only the exact user model preference rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === USER_MODEL_PREFERENCE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/user-model-preference",
+    });
+
+    const matcher = getPathMatch(USER_MODEL_PREFERENCE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(USER_MODEL_PREFERENCE_PATH)).toStrictEqual({});
+    for (const pathname of USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact voice-io tts rewrite", async () => {
