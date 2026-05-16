@@ -53,6 +53,10 @@ const CTRL_ATTR_FAMILY_ID: u16 = 1;
 const NLM_F_REQUEST: u16 = 1;
 const NLM_F_ACK: u16 = 4;
 
+const NLA_HEADER_LEN: usize = 4;
+const NLA_ALIGNTO: usize = 4;
+const NLA_F_NESTED: u16 = 1 << 15;
+
 /// Timeout (seconds) used for both `NBD_ATTR_TIMEOUT` and `NBD_ATTR_DEAD_CONN_TIMEOUT`.
 const TIMEOUT_SECS: u64 = 30;
 
@@ -637,20 +641,28 @@ fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
 
 /// Build a netlink attribute (NLA).
 fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
-    let nla_len = 4 + payload.len();
-    assert!(nla_len <= u16::MAX as usize, "NLA payload too large");
-    let aligned_len = (nla_len + 3) & !3;
+    build_nla_with_encoded_type(nla_type, payload, "NLA payload too large")
+}
+
+fn build_nla_with_encoded_type(
+    encoded_type: u16,
+    payload: &[u8],
+    too_large_message: &'static str,
+) -> Vec<u8> {
+    let nla_len = NLA_HEADER_LEN + payload.len();
+    assert!(nla_len <= u16::MAX as usize, "{too_large_message}");
+    let aligned_len = (nla_len + NLA_ALIGNTO - 1) & !(NLA_ALIGNTO - 1);
     let mut buf = vec![0u8; aligned_len];
-    if let Some(header) = buf.get_mut(..4) {
+    if let Some(header) = buf.get_mut(..NLA_HEADER_LEN) {
         let len_bytes = (nla_len as u16).to_ne_bytes();
         if let Some(s) = header.get_mut(..2) {
             s.copy_from_slice(&len_bytes);
         }
-        if let Some(s) = header.get_mut(2..4) {
-            s.copy_from_slice(&nla_type.to_ne_bytes());
+        if let Some(s) = header.get_mut(2..NLA_HEADER_LEN) {
+            s.copy_from_slice(&encoded_type.to_ne_bytes());
         }
     }
-    if let Some(dest) = buf.get_mut(4..4 + payload.len()) {
+    if let Some(dest) = buf.get_mut(NLA_HEADER_LEN..NLA_HEADER_LEN + payload.len()) {
         dest.copy_from_slice(payload);
     }
     buf
@@ -658,25 +670,11 @@ fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
 
 /// Build a nested netlink attribute.
 fn build_nested_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
-    let nla_len = 4 + payload.len();
-    assert!(nla_len <= u16::MAX as usize, "nested NLA payload too large");
-    let aligned_len = (nla_len + 3) & !3;
-    let mut buf = vec![0u8; aligned_len];
-    // Set NLA_F_NESTED flag (1 << 15)
-    let nested_type = nla_type | (1 << 15);
-    if let Some(header) = buf.get_mut(..4) {
-        let len_bytes = (nla_len as u16).to_ne_bytes();
-        if let Some(s) = header.get_mut(..2) {
-            s.copy_from_slice(&len_bytes);
-        }
-        if let Some(s) = header.get_mut(2..4) {
-            s.copy_from_slice(&nested_type.to_ne_bytes());
-        }
-    }
-    if let Some(dest) = buf.get_mut(4..4 + payload.len()) {
-        dest.copy_from_slice(payload);
-    }
-    buf
+    build_nla_with_encoded_type(
+        nla_type | NLA_F_NESTED,
+        payload,
+        "nested NLA payload too large",
+    )
 }
 
 #[cfg(test)]
@@ -807,8 +805,26 @@ mod tests {
         let payload: &[u8] = &[0xDE, 0xAD];
         let nla = build_nested_nla(7, payload);
         let nla_type = u16::from_ne_bytes([nla[2], nla[3]]);
-        assert_eq!(nla_type, 7 | (1 << 15)); // NLA_F_NESTED set
+        assert_eq!(nla_type, 7 | NLA_F_NESTED);
         assert_eq!(nla.len(), 8); // 4+2 padded to 8
+    }
+
+    #[test]
+    fn build_nested_nla_matches_regular_payload_and_padding() {
+        let payload: &[u8] = &[1, 2, 3];
+        let nla = build_nla(7, payload);
+        let nested_nla = build_nested_nla(7, payload);
+
+        assert_eq!(nested_nla.len(), nla.len());
+        assert_eq!(
+            u16::from_ne_bytes([nested_nla[0], nested_nla[1]]),
+            u16::from_ne_bytes([nla[0], nla[1]])
+        );
+        assert_eq!(
+            u16::from_ne_bytes([nested_nla[2], nested_nla[3]]),
+            u16::from_ne_bytes([nla[2], nla[3]]) | NLA_F_NESTED
+        );
+        assert_eq!(&nested_nla[NLA_HEADER_LEN..], &nla[NLA_HEADER_LEN..]);
     }
 
     // --- build_genl_msg tests ---
