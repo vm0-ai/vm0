@@ -469,6 +469,38 @@ async function cancelActiveCliAuthStripeSessions(args: {
   );
 }
 
+export async function cancelActiveCliAuthStripeSessionsForCredentialsChange(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly message?: string;
+}): Promise<readonly SandboxHandle[]> {
+  const now = nowDate();
+  await lockCliAuthStripeOwner({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  return cancelActiveCliAuthStripeSessions({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    now,
+    message: args.message ?? CLI_AUTH_STRIPE_CREDENTIALS_CHANGED_MESSAGE,
+  });
+}
+
+export async function cleanupInvalidatedCliAuthStripeSandboxes(
+  sandboxes: readonly SandboxHandle[],
+) {
+  const client = getVercelSandboxClient();
+  await cleanupCliAuthStripeSandboxes({
+    client,
+    sandboxes,
+    reason: "stripe credentials changed",
+  });
+}
+
 export async function invalidateActiveCliAuthStripeSessions(args: {
   readonly writeDb: Db;
   readonly orgId: string;
@@ -476,27 +508,15 @@ export async function invalidateActiveCliAuthStripeSessions(args: {
   readonly signal: AbortSignal;
   readonly message?: string;
 }) {
-  const client = getVercelSandboxClient();
-  const now = nowDate();
-  const sandboxes = await args.writeDb.transaction(async (tx) => {
-    await lockCliAuthStripeOwner({
+  const sandboxes = await args.writeDb.transaction((tx) => {
+    return cancelActiveCliAuthStripeSessionsForCredentialsChange({
       db: tx,
       orgId: args.orgId,
       userId: args.userId,
-    });
-    return cancelActiveCliAuthStripeSessions({
-      db: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      now,
-      message: args.message ?? CLI_AUTH_STRIPE_CREDENTIALS_CHANGED_MESSAGE,
+      message: args.message,
     });
   });
-  await cleanupCliAuthStripeSandboxes({
-    client,
-    sandboxes,
-    reason: "stripe credentials changed",
-  });
+  await cleanupInvalidatedCliAuthStripeSandboxes(sandboxes);
   args.signal.throwIfAborted();
 }
 

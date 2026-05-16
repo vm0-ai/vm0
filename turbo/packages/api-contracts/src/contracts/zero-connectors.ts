@@ -64,6 +64,36 @@ export const zeroConnectorsByTypeContract = c.router({
   },
 });
 
+const connectApiTokenConnectorRequestSchema = z.object({
+  values: z.record(z.string(), z.string()),
+});
+
+export type ConnectApiTokenConnectorRequest = z.infer<
+  typeof connectApiTokenConnectorRequestSchema
+>;
+
+/**
+ * Zero contract for POST /api/zero/connectors/:type/api-token
+ * Connects a connector through its API-token auth method.
+ */
+export const zeroConnectorApiTokenContract = c.router({
+  connect: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/api-token",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: connectApiTokenConnectorRequestSchema,
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Connect a connector with API-token values",
+  },
+});
+
 /**
  * Zero contract for GET /api/zero/connectors/:type/scope-diff
  * App-layer endpoint (direct service call, no proxy)
@@ -282,6 +312,8 @@ export const zeroLocalBrowserConnectorContract = c.router({
 
 export type ZeroConnectorsMainContract = typeof zeroConnectorsMainContract;
 export type ZeroConnectorsByTypeContract = typeof zeroConnectorsByTypeContract;
+export type ZeroConnectorApiTokenContract =
+  typeof zeroConnectorApiTokenContract;
 export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorAuthorizeContract =

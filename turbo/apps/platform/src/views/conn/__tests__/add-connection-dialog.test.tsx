@@ -12,8 +12,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import {
+  zeroConnectorApiTokenContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -251,23 +253,29 @@ describe("connect modal - interactions", () => {
     });
   });
 
-  it("save button submits API token secrets (CONN-I-023)", async () => {
+  it("save button submits API token values (CONN-I-023)", async () => {
     const user = userEvent.setup();
-    let submittedSecret: { name: string; value: string } | undefined;
+    let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submittedSecret = { name: body.name, value: body.value };
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
+      mockApi(
+        zeroConnectorApiTokenContract.connect,
+        ({ body, params, respond }) => {
+          submittedValues = body.values;
+          return respond(200, {
+            id: null,
+            type: params.type,
+            authMethod: "api-token",
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+            needsReconnect: false,
+            createdAt: "1970-01-01T00:00:00.000Z",
+            updatedAt: "1970-01-01T00:00:00.000Z",
+          });
+        },
+      ),
     );
 
     await openConnectModal("axiom");
@@ -283,9 +291,9 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(submittedSecret).toBeDefined();
-      expect(submittedSecret?.name).toBe("AXIOM_TOKEN");
-      expect(submittedSecret?.value).toBe("test-token-value");
+      expect(submittedValues).toStrictEqual({
+        AXIOM_TOKEN: "test-token-value",
+      });
     });
   });
 });

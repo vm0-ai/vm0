@@ -1,7 +1,12 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
 
 import type { Db } from "../external/db";
-import { invalidateActiveCliAuthStripeSessions } from "./cli-auth-stripe.service";
+import type { SandboxHandle } from "../external/sandbox";
+import {
+  cancelActiveCliAuthStripeSessionsForCredentialsChange,
+  cleanupInvalidatedCliAuthStripeSandboxes,
+  invalidateActiveCliAuthStripeSessions,
+} from "./cli-auth-stripe.service";
 
 type CliAuthInvalidationArgs = {
   readonly writeDb: Db;
@@ -23,6 +28,11 @@ const cliAuthInvalidatorsByConnectorType = Object.freeze<
 >({
   stripe: Object.freeze([invalidateActiveCliAuthStripeSessions]),
 });
+
+type PreparedCliAuthSessionInvalidation = {
+  readonly type: "stripe";
+  readonly sandboxes: readonly SandboxHandle[];
+};
 
 async function runCliAuthInvalidators(
   invalidators: readonly CliAuthInvalidator[],
@@ -60,4 +70,38 @@ export async function invalidateActiveCliAuthSessionsForConnectorType(
     cliAuthInvalidatorsByConnectorType[args.connectorType] ?? [],
     args,
   );
+}
+
+export async function prepareActiveCliAuthSessionInvalidationsForConnectorType(
+  args: CliAuthInvalidationArgs & { readonly connectorType: ConnectorType },
+): Promise<readonly PreparedCliAuthSessionInvalidation[]> {
+  if (args.connectorType !== "stripe") {
+    return [];
+  }
+
+  const sandboxes = await cancelActiveCliAuthStripeSessionsForCredentialsChange(
+    {
+      db: args.writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (sandboxes.length === 0) {
+    return [];
+  }
+  return [{ type: "stripe", sandboxes }];
+}
+
+export async function cleanupPreparedCliAuthSessionInvalidations(
+  invalidations: readonly PreparedCliAuthSessionInvalidation[],
+) {
+  for (const invalidation of invalidations) {
+    switch (invalidation.type) {
+      case "stripe": {
+        await cleanupInvalidatedCliAuthStripeSandboxes(invalidation.sandboxes);
+        break;
+      }
+    }
+  }
 }

@@ -24,15 +24,12 @@ import {
   type LocalBrowserHostListResponse,
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
+  zeroConnectorApiTokenContract,
   zeroConnectorScopeDiffContract,
   zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -471,39 +468,21 @@ export const submitApiToken$ = command(
   async (
     { get, set },
     type: ConnectorType,
-    inputSecrets: Record<string, string>,
+    inputValues: Record<string, string>,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const secretsClient = createClient(zeroSecretsContract);
-    const variablesClient = createClient(zeroVariablesContract);
-    const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
-    const secrets = sanitizeTokenInputRecord(inputSecrets);
-    for (const [name, value] of Object.entries(secrets)) {
-      if (!value) {
-        continue;
-      }
-      const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
-      if (isVariable) {
-        await accept(
-          variablesClient.set({
-            body: { name, value },
-            fetchOptions: { signal },
-          }),
-          [200, 201],
-        );
-      } else {
-        await accept(
-          secretsClient.set({
-            body: { name, value },
-            fetchOptions: { signal },
-          }),
-          [200, 201],
-        );
-      }
-      signal.throwIfAborted();
-    }
+    const apiTokenClient = createClient(zeroConnectorApiTokenContract);
+    const values = sanitizeTokenInputRecord(inputValues);
+    await accept(
+      apiTokenClient.connect({
+        params: { type },
+        body: { values },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(internalJustConnectedTypes$, (prev) => {
       return new Set([...prev, type]);

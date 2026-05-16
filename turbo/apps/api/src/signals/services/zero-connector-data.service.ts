@@ -20,6 +20,7 @@ import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodType,
+  type ConnectorSecretConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
@@ -42,7 +43,11 @@ import {
 import { publishUserSignal } from "../external/realtime";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
+import {
+  cleanupPreparedCliAuthSessionInvalidations,
+  invalidateActiveCliAuthSessionsForConnectorType,
+  prepareActiveCliAuthSessionInvalidationsForConnectorType,
+} from "./cli-auth-invalidation.service";
 
 type StoredConnectorRow = {
   readonly id: string;
@@ -72,6 +77,27 @@ interface ExternalUserInfo {
   readonly email: string | null;
 }
 
+type ApiTokenFieldSet = {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+};
+
+type PreparedApiTokenFieldValue = {
+  readonly name: string;
+  readonly value: string;
+  readonly storage: "secret" | "variable";
+};
+
+type ConnectApiTokenConnectorResult =
+  | {
+      readonly status: "connected";
+      readonly connector: ConnectorResponse;
+    }
+  | {
+      readonly status: "bad_request" | "forbidden";
+      readonly message: string;
+    };
+
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
 }
@@ -81,6 +107,115 @@ function getSecretNameForConnector(type: ConnectorType): string {
     return COMPUTER_CONNECTOR_AUTH_TOKEN_SECRET;
   }
   return PROVIDER_HANDLERS[type].getSecretName();
+}
+
+function getApiTokenFieldConfig(
+  type: ConnectorType,
+): Record<string, ConnectorSecretConfig> | null {
+  return CONNECTOR_TYPES[type].authMethods["api-token"]?.secrets ?? null;
+}
+
+function getApiTokenConfiguredFieldsByType(
+  type: ConnectorType,
+): ApiTokenFieldSet | null {
+  const fieldConfig = getApiTokenFieldConfig(type);
+  if (!fieldConfig) {
+    return null;
+  }
+
+  const secretNames: string[] = [];
+  const variableNames: string[] = [];
+  for (const [name, config] of Object.entries(fieldConfig)) {
+    if (config.type === "variable") {
+      variableNames.push(name);
+    } else {
+      secretNames.push(name);
+    }
+  }
+
+  return {
+    secrets: secretNames,
+    variables: variableNames,
+  };
+}
+
+function sanitizeApiTokenValue(value: string): string {
+  return value.replace(/\s+/g, "");
+}
+
+function prepareApiTokenFieldValues(args: {
+  readonly type: ConnectorType;
+  readonly values: Record<string, string>;
+}):
+  | {
+      readonly ok: true;
+      readonly values: readonly PreparedApiTokenFieldValue[];
+    }
+  | { readonly ok: false; readonly message: string } {
+  const fieldConfig = getApiTokenFieldConfig(args.type);
+  if (!fieldConfig) {
+    return {
+      ok: false,
+      message: `${args.type} connector does not support API-token auth`,
+    };
+  }
+
+  const fieldNames = new Set(Object.keys(fieldConfig));
+  const unknownField = Object.keys(args.values).find((name) => {
+    return !fieldNames.has(name);
+  });
+  if (unknownField) {
+    return {
+      ok: false,
+      message: `Unknown API-token field: ${unknownField}`,
+    };
+  }
+
+  const prepared = new Map<string, PreparedApiTokenFieldValue>();
+  for (const [name, rawValue] of Object.entries(args.values)) {
+    const value = sanitizeApiTokenValue(rawValue);
+    if (!value) {
+      continue;
+    }
+    const config = fieldConfig[name];
+    if (!config) {
+      continue;
+    }
+    prepared.set(name, {
+      name,
+      value,
+      storage: config.type === "variable" ? "variable" : "secret",
+    });
+  }
+
+  const missingRequiredField = Object.entries(fieldConfig).find(
+    ([name, config]) => {
+      return config.required && !prepared.has(name);
+    },
+  );
+  if (missingRequiredField) {
+    return {
+      ok: false,
+      message: `Missing required API-token field: ${missingRequiredField[0]}`,
+    };
+  }
+
+  return { ok: true, values: [...prepared.values()] };
+}
+
+function apiTokenConnectorResponse(type: ConnectorType): ConnectorResponse {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
 }
 
 function storedConnectorRowToResponse(
@@ -218,18 +353,7 @@ export function zeroConnectorList(args: {
         return isConnectorAuthMethodAvailable(type, "api-token", featureStates);
       })
       .map((type) => {
-        return {
-          id: null,
-          type,
-          authMethod: "api-token",
-          externalId: null,
-          externalUsername: null,
-          externalEmail: null,
-          oauthScopes: null,
-          needsReconnect: false,
-          createdAt: "1970-01-01T00:00:00.000Z",
-          updatedAt: "1970-01-01T00:00:00.000Z",
-        };
+        return apiTokenConnectorResponse(type);
       });
 
     const connectorList = [...dbConnectors, ...derivedConnectors];
@@ -350,18 +474,7 @@ function apiTokenConnectorByType(args: {
     }
 
     // Use a fixed timestamp — this connector is inferred, not explicitly created.
-    return {
-      id: null,
-      type: args.type,
-      authMethod: "api-token",
-      externalId: null,
-      externalUsername: null,
-      externalEmail: null,
-      oauthScopes: null,
-      needsReconnect: false,
-      createdAt: "1970-01-01T00:00:00.000Z",
-      updatedAt: "1970-01-01T00:00:00.000Z",
-    };
+    return apiTokenConnectorResponse(args.type);
   });
 }
 
@@ -529,6 +642,45 @@ async function revokeExistingConnectorToken(args: {
   args.signal.throwIfAborted();
 }
 
+async function readExistingConnectorTokenForRevocation(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly type: ConnectorType;
+  readonly accessToken: string;
+} | null> {
+  const accessTokenName = revocableConnectorAccessTokenName(args.type);
+  if (!accessTokenName) {
+    return null;
+  }
+
+  const [accessTokenSecret] = await args.db
+    .select({ encryptedValue: secrets.encryptedValue })
+    .from(secrets)
+    .where(
+      and(
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        eq(secrets.name, accessTokenName),
+        eq(secrets.type, "connector"),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!accessTokenSecret?.encryptedValue) {
+    return null;
+  }
+
+  return {
+    type: args.type,
+    accessToken: decryptSecretValue(accessTokenSecret.encryptedValue),
+  };
+}
+
 async function hasApiTokenConnectorLocalState(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -658,7 +810,7 @@ export const deleteZeroConnectorLocalState$ = command(
       .limit(1);
     signal.throwIfAborted();
 
-    const fields = getApiTokenFieldsByType(args.type);
+    const fields = getApiTokenConfiguredFieldsByType(args.type);
     const hasApiTokenState = existing
       ? false
       : await hasApiTokenConnectorLocalState({
@@ -736,6 +888,236 @@ export const deleteZeroConnectorLocalState$ = command(
   },
 );
 
+async function upsertUserSecret(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+    readonly value: string;
+  },
+): Promise<void> {
+  const encryptedValue = encryptSecretValue(args.value);
+  await db
+    .insert(secrets)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      encryptedValue,
+      type: "user",
+      description: null,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      set: {
+        encryptedValue,
+        description: null,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function upsertUserVariable(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+    readonly value: string;
+  },
+): Promise<void> {
+  await db
+    .insert(variables)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      value: args.value,
+      description: null,
+    })
+    .onConflictDoUpdate({
+      target: [variables.orgId, variables.userId, variables.name],
+      set: {
+        value: args.value,
+        description: null,
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function deleteStoredConnectorLocalState(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly existing: {
+    readonly id: string;
+    readonly authMethod: string;
+  } | null;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (!args.existing) {
+    return;
+  }
+
+  await args.db.delete(connectors).where(eq(connectors.id, args.existing.id));
+  args.signal.throwIfAborted();
+
+  const config = CONNECTOR_TYPES[args.type];
+  const authMethodConfig =
+    config.authMethods[args.existing.authMethod as ConnectorAuthMethodType];
+  const secretNames = authMethodConfig
+    ? Object.keys(authMethodConfig.secrets)
+    : [];
+
+  for (const name of secretNames) {
+    await args.db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.name, name),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    args.signal.throwIfAborted();
+  }
+}
+
+export const connectApiTokenConnector$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ConnectorType;
+      readonly values: Record<string, string>;
+    },
+    signal: AbortSignal,
+  ): Promise<ConnectApiTokenConnectorResult> => {
+    const prepared = prepareApiTokenFieldValues({
+      type: args.type,
+      values: args.values,
+    });
+    if (!prepared.ok) {
+      return { status: "bad_request", message: prepared.message };
+    }
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates({
+      userId: args.userId,
+      orgId: args.orgId,
+      overrides,
+    });
+    if (
+      !isConnectorAuthMethodAvailable(args.type, "api-token", featureStates)
+    ) {
+      return {
+        status: "forbidden",
+        message: `${args.type} API-token auth is not enabled`,
+      };
+    }
+
+    const writeDb = set(writeDb$);
+    const revocation = await readExistingConnectorTokenForRevocation({
+      db: writeDb,
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.type,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    const apiTokenFields = getApiTokenConfiguredFieldsByType(args.type);
+    const cliAuthInvalidations = await writeDb.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: connectors.id, authMethod: connectors.authMethod })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.orgId, args.orgId),
+            eq(connectors.userId, args.userId),
+            eq(connectors.type, args.type),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      const invalidations =
+        await prepareActiveCliAuthSessionInvalidationsForConnectorType({
+          writeDb: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorType: args.type,
+          signal,
+        });
+      signal.throwIfAborted();
+
+      await deleteStoredConnectorLocalState({
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        existing: existing ?? null,
+        signal,
+      });
+
+      await deleteApiTokenConnectorLocalState({
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        fields: apiTokenFields,
+        signal,
+      });
+
+      for (const field of prepared.values) {
+        if (field.storage === "variable") {
+          await upsertUserVariable(tx, {
+            orgId: args.orgId,
+            userId: args.userId,
+            name: field.name,
+            value: field.value,
+          });
+        } else {
+          await upsertUserSecret(tx, {
+            orgId: args.orgId,
+            userId: args.userId,
+            name: field.name,
+            value: field.value,
+          });
+        }
+        signal.throwIfAborted();
+      }
+
+      return invalidations;
+    });
+    signal.throwIfAborted();
+
+    await cleanupPreparedCliAuthSessionInvalidations(cliAuthInvalidations);
+    signal.throwIfAborted();
+
+    if (revocation) {
+      await revokeConnectorToken(revocation).catch(() => {
+        return undefined;
+      });
+      signal.throwIfAborted();
+    }
+
+    await publishUserSignal([args.userId], "connector:changed");
+    signal.throwIfAborted();
+
+    return {
+      status: "connected",
+      connector: apiTokenConnectorResponse(args.type),
+    };
+  },
+);
+
 async function upsertConnectorSecret(
   db: Db,
   args: {
@@ -807,7 +1189,7 @@ export const upsertOAuthConnector$ = command(
       type: args.type,
       expiresIn: args.expiresIn,
     });
-    const apiTokenFields = getApiTokenFieldsByType(args.type);
+    const apiTokenFields = getApiTokenConfiguredFieldsByType(args.type);
 
     await invalidateActiveCliAuthSessionsForConnectorType({
       writeDb,

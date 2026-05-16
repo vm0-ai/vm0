@@ -154,7 +154,7 @@ type PostConnectOptions = {
 
 type SubmitApiTokenFn = (
   type: ConnectorType,
-  inputSecrets: Record<string, string>,
+  inputValues: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
@@ -216,15 +216,15 @@ function ApiTokenForm({
   const setFormValue = useSet(setTokenFormValue$);
   const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
-  const secretValues = useGet(tokenFormValuesFor$(type));
+  const tokenValues = useGet(tokenFormValuesFor$(type));
 
   if (!apiTokenConfig) {
     return null;
   }
 
-  const secretEntries = Object.entries(apiTokenConfig.secrets);
-  const allFilled = secretEntries.every(([name, cfg]) => {
-    return !cfg.required || hasTokenInputValue(secretValues[name]);
+  const tokenEntries = Object.entries(apiTokenConfig.secrets);
+  const allFilled = tokenEntries.every(([name, cfg]) => {
+    return !cfg.required || hasTokenInputValue(tokenValues[name]);
   });
 
   const handleSubmit = onDomEventFn(async () => {
@@ -233,7 +233,7 @@ function ApiTokenForm({
     }
     await submit(
       type,
-      secretValues,
+      tokenValues,
       {
         showPermissionDialog: showPermissionDialogOnConnect,
       },
@@ -258,7 +258,7 @@ function ApiTokenForm({
           }}
         />
       )}
-      {secretEntries.map(([name, secretConfig]) => {
+      {tokenEntries.map(([name, secretConfig]) => {
         return (
           <div key={name} className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
@@ -267,7 +267,7 @@ function ApiTokenForm({
             <Input
               type="password"
               placeholder={secretConfig.placeholder}
-              value={secretValues[name] ?? ""}
+              value={tokenValues[name] ?? ""}
               onChange={(e) => {
                 return setFormValue(type, name, e.target.value);
               }}

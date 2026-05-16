@@ -899,6 +899,7 @@ export {
 export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
+  zeroConnectorApiTokenContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
@@ -907,8 +908,10 @@ export {
   zeroLocalBrowserConnectorContract,
   zeroLocalAgentConnectorContract,
   type ConnectorSearchAuthMethod,
+  type ConnectApiTokenConnectorRequest,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
+  type ZeroConnectorApiTokenContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorsSearchContract,
   type ZeroConnectorSessionsContract,

@@ -10,11 +10,10 @@ import {
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  zeroSecretsContract,
-  zeroVariablesContract,
-} from "@vm0/api-contracts/contracts/zero-secrets";
+  zeroConnectorApiTokenContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { createMockApi } from "../../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -332,33 +331,27 @@ describe("submitApiToken$", () => {
   it("strips whitespace from connector API token values before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const submitted: Record<string, string> = {};
+    let submitted: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroSecretsContract.set, ({ body, respond }) => {
-        submitted[body.name] = body.value;
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          type: "user",
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
-      mockApi(zeroVariablesContract.set, ({ body, respond }) => {
-        submitted[body.name] = body.value;
-        const now = new Date().toISOString();
-        return respond(201, {
-          id: crypto.randomUUID(),
-          name: body.name,
-          value: body.value,
-          description: body.description ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }),
+      mockApi(
+        zeroConnectorApiTokenContract.connect,
+        ({ body, params, respond }) => {
+          submitted = body.values;
+          return respond(200, {
+            id: null,
+            type: params.type,
+            authMethod: "api-token",
+            externalId: null,
+            externalUsername: null,
+            externalEmail: null,
+            oauthScopes: null,
+            needsReconnect: false,
+            createdAt: "1970-01-01T00:00:00.000Z",
+            updatedAt: "1970-01-01T00:00:00.000Z",
+          });
+        },
+      ),
     );
 
     await context.store.set(
@@ -372,7 +365,7 @@ describe("submitApiToken$", () => {
       context.signal,
     );
 
-    expect(submitted).toMatchObject({
+    expect(submitted).toStrictEqual({
       STRAPI_TOKEN: "strapitoken",
       STRAPI_BASE_URL: "https://strapi.example.com",
     });
@@ -383,12 +376,12 @@ describe("submitApiToken$", () => {
 
     await context.store.set(
       submitApiToken$,
-      "github",
-      { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test123" },
+      "axiom",
+      { AXIOM_TOKEN: "xaat_test123" },
       { showPermissionDialog: true },
       context.signal,
     );
 
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBe("axiom");
   });
 });

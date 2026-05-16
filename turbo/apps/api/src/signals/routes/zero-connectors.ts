@@ -4,6 +4,7 @@ import { command, computed } from "ccstate";
 import type { AppRoute } from "@ts-rest/core";
 import {
   zeroComputerConnectorContract,
+  zeroConnectorApiTokenContract,
   zeroConnectorAuthorizeContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
@@ -37,13 +38,14 @@ import {
 } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
-import { pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { env, optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   deleteComputerConnector$,
+  connectApiTokenConnector$,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -423,6 +425,52 @@ const deleteConnectorByTypeInner$ = command(
   },
 );
 
+const connectApiTokenConnectorInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroConnectorApiTokenContract.connect));
+    const bodyResult = await get(
+      bodyResultOf(zeroConnectorApiTokenContract.connect),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const result = await set(
+      connectApiTokenConnector$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: params.type,
+        values: bodyResult.data.values,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    switch (result.status) {
+      case "connected": {
+        return { status: 200 as const, body: result.connector };
+      }
+      case "bad_request": {
+        return badRequestMessage(result.message);
+      }
+      case "forbidden": {
+        return {
+          status: 403 as const,
+          body: {
+            error: {
+              message: result.message,
+              code: "FORBIDDEN" as const,
+            },
+          },
+        };
+      }
+    }
+  },
+);
+
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
@@ -772,5 +820,9 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorsByTypeContract.delete,
     handler: authRoute(connectorWriteAuth, deleteConnectorByTypeInner$),
+  },
+  {
+    route: zeroConnectorApiTokenContract.connect,
+    handler: authRoute(connectorWriteAuth, connectApiTokenConnectorInner$),
   },
 ];

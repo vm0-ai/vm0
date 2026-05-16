@@ -5,6 +5,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthMethodType,
+  ConnectorSecretConfig,
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -61,6 +62,11 @@ const log = logger("service:connector");
  */
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
 
+type ApiTokenFieldSet = {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+};
+
 /**
  * Validate and parse connector type from database value
  */
@@ -78,6 +84,48 @@ function parseConnectorType(type: string): ConnectorType {
 function getSecretNameForConnector(type: ConnectorType): string {
   if (type === "computer") return "COMPUTER_CONNECTOR_AUTHTOKEN";
   return PROVIDER_HANDLERS[type].getSecretName();
+}
+
+function getApiTokenFieldConfig(
+  type: ConnectorType,
+): Record<string, ConnectorSecretConfig> | null {
+  return CONNECTOR_TYPES[type].authMethods["api-token"]?.secrets ?? null;
+}
+
+function getApiTokenConfiguredFieldsByType(
+  type: ConnectorType,
+): ApiTokenFieldSet | null {
+  const fieldConfig = getApiTokenFieldConfig(type);
+  if (!fieldConfig) {
+    return null;
+  }
+
+  const secretNames: string[] = [];
+  const variableNames: string[] = [];
+  for (const [name, config] of Object.entries(fieldConfig)) {
+    if (config.type === "variable") {
+      variableNames.push(name);
+    } else {
+      secretNames.push(name);
+    }
+  }
+
+  return { secrets: secretNames, variables: variableNames };
+}
+
+function apiTokenConnectorResponse(type: ConnectorType): ConnectorResponse {
+  return {
+    id: null,
+    type,
+    authMethod: "api-token",
+    externalId: null,
+    externalUsername: null,
+    externalEmail: null,
+    oauthScopes: null,
+    needsReconnect: false,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
 }
 
 /**
@@ -186,18 +234,7 @@ export async function listConnectors(
       return !dbTypeSet.has(type);
     })
     .map((type) => {
-      return {
-        id: null,
-        type,
-        authMethod: "api-token",
-        externalId: null,
-        externalUsername: null,
-        externalEmail: null,
-        oauthScopes: null,
-        needsReconnect: false,
-        createdAt: "1970-01-01T00:00:00.000Z",
-        updatedAt: "1970-01-01T00:00:00.000Z",
-      };
+      return apiTokenConnectorResponse(type);
     });
 
   return [...dbConnectors, ...derivedConnectors];
@@ -299,18 +336,7 @@ export async function getConnector(
   if (!secretsOk || !variablesOk) return null;
 
   // Use a fixed timestamp — this connector is inferred, not explicitly created.
-  return {
-    id: null,
-    type,
-    authMethod: "api-token",
-    externalId: null,
-    externalUsername: null,
-    externalEmail: null,
-    oauthScopes: null,
-    needsReconnect: false,
-    createdAt: "1970-01-01T00:00:00.000Z",
-    updatedAt: "1970-01-01T00:00:00.000Z",
-  };
+  return apiTokenConnectorResponse(type);
 }
 
 interface ExternalUserInfo {
@@ -408,6 +434,8 @@ export async function upsertOAuthConnector(
   if (!connectorRow) {
     throw new Error("Failed to upsert connector");
   }
+
+  await deleteApiTokenConnectorLocalState(orgId, userId, type);
   log.debug("connector upserted", { connectorId: connectorRow.id, type });
 
   // Notify the operating user's open tabs (e.g. the connector settings page
@@ -434,6 +462,49 @@ export async function upsertOAuthConnector(
     created:
       connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
   };
+}
+
+async function deleteApiTokenConnectorLocalState(
+  orgId: string,
+  userId: string,
+  type: ConnectorType,
+): Promise<boolean> {
+  const db = globalThis.services.db;
+  const fields = getApiTokenConfiguredFieldsByType(type);
+  if (!fields) {
+    return false;
+  }
+
+  let deleted = false;
+  for (const name of fields.secrets) {
+    const result = await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, userId),
+          eq(secrets.name, name),
+          eq(secrets.type, "user"),
+        ),
+      )
+      .returning({ id: secrets.id });
+    if (result.length > 0) deleted = true;
+  }
+  for (const name of fields.variables) {
+    const result = await db
+      .delete(variables)
+      .where(
+        and(
+          eq(variables.orgId, orgId),
+          eq(variables.userId, userId),
+          eq(variables.name, name),
+        ),
+      )
+      .returning({ id: variables.id });
+    if (result.length > 0) deleted = true;
+  }
+
+  return deleted;
 }
 
 /**
@@ -559,36 +630,8 @@ export async function deleteConnector(
   // forms during migrations or manual repairs, so a DELETE must remove every
   // trace or the UI will still treat the connector as connected via the
   // leftover secret.
-  const fields = getApiTokenFieldsByType(type);
-  if (fields) {
-    for (const name of fields.secrets) {
-      const result = await db
-        .delete(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, orgId),
-            eq(secrets.userId, userId),
-            eq(secrets.name, name),
-            eq(secrets.type, "user"),
-          ),
-        )
-        .returning({ id: secrets.id });
-      if (result.length > 0) deleted = true;
-    }
-    for (const name of fields.variables) {
-      const result = await db
-        .delete(variables)
-        .where(
-          and(
-            eq(variables.orgId, orgId),
-            eq(variables.userId, userId),
-            eq(variables.name, name),
-          ),
-        )
-        .returning({ id: variables.id });
-      if (result.length > 0) deleted = true;
-    }
-  }
+  deleted =
+    (await deleteApiTokenConnectorLocalState(orgId, userId, type)) || deleted;
 
   if (!deleted) {
     throw notFound("Connector not found");
