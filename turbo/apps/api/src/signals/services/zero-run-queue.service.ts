@@ -8,12 +8,10 @@ import { and, count, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
-import {
-  publishOrgSignal,
-  publishRunnerJobNotification,
-} from "../external/realtime";
+import { publishOrgSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
+import { notifyRunnerJob } from "./runner-dispatch.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -146,6 +144,7 @@ export const drainOrgQueue$ = command(
                 runId: row.runId,
                 runnerGroup: payload.runnerGroup,
                 profile: payload.profile,
+                sessionId: payload.sessionId,
               },
             }
           : { promoted, runnerNotification: null };
@@ -162,11 +161,7 @@ export const drainOrgQueue$ = command(
     signal.throwIfAborted();
 
     if (transitioned.runnerNotification) {
-      await publishRunnerJobNotification(
-        transitioned.runnerNotification.runnerGroup,
-        transitioned.runnerNotification.runId,
-        transitioned.runnerNotification.profile,
-      );
+      await notifyRunnerJob(writeDb, transitioned.runnerNotification);
       signal.throwIfAborted();
     }
 

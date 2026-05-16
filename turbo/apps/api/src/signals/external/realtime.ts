@@ -183,11 +183,19 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
+  targetRunnerId: string | null = null,
 ): Promise<boolean> {
   const result = await safeAsync(async () => {
     const channel = ablyClient().channels.get(`runner-group:${group}`);
-    await channel.publish("job", { runId, profile });
-    L.debug(`Published job ${runId} to runner-group:${group}`);
+    await channel.publish("job", {
+      runId,
+      profile,
+      ...(targetRunnerId ? { targetRunnerId } : {}),
+    });
+    L.debug(
+      `Published job ${runId} to runner-group:${group}` +
+        (targetRunnerId ? ` (target: ${targetRunnerId})` : " (broadcast)"),
+    );
   });
   if ("ok" in result) {
     return true;

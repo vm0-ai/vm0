@@ -100,7 +100,6 @@ import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import {
   publishOrgSignal,
   publishRunChangedForUserSafely,
-  publishRunnerJobNotification,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
@@ -118,6 +117,7 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { notifyRunnerJob } from "./runner-dispatch.service";
 import { logger } from "../../lib/log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
@@ -2701,11 +2701,12 @@ async function dispatchRun(
     .set({ runnerGroup: payload.runnerGroup })
     .where(eq(agentRuns.id, args.run.id));
 
-  await publishRunnerJobNotification(
-    payload.runnerGroup,
-    args.run.id,
-    payload.profile,
-  );
+  await notifyRunnerJob(db, {
+    runnerGroup: payload.runnerGroup,
+    runId: args.run.id,
+    profile: payload.profile,
+    sessionId: payload.sessionId,
+  });
 
   return { status: "pending" };
 }
