@@ -104,7 +104,7 @@ import {
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 import {
   decryptSecretValue,
   encryptSecretValue,
@@ -2574,8 +2574,9 @@ async function markRunFailed(
   await publishRunChangedForUserSafely(updated.userId, runId, {
     status: "failed",
   });
-  await dispatchRunCallbacks(db, runId, "failed", undefined, message).catch(
-    (error: unknown) => {
+  await tapError(
+    dispatchRunCallbacks(db, runId, "failed", undefined, message),
+    (error) => {
       L.error("Failed to dispatch failed-run callbacks", { runId, error });
     },
   );
@@ -3091,7 +3092,7 @@ async function completePendingRun(input: {
   );
   input.signal.throwIfAborted();
   if (transitioned) {
-    await input.drainOrgQueue().catch((error: unknown) => {
+    await tapError(input.drainOrgQueue(), (error) => {
       L.error("Failed to drain org queue after run dispatch failure", {
         runId: input.run.id,
         error,

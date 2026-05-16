@@ -6,7 +6,7 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -119,8 +119,9 @@ export async function publishRunChangedForUserSafely(
   runId: string,
   payload: unknown = null,
 ): Promise<void> {
-  await publishUserSignal([userId], `run:changed:${runId}`, payload).catch(
-    (error: unknown) => {
+  await tapError(
+    publishUserSignal([userId], `run:changed:${runId}`, payload),
+    (error) => {
       L.warn("Failed to publish run changed signal", { runId, error });
     },
   );

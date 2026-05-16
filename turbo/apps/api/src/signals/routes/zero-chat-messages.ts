@@ -55,6 +55,7 @@ import {
 } from "../services/zero-chat-title.service";
 import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-thread.service";
+import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
@@ -1667,7 +1668,7 @@ const handleInterruptSend$ = command(
     }
     if (!cancelResult.alreadyCancelled) {
       waitUntil(
-        set(dispatchCancelSideEffects$, cancelResult, signal).catch(() => {}),
+        bestEffort(set(dispatchCancelSideEffects$, cancelResult, signal)),
       );
     }
 

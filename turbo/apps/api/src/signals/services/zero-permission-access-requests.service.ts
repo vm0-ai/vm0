@@ -24,6 +24,7 @@ import {
   postMessage,
 } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
+import { detach, Mechanism, tapError } from "../utils";
 import type { ApiOrgRole } from "../../types/auth";
 import { decryptSecretValue } from "./crypto.utils";
 
@@ -467,20 +468,27 @@ export const createPermissionAccessRequest$ = command(
     const requesterNames = await requesterNameMap(client, [args.userId]);
     signal.throwIfAborted();
 
-    void notifyOwnerOfRequest(db, {
-      orgId: args.orgId,
-      ownerUserId: agent.owner,
-      agentId: request.agentId,
-      requestId: row.id,
-      agentDisplayName: agent.displayName ?? request.agentId,
-      requesterName: requesterNames.get(args.userId) ?? args.userId,
-      permission: request.permission,
-      connectorRef: request.connectorRef,
-      action: request.action,
-      reason: request.reason,
-    }).catch((error: unknown) => {
-      log.error("Failed to notify owner of permission request", { error });
-    });
+    detach(
+      tapError(
+        notifyOwnerOfRequest(db, {
+          orgId: args.orgId,
+          ownerUserId: agent.owner,
+          agentId: request.agentId,
+          requestId: row.id,
+          agentDisplayName: agent.displayName ?? request.agentId,
+          requesterName: requesterNames.get(args.userId) ?? args.userId,
+          permission: request.permission,
+          connectorRef: request.connectorRef,
+          action: request.action,
+          reason: request.reason,
+        }),
+        (error) => {
+          log.error("Failed to notify owner of permission request", { error });
+        },
+      ),
+      Mechanism.WaitUntil,
+      "notifyOwnerOfRequest",
+    );
 
     return { kind: "ok", request: formatPermissionAccessRequest(row) };
   },
@@ -580,21 +588,28 @@ export const resolvePermissionAccessRequest$ = command(
       `Resolved permission access request: ${args.requestId} as ${newStatus}`,
     );
 
-    void notifyRequesterOfResolution(db, {
-      orgId: args.orgId,
-      requestId: args.requestId,
-      agentId: existing.agentId,
-      agentDisplayName: row.agentDisplayName ?? existing.agentId,
-      requesterUserId: existing.requesterUserId,
-      permission: existing.permission,
-      connectorRef: existing.connectorRef,
-      action: existing.action,
-      resolution: args.action,
-    }).catch((error: unknown) => {
-      log.error("Failed to notify requester of permission resolution", {
-        error,
-      });
-    });
+    detach(
+      tapError(
+        notifyRequesterOfResolution(db, {
+          orgId: args.orgId,
+          requestId: args.requestId,
+          agentId: existing.agentId,
+          agentDisplayName: row.agentDisplayName ?? existing.agentId,
+          requesterUserId: existing.requesterUserId,
+          permission: existing.permission,
+          connectorRef: existing.connectorRef,
+          action: existing.action,
+          resolution: args.action,
+        }),
+        (error) => {
+          log.error("Failed to notify requester of permission resolution", {
+            error,
+          });
+        },
+      ),
+      Mechanism.WaitUntil,
+      "notifyRequesterOfResolution",
+    );
 
     return { kind: "ok", request: formatPermissionAccessRequest(updated) };
   },

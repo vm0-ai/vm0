@@ -21,7 +21,7 @@ import {
 import { sendMessage } from "../external/telegram-client";
 import { publishUserSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 import {
   ensureTelegramArtifactStorage$,
   formatTelegramUserDisplayName,
@@ -124,6 +124,25 @@ function linkSuccessResponse(botUsername: string, telegramUserId: string) {
   };
 }
 
+async function deliverConnectSuccessMessage(args: {
+  readonly botToken: string;
+  readonly telegramUserId: string;
+  readonly text: string;
+}): Promise<void> {
+  const result = await sendMessage(
+    args.botToken,
+    args.telegramUserId,
+    args.text,
+  );
+  if (result.kind === "telegram-error") {
+    log.warn("Failed to send Telegram connect success message", {
+      telegramUserId: args.telegramUserId,
+      status: result.status,
+      description: result.description,
+    });
+  }
+}
+
 function sendConnectSuccessMessage(args: {
   readonly botToken: string;
   readonly telegramUserId: string;
@@ -134,22 +153,19 @@ function sendConnectSuccessMessage(args: {
     : "✅ Account linked.\nSend me a message to start chatting with your agent.";
 
   waitUntil(
-    sendMessage(args.botToken, args.telegramUserId, text)
-      .then((result) => {
-        if (result.kind === "telegram-error") {
-          log.warn("Failed to send Telegram connect success message", {
-            telegramUserId: args.telegramUserId,
-            status: result.status,
-            description: result.description,
-          });
-        }
-      })
-      .catch((error: unknown) => {
+    tapError(
+      deliverConnectSuccessMessage({
+        botToken: args.botToken,
+        telegramUserId: args.telegramUserId,
+        text,
+      }),
+      (error) => {
         log.warn("Failed to send Telegram connect success message", {
           telegramUserId: args.telegramUserId,
           error,
         });
-      }),
+      },
+    ),
   );
 }
 

@@ -18,6 +18,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, type ReadonlyDb } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
+import { settle } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
@@ -308,25 +309,24 @@ export function googleDriveArtifactStatusLookup(args: {
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
     }
-    return listArtifactFilesWithRefresh({
-      tokens,
-      threadId: args.threadId,
-      signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
-    }).then(
-      (result): DriveStatusLookup => {
-        if (result === "unauthorized") {
-          return { type: "unknown" };
-        }
-        return { type: "ready", syncedByKey: buildStatusMap(result) };
-      },
-      // Timeout, schema-parse failure, transient network error — treat as
-      // "unknown" rather than failing the whole artifacts response. The 2s
-      // timeout is the explicit abort source here, so AbortError is part
-      // of the expected swallow set.
-      (): DriveStatusLookup => {
-        return { type: "unknown" };
-      },
+    // Schema-parse failure or transient network error — treat as "unknown"
+    // rather than failing the whole artifacts response. AbortError from the
+    // 2s timeout intentionally propagates under the project-wide ban on
+    // swallowing aborts.
+    const settled = await settle(
+      listArtifactFilesWithRefresh({
+        tokens,
+        threadId: args.threadId,
+        signal: AbortSignal.timeout(GOOGLE_DRIVE_STATUS_TIMEOUT_MS),
+      }),
     );
+    if (!settled.ok) {
+      return { type: "unknown" };
+    }
+    if (settled.value === "unauthorized") {
+      return { type: "unknown" };
+    }
+    return { type: "ready", syncedByKey: buildStatusMap(settled.value) };
   });
 }
 

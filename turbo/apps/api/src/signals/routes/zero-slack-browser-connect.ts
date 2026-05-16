@@ -15,6 +15,7 @@ import {
   notifySlackConnect$,
   publishSlackAdminSignal$,
 } from "../services/zero-slack-connect.service";
+import { tapError } from "../utils";
 import type { RouteEntry } from "../route";
 
 const L = logger("SlackBrowserConnect");
@@ -134,19 +135,22 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   waitUntil(
-    set(
-      notifySlackConnect$,
-      {
-        installation: result.installation,
-        slackUserId: result.slackUserId,
-        orgId,
-        channelId: result.channelId,
-        threadTs: result.threadTs,
+    tapError(
+      set(
+        notifySlackConnect$,
+        {
+          installation: result.installation,
+          slackUserId: result.slackUserId,
+          orgId,
+          channelId: result.channelId,
+          threadTs: result.threadTs,
+        },
+        signal,
+      ),
+      (error) => {
+        L.warn("Failed to notify connect success", { error });
       },
-      signal,
-    ).catch((error: unknown) => {
-      L.warn("Failed to notify connect success", { error });
-    }),
+    ),
   );
 
   return connectSuccess();

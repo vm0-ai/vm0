@@ -10,6 +10,7 @@ import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,
 } from "../services/agent-webhook-complete.service";
+import { tapError } from "../utils";
 import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
@@ -38,8 +39,9 @@ const completeAgentRunRoute$ = command(
 
     if (result.sideEffects) {
       waitUntil(
-        set(dispatchCompleteSideEffects$, result.sideEffects, signal).catch(
-          (error: unknown) => {
+        tapError(
+          set(dispatchCompleteSideEffects$, result.sideEffects, signal),
+          (error) => {
             L.error("dispatchCompleteSideEffects failed", {
               runId: result.sideEffects?.runId,
               error,

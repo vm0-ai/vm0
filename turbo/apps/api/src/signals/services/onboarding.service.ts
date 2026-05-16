@@ -16,6 +16,7 @@ import { logger } from "../../lib/log";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { settle, tapError } from "../utils";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 
@@ -96,17 +97,16 @@ async function updateOrgWithOptionalSlug(
   name: string,
   slug: string,
 ): Promise<"updated" | "conflict"> {
-  return await client.organizations
-    .updateOrganization(orgId, { name, slug })
-    .then(() => {
-      return "updated" as const;
-    })
-    .catch((error: unknown) => {
-      if (isClerkSlugConflict(error)) {
-        return "conflict" as const;
-      }
-      throw error;
-    });
+  const settled = await settle(
+    client.organizations.updateOrganization(orgId, { name, slug }),
+  );
+  if (settled.ok) {
+    return "updated" as const;
+  }
+  if (isClerkSlugConflict(settled.error)) {
+    return "conflict" as const;
+  }
+  throw settled.error;
 }
 
 async function updateOrgNameAndSlug(
@@ -476,8 +476,9 @@ export const setupOnboarding$ = command(
 
     if (args.workspaceName?.trim()) {
       const client = get(clerk$);
-      await updateOrgNameAndSlug(client, args.orgId, args.workspaceName).catch(
-        (error: unknown) => {
+      await tapError(
+        updateOrgNameAndSlug(client, args.orgId, args.workspaceName),
+        (error) => {
           L.warn("Failed to update org name/slug (non-blocking)", {
             orgId: args.orgId,
             error,

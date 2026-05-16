@@ -15,6 +15,7 @@ import { and, eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
 import { db$, writeDb$ } from "../external/db";
+import { tapError } from "../utils";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -157,14 +158,17 @@ async function deleteRemoteGithubInstallationIfConfigured(args: {
     return;
   }
 
-  await deleteRemoteGithubInstallation({
-    appId,
-    privateKey,
-    installationId: args.installationId,
-    signal: args.signal,
-  }).catch((error: unknown) => {
-    L.error("Failed to delete GitHub installation", { error });
-  });
+  await tapError(
+    deleteRemoteGithubInstallation({
+      appId,
+      privateKey,
+      installationId: args.installationId,
+      signal: args.signal,
+    }),
+    (error) => {
+      L.error("Failed to delete GitHub installation", { error });
+    },
+  );
   args.signal.throwIfAborted();
 }
 

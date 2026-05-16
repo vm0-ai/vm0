@@ -20,6 +20,7 @@ import {
   triggerVoiceChatReasoning$,
 } from "../services/zero-voice-chat.service";
 import { getRunOutputText } from "../services/run-output.service";
+import { tapError } from "../utils";
 
 const log = logger("callback:voice-chat");
 
@@ -76,16 +77,18 @@ const handleVoiceChatCallback$ = command(
 
     const resultText =
       callback.status === "completed"
-        ? await getRunOutputText(callback.runId, {
-            knownLastEventSequence: run.lastEventSequence,
-            signal,
-          }).catch((error: unknown) => {
-            log.warn("Failed to extract run output text", {
-              runId: callback.runId,
-              error,
-            });
-            return undefined;
-          })
+        ? await tapError(
+            getRunOutputText(callback.runId, {
+              knownLastEventSequence: run.lastEventSequence,
+              signal,
+            }),
+            (error) => {
+              log.warn("Failed to extract run output text", {
+                runId: callback.runId,
+                error,
+              });
+            },
+          )
         : undefined;
     signal.throwIfAborted();
 

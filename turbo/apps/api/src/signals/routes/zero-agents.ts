@@ -179,12 +179,12 @@ async function validateCustomSkills(
     : null;
 }
 
-function findAgentForUpdate(
+async function findAgentForUpdate(
   writeDb: Db,
   orgId: string,
   agentId: string,
 ): Promise<ExistingAgentForUpdate | null> {
-  return writeDb
+  const rows = await writeDb
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
@@ -195,18 +195,16 @@ function findAgentForUpdate(
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
-    .limit(1)
-    .then((rows) => {
-      return rows[0] ?? null;
-    });
+    .limit(1);
+  return rows[0] ?? null;
 }
 
-function findAgentMetadataForUpdate(
+async function findAgentMetadataForUpdate(
   writeDb: Db,
   orgId: string,
   agentId: string,
 ) {
-  return writeDb
+  const rows = await writeDb
     .select({
       id: zeroAgents.id,
       name: zeroAgents.name,
@@ -215,10 +213,8 @@ function findAgentMetadataForUpdate(
     })
     .from(zeroAgents)
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
-    .limit(1)
-    .then((rows) => {
-      return rows[0] ?? null;
-    });
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 function requireAgentConfigurationPermission(
@@ -360,8 +356,12 @@ function upsertZeroAgentAfterCompose(
     });
 }
 
-function readAgentForResponse(writeDb: Db, orgId: string, agentId: string) {
-  return writeDb
+async function readAgentForResponse(
+  writeDb: Db,
+  orgId: string,
+  agentId: string,
+) {
+  const rows = await writeDb
     .select({
       agentId: zeroAgents.id,
       owner: zeroAgents.owner,
@@ -379,10 +379,8 @@ function readAgentForResponse(writeDb: Db, orgId: string, agentId: string) {
     })
     .from(zeroAgents)
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.id, agentId)))
-    .limit(1)
-    .then((rows) => {
-      return rows[0] ?? null;
-    });
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 const createAgentBody$ = bodyResultOf(zeroAgentsMainContract.create);

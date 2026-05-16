@@ -166,7 +166,7 @@ export const cancelRun$ = command(
  *    follow-up.
  *
  * Fire-and-forget caller: invoke from the route handler via
- * `waitUntil(set(dispatchCancelSideEffects$, result, signal).catch(log))`.
+ * `waitUntil(tapError(set(dispatchCancelSideEffects$, result, signal), log))`.
  */
 export const dispatchCancelSideEffects$ = command(
   async (

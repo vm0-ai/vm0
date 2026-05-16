@@ -11,6 +11,7 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
+import { tapError } from "../utils";
 import type { RouteEntry } from "../route";
 
 const L = logger("RunCancel");
@@ -40,14 +41,12 @@ const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (!result.alreadyCancelled) {
     waitUntil(
-      set(dispatchCancelSideEffects$, result, signal).catch(
-        (error: unknown) => {
-          L.error("dispatchCancelSideEffects failed", {
-            runId: result.runId,
-            error,
-          });
-        },
-      ),
+      tapError(set(dispatchCancelSideEffects$, result, signal), (error) => {
+        L.error("dispatchCancelSideEffects failed", {
+          runId: result.runId,
+          error,
+        });
+      }),
     );
   }
 

@@ -14,7 +14,7 @@ import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
-import { safeAsync } from "../utils";
+import { bestEffort, safeAsync, settle } from "../utils";
 
 const L = logger("webhook:events");
 
@@ -109,15 +109,12 @@ function resolveBaseUrl(baseUrl: string): string {
 }
 
 async function readFailureBody(response: Response): Promise<string> {
-  return await response.text().catch(() => {
-    return "";
-  });
+  const settled = await settle(response.text());
+  return settled.ok ? settled.value : "";
 }
 
 async function drainResponse(response: Response): Promise<void> {
-  await response.arrayBuffer().catch(() => {
-    return undefined;
-  });
+  await bestEffort(response.arrayBuffer());
 }
 
 async function dispatchToConsumer(

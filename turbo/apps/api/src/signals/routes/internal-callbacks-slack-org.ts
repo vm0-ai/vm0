@@ -40,6 +40,7 @@ import { decryptSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
+import { detach, Mechanism, tapError } from "../utils";
 
 const L = logger("InternalCallbacksSlackOrg");
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -367,14 +368,16 @@ function refreshThreadStatus(args: {
   readonly failureMessage: string;
 }): void {
   const client = createSlackClient(args.token);
-  void setThreadStatus(
-    client,
-    args.channelId,
-    args.threadTs,
-    args.status,
-  ).catch((error: unknown) => {
-    L.warn(args.failureMessage, { runId: args.runId, error });
-  });
+  detach(
+    tapError(
+      setThreadStatus(client, args.channelId, args.threadTs, args.status),
+      (error) => {
+        L.warn(args.failureMessage, { runId: args.runId, error });
+      },
+    ),
+    Mechanism.WaitUntil,
+    "refreshThreadStatus",
+  );
 }
 
 async function resolveCompletionText(args: {

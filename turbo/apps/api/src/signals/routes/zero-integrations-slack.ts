@@ -40,7 +40,7 @@ import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import { decryptSecretValue } from "../services/crypto.utils";
 import { env } from "../../lib/env";
 import type { RouteEntry } from "../route";
-import { safeAsync } from "../utils";
+import { bestEffort, safeAsync } from "../utils";
 
 const c = initContract();
 
@@ -200,14 +200,12 @@ function contractErrorResponse(
   };
 }
 
-function publishAppHome(
+async function publishAppHome(
   client: ReturnType<typeof createSlackClient>,
   userId: string,
   view: View,
 ): Promise<void> {
-  return client.views.publish({ user_id: userId, view }).then(() => {
-    return undefined;
-  });
+  await client.views.publish({ user_id: userId, view });
 }
 
 function buildConnectUrl(workspaceId: string, slackUserId: string): string {
@@ -427,16 +425,16 @@ const deleteSlackIntegration$ = command(
     const client = createSlackClient(
       decryptSecretValue(installation.encryptedBotToken),
     );
-    await publishAppHome(
-      client,
-      connection.slackUserId,
-      buildDisconnectedAppHomeView({
-        workspaceId: installation.slackWorkspaceId,
-        slackUserId: connection.slackUserId,
-      }),
-    ).catch(() => {
-      return undefined;
-    });
+    await bestEffort(
+      publishAppHome(
+        client,
+        connection.slackUserId,
+        buildDisconnectedAppHomeView({
+          workspaceId: installation.slackWorkspaceId,
+          slackUserId: connection.slackUserId,
+        }),
+      ),
+    );
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true } };

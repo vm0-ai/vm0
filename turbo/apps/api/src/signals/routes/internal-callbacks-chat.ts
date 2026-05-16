@@ -431,16 +431,17 @@ async function handleCompletedChatCallback(args: {
   }
 
   waitUntil(
-    safeAsync(() => {
-      return recordLastEventToComplete(args.db, args.runId);
-    }).then((result) => {
+    (async () => {
+      const result = await safeAsync(() => {
+        return recordLastEventToComplete(args.db, args.runId);
+      });
       if ("error" in result) {
         log.warn("Failed to record last_event_to_complete", {
           runId: args.runId,
           error: result.error,
         });
       }
-    }),
+    })(),
   );
 
   await args.saveRunSummary(lastResultText ?? "");

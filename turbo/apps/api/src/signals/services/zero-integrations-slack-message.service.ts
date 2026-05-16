@@ -10,6 +10,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { db$, type ReadonlyDb } from "../external/db";
+import { tapError } from "../utils";
 
 async function resolveAgentLabel(
   db: ReadonlyDb,
@@ -102,20 +103,13 @@ export function slackMessageSendFooterText(args: {
     const db = get(db$);
     const runId = args.authRunId;
 
+    const noop = (): void => {};
     const [agentLabel, scheduleLabel, userMention, selectedModel] =
       await Promise.all([
-        resolveAgentLabel(db, runId).catch(() => {
-          return undefined;
-        }),
-        resolveScheduleLabel(db, runId).catch(() => {
-          return undefined;
-        }),
-        resolveUserMention(db, runId).catch(() => {
-          return undefined;
-        }),
-        resolveSelectedModel(db, runId).catch(() => {
-          return undefined;
-        }),
+        tapError(resolveAgentLabel(db, runId), noop),
+        tapError(resolveScheduleLabel(db, runId), noop),
+        tapError(resolveUserMention(db, runId), noop),
+        tapError(resolveSelectedModel(db, runId), noop),
       ]);
 
     const parts: string[] = [];

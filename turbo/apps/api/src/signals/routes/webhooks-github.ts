@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../external/time";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse, tapError } from "../utils";
 import {
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
@@ -108,13 +108,16 @@ const postGithubWebhook$ = command(
       }
 
       waitUntil(
-        set(
-          handleGithubIssuesEvent$,
-          { payload: parsed.data, appSlug, apiStartTime },
-          signal,
-        ).catch((error: unknown) => {
-          L.error("Error handling issues event", { error });
-        }),
+        tapError(
+          set(
+            handleGithubIssuesEvent$,
+            { payload: parsed.data, appSlug, apiStartTime },
+            signal,
+          ),
+          (error) => {
+            L.error("Error handling issues event", { error });
+          },
+        ),
       );
       return new Response("OK", { status: 200 });
     }
@@ -129,13 +132,16 @@ const postGithubWebhook$ = command(
       }
 
       waitUntil(
-        set(
-          handleGithubIssueCommentEvent$,
-          { payload: parsed.data, appSlug, apiStartTime },
-          signal,
-        ).catch((error: unknown) => {
-          L.error("Error handling issue_comment event", { error });
-        }),
+        tapError(
+          set(
+            handleGithubIssueCommentEvent$,
+            { payload: parsed.data, appSlug, apiStartTime },
+            signal,
+          ),
+          (error) => {
+            L.error("Error handling issue_comment event", { error });
+          },
+        ),
       );
       return new Response("OK", { status: 200 });
     }
@@ -148,8 +154,9 @@ const postGithubWebhook$ = command(
       }
 
       waitUntil(
-        set(handleGithubInstallationEvent$, parsed.data, signal).catch(
-          (error: unknown) => {
+        tapError(
+          set(handleGithubInstallationEvent$, parsed.data, signal),
+          (error) => {
             L.error("Error handling installation event", { error });
           },
         ),

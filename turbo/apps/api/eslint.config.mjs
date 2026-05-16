@@ -67,67 +67,25 @@ const promiseChainSyntax = [
   },
 ];
 
-// Files that still use raw .then/.catch as of issue #13535. The lint rule
-// blocks new additions everywhere else; this allowlist captures the legacy
-// surface so changes inside listed files do not regress, but they should be
-// migrated incrementally. Tracked as tech debt — do not extend without
-// migrating a listed file off raw promise chaining first.
+// Narrow exception policy for the promise-chain ban (issue #13535):
+// only infrastructure that wraps runtime primitives stays on raw
+// .then/.catch. Production code under src/signals/routes and
+// src/signals/services must route through the centralized helpers
+// (safeAsync, tapError, onRejection, settle, detach, bestEffort).
 const promiseChainAllowlist = [
-  // Infrastructure: pg/OTel instrumentation, detached-promise tracking, and
-  // sandbox wrappers wrap browser/runtime primitives; .then chains are the
-  // intentional contract.
+  // pg/OTel instrumentation: needs .then chains around the wrapped pg.query
+  // call to attach span lifecycle without forcing an async wrapper around
+  // every callback-style overload.
   "src/lib/db.ts",
+  // Logger flush: detached `?.catch(() => {})` on Sentry flush in process exit
+  // path; cannot use signals/utils helpers because lib/ must not import them.
   "src/lib/log.ts",
+  // Centralized async helpers — these implement .then/.catch so the rest of
+  // the codebase doesn't have to.
   "src/signals/utils.ts",
+  // sandboxOperation is the centralized SandboxError-mapping helper used by
+  // every sandbox call site; the .then chain is the contract.
   "src/signals/external/sandbox.ts",
-  "src/signals/external/sandbox-op-log.ts",
-  "src/signals/external/realtime.ts",
-  // Routes — pending migration to await + safeAsync.
-  "src/signals/routes/agent-runs-cancel.ts",
-  "src/signals/routes/integrations-telegram-link.ts",
-  "src/signals/routes/internal-callbacks-chat.ts",
-  "src/signals/routes/internal-callbacks-slack-org.ts",
-  "src/signals/routes/internal-callbacks-voice-chat.ts",
-  "src/signals/routes/internal-event-consumers-agentphone-typing.ts",
-  "src/signals/routes/internal-event-consumers-telegram-typing.ts",
-  "src/signals/routes/test-slack-dispatch-probe.ts",
-  "src/signals/routes/test-telegram-state.ts",
-  "src/signals/routes/user-export.ts",
-  "src/signals/routes/webhooks-agent-complete.ts",
-  "src/signals/routes/webhooks-clerk.ts",
-  "src/signals/routes/webhooks-github.ts",
-  "src/signals/routes/zero-agents.ts",
-  "src/signals/routes/zero-chat-messages.ts",
-  "src/signals/routes/zero-integrations-agentphone.ts",
-  "src/signals/routes/zero-integrations-slack.ts",
-  "src/signals/routes/zero-integrations-telegram.ts",
-  "src/signals/routes/zero-runs-cancel.ts",
-  "src/signals/routes/zero-slack-browser-connect.ts",
-  "src/signals/routes/zero-slack-connect.ts",
-  "src/signals/routes/zero-slack-oauth.ts",
-  // Services — pending migration to await + safeAsync.
-  "src/signals/services/agent-run-create.service.ts",
-  "src/signals/services/agent-webhook-complete.service.ts",
-  "src/signals/services/agent-webhook-events.service.ts",
-  "src/signals/services/cli-auth-stripe.service.ts",
-  "src/signals/services/diagnostic-bundle.service.ts",
-  "src/signals/services/google-drive-artifact-sync.service.ts",
-  "src/signals/services/integrations-github.service.ts",
-  "src/signals/services/onboarding.service.ts",
-  "src/signals/services/run-summary.service.ts",
-  "src/signals/services/storage-volume-upload.service.ts",
-  "src/signals/services/webhooks-clerk-cleanup.service.ts",
-  "src/signals/services/zero-chat-title.service.ts",
-  "src/signals/services/zero-connector-data.service.ts",
-  "src/signals/services/zero-integrations-slack-message.service.ts",
-  "src/signals/services/zero-org-data.service.ts",
-  "src/signals/services/zero-permission-access-requests.service.ts",
-  "src/signals/services/zero-run-cancel.service.ts",
-  "src/signals/services/zero-schedules.service.ts",
-  "src/signals/services/zero-slack-connect.service.ts",
-  "src/signals/services/zero-slack-webhooks.service.ts",
-  "src/signals/services/zero-telegram-data.service.ts",
-  "src/signals/services/zero-telegram-post.service.ts",
 ];
 
 export default [

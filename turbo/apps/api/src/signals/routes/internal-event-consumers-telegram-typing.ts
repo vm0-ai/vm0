@@ -18,6 +18,7 @@ import {
 } from "../external/telegram-official";
 import { decryptSecretValue } from "../services/crypto.utils";
 import type { RouteEntry } from "../route";
+import { tapError } from "../utils";
 
 const L = logger("event-consumer:telegram-typing");
 
@@ -43,7 +44,7 @@ function parseTelegramTypingTarget(
 }
 
 // Background-task command. Receives a fresh signal from the caller; failures
-// here are caught by the .catch(log) at the call site so they cannot crash
+// here are caught by tapError at the call site so they cannot crash
 // the already-returned 200 response.
 const refreshTelegramTypingForRun$ = command(
   async ({ get }, runId: string, _signal: AbortSignal): Promise<void> => {
@@ -106,8 +107,9 @@ const refreshInner$ = command(
     signal.throwIfAborted();
 
     waitUntil(
-      set(refreshTelegramTypingForRun$, payload.runId, signal).catch(
-        (error: unknown) => {
+      tapError(
+        set(refreshTelegramTypingForRun$, payload.runId, signal),
+        (error) => {
           L.debug("Failed to refresh Telegram typing from events", {
             runId: payload.runId,
             error,

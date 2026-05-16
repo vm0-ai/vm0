@@ -40,7 +40,7 @@ import { nowDate } from "../external/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
@@ -53,15 +53,13 @@ async function publishCancelBestEffort(
   if (!runnerGroup) {
     return;
   }
-  await publishCancelToRunnerGroup(runnerGroup, runId).catch(
-    (error: unknown) => {
-      L.warn("failed to publish run cancellation", {
-        runId,
-        runnerGroup,
-        error,
-      });
-    },
-  );
+  await tapError(publishCancelToRunnerGroup(runnerGroup, runId), (error) => {
+    L.warn("failed to publish run cancellation", {
+      runId,
+      runnerGroup,
+      error,
+    });
+  });
 }
 
 async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {
@@ -146,14 +144,15 @@ async function deregisterOrgTelegramWebhooks(
     .where(eq(telegramInstallations.orgId, orgId));
 
   for (const installation of installations) {
-    await deleteWebhook(
-      decryptSecretValue(installation.encryptedBotToken),
-    ).catch((error: unknown) => {
-      L.warn("failed to deregister telegram webhook", {
-        telegramBotId: installation.telegramBotId,
-        error,
-      });
-    });
+    await tapError(
+      deleteWebhook(decryptSecretValue(installation.encryptedBotToken)),
+      (error) => {
+        L.warn("failed to deregister telegram webhook", {
+          telegramBotId: installation.telegramBotId,
+          error,
+        });
+      },
+    );
   }
 }
 
@@ -170,14 +169,15 @@ async function deregisterOwnedTelegramWebhooks(
     .where(eq(telegramInstallations.ownerUserId, userId));
 
   for (const installation of installations) {
-    await deleteWebhook(
-      decryptSecretValue(installation.encryptedBotToken),
-    ).catch((error: unknown) => {
-      L.warn("failed to deregister telegram webhook", {
-        telegramBotId: installation.telegramBotId,
-        error,
-      });
-    });
+    await tapError(
+      deleteWebhook(decryptSecretValue(installation.encryptedBotToken)),
+      (error) => {
+        L.warn("failed to deregister telegram webhook", {
+          telegramBotId: installation.telegramBotId,
+          error,
+        });
+      },
+    );
   }
 }
 
@@ -272,7 +272,7 @@ async function cleanupOrgExternalServices(args: {
   ];
 
   for (const step of steps) {
-    await step.run().catch((error: unknown) => {
+    await tapError(step.run(), (error) => {
       L.warn(`failed to cleanup ${step.name}`, { orgId: args.orgId, error });
     });
     args.signal.throwIfAborted();
@@ -304,7 +304,7 @@ async function cleanupUserExternalServices(args: {
   ];
 
   for (const step of steps) {
-    await step.run().catch((error: unknown) => {
+    await tapError(step.run(), (error) => {
       L.warn(`failed to cleanup ${step.name}`, { userId: args.userId, error });
     });
     args.signal.throwIfAborted();

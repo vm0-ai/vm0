@@ -75,7 +75,7 @@ import {
 } from "./zero-user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse, tapError } from "../utils";
 
 const L = logger("ZeroSlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
@@ -896,9 +896,12 @@ export const handleZeroSlackCommands$ = command(
       await disconnect(db, connection.id);
       signal.throwIfAborted();
       waitUntil(
-        refreshOrgAppHome(db, installation, payload.user_id).catch((error) => {
-          L.warn("Failed to refresh App Home after disconnect", { error });
-        }),
+        tapError(
+          refreshOrgAppHome(db, installation, payload.user_id),
+          (error) => {
+            L.warn("Failed to refresh App Home after disconnect", { error });
+          },
+        ),
       );
       return ephemeral(
         buildSuccessMessage(
@@ -1341,14 +1344,17 @@ async function handleSlackRunResult(args: {
         agentLabel: resolved.agent.displayName ?? resolved.agent.name,
       });
     }
-    await setThreadStatus(
-      resolved.client,
-      message.channelId,
-      resolved.threadTs,
-      "",
-    ).catch((error) => {
-      L.warn("Failed to clear thread status", { error });
-    });
+    await tapError(
+      setThreadStatus(
+        resolved.client,
+        message.channelId,
+        resolved.threadTs,
+        "",
+      ),
+      (error) => {
+        L.warn("Failed to clear thread status", { error });
+      },
+    );
   }
 }
 
@@ -1440,16 +1446,14 @@ async function handleMessagesTabOpened(
   if (updated.rowCount === 0) {
     return;
   }
-  const agentName = installation.orgId
-    ? await resolveDefaultComposeId(db, installation.orgId).then(
-        async (composeId) => {
-          const agent = composeId
-            ? await getWorkspaceAgent(db, composeId)
-            : undefined;
-          return agent?.displayName ?? agent?.name;
-        },
-      )
-    : undefined;
+  let agentName: string | undefined;
+  if (installation.orgId) {
+    const composeId = await resolveDefaultComposeId(db, installation.orgId);
+    const agent = composeId
+      ? await getWorkspaceAgent(db, composeId)
+      : undefined;
+    agentName = agent?.displayName ?? agent?.name;
+  }
   await postMessage(
     createSlackClient(decryptSecretValue(installation.encryptedBotToken)),
     channelId,
@@ -1469,24 +1473,27 @@ function handleEventCallback(args: {
   const event = args.payload.event;
   if (event.type === "app_mention") {
     waitUntil(
-      handleSlackAgentMessage({
-        ...args,
-        workspaceId: args.payload.team_id,
-        channelId: event.channel,
-        channelType:
-          event.channel_type === "im"
-            ? "dm"
-            : event.channel_type === "mpim"
-              ? "group_dm"
-              : "channel",
-        slackUserId: event.user,
-        messageText: event.text,
-        messageTs: event.ts,
-        threadTs: event.thread_ts,
-        files: event.files,
-      }).catch((error) => {
-        L.error("Error handling org app_mention", { error });
-      }),
+      tapError(
+        handleSlackAgentMessage({
+          ...args,
+          workspaceId: args.payload.team_id,
+          channelId: event.channel,
+          channelType:
+            event.channel_type === "im"
+              ? "dm"
+              : event.channel_type === "mpim"
+                ? "group_dm"
+                : "channel",
+          slackUserId: event.user,
+          messageText: event.text,
+          messageTs: event.ts,
+          threadTs: event.thread_ts,
+          files: event.files,
+        }),
+        (error) => {
+          L.error("Error handling org app_mention", { error });
+        },
+      ),
     );
   }
 
@@ -1497,25 +1504,29 @@ function handleEventCallback(args: {
     !event.bot_id
   ) {
     waitUntil(
-      handleSlackAgentMessage({
-        ...args,
-        workspaceId: args.payload.team_id,
-        channelId: event.channel,
-        channelType: "dm",
-        slackUserId: event.user,
-        messageText: event.text,
-        messageTs: event.ts,
-        threadTs: event.thread_ts,
-        files: event.files,
-      }).catch((error) => {
-        L.error("Error handling org direct_message", { error });
-      }),
+      tapError(
+        handleSlackAgentMessage({
+          ...args,
+          workspaceId: args.payload.team_id,
+          channelId: event.channel,
+          channelType: "dm",
+          slackUserId: event.user,
+          messageText: event.text,
+          messageTs: event.ts,
+          threadTs: event.thread_ts,
+          files: event.files,
+        }),
+        (error) => {
+          L.error("Error handling org direct_message", { error });
+        },
+      ),
     );
   }
 
   if (event.type === "app_home_opened" && event.tab === "home") {
     waitUntil(
-      handleAppHomeOpened(args.db, args.payload.team_id, event.user).catch(
+      tapError(
+        handleAppHomeOpened(args.db, args.payload.team_id, event.user),
         (error) => {
           L.error("Error handling org app_home_opened", { error });
         },
@@ -1525,40 +1536,49 @@ function handleEventCallback(args: {
 
   if (event.type === "app_home_opened" && event.tab === "messages") {
     waitUntil(
-      handleMessagesTabOpened(
-        args.db,
-        args.payload.team_id,
-        event.user,
-        event.channel,
-      ).catch((error) => {
-        L.error("Error handling org messages_tab_opened", { error });
-      }),
+      tapError(
+        handleMessagesTabOpened(
+          args.db,
+          args.payload.team_id,
+          event.user,
+          event.channel,
+        ),
+        (error) => {
+          L.error("Error handling org messages_tab_opened", { error });
+        },
+      ),
     );
   }
 
   if (event.type === "app_uninstalled") {
     waitUntil(
-      cleanupWorkspaceInstallation(
-        args.set,
-        args.db,
-        args.payload.team_id,
-        args.signal,
-      ).catch((error) => {
-        L.error("Error handling app_uninstalled", { error });
-      }),
+      tapError(
+        cleanupWorkspaceInstallation(
+          args.set,
+          args.db,
+          args.payload.team_id,
+          args.signal,
+        ),
+        (error) => {
+          L.error("Error handling app_uninstalled", { error });
+        },
+      ),
     );
   }
 
   if (event.type === "tokens_revoked" && event.tokens.bot?.length) {
     waitUntil(
-      cleanupWorkspaceInstallation(
-        args.set,
-        args.db,
-        args.payload.team_id,
-        args.signal,
-      ).catch((error) => {
-        L.error("Error handling tokens_revoked", { error });
-      }),
+      tapError(
+        cleanupWorkspaceInstallation(
+          args.set,
+          args.db,
+          args.payload.team_id,
+          args.signal,
+        ),
+        (error) => {
+          L.error("Error handling tokens_revoked", { error });
+        },
+      ),
     );
   }
 }

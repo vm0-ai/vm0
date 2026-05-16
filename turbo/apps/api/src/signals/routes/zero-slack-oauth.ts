@@ -14,7 +14,7 @@ import {
 } from "../external/slack-oauth-client";
 import { logger } from "../../lib/log";
 import { env, optionalEnv } from "../../lib/env";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse, tapError } from "../utils";
 import { encryptSecretValue } from "../services/crypto.utils";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
@@ -240,20 +240,25 @@ function notifyAfterConnect(args: {
   readonly signal: AbortSignal;
 }): void {
   waitUntil(
-    Promise.resolve(
-      args.set(
-        notifySlackConnect$,
-        {
-          installation: args.installation,
-          slackUserId: args.slackUserId,
-          orgId: args.orgId,
-          ...(args.pendingPrompt ? { pendingPrompt: args.pendingPrompt } : {}),
-        },
-        args.signal,
+    tapError(
+      Promise.resolve(
+        args.set(
+          notifySlackConnect$,
+          {
+            installation: args.installation,
+            slackUserId: args.slackUserId,
+            orgId: args.orgId,
+            ...(args.pendingPrompt
+              ? { pendingPrompt: args.pendingPrompt }
+              : {}),
+          },
+          args.signal,
+        ),
       ),
-    ).catch((error: unknown) => {
-      L.warn("Failed to notify connect success", { error });
-    }),
+      (error) => {
+        L.warn("Failed to notify connect success", { error });
+      },
+    ),
   );
 }
 

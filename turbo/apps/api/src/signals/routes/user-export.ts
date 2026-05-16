@@ -12,6 +12,7 @@ import {
   toUserExportStartResponse,
   userExportStatus,
 } from "../services/user-export.service";
+import { tapError } from "../utils";
 
 const log = logger("route:user-export");
 
@@ -49,16 +50,19 @@ const postUserExportInner$ = command(
     if (result.shouldExecute) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
-        set(
-          executeUserExportJob$,
-          { jobId: result.jobId, userId: auth.userId, orgId: auth.orgId },
-          backgroundSignal,
-        ).catch((error: unknown) => {
-          log.error("executeUserExportJob failed", {
-            jobId: result.jobId,
-            error,
-          });
-        }),
+        tapError(
+          set(
+            executeUserExportJob$,
+            { jobId: result.jobId, userId: auth.userId, orgId: auth.orgId },
+            backgroundSignal,
+          ),
+          (error) => {
+            log.error("executeUserExportJob failed", {
+              jobId: result.jobId,
+              error,
+            });
+          },
+        ),
       );
     }
 

@@ -4,6 +4,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
+import { detach, Mechanism, tapError } from "../utils";
 
 interface AxiomIngestClient {
   readonly ingest: (
@@ -40,20 +41,27 @@ export function recordSandboxOperation(attrs: SandboxOperationAttrs): void {
   }
 
   const dataset = `vm0-sandbox-op-log-${env("AXIOM_DATASET_SUFFIX")}`;
-  void Promise.resolve(
-    client.ingest(dataset, [
-      {
-        _time: nowDate().toISOString(),
-        source: "api",
-        op_type: attrs.actionType,
-        sandbox_type: attrs.sandboxType,
-        duration_ms: attrs.durationMs,
-        success: attrs.success,
-        run_id: attrs.runId,
-        ...attrs.dimensions,
+  detach(
+    tapError(
+      Promise.resolve(
+        client.ingest(dataset, [
+          {
+            _time: nowDate().toISOString(),
+            source: "api",
+            op_type: attrs.actionType,
+            sandbox_type: attrs.sandboxType,
+            duration_ms: attrs.durationMs,
+            success: attrs.success,
+            run_id: attrs.runId,
+            ...attrs.dimensions,
+          },
+        ]),
+      ),
+      (error) => {
+        L.warn("Failed to ingest sandbox operation log", { error });
       },
-    ]),
-  ).catch((error: unknown) => {
-    L.warn("Failed to ingest sandbox operation log", { error });
-  });
+    ),
+    Mechanism.WaitUntil,
+    "sandbox-op-log ingest",
+  );
 }

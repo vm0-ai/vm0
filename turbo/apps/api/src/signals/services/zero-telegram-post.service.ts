@@ -54,7 +54,7 @@ import {
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
 import { now, nowDate } from "../external/time";
-import { safeAsync, safeUrlParse } from "../utils";
+import { safeAsync, safeUrlParse, tapError } from "../utils";
 import { encryptSecretValue, decryptSecretValue } from "./crypto.utils";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -2847,13 +2847,16 @@ export const telegramWebhook$ = command(
         return okText();
       }
       waitUntil(
-        set(
-          processOfficialWebhookMessage$,
-          { message, apiStartTime },
-          signal,
-        ).catch((error: unknown) => {
-          log.error("Error handling official Telegram webhook", { error });
-        }),
+        tapError(
+          set(
+            processOfficialWebhookMessage$,
+            { message, apiStartTime },
+            signal,
+          ),
+          (error) => {
+            log.error("Error handling official Telegram webhook", { error });
+          },
+        ),
       );
       return okText();
     }
@@ -2889,13 +2892,19 @@ export const telegramWebhook$ = command(
     }
 
     waitUntil(
-      set(
-        processCustomWebhookMessage$,
-        { telegramBotId, message, apiStartTime },
-        signal,
-      ).catch((error: unknown) => {
-        log.error("Error handling Telegram webhook", { error, telegramBotId });
-      }),
+      tapError(
+        set(
+          processCustomWebhookMessage$,
+          { telegramBotId, message, apiStartTime },
+          signal,
+        ),
+        (error) => {
+          log.error("Error handling Telegram webhook", {
+            error,
+            telegramBotId,
+          });
+        },
+      ),
     );
     return okText();
   },

@@ -7,7 +7,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { safeAsync } from "../utils";
+import { safeAsync, settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-thread.service";
 
 const log = logger("api:zero:chat-title");
@@ -80,9 +80,8 @@ async function generateText(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => {
-      return "unknown error";
-    });
+    const settled = await settle(response.text());
+    const text = settled.ok ? settled.value : "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 

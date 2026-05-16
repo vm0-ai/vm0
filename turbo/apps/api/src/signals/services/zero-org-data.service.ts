@@ -23,6 +23,7 @@ import { clerk$ } from "../external/clerk";
 import { fetchClerkMembershipRequests } from "../external/clerk-membership-requests";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
+import { settle } from "../utils";
 
 const clerkOrgIdentitySchema = z.object({
   slug: z.string().nullable().optional(),
@@ -253,18 +254,16 @@ async function getOrgIdentityForDelete(args: {
     };
   }
 
-  const clerkOrg = await args.client.organizations
-    .getOrganization({ organizationId: args.orgId })
-    .catch((error: unknown) => {
-      if (isClerkNotFound(error)) {
-        return null;
-      }
-      throw error;
-    });
-
-  if (!clerkOrg) {
-    return null;
+  const clerkOrgSettled = await settle(
+    args.client.organizations.getOrganization({ organizationId: args.orgId }),
+  );
+  if (!clerkOrgSettled.ok) {
+    if (isClerkNotFound(clerkOrgSettled.error)) {
+      return null;
+    }
+    throw clerkOrgSettled.error;
   }
+  const clerkOrg = clerkOrgSettled.value;
 
   const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
   if (!parsed.slug) {
@@ -341,21 +340,20 @@ export const zeroOrgDetail$ = command(
     let identity: OrgIdentity | undefined = cached[0];
     if (!identity) {
       const client = get(clerk$);
-      const clerkOrg = await client.organizations
-        .getOrganization({
+      const clerkOrgSettled = await settle(
+        client.organizations.getOrganization({
           organizationId: args.orgId,
-        })
-        .catch((error: unknown) => {
-          if (isClerkNotFound(error)) {
-            return null;
-          }
-          throw error;
-        });
+        }),
+      );
       signal.throwIfAborted();
 
-      if (!clerkOrg) {
-        return null;
+      if (!clerkOrgSettled.ok) {
+        if (isClerkNotFound(clerkOrgSettled.error)) {
+          return null;
+        }
+        throw clerkOrgSettled.error;
       }
+      const clerkOrg = clerkOrgSettled.value;
 
       const parsed = clerkOrgIdentitySchema.parse(clerkOrg);
       if (!parsed.slug) {

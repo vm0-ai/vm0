@@ -22,6 +22,7 @@ import {
   postMessage,
 } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
+import { settle } from "../utils";
 import { db$, writeDb$, type Db } from "../external/db";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { decryptSecretValue } from "./crypto.utils";
@@ -508,16 +509,19 @@ export const notifySlackConnect$ = command(
 
     let sentEphemeral = false;
     if (args.channelId) {
-      const result = await postEphemeral(client, {
-        channel: args.channelId,
-        user: args.slackUserId,
-        text: "You're connected!",
-        blocks,
-        threadTs: args.threadTs,
-      }).catch(() => {
-        return { kind: "slack_error" as const, error: "post_ephemeral_failed" };
-      });
+      const settled = await settle(
+        postEphemeral(client, {
+          channel: args.channelId,
+          user: args.slackUserId,
+          text: "You're connected!",
+          blocks,
+          threadTs: args.threadTs,
+        }),
+      );
       signal.throwIfAborted();
+      const result = settled.ok
+        ? settled.value
+        : { kind: "slack_error" as const, error: "post_ephemeral_failed" };
       sentEphemeral = result.kind === "ok";
     }
 

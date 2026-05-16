@@ -7,7 +7,7 @@ import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route";
-import { safeAsync } from "../utils";
+import { safeAsync, tapError } from "../utils";
 import {
   cleanupClerkDeletedOrg$,
   cleanupClerkDeletedUser$,
@@ -57,7 +57,7 @@ const postClerkWebhook$ = command(
       }
 
       waitUntil(
-        set(cleanupClerkDeletedOrg$, orgId, signal).catch((error: unknown) => {
+        tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
           L.error("organization.deleted cleanup failed", { orgId, error });
         }),
       );
@@ -72,11 +72,9 @@ const postClerkWebhook$ = command(
       }
 
       waitUntil(
-        set(cleanupClerkDeletedUser$, userId, signal).catch(
-          (error: unknown) => {
-            L.error("user.deleted cleanup failed", { userId, error });
-          },
-        ),
+        tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
+          L.error("user.deleted cleanup failed", { userId, error });
+        }),
       );
       return new Response("OK", { status: 200 });
     }

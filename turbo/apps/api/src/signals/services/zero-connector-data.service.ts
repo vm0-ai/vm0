@@ -40,6 +40,7 @@ import {
   safeDelete,
 } from "../external/ngrok-client";
 import { publishUserSignal } from "../external/realtime";
+import { bestEffort } from "../utils";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
@@ -520,12 +521,12 @@ async function revokeExistingConnectorToken(args: {
   }
 
   // Provider revocation is best-effort; local cleanup still owns visible state.
-  await revokeConnectorToken({
-    type: args.type,
-    accessToken: decryptSecretValue(accessTokenSecret.encryptedValue),
-  }).catch(() => {
-    return undefined;
-  });
+  await bestEffort(
+    revokeConnectorToken({
+      type: args.type,
+      accessToken: decryptSecretValue(accessTokenSecret.encryptedValue),
+    }),
+  );
   args.signal.throwIfAborted();
 }
 

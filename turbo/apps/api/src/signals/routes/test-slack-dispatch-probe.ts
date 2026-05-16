@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route";
 import { dispatchZeroSlackProbe$ } from "../services/zero-slack-webhooks.service";
-import { safeAsync } from "../utils";
+import { safeAsync, settle } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -94,10 +94,9 @@ const postSlackDispatchProbe$ = command(
       return testEndpointNotFoundResponse();
     }
 
-    const rawBody = await request.json().catch((): null => {
-      return null;
-    });
+    const settled = await settle(request.json());
     signal.throwIfAborted();
+    const rawBody: unknown = settled.ok ? settled.value : null;
 
     const body = parseProbeBody(rawBody);
     if (!body) {

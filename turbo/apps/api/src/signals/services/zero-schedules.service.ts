@@ -24,7 +24,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { isValidTimeZone, safeAsync } from "../utils";
+import { isValidTimeZone, safeAsync, settle } from "../utils";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
@@ -203,9 +203,8 @@ async function generateText(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => {
-      return "unknown error";
-    });
+    const settled = await settle(response.text());
+    const text = settled.ok ? settled.value : "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 

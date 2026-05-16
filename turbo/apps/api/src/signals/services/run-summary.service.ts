@@ -5,7 +5,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$ } from "../external/db";
-import { safeAsync } from "../utils";
+import { safeAsync, settle } from "../utils";
 
 const log = logger("run-summary");
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -49,9 +49,8 @@ async function generateText(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => {
-      return "unknown error";
-    });
+    const settled = await settle(response.text());
+    const text = settled.ok ? settled.value : "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 

@@ -12,6 +12,7 @@ import {
   publishSlackAdminSignal$,
   zeroSlackConnectStatus,
 } from "../services/zero-slack-connect.service";
+import { tapError } from "../utils";
 import type { RouteEntry } from "../route";
 
 const L = logger("SlackConnect");
@@ -81,22 +82,25 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   waitUntil(
-    set(
-      notifySlackConnect$,
-      {
-        installation: result.installation,
-        slackUserId: result.slackUserId,
-        orgId: auth.orgId,
-        channelId: result.channelId,
-        threadTs: result.threadTs,
+    tapError(
+      set(
+        notifySlackConnect$,
+        {
+          installation: result.installation,
+          slackUserId: result.slackUserId,
+          orgId: auth.orgId,
+          channelId: result.channelId,
+          threadTs: result.threadTs,
+        },
+        signal,
+      ),
+      (error) => {
+        L.error("notifySlackConnect failed", {
+          workspaceId: result.installation.slackWorkspaceId,
+          error,
+        });
       },
-      signal,
-    ).catch((error: unknown) => {
-      L.error("notifySlackConnect failed", {
-        workspaceId: result.installation.slackWorkspaceId,
-        error,
-      });
-    }),
+    ),
   );
 
   return {

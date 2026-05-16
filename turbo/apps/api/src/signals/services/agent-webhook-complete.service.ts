@@ -13,6 +13,7 @@ import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
+import { tapError } from "../utils";
 import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
@@ -378,22 +379,26 @@ export const dispatchCompleteSideEffects$ = command(
     const db = set(writeDb$);
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
-    await dispatchRunCallbacks(
-      db,
-      input.runId,
-      callbackStatus,
-      undefined,
-      input.error,
-    ).catch((error: unknown) => {
-      L.error("Failed to dispatch terminal callbacks", {
-        runId: input.runId,
-        error,
-      });
-    });
+    await tapError(
+      dispatchRunCallbacks(
+        db,
+        input.runId,
+        callbackStatus,
+        undefined,
+        input.error,
+      ),
+      (error) => {
+        L.error("Failed to dispatch terminal callbacks", {
+          runId: input.runId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
 
-    await set(drainOrgQueue$, { orgId: input.orgId }, signal).catch(
-      (error: unknown) => {
+    await tapError(
+      set(drainOrgQueue$, { orgId: input.orgId }, signal),
+      (error) => {
         L.error("Failed to drain org queue", {
           runId: input.runId,
           orgId: input.orgId,

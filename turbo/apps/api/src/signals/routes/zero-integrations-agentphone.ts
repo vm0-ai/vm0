@@ -37,7 +37,7 @@ import {
   type AgentPhoneMessageEvent,
 } from "../services/zero-agentphone.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 
 interface AgentPhoneConfig {
   readonly agentphoneAgentId: string | null;
@@ -178,10 +178,9 @@ function maskPhoneHandle(value: string): string {
   return `***${normalized.slice(-4)}`;
 }
 
-function safeResponseText(response: Response): Promise<string> {
-  return response.text().catch(() => {
-    return "[unavailable]";
-  });
+async function safeResponseText(response: Response): Promise<string> {
+  const settled = await settle(response.text());
+  return settled.ok ? settled.value : "[unavailable]";
 }
 
 function truncateForLog(value: string): string {
@@ -333,19 +332,22 @@ const sendAgentPhoneVerificationText$ = command(
         }
       }
 
-      const sent = await sendAgentPhoneVerificationMessage({
-        config: params.config,
-        toNumber: params.phoneHandle,
-        body: `Confirm this phone number for VM0: ${params.connectUrl}`,
-        signal,
-      }).catch((error: unknown) => {
-        log.error("AgentPhone verification text send failed", {
-          agentphoneAgentId: params.config.agentphoneAgentId,
-          phoneHandle: maskPhoneHandle(params.phoneHandle),
-          error,
-        });
-        return false;
-      });
+      const sent =
+        (await tapError(
+          sendAgentPhoneVerificationMessage({
+            config: params.config,
+            toNumber: params.phoneHandle,
+            body: `Confirm this phone number for VM0: ${params.connectUrl}`,
+            signal,
+          }),
+          (error) => {
+            log.error("AgentPhone verification text send failed", {
+              agentphoneAgentId: params.config.agentphoneAgentId,
+              phoneHandle: maskPhoneHandle(params.phoneHandle),
+              error,
+            });
+          },
+        )) ?? false;
       signal.throwIfAborted();
 
       if (!sent) {
@@ -562,21 +564,24 @@ const connectAgentPhone$ = command(
     await publishAgentPhoneUserChanged(auth.userId);
     signal.throwIfAborted();
 
-    await sendAgentPhoneMessage(
-      {
-        agentphoneAgentId: body.agentphoneAgentId,
-        toNumber: phoneHandle,
-        body: "Your phone number is connected to VM0. Send a message here to start chatting with Zero.",
+    await tapError(
+      sendAgentPhoneMessage(
+        {
+          agentphoneAgentId: body.agentphoneAgentId,
+          toNumber: phoneHandle,
+          body: "Your phone number is connected to VM0. Send a message here to start chatting with Zero.",
+        },
+        signal,
+      ),
+      (error) => {
+        log.warn("Connected AgentPhone user but failed to send confirmation", {
+          phoneHandle,
+          vm0UserId: auth.userId,
+          orgId: auth.orgId,
+          error,
+        });
       },
-      signal,
-    ).catch((error: unknown) => {
-      log.warn("Connected AgentPhone user but failed to send confirmation", {
-        phoneHandle,
-        vm0UserId: auth.userId,
-        orgId: auth.orgId,
-        error,
-      });
-    });
+    );
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { phoneHandle } };
@@ -794,13 +799,12 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   waitUntil(
-    set(
-      handleAgentPhoneMessage$,
-      { event, userLink, apiStartTime },
-      signal,
-    ).catch((error: unknown) => {
-      log.error("Error handling AgentPhone webhook", { error });
-    }),
+    tapError(
+      set(handleAgentPhoneMessage$, { event, userLink, apiStartTime }, signal),
+      (error) => {
+        log.error("Error handling AgentPhone webhook", { error });
+      },
+    ),
   );
 
   return okText();

@@ -13,6 +13,7 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
+import { onRejection, safeSync } from "../utils";
 import {
   computeContentHashFromHashes,
   hashFileContent,
@@ -121,15 +122,21 @@ const uploadVolumeServerSideInner$ = command(
     const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-volume-"));
     signal.throwIfAborted();
 
-    const archiveBuffer = await Promise.resolve()
-      .then(() => {
-        writeFilesToDirectory(tmpDir, files);
-        return createArchiveBuffer(tmpDir, files);
-      })
-      .finally(() => {
+    const writeResult = safeSync(() => {
+      writeFilesToDirectory(tmpDir, files);
+    });
+    if ("error" in writeResult) {
+      rmSync(tmpDir, { recursive: true, force: true });
+      throw writeResult.error;
+    }
+    const archiveBuffer = await onRejection(
+      createArchiveBuffer(tmpDir, files),
+      () => {
         rmSync(tmpDir, { recursive: true, force: true });
-      });
+      },
+    );
     signal.throwIfAborted();
+    rmSync(tmpDir, { recursive: true, force: true });
 
     const writeDb = set(writeDb$);
     const storageType = "volume";

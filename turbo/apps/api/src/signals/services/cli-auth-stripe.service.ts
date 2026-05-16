@@ -15,7 +15,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse, safeSync } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
@@ -214,16 +214,8 @@ function encodeProviderState(payload: CliAuthStripeProviderState): string {
   return encryptSecretValue(JSON.stringify(payload));
 }
 
-function safeSync<T>(fn: () => T) {
-  return safeAsync(() => {
-    return Promise.resolve().then(fn);
-  });
-}
-
-async function decodeSession(
-  token: string,
-): Promise<CliAuthStripeSessionToken | null> {
-  const decoded = await safeSync(() => {
+function decodeSession(token: string): CliAuthStripeSessionToken | null {
+  const decoded = safeSync(() => {
     const parsed = cliAuthStripeSessionTokenSchema.safeParse(
       safeJsonParse(decryptSecretValue(token)),
     );
@@ -235,13 +227,13 @@ async function decodeSession(
   return decoded.ok;
 }
 
-async function decodeProviderState(
+function decodeProviderState(
   encryptedProviderState: string | null,
-): Promise<CliAuthStripeProviderState | null> {
+): CliAuthStripeProviderState | null {
   if (!encryptedProviderState) {
     return null;
   }
-  const decoded = await safeSync(() => {
+  const decoded = safeSync(() => {
     const parsed = cliAuthStripeProviderStateSchema.safeParse(
       safeJsonParse(decryptSecretValue(encryptedProviderState)),
     );
@@ -656,13 +648,12 @@ async function createCliAuthStripeSandbox(args: {
   return { ok: true, sandbox, session: updatedSession };
 }
 
-async function parseCliAuthStripeStartOutput(
+function parseCliAuthStripeStartOutput(
   result: SandboxCommandResult,
-): Promise<
+):
   | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
-  | { readonly ok: false; readonly message: string }
-> {
-  const parsedResult = await safeSync(() => {
+  | { readonly ok: false; readonly message: string } {
+  const parsedResult = safeSync(() => {
     return parseStripeCliAuthStartOutputText(result.stdout.text);
   });
   if ("error" in parsedResult) {
@@ -1302,7 +1293,7 @@ async function readCliAuthStripeApiKey(args: {
   }
 
   const configData = configResult.value.data;
-  const apiKeyResult = await safeSync(() => {
+  const apiKeyResult = safeSync(() => {
     return parseStripeCliAuthConfig(configData.toString("utf8"), args.mode);
   });
   if ("error" in apiKeyResult) {

@@ -39,6 +39,7 @@ import {
   telegramWebhook$,
 } from "../services/zero-telegram-post.service";
 import { inferMimetype } from "../../lib/mimetype";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const c = initContract();
@@ -241,68 +242,75 @@ const getTelegramDownloadFileInner$ = computed(async (get) => {
     return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
   }
 
-  return getFile(botToken, query.file_id)
-    .then(async (file) => {
-      if (!file.file_path) {
-        return errorResponse(
-          404,
-          "Telegram file does not have a downloadable path",
-          "NOT_FOUND",
-        );
-      }
-      if (file.file_size && file.file_size > MAX_FILE_SIZE_BYTES) {
-        return payloadTooLargeResponse();
-      }
-
-      const fileName = file.file_path.split("/").pop() ?? query.file_id;
-      const downloadUrl = buildFileDownloadUrl(botToken, file.file_path);
-      const fileResponse = await fetch(downloadUrl);
-      if (!fileResponse.ok) {
-        return errorResponse(
-          502,
-          `Failed to download file from Telegram: ${fileResponse.status}`,
-          "BAD_GATEWAY",
-        );
-      }
-
-      const responseContentType =
-        fileResponse.headers.get("content-type") ?? "";
-      if (responseContentType.includes("text/html")) {
-        return errorResponse(
-          502,
-          "Telegram returned an unexpected response",
-          "BAD_GATEWAY",
-        );
-      }
-
-      const contentLength = fileResponse.headers.get("content-length");
-      const contentLengthBytes = parseContentLength(contentLength);
-      if (
-        contentLengthBytes !== undefined &&
-        contentLengthBytes > MAX_FILE_SIZE_BYTES
-      ) {
-        return payloadTooLargeResponse();
-      }
-
-      const mimetype = responseContentType || inferMimetype(fileName);
-      const headers = new Headers();
-      headers.set("Content-Type", mimetype);
-      headers.set("X-File-Name", encodeURIComponent(fileName));
-      headers.set("X-File-Mimetype", mimetype);
-      if (contentLength) {
-        headers.set("Content-Length", contentLength);
-      }
-
-      return new Response(fileResponse.body, { status: 200, headers });
-    })
-    .catch(() => {
-      return errorResponse(
-        502,
-        "Failed to download file from Telegram",
-        "BAD_GATEWAY",
-      );
-    });
+  const settled = await settle(
+    downloadTelegramFile({ botToken, fileId: query.file_id }),
+  );
+  if (!settled.ok) {
+    return errorResponse(
+      502,
+      "Failed to download file from Telegram",
+      "BAD_GATEWAY",
+    );
+  }
+  return settled.value;
 });
+
+async function downloadTelegramFile(args: {
+  readonly botToken: string;
+  readonly fileId: string;
+}): Promise<Response> {
+  const file = await getFile(args.botToken, args.fileId);
+  if (!file.file_path) {
+    return errorResponse(
+      404,
+      "Telegram file does not have a downloadable path",
+      "NOT_FOUND",
+    );
+  }
+  if (file.file_size && file.file_size > MAX_FILE_SIZE_BYTES) {
+    return payloadTooLargeResponse();
+  }
+
+  const fileName = file.file_path.split("/").pop() ?? args.fileId;
+  const downloadUrl = buildFileDownloadUrl(args.botToken, file.file_path);
+  const fileResponse = await fetch(downloadUrl);
+  if (!fileResponse.ok) {
+    return errorResponse(
+      502,
+      `Failed to download file from Telegram: ${fileResponse.status}`,
+      "BAD_GATEWAY",
+    );
+  }
+
+  const responseContentType = fileResponse.headers.get("content-type") ?? "";
+  if (responseContentType.includes("text/html")) {
+    return errorResponse(
+      502,
+      "Telegram returned an unexpected response",
+      "BAD_GATEWAY",
+    );
+  }
+
+  const contentLength = fileResponse.headers.get("content-length");
+  const contentLengthBytes = parseContentLength(contentLength);
+  if (
+    contentLengthBytes !== undefined &&
+    contentLengthBytes > MAX_FILE_SIZE_BYTES
+  ) {
+    return payloadTooLargeResponse();
+  }
+
+  const mimetype = responseContentType || inferMimetype(fileName);
+  const headers = new Headers();
+  headers.set("Content-Type", mimetype);
+  headers.set("X-File-Name", encodeURIComponent(fileName));
+  headers.set("X-File-Mimetype", mimetype);
+  if (contentLength) {
+    headers.set("Content-Length", contentLength);
+  }
+
+  return new Response(fileResponse.body, { status: 200, headers });
+}
 
 const registerTelegramBotInner$ = command(
   ({ get, set }, signal: AbortSignal) => {
@@ -384,81 +392,95 @@ const getIntegrationTelegramAvatar$ = command(
       return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
     }
 
-    return getUserProfilePhotos(botToken, profileUserId, 1)
-      .then(async (photos) => {
-        const photo = selectLargestProfilePhoto(photos[0] ?? []);
-        if (!photo) {
-          return fallbackAvatarResponse();
-        }
-
-        if (photo.file_size && photo.file_size > MAX_AVATAR_SIZE_BYTES) {
-          return avatarPayloadTooLargeResponse();
-        }
-
-        const file = await getFile(botToken, photo.file_id);
-        signal.throwIfAborted();
-        if (!file.file_path) {
-          return fallbackAvatarResponse();
-        }
-        if (file.file_size && file.file_size > MAX_AVATAR_SIZE_BYTES) {
-          return avatarPayloadTooLargeResponse();
-        }
-
-        const downloadResponse = await fetch(
-          buildFileDownloadUrl(botToken, file.file_path),
-          { signal },
-        );
-        signal.throwIfAborted();
-        if (!downloadResponse.ok) {
-          return errorResponse(
-            502,
-            `Failed to download avatar from Telegram: ${downloadResponse.status}`,
-            "BAD_GATEWAY",
-          );
-        }
-
-        const responseContentType =
-          downloadResponse.headers.get("content-type") ?? "";
-        if (responseContentType.includes("text/html")) {
-          return errorResponse(
-            502,
-            "Telegram returned an unexpected response",
-            "BAD_GATEWAY",
-          );
-        }
-
-        const contentLength = downloadResponse.headers.get("content-length");
-        const contentLengthBytes = parseContentLength(contentLength);
-        if (
-          contentLengthBytes !== undefined &&
-          contentLengthBytes > MAX_AVATAR_SIZE_BYTES
-        ) {
-          return avatarPayloadTooLargeResponse();
-        }
-
-        const fileName = file.file_path.split("/").pop() ?? photo.file_id;
-        const mimetype = responseContentType || inferMimetype(fileName);
-        const headers = new Headers();
-        headers.set("Content-Type", mimetype);
-        headers.set("Cache-Control", "private, max-age=300");
-        if (contentLength) {
-          headers.set("Content-Length", contentLength);
-        }
-
-        return new Response(downloadResponse.body, {
-          status: 200,
-          headers,
-        });
-      })
-      .catch(() => {
-        return errorResponse(
-          502,
-          "Failed to load Telegram bot avatar",
-          "BAD_GATEWAY",
-        );
-      });
+    const settled = await settle(
+      loadTelegramAvatar({ botToken, profileUserId, signal }),
+    );
+    signal.throwIfAborted();
+    if (!settled.ok) {
+      return errorResponse(
+        502,
+        "Failed to load Telegram bot avatar",
+        "BAD_GATEWAY",
+      );
+    }
+    return settled.value;
   },
 );
+
+async function loadTelegramAvatar(args: {
+  readonly botToken: string;
+  readonly profileUserId: string | number;
+  readonly signal: AbortSignal;
+}): Promise<Response> {
+  const photos = await getUserProfilePhotos(
+    args.botToken,
+    args.profileUserId,
+    1,
+  );
+  const photo = selectLargestProfilePhoto(photos[0] ?? []);
+  if (!photo) {
+    return fallbackAvatarResponse();
+  }
+
+  if (photo.file_size && photo.file_size > MAX_AVATAR_SIZE_BYTES) {
+    return avatarPayloadTooLargeResponse();
+  }
+
+  const file = await getFile(args.botToken, photo.file_id);
+  args.signal.throwIfAborted();
+  if (!file.file_path) {
+    return fallbackAvatarResponse();
+  }
+  if (file.file_size && file.file_size > MAX_AVATAR_SIZE_BYTES) {
+    return avatarPayloadTooLargeResponse();
+  }
+
+  const downloadResponse = await fetch(
+    buildFileDownloadUrl(args.botToken, file.file_path),
+    { signal: args.signal },
+  );
+  args.signal.throwIfAborted();
+  if (!downloadResponse.ok) {
+    return errorResponse(
+      502,
+      `Failed to download avatar from Telegram: ${downloadResponse.status}`,
+      "BAD_GATEWAY",
+    );
+  }
+
+  const responseContentType =
+    downloadResponse.headers.get("content-type") ?? "";
+  if (responseContentType.includes("text/html")) {
+    return errorResponse(
+      502,
+      "Telegram returned an unexpected response",
+      "BAD_GATEWAY",
+    );
+  }
+
+  const contentLength = downloadResponse.headers.get("content-length");
+  const contentLengthBytes = parseContentLength(contentLength);
+  if (
+    contentLengthBytes !== undefined &&
+    contentLengthBytes > MAX_AVATAR_SIZE_BYTES
+  ) {
+    return avatarPayloadTooLargeResponse();
+  }
+
+  const fileName = file.file_path.split("/").pop() ?? photo.file_id;
+  const mimetype = responseContentType || inferMimetype(fileName);
+  const headers = new Headers();
+  headers.set("Content-Type", mimetype);
+  headers.set("Cache-Control", "private, max-age=300");
+  if (contentLength) {
+    headers.set("Content-Length", contentLength);
+  }
+
+  return new Response(downloadResponse.body, {
+    status: 200,
+    headers,
+  });
+}
 
 const getIntegrationTelegramAuthCallback$ = computed((): Response => {
   const html = `<!DOCTYPE html>

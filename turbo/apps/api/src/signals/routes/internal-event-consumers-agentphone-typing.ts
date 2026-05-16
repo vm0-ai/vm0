@@ -12,6 +12,7 @@ import { optionalEnv } from "../../lib/env";
 import { waitUntil } from "../context/wait-until";
 import { db$ } from "../external/db";
 import type { RouteEntry } from "../route";
+import { tapError } from "../utils";
 
 const L = logger("event-consumer:agentphone-typing");
 
@@ -111,8 +112,9 @@ const refreshInner$ = command(
     signal.throwIfAborted();
 
     waitUntil(
-      set(refreshAgentPhoneTypingForRun$, payload.runId, signal).catch(
-        (error: unknown) => {
+      tapError(
+        set(refreshAgentPhoneTypingForRun$, payload.runId, signal),
+        (error) => {
           L.debug("Failed to refresh AgentPhone typing from events", {
             runId: payload.runId,
             batch: payload.events.length,

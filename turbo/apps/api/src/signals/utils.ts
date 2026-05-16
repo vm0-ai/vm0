@@ -91,6 +91,77 @@ export async function safeAsync<T>(
   }
 }
 
+/**
+ * Await `p`, swallowing non-abort rejections. Use for fire-and-forget work
+ * where failure is acceptable. AbortError propagates.
+ */
+export async function bestEffort(p: Promise<unknown>): Promise<void> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
+  try {
+    await p;
+  } catch (error) {
+    throwIfAbort(error);
+  }
+}
+
+/**
+ * Await `p` and invoke `onError` on non-abort rejection. Abort propagates.
+ * Replaces `await foo().catch((e) => { L.error("...", e); })` patterns.
+ */
+export async function tapError<T>(
+  p: Promise<T>,
+  onError: (error: unknown) => void,
+): Promise<T | undefined> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
+  try {
+    return await p;
+  } catch (error) {
+    throwIfAbort(error);
+    onError(error);
+    return undefined;
+  }
+}
+
+/**
+ * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
+ * Replaces `.catch((e) => { cleanup(); throw e; })` cleanup patterns. `fn`
+ * runs on abort by design so cleanup (e.g. temp-dir removal) still happens
+ * when the request is cancelled — that's why `api/no-catch-abort` is muted
+ * here.
+ */
+export async function onRejection<T>(
+  p: Promise<T>,
+  fn: (error: unknown) => void,
+): Promise<T> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
+  try {
+    return await p;
+    // eslint-disable-next-line api/no-catch-abort -- fn must run before abort propagates so cleanup happens on cancellation
+  } catch (error) {
+    fn(error);
+    throw error;
+  }
+}
+
+type Settled<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: unknown };
+
+/**
+ * Settle `p` into a discriminated union. AbortError propagates (re-throws).
+ * Replaces `await foo().catch(() => fallback)` shape and `.then(onOk, onErr)`
+ * branching when both outcomes need to be mapped.
+ */
+export async function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  // eslint-disable-next-line no-restricted-syntax -- centralized .then(onOk, onErr) replacement
+  try {
+    return { ok: true, value: await p };
+  } catch (error) {
+    throwIfAbort(error);
+    return { ok: false, error };
+  }
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
