@@ -187,12 +187,6 @@ impl Shared {
     fn close_with_reason(&self, reason: &'static str, kind: ConnectionCloseKind) {
         let maps_to_drop = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            // Serialize tracker close/poison with terminal dispatch, which
-            // completes tracker tokens under this same state lock.
-            match kind {
-                ConnectionCloseKind::Closed => self.normal_operations.mark_closed(),
-                ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
-            }
             match std::mem::replace(
                 &mut *guard,
                 ConnectionState::Closed {
@@ -204,6 +198,12 @@ impl Shared {
                     operations,
                     process,
                 } => {
+                    // Serialize tracker close/poison with terminal dispatch,
+                    // which completes tracker tokens under this same state lock.
+                    match kind {
+                        ConnectionCloseKind::Closed => self.normal_operations.mark_closed(),
+                        ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
+                    }
                     let exec_operation_snapshot = operations.close_snapshot();
                     let (closed_process, process_maps) = process.close();
                     *guard = ConnectionState::Closed {

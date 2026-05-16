@@ -341,6 +341,33 @@ async fn connection_close_marks_normal_operations_closed() {
 }
 
 #[tokio::test]
+async fn late_poison_after_connection_close_does_not_reclassify_readiness() {
+    let (host_stream, mut guest) = make_pair();
+
+    let guest_task = tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        drop(guest);
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+
+    poison_connection(&host);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
+    guest_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn connection_poison_marks_normal_operations_not_parkable() {
     let (host_stream, mut guest) = make_pair();
 
