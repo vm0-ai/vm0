@@ -147,6 +147,12 @@ struct PendingResponse {
     normal_terminal_msg_types: &'static [u8],
 }
 
+struct PendingNormalRequestWriteGuard {
+    shared: Arc<Shared>,
+    write_started: bool,
+    write_returned: bool,
+}
+
 impl PendingRequestGuard {
     fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self { shared, seq }
@@ -156,6 +162,32 @@ impl PendingRequestGuard {
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
         self.shared.remove_pending(self.seq);
+    }
+}
+
+impl PendingNormalRequestWriteGuard {
+    fn new(shared: Arc<Shared>) -> Self {
+        Self {
+            shared,
+            write_started: false,
+            write_returned: false,
+        }
+    }
+
+    fn mark_started(&mut self) {
+        self.write_started = true;
+    }
+
+    fn mark_returned(&mut self) {
+        self.write_returned = true;
+    }
+}
+
+impl Drop for PendingNormalRequestWriteGuard {
+    fn drop(&mut self) {
+        if self.write_started && !self.write_returned {
+            self.shared.poison_connection();
+        }
     }
 }
 
@@ -522,12 +554,16 @@ async fn normal_request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
+    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
     let mut writer = shared.writer.lock().await;
     mark_pending_normal_operation_possible_guest_write(shared, seq)?;
+    write_guard.mark_started();
     if let Err(error) = writer.write_all(&data).await {
+        write_guard.mark_returned();
         shared.poison_connection();
         return Err(error);
     }
+    write_guard.mark_returned();
     drop(writer);
 
     tokio::select! {

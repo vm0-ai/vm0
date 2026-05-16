@@ -10,9 +10,9 @@ use vsock_proto::{
 };
 
 use super::support::{
-    fence_normal_operations, host_from_stream, make_pair, mock_handshake,
-    normal_operation_readiness, poison_connection, read_guest_message, send_exec_result,
-    setup_host_and_guest,
+    drop_started_pending_normal_request_write_guard, fence_normal_operations, host_from_stream,
+    make_pair, mock_handshake, normal_operation_readiness, poison_connection, read_guest_message,
+    send_exec_result, setup_host_and_guest,
 };
 use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
 
@@ -389,6 +389,21 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
         .await
         .unwrap()
         .unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_normal_request_frame_write_poisons_connection() {
+    let (host, _guest, _decoder) = setup_host_and_guest().await;
+
+    drop_started_pending_normal_request_write_guard(&host);
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 /// Two concurrent exec calls get the correct response matched by seq.

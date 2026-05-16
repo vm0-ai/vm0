@@ -66,6 +66,12 @@ pub(crate) fn poison_connection(host: &VsockHost) {
     host.shared.poison_connection();
 }
 
+pub(crate) fn drop_started_pending_normal_request_write_guard(host: &VsockHost) {
+    let mut guard = crate::PendingNormalRequestWriteGuard::new(Arc::clone(&host.shared));
+    guard.mark_started();
+    drop(guard);
+}
+
 pub(crate) async fn read_guest_message(
     stream: &mut UnixStream,
     decoder: &mut Decoder,
