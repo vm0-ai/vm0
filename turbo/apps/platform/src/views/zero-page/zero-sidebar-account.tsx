@@ -440,7 +440,10 @@ export function AccountDropdown({
       clerk?.setActive({
         session: sessionId,
         beforeEmit: () => {
-          return window.location.reload();
+          // Navigate to "/" rather than reloading the current URL: the new
+          // account may not have access to the current route (e.g. an org
+          // scoped chat/agent id), which would otherwise render as 404.
+          window.location.href = "/";
         },
       }),
       Reason.DomCallback,
