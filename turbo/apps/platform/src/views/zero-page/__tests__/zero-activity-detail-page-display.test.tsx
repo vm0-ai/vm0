@@ -212,7 +212,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     ).toBeInTheDocument();
 
     expect(
-      screen.getByText("$ zero org model-provider setup"),
+      screen.getByText("$ zero model-provider set --help"),
     ).toBeInTheDocument();
   });
 
