@@ -246,17 +246,25 @@ type Settled<T> =
   | { readonly ok: false; readonly error: unknown };
 
 /**
- * Settle `p` into a discriminated union. Abort errors propagate (re-throw).
- * Use as a `.then(onOk, onErr)` replacement when the caller needs to map
- * both branches to a value rather than swallow the error.
+ * Settle `p` into a discriminated union. Abort errors propagate (re-throw),
+ * either from `p` itself or from `signal` if one is passed — so the returned
+ * union is guaranteed to never represent a cancellation. Use as a
+ * `.then(onOk, onErr)` replacement when the caller needs to map both
+ * branches to a value rather than swallow the error.
  */
-export async function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+export async function settle<T>(
+  p: Promise<T>,
+  signal?: AbortSignal,
+): Promise<Settled<T>> {
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
-    return { ok: true, value: await p };
+    const value = await p;
+    signal?.throwIfAborted();
+    return { ok: true, value };
   } catch (error) {
     throwIfAbort(error);
+    signal?.throwIfAborted();
     return { ok: false, error };
   }
 }
