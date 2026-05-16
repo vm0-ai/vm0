@@ -1055,6 +1055,56 @@ mod tests {
     }
 
     #[test]
+    fn failed_control_sink_handshake_returns_sink_error() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"cc22dd44ee66aa88";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(13, Some(FORWARD_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(13, FORWARD_NONCE).unwrap();
+
+        let stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        drop(stream);
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Failed(_)) {
+            let now = Instant::now();
+            assert!(
+                now < deadline,
+                "control sink should mark failed when peer disconnects before hello"
+            );
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload = vsock_proto::encode_process_control(
+            13,
+            FORWARD_NONCE,
+            "msg-handshake-failed",
+            b"payload",
+        )
+        .unwrap();
+
+        handle_process_control(31, &payload, &registry, &writer).unwrap();
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 31);
+        assert_eq!(status, ProcessControlStatus::SinkError);
+        assert_eq!(message_id, "msg-handshake-failed");
+        assert!(!diagnostic.is_empty());
+    }
+
+    #[test]
     fn close_does_not_wait_for_busy_control_stream_lock() {
         let sink = Arc::new(ControlSinkState::new());
         let (stream, _peer) = UnixStream::pair().unwrap();
