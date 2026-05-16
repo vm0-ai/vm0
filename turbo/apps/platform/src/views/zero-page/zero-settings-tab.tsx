@@ -182,10 +182,10 @@ export function ZeroSettingsTab({
                     return null;
                   })()}
                   <AvatarMaker
-                    onConfirm={(cfg) => {
+                    onConfirm={async (cfg) => {
                       const newAvatarUrl = serializeAvatarSvgConfig(cfg);
                       setAvatarUrl(newAvatarUrl);
-                      return triggerUpdateSettings(
+                      await triggerUpdateSettings(
                         {
                           displayName: agentName,
                           description: desc,
@@ -194,10 +194,9 @@ export function ZeroSettingsTab({
                           visibility,
                         },
                         pageSignal,
-                      ).then(() => {
-                        markSaved();
-                        toast.success("Profile saved");
-                      });
+                      );
+                      markSaved();
+                      toast.success("Profile saved");
                     }}
                   />
                 </div>

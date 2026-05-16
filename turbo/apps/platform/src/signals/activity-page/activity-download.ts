@@ -25,16 +25,19 @@ export const fetchDownloadExtra$ = command(
   }> => {
     const extra: { context?: unknown; networkLogs?: unknown } = {};
 
-    const [contextResult, networkResult] = await Promise.allSettled([
-      accept(
+    const fetchContextBody = async (): Promise<unknown> => {
+      const { body } = await accept(
         get(zeroClient$)(zeroRunContextContract).getContext({
           params: { id: runId },
           fetchOptions: { signal: _signal },
         }),
         [200],
-      ).then((r) => {
-        return r.body;
-      }),
+      );
+      return body;
+    };
+
+    const [contextResult, networkResult] = await Promise.allSettled([
+      fetchContextBody(),
       fetchAllNetworkLogs(
         get(zeroClient$)(zeroRunNetworkLogsContract),
         runId,

@@ -47,7 +47,7 @@ import {
   type OptimisticChatPane,
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
-import { toVoid } from "../utils.ts";
+import { onRejection, toVoid } from "../utils.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { goalEnabled$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -257,9 +257,8 @@ const routeOptimisticChatThread$ = command(
       await set(routeSidebarOptimisticChatThread$, pending, signal);
     }
 
-    await pending.settleResult.catch((error: unknown) => {
+    await onRejection(pending.settleResult, () => {
       set(clearMatchingOptimisticChatThread$, pending);
-      throw error;
     });
     signal.throwIfAborted();
 

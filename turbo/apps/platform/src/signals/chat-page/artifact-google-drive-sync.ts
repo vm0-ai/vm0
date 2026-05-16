@@ -9,6 +9,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { settle } from "../utils.ts";
 
 type ArtifactGoogleDriveSyncParams = {
   readonly agentId?: string;
@@ -75,29 +76,26 @@ export async function syncArtifactFilesToGoogleDrive(
   const results: ArtifactGoogleDriveSyncResult[] = [];
   for (const file of params.files) {
     params.signal?.throwIfAborted();
-    const result = await accept(
-      client.syncGoogleDrive({
-        params: { threadId: params.threadId },
-        body: {
-          runId: file.runId,
-          fileId: file.fileId,
-        },
-        fetchOptions: params.signal ? { signal: params.signal } : undefined,
-      }),
-      [200],
-      { toast: false },
-    ).then(
-      () => {
-        return { ok: true as const };
-      },
-      (error: unknown) => {
-        params.signal?.throwIfAborted();
-        return {
-          ok: false as const,
-          message: googleDriveSyncErrorMessage(error),
-        };
-      },
+    const settled = await settle(
+      accept(
+        client.syncGoogleDrive({
+          params: { threadId: params.threadId },
+          body: {
+            runId: file.runId,
+            fileId: file.fileId,
+          },
+          fetchOptions: params.signal ? { signal: params.signal } : undefined,
+        }),
+        [200],
+        { toast: false },
+      ),
     );
+    const result: ArtifactGoogleDriveSyncResult = settled.ok
+      ? { ok: true }
+      : {
+          ok: false,
+          message: googleDriveSyncErrorMessage(settled.error),
+        };
     results.push(result);
   }
   const syncedCount = results.filter((result) => {

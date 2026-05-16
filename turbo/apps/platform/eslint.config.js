@@ -191,11 +191,47 @@ export default [
       "ccstate/no-new-abort-controller": "off",
     },
   },
-  // Ban try statements in production source code.
-  // Use accept() for API errors, useLoadableSet for loading states.
+  // Ban try statements and raw .then()/.catch() in production source code.
+  // - try/catch: use accept() for API errors, useLoadableSet for loading states.
+  // - .then/.catch: production code must await and surface state via ccstate
+  //   loadables; the centralized helpers in signals/utils.ts (bestEffort,
+  //   tapError, onRejection, settle, toVoid, detach) wrap the legitimate
+  //   Promise primitive usage — see issue #13535.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/**/__tests__/**", "src/mocks/**"],
+    ignores: [
+      "src/**/__tests__/**",
+      "src/mocks/**",
+      // Infrastructure: utils.ts implements the centralized Promise helpers,
+      // so it is exempted from the .then/.catch ban via the override below.
+      "src/signals/utils.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TryStatement",
+          message:
+            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
+        },
+        {
+          selector: "CallExpression[callee.property.name='then']",
+          message:
+            "Promise.then is not allowed. Use await, or one of the helpers in signals/utils.ts (bestEffort, tapError, onRejection, settle, toVoid).",
+        },
+        {
+          selector: "CallExpression[callee.property.name='catch']",
+          message:
+            "Promise.catch is not allowed. Use the helpers in signals/utils.ts (bestEffort, tapError, onRejection, settle).",
+        },
+      ],
+    },
+  },
+  // utils.ts hosts the centralized Promise helpers that wrap try/catch and
+  // .then/.catch. Keep the try-statement ban so new try blocks still need
+  // explicit per-line opt-out, but allow .then/.catch in the helper bodies.
+  {
+    files: ["src/signals/utils.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",

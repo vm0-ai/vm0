@@ -3,7 +3,7 @@ import { bb0DeviceConfirmContract } from "@vm0/api-contracts/contracts/device-to
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { jsonParseOr } from "../utils.ts";
+import { jsonParseOr, settle } from "../utils.ts";
 
 const BB0_PROVISIONING_SERVICE_UUID = "bb000001-8f16-4b2a-9bb0-000000000001";
 
@@ -389,14 +389,14 @@ function decodeDataView(value: DataView): string {
     .trim();
 }
 
-function enableBb0InfoNotifications(
+async function enableBb0InfoNotifications(
   session: Bb0BleSession,
   signal: AbortSignal,
   onInfo: (info: Bb0DeviceInfo) => void,
 ): Promise<boolean> {
   const startNotifications = session.characteristics.info.startNotifications;
   if (!startNotifications) {
-    return Promise.resolve(false);
+    return false;
   }
 
   session.characteristics.info.addEventListener(
@@ -411,14 +411,10 @@ function enableBb0InfoNotifications(
     { signal },
   );
 
-  return startNotifications.call(session.characteristics.info).then(
-    () => {
-      return true;
-    },
-    () => {
-      return false;
-    },
+  const settled = await settle(
+    startNotifications.call(session.characteristics.info),
   );
+  return settled.ok;
 }
 
 function readNotificationText(event: Event): string {

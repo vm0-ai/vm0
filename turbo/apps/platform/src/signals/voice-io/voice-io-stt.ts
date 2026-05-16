@@ -11,7 +11,7 @@ import {
 } from "../zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
-import { createDeferredPromise, resetSignal } from "../utils.ts";
+import { createDeferredPromise, resetSignal, settle } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { stopTts$ } from "./voice-io-tts.ts";
 import { accept } from "../../lib/accept.ts";
@@ -223,11 +223,13 @@ export const stopAndTranscribe$ = command(
       });
 
       if (!response.ok) {
-        const body = (await response.json().catch(() => {
-          return null;
-        })) as {
-          error?: { code?: string; message?: string };
-        } | null;
+        const settled = await settle(response.json());
+        signal.throwIfAborted();
+        const body = settled.ok
+          ? (settled.value as {
+              error?: { code?: string; message?: string };
+            } | null)
+          : null;
         const code = body?.error?.code;
 
         if (response.status === 402 && code === "AUDIO_INPUT_QUOTA_EXCEEDED") {

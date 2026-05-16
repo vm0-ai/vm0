@@ -30,6 +30,7 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  settle,
 } from "../../../../signals/utils.ts";
 import {
   profileName$,
@@ -85,11 +86,10 @@ async function uploadLogo(
     body: formData,
   });
   if (!resp.ok) {
-    const data = (await resp.json().catch(() => {
-      return null;
-    })) as {
-      error?: { message?: string };
-    } | null;
+    const settled = await settle(resp.json());
+    const data = settled.ok
+      ? (settled.value as { error?: { message?: string } } | null)
+      : null;
     toast.error(data?.error?.message ?? "Failed to upload logo");
     return null;
   }

@@ -202,6 +202,65 @@ export async function bestEffort(p: Promise<unknown>): Promise<void> {
   }
 }
 
+/**
+ * Await `p` and invoke `onError` on non-abort rejection. Abort propagates.
+ * Use as a `.catch(handler)` replacement when the caller needs to surface
+ * a side effect (toast, log) on failure but otherwise continue.
+ */
+export async function tapError<T>(
+  p: Promise<T>,
+  onError: (error: unknown) => void,
+): Promise<T | undefined> {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax
+  try {
+    return await p;
+  } catch (error) {
+    throwIfAbort(error);
+    onError(error);
+    return undefined;
+  }
+}
+
+/**
+ * Await `p` and invoke `fn` on any rejection (including abort), then re-throw.
+ * Use as a `.catch(handler)` replacement when the caller needs to run a
+ * cleanup side effect before the rejection propagates.
+ */
+export async function onRejection<T>(
+  p: Promise<T>,
+  fn: (error: unknown) => void,
+): Promise<T> {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax
+  try {
+    return await p;
+  } catch (error) {
+    fn(error);
+    throw error;
+  }
+}
+
+type Settled<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: unknown };
+
+/**
+ * Settle `p` into a discriminated union. Abort errors propagate (re-throw).
+ * Use as a `.then(onOk, onErr)` replacement when the caller needs to map
+ * both branches to a value rather than swallow the error.
+ */
+export async function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax
+  try {
+    return { ok: true, value: await p };
+  } catch (error) {
+    throwIfAbort(error);
+    return { ok: false, error };
+  }
+}
+
 export async function withCleanup<T>(
   promise: Promise<T>,
   cleanup: () => void,

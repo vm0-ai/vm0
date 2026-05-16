@@ -53,6 +53,7 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  tapError,
 } from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { goalEnabled$ } from "../../signals/external/feature-switch.ts";
@@ -1277,12 +1278,10 @@ export function ZeroChatComposer({
 
   const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
-    await authorizeFn(type, pageSignal).catch((error: unknown) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        toast.error(`${label} was authorized but could not be saved`, {
-          id: `connector-save-error-${type}`,
-        });
-      }
+    await tapError(authorizeFn(type, pageSignal), () => {
+      toast.error(`${label} was authorized but could not be saved`, {
+        id: `connector-save-error-${type}`,
+      });
     });
     toast.success(`${label} connected and authorized for ${displayName}`, {
       id: `connector-connected-${type}`,
