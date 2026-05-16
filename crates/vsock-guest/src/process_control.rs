@@ -444,36 +444,44 @@ fn forward_control_request(
         match sink.wait_for_stream(CONTROL_IO_TIMEOUT) {
             Ok(stream) => {
                 let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
-                let request_frame = ControlRequest {
-                    message_id: request.message_id.clone(),
-                    payload: request.payload.clone(),
-                };
-                match process_control_ipc::write_request(&mut stream, &request_frame)
-                    .and_then(|()| process_control_ipc::read_response(&mut stream))
-                {
-                    Ok(response) if response.message_id != request.message_id => (
-                        ProcessControlStatus::SinkError,
-                        format!(
-                            "process control sink message id mismatch: expected {}, got {}",
-                            request.message_id, response.message_id
+                if !sink.active.load(Ordering::Acquire) {
+                    (
+                        ProcessControlStatus::Inactive,
+                        "process operation is not active".to_owned(),
+                        false,
+                    )
+                } else {
+                    let request_frame = ControlRequest {
+                        message_id: request.message_id.clone(),
+                        payload: request.payload.clone(),
+                    };
+                    match process_control_ipc::write_request(&mut stream, &request_frame)
+                        .and_then(|()| process_control_ipc::read_response(&mut stream))
+                    {
+                        Ok(response) if response.message_id != request.message_id => (
+                            ProcessControlStatus::SinkError,
+                            format!(
+                                "process control sink message id mismatch: expected {}, got {}",
+                                request.message_id, response.message_id
+                            ),
+                            true,
                         ),
-                        true,
-                    ),
-                    Ok(response) => match response.status {
-                        ControlResponseStatus::Accepted => {
-                            (ProcessControlStatus::Delivered, response.diagnostic, false)
+                        Ok(response) => match response.status {
+                            ControlResponseStatus::Accepted => {
+                                (ProcessControlStatus::Delivered, response.diagnostic, false)
+                            }
+                            ControlResponseStatus::Rejected => {
+                                (ProcessControlStatus::Rejected, response.diagnostic, false)
+                            }
+                            ControlResponseStatus::Error => {
+                                (ProcessControlStatus::SinkError, response.diagnostic, false)
+                            }
+                        },
+                        Err(error) if is_timeout(&error) => {
+                            (ProcessControlStatus::SinkTimeout, error.to_string(), true)
                         }
-                        ControlResponseStatus::Rejected => {
-                            (ProcessControlStatus::Rejected, response.diagnostic, false)
-                        }
-                        ControlResponseStatus::Error => {
-                            (ProcessControlStatus::SinkError, response.diagnostic, false)
-                        }
-                    },
-                    Err(error) if is_timeout(&error) => {
-                        (ProcessControlStatus::SinkTimeout, error.to_string(), true)
+                        Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
                     }
-                    Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
                 }
             }
             Err((status, diagnostic)) => (status, diagnostic, false),
@@ -975,5 +983,49 @@ mod tests {
             *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
             ControlSinkInner::Failed(_)
         ));
+    }
+
+    #[test]
+    fn queued_control_request_is_not_delivered_after_close() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, mut peer) = UnixStream::pair().unwrap();
+        peer.set_nonblocking(true).unwrap();
+        sink.connect(stream);
+        let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+            ControlSinkInner::Connected(stream) => Arc::clone(stream),
+            _ => panic!("sink should be connected"),
+        };
+        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        assert!(
+            sink.try_forward(
+                OwnedProcessControlRequest {
+                    response_seq: 17,
+                    target_seq: 9,
+                    control_nonce: NONCE,
+                    message_id: "msg-after-close".to_owned(),
+                    payload: b"payload".to_vec(),
+                },
+                GuestWriter::new(guest),
+            )
+            .is_none()
+        );
+
+        sink.close();
+        drop(stream_guard);
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 17);
+        assert_eq!(status, ProcessControlStatus::Inactive);
+        assert_eq!(message_id, "msg-after-close");
+        assert_eq!(diagnostic, "process operation is not active");
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+
+        let err = process_control_ipc::read_request(&mut peer).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     }
 }
