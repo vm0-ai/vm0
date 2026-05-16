@@ -1,10 +1,28 @@
-//! CLI command building and execution for Claude Code / Codex.
+//! Public facade for CLI setup and execution.
+//!
+//! This module keeps the external `guest_agent::cli` boundary stable while
+//! private submodules own focused execution policies:
+//!
+//! - `codex_setup`: pre-exec Codex auth/bootstrap.
+//! - `command`: Claude Code and Codex command construction.
+//! - `diagnostics`: bounded stderr tail collection.
+//! - `event_delivery`: event sender watermark state.
+//! - `framework`: Claude-vs-Codex behavior switches.
+//! - `termination`: process-group termination FSM.
+//!
+//! `execute_cli` intentionally remains the orchestration owner for process
+//! spawn, stdout JSONL reading, event sender shutdown, heartbeat races, and
+//! child reaping. Branch ordering and deadline reset timing in that control
+//! flow are part of the runtime contract.
 
+mod codex_setup;
 mod command;
 mod diagnostics;
 mod event_delivery;
 mod framework;
+mod termination;
 
+pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::ClaudeResultSummary;
 
@@ -23,70 +41,10 @@ use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
+use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-
-/// State machine driving forced CLI process-group termination. A single
-/// pinned deadline is resettable across phases; the enum value tells the
-/// lone select! branch what to do when the deadline fires.
-///
-/// | From             | Trigger        | To              | Action          |
-/// |------------------|----------------|-----------------|-----------------|
-/// | `Idle`           | `type=result`  | `SigtermPending`| arm delayed sigterm grace |
-/// | `Idle`           | forced kill    | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
-/// | `SigtermPending` | deadline fires | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
-/// | `SigkillPending` | deadline fires | `Done`          | SIGKILL pgid    |
-/// | _any pending_    | `child.wait()` | `Done`          | (no signal)     |
-///
-/// `Done` is sticky: a late second `type=result` on the same run cannot
-/// re-arm the deadline, and any in-flight signalling is one-shot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TerminationState {
-    Idle,
-    SigtermPending { reason: TerminationReason },
-    SigkillPending { reason: TerminationReason },
-    Done,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TerminationReason {
-    PostResult,
-    StuckTool,
-    HeartbeatError,
-    HeartbeatPanic,
-}
-
-impl TerminationReason {
-    fn label(self) -> &'static str {
-        match self {
-            TerminationReason::PostResult => "post-result reap",
-            TerminationReason::StuckTool => "stuck-tool watchdog",
-            TerminationReason::HeartbeatError => "heartbeat error",
-            TerminationReason::HeartbeatPanic => "heartbeat panic",
-        }
-    }
-}
-
-impl TerminationState {
-    /// True while waiting for an armed SIGTERM or SIGKILL deadline to fire;
-    /// used as the select! branch's eligibility guard.
-    fn is_pending(self) -> bool {
-        matches!(
-            self,
-            TerminationState::SigtermPending { .. } | TerminationState::SigkillPending { .. }
-        )
-    }
-
-    /// Whether to arm the reap deadline on an incoming `type=result`
-    /// event. Only the initial Idle → SigtermPending transition should
-    /// fire — later events (or a result that races a CLI exit) must
-    /// not re-arm. Single source of truth consumed by both the
-    /// production guard in `execute_cli` and the FSM unit tests.
-    fn should_arm_post_result(self, cli_exited: bool) -> bool {
-        matches!(self, TerminationState::Idle) && !cli_exited
-    }
-}
 
 async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     match interval {
@@ -95,95 +53,6 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
         }
         None => std::future::pending::<()>().await,
     }
-}
-
-/// Set up codex auth on the guest before invoking `codex exec`.
-///
-/// Two mutually-exclusive paths:
-///
-/// - **ChatGPT-OAuth mode** (`CHATGPT_ACCOUNT_ID` set): write a fabricated
-///   `~/.codex/auth.json` containing placeholder JWTs that put codex into
-///   `Chatgpt` mode without ever holding real OAuth credentials inside
-///   the sandbox. The firewall replaces placeholder bytes on egress. See
-///   the `codex_auth` module + issue #11877.
-///
-/// - **API-key mode** (default): pipe `OPENAI_API_KEY` into
-///   `codex login --with-api-key` to write `~/.codex/auth.json`. If
-///   `OPENAI_API_KEY` is empty, log and return Ok — `codex exec` reads
-///   the env directly so the env path covers authn even when the login
-///   subcommand isn't available.
-///
-/// Both paths are best-effort — failure logs but does not abort init.
-pub fn setup_codex() -> Result<(), AgentError> {
-    use std::io::Write as _;
-
-    if env::is_codex_oauth_mode() {
-        return setup_codex_chatgpt();
-    }
-
-    let codex_home = format!("{}/.codex", env::home_dir());
-    std::fs::create_dir_all(&codex_home)?;
-    log_info!(LOG_TAG, "Codex home directory: {codex_home}");
-
-    let api_key = env::openai_api_key();
-    if api_key.is_empty() {
-        log_info!(LOG_TAG, "OPENAI_API_KEY not set, skipping codex login");
-        return Ok(());
-    }
-
-    let login_start = Instant::now();
-    let result = std::process::Command::new("codex")
-        .args(["login", "--with-api-key"])
-        .env("CODEX_HOME", &codex_home)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .and_then(|mut child| {
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(api_key.as_bytes());
-            }
-            child.wait_with_output()
-        });
-    let success = matches!(&result, Ok(o) if o.status.success());
-    if success {
-        log_info!(LOG_TAG, "Codex authenticated with API key");
-    } else {
-        match &result {
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                log_warn!(LOG_TAG, "codex login failed (non-fatal): {stderr}");
-            }
-            Err(e) => {
-                log_warn!(LOG_TAG, "codex login spawn failed (non-fatal): {e}");
-            }
-        }
-    }
-    record_sandbox_op("codex_login", login_start.elapsed(), success, None);
-    Ok(())
-}
-
-/// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
-/// read from env + the real clock, and records a telemetry op so failures
-/// surface in dashboards.
-fn setup_codex_chatgpt() -> Result<(), AgentError> {
-    let setup_start = Instant::now();
-    let home = std::path::PathBuf::from(env::home_dir());
-    let result = crate::codex_auth::setup_codex_chatgpt_inner(&home, chrono::Utc::now());
-
-    let success = result.is_ok();
-    let err_msg = result.as_ref().err().map(|e| e.to_string());
-    record_sandbox_op(
-        "codex_chatgpt_setup",
-        setup_start.elapsed(),
-        success,
-        err_msg.as_deref(),
-    );
-
-    if success {
-        log_info!(LOG_TAG, "Codex ChatGPT-OAuth auth.json written");
-    }
-    result
 }
 
 /// Result returned after the configured CLI process exits.
@@ -730,65 +599,4 @@ pub async fn execute_cli(
         last_event_sequence,
         claude_result,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // -----------------------------------------------------------------
-    // TerminationState FSM
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn termination_state_is_pending_only_between_arming_and_done() {
-        assert!(!TerminationState::Idle.is_pending());
-        assert!(
-            TerminationState::SigtermPending {
-                reason: TerminationReason::PostResult,
-            }
-            .is_pending()
-        );
-        assert!(
-            TerminationState::SigkillPending {
-                reason: TerminationReason::StuckTool,
-            }
-            .is_pending()
-        );
-        assert!(!TerminationState::Done.is_pending());
-    }
-
-    /// The arming guard must fire exactly once per run, on the first
-    /// `type=result` event, and only when the CLI is still alive. Any
-    /// later state — or a CLI that already exited — must be ignored
-    /// (Done is sticky; SigtermPending/SigkillPending already armed).
-    ///
-    /// Calls `TerminationState::should_arm_post_result` directly so
-    /// the test shares a single source of truth with the production
-    /// `select!` branch.
-    #[test]
-    fn termination_state_should_arm_post_result_matches_invariant() {
-        // Fire only from Idle with CLI still alive.
-        assert!(TerminationState::Idle.should_arm_post_result(false));
-
-        // CLI already exited → no arm, even from Idle.
-        assert!(!TerminationState::Idle.should_arm_post_result(true));
-
-        // Already armed → no re-arm.
-        assert!(
-            !TerminationState::SigtermPending {
-                reason: TerminationReason::PostResult,
-            }
-            .should_arm_post_result(false)
-        );
-        assert!(
-            !TerminationState::SigkillPending {
-                reason: TerminationReason::HeartbeatError,
-            }
-            .should_arm_post_result(false)
-        );
-
-        // Done is sticky.
-        assert!(!TerminationState::Done.should_arm_post_result(false));
-    }
 }

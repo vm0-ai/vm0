@@ -36,7 +36,7 @@ async function assertModelConfigured(
   }
 }
 
-export async function getUserModelPreference(
+async function getUserModelPreference(
   orgId: string,
   userId: string,
 ): Promise<UserModelPreference> {

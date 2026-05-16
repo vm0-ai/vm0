@@ -8,9 +8,9 @@ import { createHash } from "node:crypto";
  * the same change. Do not add new entries; the no-new-api-routes rule checks
  * that this baseline only shrinks relative to the branch's git base.
  *
- * Intentional exception: model policy and user model preference routes live in
- * apps/web while the rest of Zero's bearer-token web API still authenticates
- * through requireAuth/resolveOrg in the Next.js runtime.
+ * Intentional exception: model policy routes live in apps/web while the rest of
+ * Zero's bearer-token web API still authenticates through requireAuth/resolveOrg
+ * in the Next.js runtime.
  *
  */
 export const WEB_API_ROUTE_BASELINE = [
@@ -191,7 +191,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/me/model-providers/[type]/route.ts",
   "app/api/zero/me/model-providers/route.ts",
   "app/api/zero/model-policies/route.ts",
-  "app/api/zero/user-model-preference/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
   "app/api/zero/model-providers/route.ts",
   "app/api/zero/onboarding/setup/route.ts",
@@ -243,7 +242,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "28215fc6e94d9532f301cf0b72b9787a709096b80a1dc177f69a1ce7ab095f4c";
+  "30111e21487018fe2cd2aa139ada52195be0ecd53d47cd1a37047d54dee86e7a";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

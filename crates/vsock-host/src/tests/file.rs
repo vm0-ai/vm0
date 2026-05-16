@@ -6,17 +6,17 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination,
+    Decoder, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR,
     MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
 };
 
 use super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
-    operation_count, read_guest_message, send_exec_output, send_exec_result, send_raw_exec_result,
-    send_stream_exec_result, setup_host_and_guest,
+    normal_operation_readiness, operation_count, read_guest_message, send_exec_output,
+    send_exec_result, send_raw_exec_result, send_stream_exec_result, setup_host_and_guest,
 };
-use crate::CopyFileOptions;
 use crate::file as file_impl;
+use crate::{CopyFileOptions, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
@@ -662,6 +662,199 @@ async fn test_write_file() {
     host.write_file("/tmp/test.txt", b"hello", false)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn write_file_tracks_until_result() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"hello", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_guest_failure_releases_tracker() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let payload = vsock_proto::encode_write_file_result(false, "permission denied");
+    let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("permission denied"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_error_response_releases_tracker() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let payload = vsock_proto::encode_error("guest write failed");
+    let resp = vsock_proto::encode(MSG_ERROR, msg.seq, &payload).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest write failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let resp = vsock_proto::encode(MSG_EXEC_START, msg.seq, &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let err = host
+        .exec("blocked-after-write-drop", 5000, &[], false)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+}
+
+#[tokio::test]
+async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/blocked.txt", b"hello", false).await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest, &mut decoder).await;
+}
+
+#[tokio::test]
+async fn write_file_connection_close_after_request_marks_tracker_not_parkable() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    drop(guest);
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]

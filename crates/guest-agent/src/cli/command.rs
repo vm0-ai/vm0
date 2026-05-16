@@ -1,3 +1,9 @@
+//! CLI command construction for Claude Code and Codex.
+//!
+//! This module owns framework-specific argv shape, mock binary selection, and
+//! Codex config override construction. Runtime process spawning stays in
+//! `execute_cli`.
+
 use crate::env;
 use crate::error::AgentError;
 use guest_common::log_info;

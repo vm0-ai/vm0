@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.359.0](https://github.com/vm0-ai/vm0/compare/app-v0.358.1...app-v0.359.0) (2026-05-16)
+
+
+### Features
+
+* add bentoml connector ([#13514](https://github.com/vm0-ai/vm0/issues/13514)) ([e7ec435](https://github.com/vm0-ai/vm0/commit/e7ec4354623dbbd00c92dec28e20252db661698e))
+* add reap connector ([#13515](https://github.com/vm0-ai/vm0/issues/13515)) ([448ffc5](https://github.com/vm0-ai/vm0/commit/448ffc5f779514487ad82217f0171bbed15c26d0))
+
+
+### Bug Fixes
+
+* align chat rename dialog input with shared Input primitive ([#13517](https://github.com/vm0-ai/vm0/issues/13517)) ([a2bc412](https://github.com/vm0-ai/vm0/commit/a2bc412f4f09c6e64400ec2788fad8f61c0d8ce7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.29.0
+    * @vm0/connectors bumped to 1.13.0
+    * @vm0/core bumped to 8.279.0
+
 ## [0.358.1](https://github.com/vm0-ai/vm0/compare/app-v0.358.0...app-v0.358.1) (2026-05-15)
 
 

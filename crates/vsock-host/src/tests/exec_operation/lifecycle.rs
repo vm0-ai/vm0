@@ -6,11 +6,14 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR, MSG_EXEC_START};
 
 use super::super::support::{
-    assert_connection_accepts_exec_operation, is_connected, operation_count, read_guest_message,
-    send_exec_output, send_exec_result, setup_host_and_guest,
+    assert_connection_accepts_exec_operation, is_connected, normal_operation_readiness,
+    operation_count, read_guest_message, send_exec_output, send_exec_result, setup_host_and_guest,
 };
 use super::start_capture_operation;
-use crate::{ExecOperationRequest, ExecOwnedCapturedOutput, ExecStreamRequest};
+use crate::{
+    ExecOperationRequest, ExecOwnedCapturedOutput, ExecStreamRequest,
+    operation_tracker::NormalOperationReadiness,
+};
 
 #[tokio::test]
 async fn exec_operation_wait_timeout_cleans_operation_state() {
@@ -23,6 +26,10 @@ async fn exec_operation_wait_timeout_cleans_operation_state() {
     let err = handle.wait(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
     assert!(is_connected(&host));
 }
 
@@ -74,6 +81,10 @@ async fn exec_operation_connection_close_wakes_result_and_stream() {
     let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     assert!(rx.recv().await.is_none());
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]

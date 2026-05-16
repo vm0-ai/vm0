@@ -185,6 +185,15 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the user model preference rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/user-model-preference"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/user-model-preference/extra"),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,
