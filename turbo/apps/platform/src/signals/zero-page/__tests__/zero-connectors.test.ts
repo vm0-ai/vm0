@@ -129,6 +129,39 @@ describe("connectors", () => {
 });
 
 describe("connectors — auth method feature flags", () => {
+  it("hides bentoml when BentomlConnector feature switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.BentomlConnector]: false },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const bentoml = connectorTypes.find((c) => {
+      return c.type === "bentoml";
+    });
+
+    expect(bentoml).toBeUndefined();
+  });
+
+  it("shows bentoml when BentomlConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.BentomlConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const bentoml = connectorTypes.find((c) => {
+      return c.type === "bentoml";
+    });
+
+    expect(bentoml).toBeDefined();
+    expect(bentoml?.availableAuthMethods).toContain("api-token");
+  });
+
   it("hides zapier when ZapierConnector feature switch is disabled", async () => {
     detachedSetupPage({
       context,
