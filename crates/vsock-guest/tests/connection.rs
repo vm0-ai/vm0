@@ -1580,6 +1580,36 @@ fn read_streaming_result(
     }
 }
 
+fn read_streaming_exit_after_result(
+    stream: &mut impl std::io::Read,
+    seq: u32,
+    pid: u32,
+) -> (Vec<u8>, i32, Vec<u8>) {
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let mut stdout_data = Vec::new();
+    loop {
+        let n = read_retry_eintr(stream, &mut buf).unwrap();
+        assert!(n > 0, "unexpected EOF waiting for streaming process exit");
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.msg_type == MSG_STDOUT_CHUNK
+                && msg.seq == seq
+                && let Ok((chunk_pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload)
+                && chunk_pid == pid
+            {
+                stdout_data.extend_from_slice(data);
+            } else if msg.msg_type == MSG_PROCESS_EXIT
+                && msg.seq == seq
+                && let Ok((exit_pid, code, _stdout, stderr)) =
+                    vsock_proto::decode_process_exit(&msg.payload)
+                && exit_pid == pid
+            {
+                return (stdout_data, code, stderr.to_vec());
+            }
+        }
+    }
+}
+
 // -----------------------------------------------------------------------
 // Streaming monitor integration tests
 // -----------------------------------------------------------------------
@@ -1745,6 +1775,60 @@ fn duplicate_spawn_seq_without_control_nonce_returns_error() {
     assert_eq!(duplicate.seq, 41);
     let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
     assert!(error.contains("already active"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn duplicate_spawn_seq_releases_rejected_operation_guard() {
+    let fifo_path = unique_tmp_path("duplicate-spawn-release", ".fifo");
+    let fifo_cstr = std::ffi::CString::new(fifo_path.as_str()).unwrap();
+    // SAFETY: fifo_cstr is a valid NUL-terminated path and mode is a normal
+    // POSIX permission mask for a test-only FIFO.
+    let mkfifo_result = unsafe { libc::mkfifo(fifo_cstr.as_ptr(), 0o600) };
+    assert_eq!(
+        mkfifo_result,
+        0,
+        "mkfifo failed: {:?}",
+        std::io::Error::last_os_error()
+    );
+
+    let (handle, mut host_stream) = start_guest_connection();
+    let command = format!("cat < {} >/dev/null; printf released", fifo_path.as_str());
+
+    send_spawn_process(&mut host_stream, 42, &command, None, 5000);
+    let result = read_message(&mut host_stream);
+    assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
+    assert_eq!(result.seq, 42);
+    let pid = vsock_proto::decode_spawn_process_result(&result.payload).unwrap();
+
+    send_spawn_process(&mut host_stream, 42, "printf duplicate", None, 5000);
+    let duplicate = read_message(&mut host_stream);
+    assert_eq!(duplicate.msg_type, MSG_ERROR);
+    assert_eq!(duplicate.seq, 42);
+    let error = vsock_proto::decode_error(&duplicate.payload).unwrap();
+    assert!(error.contains("already active"));
+
+    let writer_path = fifo_path.as_str().to_owned();
+    let writer = thread::spawn(move || {
+        std::fs::write(writer_path, b"release").unwrap();
+    });
+    let (stdout_data, exit_code, stderr) =
+        read_streaming_exit_after_result(&mut host_stream, 42, pid);
+    writer.join().unwrap();
+    assert_eq!(exit_code, 0);
+    assert_eq!(stdout_data, b"released");
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr from controlled process: {:?}",
+        String::from_utf8_lossy(&stderr),
+    );
+
+    send_quiesce_operations(&mut host_stream, 43);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 43);
+    assert!(quiesced.payload.is_empty());
 
     finish_guest_connection(handle, host_stream);
 }

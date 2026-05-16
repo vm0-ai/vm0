@@ -284,10 +284,12 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 ) {
                     Ok(registration) => registration,
                     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                        operation_guard.release();
                         send_error_response(msg.seq, "process operation already active", &writer)?;
                         continue;
                     }
                     Err(error) => {
+                        operation_guard.release();
                         send_error_response(
                             msg.seq,
                             &format!("process control setup failed: {error}"),
