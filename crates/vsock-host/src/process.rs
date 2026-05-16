@@ -35,6 +35,16 @@ struct ProcessOperation {
     exit_tx: oneshot::Sender<ProcessExitEvent>,
 }
 
+pub(crate) struct SpawnProcessOnSharedRequest<'a> {
+    pub(crate) command: &'a str,
+    pub(crate) timeout_ms: u32,
+    pub(crate) env: &'a [(&'a str, &'a str)],
+    pub(crate) sudo: bool,
+    pub(crate) stream_stdout: bool,
+    pub(crate) stdout_log_path: Option<&'a str>,
+    pub(crate) control_sink: bool,
+}
+
 /// Process lifecycle state while the vsock connection is open.
 pub(crate) struct ConnectedProcessState {
     /// Active spawn_process operations keyed by request sequence number.
@@ -333,6 +343,46 @@ impl GuestProcessControlHandle {
                     result.diagnostic.to_owned()
                 },
             )),
+            ProcessControlStatus::Rejected => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                if result.diagnostic.is_empty() {
+                    "process control request rejected".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::SinkUnavailable => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                if result.diagnostic.is_empty() {
+                    "process control sink is not connected".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::SinkTimeout => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                if result.diagnostic.is_empty() {
+                    "process control sink timed out".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::QueueFull => Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                if result.diagnostic.is_empty() {
+                    "process control queue is full".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
+            ProcessControlStatus::SinkError => Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                if result.diagnostic.is_empty() {
+                    "process control sink error".to_owned()
+                } else {
+                    result.diagnostic.to_owned()
+                },
+            )),
         }
     }
 }
@@ -449,23 +499,39 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
 
 pub(crate) async fn spawn_process_on_shared(
     shared: &Arc<Shared>,
-    command: &str,
-    timeout_ms: u32,
-    env: &[(&str, &str)],
-    sudo: bool,
-    stream_stdout: bool,
-    stdout_log_path: Option<&str>,
+    request: SpawnProcessOnSharedRequest<'_>,
 ) -> io::Result<GuestProcessHandle> {
-    let control_nonce = *uuid::Uuid::new_v4().as_bytes();
-    let payload = vsock_proto::encode_spawn_process_with_control_nonce(
-        timeout_ms,
+    let SpawnProcessOnSharedRequest {
         command,
+        timeout_ms,
         env,
         sudo,
         stream_stdout,
-        control_nonce,
         stdout_log_path,
-    )
+        control_sink,
+    } = request;
+    let control_nonce = *uuid::Uuid::new_v4().as_bytes();
+    let payload = if control_sink {
+        vsock_proto::encode_spawn_process_with_control_sink(
+            timeout_ms,
+            command,
+            env,
+            sudo,
+            stream_stdout,
+            control_nonce,
+            stdout_log_path,
+        )
+    } else {
+        vsock_proto::encode_spawn_process_with_control_nonce(
+            timeout_ms,
+            command,
+            env,
+            sudo,
+            stream_stdout,
+            control_nonce,
+            stdout_log_path,
+        )
+    }
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
     let (stdout_tx, stdout_rx) = if stream_stdout {

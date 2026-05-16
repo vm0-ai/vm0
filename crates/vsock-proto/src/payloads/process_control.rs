@@ -12,6 +12,11 @@ const PROCESS_CONTROL_STATUS_DELIVERED: u8 = 0x00;
 const PROCESS_CONTROL_STATUS_INACTIVE: u8 = 0x01;
 const PROCESS_CONTROL_STATUS_NONCE_MISMATCH: u8 = 0x02;
 const PROCESS_CONTROL_STATUS_UNSUPPORTED: u8 = 0x03;
+const PROCESS_CONTROL_STATUS_REJECTED: u8 = 0x04;
+const PROCESS_CONTROL_STATUS_SINK_UNAVAILABLE: u8 = 0x05;
+const PROCESS_CONTROL_STATUS_SINK_TIMEOUT: u8 = 0x06;
+const PROCESS_CONTROL_STATUS_QUEUE_FULL: u8 = 0x07;
+const PROCESS_CONTROL_STATUS_SINK_ERROR: u8 = 0x08;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessControlStatus {
@@ -19,6 +24,11 @@ pub enum ProcessControlStatus {
     Inactive,
     NonceMismatch,
     Unsupported,
+    Rejected,
+    SinkUnavailable,
+    SinkTimeout,
+    QueueFull,
+    SinkError,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +54,11 @@ fn status_to_wire(status: ProcessControlStatus) -> u8 {
         ProcessControlStatus::Inactive => PROCESS_CONTROL_STATUS_INACTIVE,
         ProcessControlStatus::NonceMismatch => PROCESS_CONTROL_STATUS_NONCE_MISMATCH,
         ProcessControlStatus::Unsupported => PROCESS_CONTROL_STATUS_UNSUPPORTED,
+        ProcessControlStatus::Rejected => PROCESS_CONTROL_STATUS_REJECTED,
+        ProcessControlStatus::SinkUnavailable => PROCESS_CONTROL_STATUS_SINK_UNAVAILABLE,
+        ProcessControlStatus::SinkTimeout => PROCESS_CONTROL_STATUS_SINK_TIMEOUT,
+        ProcessControlStatus::QueueFull => PROCESS_CONTROL_STATUS_QUEUE_FULL,
+        ProcessControlStatus::SinkError => PROCESS_CONTROL_STATUS_SINK_ERROR,
     }
 }
 
@@ -53,6 +68,11 @@ fn status_from_wire(value: u8) -> Result<ProcessControlStatus, ProtocolError> {
         PROCESS_CONTROL_STATUS_INACTIVE => Ok(ProcessControlStatus::Inactive),
         PROCESS_CONTROL_STATUS_NONCE_MISMATCH => Ok(ProcessControlStatus::NonceMismatch),
         PROCESS_CONTROL_STATUS_UNSUPPORTED => Ok(ProcessControlStatus::Unsupported),
+        PROCESS_CONTROL_STATUS_REJECTED => Ok(ProcessControlStatus::Rejected),
+        PROCESS_CONTROL_STATUS_SINK_UNAVAILABLE => Ok(ProcessControlStatus::SinkUnavailable),
+        PROCESS_CONTROL_STATUS_SINK_TIMEOUT => Ok(ProcessControlStatus::SinkTimeout),
+        PROCESS_CONTROL_STATUS_QUEUE_FULL => Ok(ProcessControlStatus::QueueFull),
+        PROCESS_CONTROL_STATUS_SINK_ERROR => Ok(ProcessControlStatus::SinkError),
         _ => Err(ProtocolError::InvalidPayload(
             "process_control_result status invalid",
         )),
@@ -400,6 +420,23 @@ mod tests {
         assert_eq!(decoded.message_id, "msg-1");
         assert_eq!(decoded.status, ProcessControlStatus::Inactive);
         assert_eq!(decoded.diagnostic, "not active");
+    }
+
+    #[test]
+    fn process_control_result_roundtrips_sink_statuses() {
+        for status in [
+            ProcessControlStatus::Rejected,
+            ProcessControlStatus::SinkUnavailable,
+            ProcessControlStatus::SinkTimeout,
+            ProcessControlStatus::QueueFull,
+            ProcessControlStatus::SinkError,
+        ] {
+            let encoded =
+                encode_process_control_result(7, NONCE, "msg-1", status, "diagnostic").unwrap();
+            let decoded = decode_process_control_result(&encoded).unwrap();
+            assert_eq!(decoded.status, status);
+            assert_eq!(decoded.diagnostic, "diagnostic");
+        }
     }
 
     #[test]

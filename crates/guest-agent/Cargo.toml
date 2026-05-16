@@ -10,6 +10,7 @@ base64.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["clock"] }
 flate2.workspace = true
+guest-control.workspace = true
 guest-common.workspace = true
 http-body = "1"
 libc.workspace = true

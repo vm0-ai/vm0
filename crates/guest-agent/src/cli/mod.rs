@@ -112,6 +112,7 @@ pub async fn execute_cli(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .env_remove(guest_control::BOOTSTRAP_ENV)
         .process_group(0)
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.

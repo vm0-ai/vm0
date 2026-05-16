@@ -2,11 +2,19 @@ use crate::error::ProtocolError;
 use crate::payloads::process_control::{PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce};
 use crate::read::{read_u8_at, read_u16_at, read_u32_at};
 use crate::wire::{
-    SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO,
+    SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_CONTROL_SINK,
+    SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO,
 };
 
-const SPAWN_PROCESS_KNOWN_FLAGS: u8 =
-    SPAWN_PROCESS_FLAG_SUDO | SPAWN_PROCESS_FLAG_STREAM_STDOUT | SPAWN_PROCESS_FLAG_CONTROL_NONCE;
+const SPAWN_PROCESS_KNOWN_FLAGS: u8 = SPAWN_PROCESS_FLAG_SUDO
+    | SPAWN_PROCESS_FLAG_STREAM_STDOUT
+    | SPAWN_PROCESS_FLAG_CONTROL_NONCE
+    | SPAWN_PROCESS_FLAG_CONTROL_SINK;
+
+struct SpawnProcessControlOptions {
+    nonce: Option<ProcessControlNonce>,
+    sink: bool,
+}
 
 /// Encode spawn_process payload: command fields + optional `[2B log_path_len][log_path]`.
 ///
@@ -30,7 +38,10 @@ pub fn encode_spawn_process(
         env,
         sudo,
         stream_stdout,
-        None,
+        SpawnProcessControlOptions {
+            nonce: None,
+            sink: false,
+        },
         stdout_log_path,
     )
 }
@@ -50,7 +61,33 @@ pub fn encode_spawn_process_with_control_nonce(
         env,
         sudo,
         stream_stdout,
-        Some(control_nonce),
+        SpawnProcessControlOptions {
+            nonce: Some(control_nonce),
+            sink: false,
+        },
+        stdout_log_path,
+    )
+}
+
+pub fn encode_spawn_process_with_control_sink(
+    timeout_ms: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    sudo: bool,
+    stream_stdout: bool,
+    control_nonce: ProcessControlNonce,
+    stdout_log_path: Option<&str>,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_spawn_process_inner(
+        timeout_ms,
+        command,
+        env,
+        sudo,
+        stream_stdout,
+        SpawnProcessControlOptions {
+            nonce: Some(control_nonce),
+            sink: true,
+        },
         stdout_log_path,
     )
 }
@@ -61,12 +98,17 @@ fn encode_spawn_process_inner(
     env: &[(&str, &str)],
     sudo: bool,
     stream_stdout: bool,
-    control_nonce: Option<ProcessControlNonce>,
+    control: SpawnProcessControlOptions,
     stdout_log_path: Option<&str>,
 ) -> Result<Vec<u8>, ProtocolError> {
     if !stream_stdout && stdout_log_path.is_some() {
         return Err(ProtocolError::InvalidPayload(
             "spawn_process log_path requires stream flag",
+        ));
+    }
+    if control.sink && control.nonce.is_none() {
+        return Err(ProtocolError::InvalidPayload(
+            "spawn_process control sink requires nonce",
         ));
     }
     let cmd = command.as_bytes();
@@ -86,7 +128,7 @@ fn encode_spawn_process_inner(
         Some(path) => Some((path.as_bytes(), path.len() as u16)),
         None => None,
     };
-    let nonce_size = control_nonce.map_or(0, |_| PROCESS_CONTROL_NONCE_LEN);
+    let nonce_size = control.nonce.map_or(0, |_| PROCESS_CONTROL_NONCE_LEN);
     let log_size = log_path.map_or(0, |(_, len)| 2 + len as usize);
     let mut p = Vec::with_capacity(9 + cmd.len() + env_size + nonce_size + log_size);
     p.extend_from_slice(&timeout_ms.to_be_bytes());
@@ -94,8 +136,11 @@ fn encode_spawn_process_inner(
     if stream_stdout {
         flags |= SPAWN_PROCESS_FLAG_STREAM_STDOUT;
     }
-    if control_nonce.is_some() {
+    if control.nonce.is_some() {
         flags |= SPAWN_PROCESS_FLAG_CONTROL_NONCE;
+    }
+    if control.sink {
+        flags |= SPAWN_PROCESS_FLAG_CONTROL_SINK;
     }
     p.push(flags);
     p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
@@ -110,7 +155,7 @@ fn encode_spawn_process_inner(
         p.extend_from_slice(&(vb.len() as u32).to_be_bytes());
         p.extend_from_slice(vb);
     }
-    if let Some(control_nonce) = control_nonce {
+    if let Some(control_nonce) = control.nonce {
         p.extend_from_slice(&control_nonce);
     }
     if let Some((path_bytes, path_len)) = log_path {
@@ -229,6 +274,7 @@ pub fn decode_spawn_process(payload: &[u8]) -> Result<DecodedSpawnProcess<'_>, P
         raw_flags,
     } = decode_spawn_process_command_prefix(payload)?;
     let stream_flag = (raw_flags & SPAWN_PROCESS_FLAG_STREAM_STDOUT) != 0;
+    let control_sink = (raw_flags & SPAWN_PROCESS_FLAG_CONTROL_SINK) != 0;
     let control_nonce = if (raw_flags & SPAWN_PROCESS_FLAG_CONTROL_NONCE) != 0 {
         let nonce_end =
             offset
@@ -248,6 +294,11 @@ pub fn decode_spawn_process(payload: &[u8]) -> Result<DecodedSpawnProcess<'_>, P
     } else {
         None
     };
+    if control_sink && control_nonce.is_none() {
+        return Err(ProtocolError::InvalidPayload(
+            "spawn_process control sink requires nonce",
+        ));
+    }
     let stdout_log_path = if offset == payload.len() {
         None
     } else if offset + 2 <= payload.len() {
@@ -288,6 +339,7 @@ pub fn decode_spawn_process(payload: &[u8]) -> Result<DecodedSpawnProcess<'_>, P
         env,
         sudo,
         control_nonce,
+        control_sink,
         stream_stdout: stream_flag,
         stdout_log_path,
     })
@@ -308,6 +360,8 @@ pub struct DecodedSpawnProcess<'a> {
     pub sudo: bool,
     /// Host-generated nonce used to bind process-control requests to this process operation.
     pub control_nonce: Option<ProcessControlNonce>,
+    /// Whether the guest should expose a process-local control sink to the spawned command.
+    pub control_sink: bool,
     /// Whether vsock-guest should stream stdout chunks to the host.
     pub stream_stdout: bool,
     /// Optional guest-side file path where vsock-guest also tees stdout.
@@ -364,8 +418,26 @@ mod tests {
         assert_eq!(d.command, "echo hello");
         assert_eq!(d.env, vec![("FOO", "bar")]);
         assert_eq!(d.control_nonce, Some(NONCE));
+        assert!(!d.control_sink);
         assert!(d.stream_stdout);
         assert_eq!(d.stdout_log_path.unwrap(), "/tmp/vm0-system-123.log");
+    }
+
+    #[test]
+    fn spawn_process_payload_roundtrip_with_control_sink() {
+        let payload = encode_spawn_process_with_control_sink(
+            5000,
+            "run-agent",
+            &[],
+            false,
+            true,
+            NONCE,
+            None,
+        )
+        .unwrap();
+        let d = decode_spawn_process(&payload).unwrap();
+        assert_eq!(d.control_nonce, Some(NONCE));
+        assert!(d.control_sink);
     }
 
     #[test]

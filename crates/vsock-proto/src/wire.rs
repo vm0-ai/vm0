@@ -38,6 +38,7 @@ pub const VSOCK_PORT: u32 = 1000;
 pub const SPAWN_PROCESS_FLAG_SUDO: u8 = 0x01;
 pub const SPAWN_PROCESS_FLAG_STREAM_STDOUT: u8 = 0x02;
 pub const SPAWN_PROCESS_FLAG_CONTROL_NONCE: u8 = 0x04;
+pub const SPAWN_PROCESS_FLAG_CONTROL_SINK: u8 = 0x08;
 
 // Exec operation payload flags.
 pub const EXEC_FLAG_SUDO: u8 = 0x01;

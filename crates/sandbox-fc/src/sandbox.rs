@@ -10,9 +10,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
-    Sandbox, SandboxConfig, SandboxError, SandboxIdleTransition, SandboxInvalidStateContext,
-    SandboxOperation, SandboxOperationReason, SpawnProcessRequest,
+    CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessControlHandle,
+    GuestProcessHandle, ProcessControlAck, ProcessExit, Sandbox, SandboxConfig, SandboxError,
+    SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
+    SpawnProcessControl, SpawnProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
@@ -1590,15 +1591,29 @@ impl Sandbox for FirecrackerSandbox {
             .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
         let vsock = guest.guest();
 
-        tokio::select! {
-            result = vsock.spawn_process(
+        let spawn_future: Pin<
+            Box<dyn Future<Output = io::Result<vsock_host::GuestProcessHandle>> + Send + '_>,
+        > = match request.control {
+            SpawnProcessControl::None => Box::pin(vsock.spawn_process(
                 request.cmd,
                 request.timeout_ms(),
                 request.env,
                 request.sudo,
                 request.output.streams_stdout(),
                 request.output.guest_log_path(),
-            ) => {
+            )),
+            SpawnProcessControl::GuestAgent => Box::pin(vsock.spawn_process_with_control_sink(
+                request.cmd,
+                request.timeout_ms(),
+                request.env,
+                request.sudo,
+                request.output.streams_stdout(),
+                request.output.guest_log_path(),
+            )),
+        };
+
+        tokio::select! {
+            result = spawn_future => {
                 let mut handle = match result {
                     Ok(handle) => handle,
                     Err(error) => {
@@ -1617,6 +1632,18 @@ impl Sandbox for FirecrackerSandbox {
                     .mark_in_guest()
                     .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let pid = handle.pid();
+                let process_control = (request.control == SpawnProcessControl::GuestAgent).then(|| {
+                    let control = handle.control_handle();
+                    GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                        let control = control.clone();
+                        Box::pin(async move {
+                            let ack = control.control(&message_id, &payload, timeout).await?;
+                            Ok(ProcessControlAck {
+                                message_id: ack.message_id,
+                            })
+                        })
+                    })
+                });
                 let stdout_rx = request
                     .output
                     .streams_stdout()
@@ -1635,7 +1662,7 @@ impl Sandbox for FirecrackerSandbox {
                     },
                     lease,
                 );
-                Ok(GuestProcessHandle::new(pid, stdout_rx, exit))
+                Ok(GuestProcessHandle::new(pid, stdout_rx, process_control, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))

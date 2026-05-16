@@ -1256,6 +1256,7 @@ dependencies = [
  "chrono",
  "flate2",
  "guest-common",
+ "guest-control",
  "hex",
  "http-body 1.0.1",
  "httpmock",
@@ -1281,6 +1282,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "guest-control"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -3642,6 +3650,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 name = "vsock-guest"
 version = "0.17.0"
 dependencies = [
+ "guest-control",
  "libc",
  "vsock-proto",
 ]

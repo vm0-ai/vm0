@@ -4,6 +4,7 @@ members = [
     "ably-subscriber",
     "api-contracts",
     "guest-agent",
+    "guest-control",
     "guest-common",
     "guest-download",
     "guest-init",
@@ -30,6 +31,7 @@ edition = "2024"
 ably-subscriber = { path = "ably-subscriber" }
 api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
+guest-control = { path = "guest-control" }
 guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }
 guest-init = { path = "guest-init" }

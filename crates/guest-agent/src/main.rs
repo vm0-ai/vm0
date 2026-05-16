@@ -4,6 +4,7 @@
 use guest_agent::checkpoint;
 use guest_agent::cli;
 use guest_agent::complete;
+use guest_agent::control;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
@@ -77,6 +78,7 @@ async fn run() -> i32 {
 
     let masker = Arc::new(masker::SecretMasker::from_env());
     let shutdown = CancellationToken::new();
+    let control_handle = control::ControlHandle::spawn(shutdown.clone());
     let start = Instant::now();
 
     log_info!(LOG_TAG, "Working directory: {}", env::working_dir());
@@ -112,6 +114,9 @@ async fn run() -> i32 {
     // Stop all background processes. Telemetry uses its own command
     // channel; `shutdown` only covers heartbeat/metrics.
     shutdown.cancel();
+    if let Some(control_handle) = control_handle {
+        control_handle.join();
+    }
     let _ = metrics_handle.await;
     telemetry.shutdown().await;
     log_info!(LOG_TAG, "Background processes stopped");

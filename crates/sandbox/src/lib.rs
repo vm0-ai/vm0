@@ -42,6 +42,7 @@ pub use snapshot::{
 };
 pub use types::{
     CopyFileOptions, CopyFileResult, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_7_MIB,
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, GuestProcessHandle,
-    ProcessExit, SpawnProcessOutputMode, SpawnProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, GuestProcessControlHandle,
+    GuestProcessHandle, ProcessControlAck, ProcessExit, SpawnProcessControl,
+    SpawnProcessOutputMode, SpawnProcessRequest,
 };

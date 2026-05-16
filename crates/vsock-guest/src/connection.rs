@@ -277,15 +277,29 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 else {
                     continue;
                 };
-                let process_control_guard = match process_control_registry
-                    .register(msg.seq, d.control_nonce)
-                {
-                    Ok(guard) => Some(guard),
-                    Err(()) => {
+                let process_control_registration = match process_control_registry.register(
+                    msg.seq,
+                    d.control_nonce,
+                    d.control_sink,
+                ) {
+                    Ok(registration) => registration,
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                         send_error_response(msg.seq, "process operation already active", &writer)?;
                         continue;
                     }
+                    Err(error) => {
+                        send_error_response(
+                            msg.seq,
+                            &format!("process control setup failed: {error}"),
+                            &writer,
+                        )?;
+                        continue;
+                    }
                 };
+                let (process_control_guard, process_control_bootstrap_endpoint) = (
+                    Some(process_control_registration.guard),
+                    process_control_registration.bootstrap_endpoint,
+                );
                 // handle_spawn_process writes the response itself (before
                 // spawning the streaming thread) to prevent a race where
                 // stdout chunks could arrive at the host before the result.
@@ -298,6 +312,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         stream_stdout: d.stream_stdout,
                         stdout_log_path: d.stdout_log_path,
                         process_control_guard,
+                        process_control_bootstrap_endpoint,
                     },
                     msg.seq,
                     operation_guard,

@@ -881,6 +881,7 @@ impl Sandbox for MockSandbox {
         Ok(GuestProcessHandle::new(
             1,
             request.output.streams_stdout().then_some(rx),
+            None,
             Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
         ))
     }
@@ -2174,6 +2175,7 @@ mod tests {
                 env: &[],
                 sudo: false,
                 output: SpawnProcessOutputMode::Buffered,
+                control: SpawnProcessControl::None,
             })
             .await
             .unwrap();
@@ -2188,6 +2190,7 @@ mod tests {
                 output: SpawnProcessOutputMode::Stream {
                     guest_log_path: None,
                 },
+                control: SpawnProcessControl::None,
             })
             .await
             .unwrap();
@@ -2202,6 +2205,7 @@ mod tests {
                 output: SpawnProcessOutputMode::Stream {
                     guest_log_path: Some("/tmp/guest.log"),
                 },
+                control: SpawnProcessControl::None,
             })
             .await
             .unwrap();
@@ -2238,6 +2242,7 @@ mod tests {
                 env: &[],
                 sudo: false,
                 output: SpawnProcessOutputMode::Buffered,
+                control: SpawnProcessControl::None,
             })
             .await
             .unwrap();
@@ -2268,6 +2273,7 @@ mod tests {
         let handle = GuestProcessHandle::new(
             1,
             Some(stdout_rx),
+            None,
             Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
         );
 

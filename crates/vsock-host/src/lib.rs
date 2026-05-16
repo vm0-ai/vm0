@@ -937,12 +937,41 @@ impl VsockHost {
     ) -> io::Result<GuestProcessHandle> {
         process::spawn_process_on_shared(
             &self.shared,
-            command,
-            timeout_ms,
-            env,
-            sudo,
-            stream_stdout,
-            stdout_log_path,
+            process::SpawnProcessOnSharedRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+                control_sink: false,
+            },
+        )
+        .await
+    }
+
+    /// Spawn a process with an operation-bound control sink available to the
+    /// guest process.
+    pub async fn spawn_process_with_control_sink(
+        &self,
+        command: &str,
+        timeout_ms: u32,
+        env: &[(&str, &str)],
+        sudo: bool,
+        stream_stdout: bool,
+        stdout_log_path: Option<&str>,
+    ) -> io::Result<GuestProcessHandle> {
+        process::spawn_process_on_shared(
+            &self.shared,
+            process::SpawnProcessOnSharedRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+                control_sink: true,
+            },
         )
         .await
     }

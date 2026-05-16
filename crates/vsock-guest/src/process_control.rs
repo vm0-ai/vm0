@@ -1,12 +1,23 @@
 use std::collections::HashMap;
 use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
 
+use guest_control::{ControlRequest, ControlResponseStatus};
 use vsock_proto::{MSG_PROCESS_CONTROL_RESULT, ProcessControlNonce, ProcessControlStatus};
 
 use crate::error::to_io_error;
+use crate::log::log;
 use crate::writer::GuestWriter;
+
+const THREAD_PROCESS_CONTROL_ACCEPT: &str = "vsock-process-control-accept";
+const THREAD_PROCESS_CONTROL_FORWARD: &str = "vsock-process-control-forward";
+const CONTROL_ACCEPT_TIMEOUT: Duration = Duration::from_secs(30);
+const CONTROL_IO_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_PENDING_CONTROL_REQUESTS: usize = 8;
 
 #[derive(Clone, Default)]
 pub(crate) struct ProcessControlRegistry {
@@ -19,7 +30,15 @@ pub(crate) struct ProcessControlRegistry {
 /// duplicate spawn requests cannot run concurrently under the same routing key.
 enum ProcessControlEntry {
     NoControl,
-    WithNonce(ProcessControlNonce),
+    WithNonce {
+        nonce: ProcessControlNonce,
+        sink: Option<Arc<ControlSinkState>>,
+    },
+}
+
+pub(crate) struct ProcessControlRegistration {
+    pub(crate) guard: ProcessControlGuard,
+    pub(crate) bootstrap_endpoint: Option<String>,
 }
 
 pub(crate) struct ProcessControlGuard {
@@ -28,33 +47,88 @@ pub(crate) struct ProcessControlGuard {
     released: AtomicBool,
 }
 
+struct ControlSinkState {
+    inner: Mutex<ControlSinkInner>,
+    active: AtomicBool,
+    pending: AtomicUsize,
+}
+
+enum ControlSinkInner {
+    Waiting,
+    Connected(Arc<Mutex<UnixStream>>),
+    Failed(String),
+    Closed,
+}
+
+struct OwnedProcessControlRequest {
+    response_seq: u32,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: String,
+    payload: Vec<u8>,
+}
+
 impl ProcessControlRegistry {
     pub(crate) fn register(
         &self,
         seq: u32,
         control_nonce: Option<ProcessControlNonce>,
-    ) -> Result<ProcessControlGuard, ()> {
+        control_sink: bool,
+    ) -> io::Result<ProcessControlRegistration> {
+        let (entry, bootstrap_endpoint) = match control_nonce {
+            Some(nonce) if control_sink => {
+                let endpoint = guest_control::endpoint_name(seq, &nonce);
+                let listener = guest_control::bind_abstract_listener(&endpoint)?;
+                let sink = Arc::new(ControlSinkState::new());
+                let accept_sink = Arc::clone(&sink);
+                thread::Builder::new()
+                    .name(THREAD_PROCESS_CONTROL_ACCEPT.to_owned())
+                    .spawn(move || accept_control_sink(listener, accept_sink))?;
+                (
+                    ProcessControlEntry::WithNonce {
+                        nonce,
+                        sink: Some(sink),
+                    },
+                    Some(endpoint),
+                )
+            }
+            Some(nonce) => (ProcessControlEntry::WithNonce { nonce, sink: None }, None),
+            None => (ProcessControlEntry::NoControl, None),
+        };
+
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
-            return Err(());
+            if let ProcessControlEntry::WithNonce {
+                sink: Some(sink), ..
+            } = &entry
+            {
+                sink.close();
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "process operation already active",
+            ));
         }
-        let entry = match control_nonce {
-            Some(nonce) => ProcessControlEntry::WithNonce(nonce),
-            None => ProcessControlEntry::NoControl,
-        };
         active.insert(seq, entry);
-        Ok(ProcessControlGuard {
-            registry: self.clone(),
-            seq,
-            released: AtomicBool::new(false),
+        Ok(ProcessControlRegistration {
+            guard: ProcessControlGuard {
+                registry: self.clone(),
+                seq,
+                released: AtomicBool::new(false),
+            },
+            bootstrap_endpoint,
         })
     }
 
     fn remove(&self, seq: u32) {
-        self.inner
+        let entry = self
+            .inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&seq);
+        if let Some(entry) = entry {
+            entry.close();
+        }
     }
 
     #[cfg(test)]
@@ -65,34 +139,63 @@ impl ProcessControlRegistry {
             .contains_key(&seq)
     }
 
-    fn status_for(
+    #[cfg(test)]
+    fn sink_is_connected(&self, seq: u32) -> bool {
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(ProcessControlEntry::WithNonce {
+            sink: Some(sink), ..
+        }) = guard.get(&seq)
+        else {
+            return false;
+        };
+        matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Connected(_)
+        )
+    }
+
+    fn resolve(
         &self,
         target_seq: u32,
         control_nonce: ProcessControlNonce,
-    ) -> (ProcessControlStatus, &'static str) {
+    ) -> Result<Arc<ControlSinkState>, (ProcessControlStatus, &'static str)> {
         let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let Some(entry) = guard.get(&target_seq) else {
-            return (
+            return Err((
                 ProcessControlStatus::Inactive,
                 "process operation is not active",
-            );
+            ));
         };
-        let ProcessControlEntry::WithNonce(expected_nonce) = entry else {
-            return (
+        let ProcessControlEntry::WithNonce { nonce, sink } = entry else {
+            return Err((
                 ProcessControlStatus::Inactive,
                 "process operation is not active",
-            );
+            ));
         };
-        if *expected_nonce != control_nonce {
-            return (
+        if *nonce != control_nonce {
+            return Err((
                 ProcessControlStatus::NonceMismatch,
                 "process operation nonce mismatch",
-            );
+            ));
         }
-        (
-            ProcessControlStatus::Unsupported,
-            "process control sink is not configured",
-        )
+        let Some(sink) = sink else {
+            return Err((
+                ProcessControlStatus::Unsupported,
+                "process control sink is not configured",
+            ));
+        };
+        Ok(Arc::clone(sink))
+    }
+}
+
+impl ProcessControlEntry {
+    fn close(self) {
+        if let ProcessControlEntry::WithNonce {
+            sink: Some(sink), ..
+        } = self
+        {
+            sink.close();
+        }
     }
 }
 
@@ -112,6 +215,244 @@ impl Drop for ProcessControlGuard {
     }
 }
 
+impl ControlSinkState {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(ControlSinkInner::Waiting),
+            active: AtomicBool::new(true),
+            pending: AtomicUsize::new(0),
+        }
+    }
+
+    fn connect(&self, stream: UnixStream) {
+        if !self.active.load(Ordering::Acquire) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+            return;
+        }
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if !self.active.load(Ordering::Acquire) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+            *guard = ControlSinkInner::Closed;
+            return;
+        }
+        *guard = ControlSinkInner::Connected(Arc::new(Mutex::new(stream)));
+    }
+
+    fn fail(&self, message: String) {
+        if !self.active.load(Ordering::Acquire) {
+            return;
+        }
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if let ControlSinkInner::Connected(stream) = &*guard {
+            let stream = stream.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+        if !matches!(*guard, ControlSinkInner::Closed) {
+            *guard = ControlSinkInner::Failed(message);
+        }
+    }
+
+    fn close(&self) {
+        self.active.store(false, Ordering::Release);
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if let ControlSinkInner::Connected(stream) = &*guard {
+            let stream = stream.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+        *guard = ControlSinkInner::Closed;
+    }
+
+    fn try_forward(
+        self: &Arc<Self>,
+        request: OwnedProcessControlRequest,
+        writer: GuestWriter,
+    ) -> Option<(ProcessControlStatus, String)> {
+        if !self.active.load(Ordering::Acquire) {
+            return Some((
+                ProcessControlStatus::Inactive,
+                "process operation is not active".to_owned(),
+            ));
+        }
+
+        let stream = {
+            let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            match &*guard {
+                ControlSinkInner::Connected(stream) => Arc::clone(stream),
+                ControlSinkInner::Waiting => {
+                    return Some((
+                        ProcessControlStatus::SinkUnavailable,
+                        "process control sink is not connected".to_owned(),
+                    ));
+                }
+                ControlSinkInner::Failed(message) => {
+                    return Some((ProcessControlStatus::SinkError, message.clone()));
+                }
+                ControlSinkInner::Closed => {
+                    return Some((
+                        ProcessControlStatus::Inactive,
+                        "process operation is not active".to_owned(),
+                    ));
+                }
+            }
+        };
+
+        let previous = self.pending.fetch_add(1, Ordering::AcqRel);
+        if previous >= MAX_PENDING_CONTROL_REQUESTS {
+            self.pending.fetch_sub(1, Ordering::AcqRel);
+            return Some((
+                ProcessControlStatus::QueueFull,
+                "process control queue is full".to_owned(),
+            ));
+        }
+
+        let sink = Arc::clone(self);
+        match thread::Builder::new()
+            .name(THREAD_PROCESS_CONTROL_FORWARD.to_owned())
+            .spawn(move || forward_control_request(sink, stream, request, writer))
+        {
+            Ok(_) => None,
+            Err(error) => {
+                self.pending.fetch_sub(1, Ordering::AcqRel);
+                Some((
+                    ProcessControlStatus::SinkError,
+                    format!("failed to start process control worker: {error}"),
+                ))
+            }
+        }
+    }
+}
+
+fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<ControlSinkState>) {
+    let deadline = Instant::now()
+        .checked_add(CONTROL_ACCEPT_TIMEOUT)
+        .unwrap_or_else(Instant::now);
+    let result = loop {
+        if !sink.active.load(Ordering::Acquire) {
+            return;
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            break Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "control endpoint accept timed out",
+            ));
+        }
+        let poll_timeout = deadline.duration_since(now).min(Duration::from_millis(100));
+        match guest_control::accept_with_timeout(&listener, poll_timeout) {
+            Ok(mut stream) => {
+                break stream
+                    .set_read_timeout(Some(CONTROL_IO_TIMEOUT))
+                    .and_then(|()| stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT)))
+                    .and_then(|()| guest_control::read_hello(&mut stream))
+                    .map(|()| stream);
+            }
+            Err(error) if is_timeout(&error) => continue,
+            Err(error) => break Err(error),
+        }
+    };
+    match result {
+        Ok(stream) => {
+            log(
+                "INFO",
+                "process_control: guest-agent control sink connected",
+            );
+            sink.connect(stream);
+        }
+        Err(error) => {
+            log(
+                "WARN",
+                &format!("process_control: control sink accept failed: {error}"),
+            );
+            sink.fail(error.to_string());
+        }
+    }
+}
+
+fn forward_control_request(
+    sink: Arc<ControlSinkState>,
+    stream: Arc<Mutex<UnixStream>>,
+    request: OwnedProcessControlRequest,
+    writer: GuestWriter,
+) {
+    let (status, diagnostic, mark_failed) = {
+        let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let request_frame = ControlRequest {
+            message_id: request.message_id.clone(),
+            payload: request.payload.clone(),
+        };
+        match guest_control::write_request(&mut stream, &request_frame)
+            .and_then(|()| guest_control::read_response(&mut stream))
+        {
+            Ok(response) if response.message_id != request.message_id => (
+                ProcessControlStatus::SinkError,
+                format!(
+                    "process control sink message id mismatch: expected {}, got {}",
+                    request.message_id, response.message_id
+                ),
+                true,
+            ),
+            Ok(response) => match response.status {
+                ControlResponseStatus::Accepted => {
+                    (ProcessControlStatus::Delivered, response.diagnostic, false)
+                }
+                ControlResponseStatus::Rejected => {
+                    (ProcessControlStatus::Rejected, response.diagnostic, false)
+                }
+                ControlResponseStatus::Error => {
+                    (ProcessControlStatus::SinkError, response.diagnostic, false)
+                }
+            },
+            Err(error) if is_timeout(&error) => {
+                (ProcessControlStatus::SinkTimeout, error.to_string(), false)
+            }
+            Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
+        }
+    };
+
+    sink.pending.fetch_sub(1, Ordering::AcqRel);
+    if mark_failed {
+        sink.fail(diagnostic.clone());
+    }
+
+    let result = writer.write_generated_frame_after_lock(|| {
+        let (status, diagnostic) = if sink.active.load(Ordering::Acquire) {
+            (status, diagnostic.as_str())
+        } else {
+            (
+                ProcessControlStatus::Inactive,
+                "process operation is not active",
+            )
+        };
+        let result_payload = vsock_proto::encode_process_control_result(
+            request.target_seq,
+            request.control_nonce,
+            &request.message_id,
+            status,
+            diagnostic,
+        )
+        .map_err(to_io_error)?;
+        vsock_proto::encode(
+            MSG_PROCESS_CONTROL_RESULT,
+            request.response_seq,
+            &result_payload,
+        )
+        .map_err(to_io_error)
+    });
+    if let Err(error) = result {
+        log(
+            "WARN",
+            &format!("process_control: failed to send control result: {error}"),
+        );
+    }
+}
+
+fn is_timeout(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+    )
+}
+
 pub(crate) fn handle_process_control(
     seq: u32,
     payload: &[u8],
@@ -119,33 +460,62 @@ pub(crate) fn handle_process_control(
     writer: &GuestWriter,
 ) -> io::Result<()> {
     let request = vsock_proto::decode_process_control(payload).map_err(to_io_error)?;
-    writer.write_generated_frame_after_lock(|| {
-        let (status, diagnostic) = registry.status_for(request.target_seq, request.control_nonce);
-        let result_payload = vsock_proto::encode_process_control_result(
-            request.target_seq,
-            request.control_nonce,
-            request.message_id,
-            status,
-            diagnostic,
-        )
-        .map_err(to_io_error)?;
-        vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, seq, &result_payload).map_err(to_io_error)
-    })
+    let owned = OwnedProcessControlRequest {
+        response_seq: seq,
+        target_seq: request.target_seq,
+        control_nonce: request.control_nonce,
+        message_id: request.message_id.to_owned(),
+        payload: request.payload.to_vec(),
+    };
+
+    let immediate = match registry.resolve(owned.target_seq, owned.control_nonce) {
+        Ok(sink) => sink.try_forward(owned, writer.clone()),
+        Err((status, diagnostic)) => Some((status, diagnostic.to_owned())),
+    };
+
+    if let Some((status, diagnostic)) = immediate {
+        writer.write_generated_frame_after_lock(|| {
+            let result_payload = vsock_proto::encode_process_control_result(
+                request.target_seq,
+                request.control_nonce,
+                request.message_id,
+                status,
+                &diagnostic,
+            )
+            .map_err(to_io_error)?;
+            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, seq, &result_payload)
+                .map_err(to_io_error)
+        })?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     const NONCE: ProcessControlNonce = *b"0123456789abcdef";
+
+    fn resolve_error(
+        registry: &ProcessControlRegistry,
+        target_seq: u32,
+        nonce: ProcessControlNonce,
+    ) -> (ProcessControlStatus, &'static str) {
+        match registry.resolve(target_seq, nonce) {
+            Ok(_) => panic!("expected process control resolve to fail"),
+            Err(error) => error,
+        }
+    }
 
     #[test]
     fn registered_operation_rejects_nonce_mismatch() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, Some(NONCE)).unwrap();
+        let _registration = registry.register(7, Some(NONCE), false).unwrap();
         let wrong_nonce = *b"fedcba9876543210";
 
-        let (status, diagnostic) = registry.status_for(7, wrong_nonce);
+        let (status, diagnostic) = resolve_error(&registry, 7, wrong_nonce);
 
         assert_eq!(status, ProcessControlStatus::NonceMismatch);
         assert_eq!(diagnostic, "process operation nonce mismatch");
@@ -154,21 +524,21 @@ mod tests {
     #[test]
     fn released_operation_is_inactive() {
         let registry = ProcessControlRegistry::default();
-        let guard = registry.register(7, Some(NONCE)).unwrap();
+        let registration = registry.register(7, Some(NONCE), false).unwrap();
 
-        guard.release();
-        let (status, diagnostic) = registry.status_for(7, NONCE);
+        registration.guard.release();
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
 
         assert_eq!(status, ProcessControlStatus::Inactive);
         assert_eq!(diagnostic, "process operation is not active");
     }
 
     #[test]
-    fn valid_operation_is_currently_unsupported_until_sink_is_wired() {
+    fn valid_operation_without_sink_is_unsupported() {
         let registry = ProcessControlRegistry::default();
-        let _guard = registry.register(7, Some(NONCE)).unwrap();
+        let _registration = registry.register(7, Some(NONCE), false).unwrap();
 
-        let (status, diagnostic) = registry.status_for(7, NONCE);
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
 
         assert_eq!(status, ProcessControlStatus::Unsupported);
         assert_eq!(diagnostic, "process control sink is not configured");
@@ -177,28 +547,101 @@ mod tests {
     #[test]
     fn duplicate_active_sequence_is_rejected_until_guard_releases() {
         let registry = ProcessControlRegistry::default();
-        let first = registry.register(7, Some(NONCE)).unwrap();
+        let first = registry.register(7, Some(NONCE), false).unwrap();
 
-        assert!(registry.register(7, Some(*b"fedcba9876543210")).is_err());
-        let (status, diagnostic) = registry.status_for(7, NONCE);
+        assert!(
+            registry
+                .register(7, Some(*b"fedcba9876543210"), false)
+                .is_err()
+        );
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
         assert_eq!(status, ProcessControlStatus::Unsupported);
         assert_eq!(diagnostic, "process control sink is not configured");
 
-        first.release();
-        assert!(registry.register(7, None).is_ok());
+        first.guard.release();
+        assert!(registry.register(7, None, false).is_ok());
     }
 
     #[test]
     fn operation_without_control_nonce_still_reserves_sequence() {
         let registry = ProcessControlRegistry::default();
-        let guard = registry.register(7, None).unwrap();
+        let registration = registry.register(7, None, false).unwrap();
 
-        assert!(registry.register(7, Some(NONCE)).is_err());
-        let (status, diagnostic) = registry.status_for(7, NONCE);
+        assert!(registry.register(7, Some(NONCE), false).is_err());
+        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
         assert_eq!(status, ProcessControlStatus::Inactive);
         assert_eq!(diagnostic, "process operation is not active");
 
-        drop(guard);
-        assert!(registry.register(7, Some(NONCE)).is_ok());
+        drop(registration);
+        assert!(registry.register(7, Some(NONCE), false).is_ok());
+    }
+
+    #[test]
+    fn control_sink_registration_exports_bootstrap_endpoint() {
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(7, Some(NONCE), true).unwrap();
+
+        assert!(registration.bootstrap_endpoint.is_some());
+        assert!(registry.resolve(7, NONCE).is_ok());
+    }
+
+    #[test]
+    fn handle_process_control_forwards_to_connected_sink() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"fedcba9876543210";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(8, Some(FORWARD_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let client = std::thread::spawn(move || {
+            let mut stream = guest_control::connect_abstract(&endpoint).unwrap();
+            guest_control::write_hello(&mut stream).unwrap();
+            let request = guest_control::read_request(&mut stream).unwrap();
+            assert_eq!(request.message_id, "msg-1");
+            assert_eq!(request.payload, b"payload");
+            guest_control::write_response(
+                &mut stream,
+                &guest_control::ControlResponse {
+                    message_id: request.message_id,
+                    status: guest_control::ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap();
+        });
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !registry.sink_is_connected(8) {
+            assert!(
+                Instant::now() < deadline,
+                "control sink should connect before forwarding"
+            );
+            std::thread::yield_now();
+        }
+
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_process_control(8, FORWARD_NONCE, "msg-1", b"payload").unwrap();
+
+        handle_process_control(11, &payload, &registry, &writer).unwrap();
+
+        let mut hdr = [0u8; 4];
+        host.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        host.read_exact(&mut body).unwrap();
+        let mut full = Vec::with_capacity(4 + body_len);
+        full.extend_from_slice(&hdr);
+        full.extend_from_slice(&body);
+        let mut decoder = vsock_proto::Decoder::new();
+        let messages = decoder.decode(&full).unwrap();
+        assert_eq!(messages.len(), 1);
+        let result = vsock_proto::decode_process_control_result(&messages[0].payload).unwrap();
+        assert_eq!(messages[0].msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(messages[0].seq, 11);
+        assert_eq!(result.status, ProcessControlStatus::Delivered);
+        assert_eq!(result.message_id, "msg-1");
+
+        client.join().unwrap();
     }
 }

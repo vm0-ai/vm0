@@ -22,7 +22,7 @@
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x04 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x05 | H→G       | spawn_process     | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([16B control_nonce])([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`, `CONTROL_NONCE=0x04`) |
+//! | 0x05 | H→G       | spawn_process     | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([16B control_nonce])([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`, `CONTROL_NONCE=0x04`, `CONTROL_SINK=0x08`) |
 //! | 0x06 | G→H       | spawn_process_result | `[4B pid]` |
 //! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
 //! | 0x08 | H→G       | shutdown          | (empty) |
@@ -48,7 +48,8 @@
 //! `exec_start.expected_exit_count` may be zero, but the count field is
 //! always present.
 //! `process_control_result.status` uses 0=delivered, 1=inactive,
-//! 2=nonce_mismatch, and 3=unsupported.
+//! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
+//! 6=sink_timeout, 7=queue_full, and 8=sink_error.
 
 mod error;
 mod frame;
@@ -78,6 +79,7 @@ pub use payloads::process_control::{
 pub use payloads::spawn_process::{
     DecodedSpawnProcess, decode_spawn_process, decode_spawn_process_result, encode_spawn_process,
     encode_spawn_process_result, encode_spawn_process_with_control_nonce,
+    encode_spawn_process_with_control_sink,
 };
 pub use payloads::write_file::{
     decode_write_file, decode_write_file_result, encode_write_file, encode_write_file_result,
@@ -89,6 +91,7 @@ pub use wire::{
     MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
     MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS,
     MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO,
-    VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
+    SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_CONTROL_SINK,
+    SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
+    WRITE_FILE_FLAG_SUDO,
 };

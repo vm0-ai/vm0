@@ -77,6 +77,7 @@ pub(crate) struct SpawnProcessRequest<'a> {
     pub(crate) stream_stdout: bool,
     pub(crate) stdout_log_path: Option<&'a str>,
     pub(crate) process_control_guard: Option<ProcessControlGuard>,
+    pub(crate) process_control_bootstrap_endpoint: Option<String>,
 }
 
 type ProcessControlGuardSlot = Arc<Mutex<Option<ProcessControlGuard>>>;
@@ -142,6 +143,7 @@ where
         stream_stdout,
         stdout_log_path,
         process_control_guard,
+        process_control_bootstrap_endpoint,
     } = request;
 
     log(
@@ -156,7 +158,17 @@ where
         ),
     );
 
-    let spawned = match spawn_shell_command_with_pipes(command, env, sudo) {
+    let mut env_with_control;
+    let effective_env = if let Some(endpoint) = process_control_bootstrap_endpoint.as_deref() {
+        env_with_control = Vec::with_capacity(env.len() + 1);
+        env_with_control.extend_from_slice(env);
+        env_with_control.push((guest_control::BOOTSTRAP_ENV, endpoint));
+        env_with_control.as_slice()
+    } else {
+        env
+    };
+
+    let spawned = match spawn_shell_command_with_pipes(command, effective_env, sudo) {
         Ok(c) => c,
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!(
@@ -736,8 +748,8 @@ mod tests {
         const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
 
         let registry = ProcessControlRegistry::default();
-        let guard_slot =
-            new_process_control_guard_slot(Some(registry.register(7, Some(NONCE)).unwrap()));
+        let registration = registry.register(7, Some(NONCE), false).unwrap();
+        let guard_slot = new_process_control_guard_slot(Some(registration.guard));
         let task_guard_slot = guard_slot.clone();
 
         let result = FailingThreadSpawner::fail_once("test-monitor").spawn_unit(
@@ -803,6 +815,7 @@ mod tests {
                 stream_stdout: true,
                 stdout_log_path: None,
                 process_control_guard: None,
+                process_control_bootstrap_endpoint: None,
             },
             7,
             operation_guard(),
@@ -849,6 +862,7 @@ mod tests {
                 stream_stdout: true,
                 stdout_log_path: None,
                 process_control_guard: None,
+                process_control_bootstrap_endpoint: None,
             },
             8,
             operation_guard(),
@@ -895,6 +909,7 @@ mod tests {
                 stream_stdout: true,
                 stdout_log_path: None,
                 process_control_guard: None,
+                process_control_bootstrap_endpoint: None,
             },
             10,
             operation_guard(),
@@ -941,6 +956,7 @@ mod tests {
                 stream_stdout: false,
                 stdout_log_path: None,
                 process_control_guard: None,
+                process_control_bootstrap_endpoint: None,
             },
             9,
             operation_guard(),
@@ -987,6 +1003,7 @@ mod tests {
                 stream_stdout: false,
                 stdout_log_path: None,
                 process_control_guard: None,
+                process_control_bootstrap_endpoint: None,
             },
             11,
             operation_guard(),

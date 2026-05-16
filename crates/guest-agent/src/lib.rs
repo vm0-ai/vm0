@@ -7,6 +7,7 @@ mod codex_auth;
 pub mod complete;
 mod constants;
 mod content_hash;
+pub mod control;
 pub mod env;
 pub mod error;
 pub mod events;

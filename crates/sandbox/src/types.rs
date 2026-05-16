@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Capture budgets for stdout/stderr returned by [`ExecRequest`].
@@ -70,6 +71,8 @@ pub struct SpawnProcessRequest<'a> {
     pub sudo: bool,
     /// Buffered or streamed stdout behavior.
     pub output: SpawnProcessOutputMode<'a>,
+    /// Optional operation-bound control sink requested for the spawned process.
+    pub control: SpawnProcessControl,
 }
 
 impl SpawnProcessRequest<'_> {
@@ -135,6 +138,45 @@ pub struct CopyFileResult {
 pub type GuestProcessExitFuture =
     Pin<Box<dyn Future<Output = std::io::Result<ProcessExit>> + Send + 'static>>;
 
+/// Backend-owned future that resolves when a process-control message is acknowledged.
+pub type GuestProcessControlFuture =
+    Pin<Box<dyn Future<Output = std::io::Result<ProcessControlAck>> + Send + 'static>>;
+
+type GuestProcessControlFn =
+    dyn Fn(String, Vec<u8>, Duration) -> GuestProcessControlFuture + Send + Sync + 'static;
+
+/// Acknowledgement returned by an operation-bound process-control sink.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ProcessControlAck {
+    pub message_id: String,
+}
+
+/// Cloneable handle for sending opaque control payloads to a live guest process.
+#[derive(Clone)]
+pub struct GuestProcessControlHandle {
+    control: Arc<GuestProcessControlFn>,
+}
+
+impl GuestProcessControlHandle {
+    pub fn new<F>(control: F) -> Self
+    where
+        F: Fn(String, Vec<u8>, Duration) -> GuestProcessControlFuture + Send + Sync + 'static,
+    {
+        Self {
+            control: Arc::new(control),
+        }
+    }
+
+    pub async fn control(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> std::io::Result<ProcessControlAck> {
+        (self.control)(message_id.to_owned(), payload.to_vec(), timeout).await
+    }
+}
+
 /// Handle returned by [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
 ///
 /// The handle owns backend-specific exit state and must be consumed by
@@ -146,6 +188,7 @@ pub struct GuestProcessHandle {
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
     pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+    control: Option<GuestProcessControlHandle>,
     exit: Option<GuestProcessExitFuture>,
 }
 
@@ -154,13 +197,21 @@ impl GuestProcessHandle {
     pub fn new(
         pid: u32,
         stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+        control: Option<GuestProcessControlHandle>,
         exit: GuestProcessExitFuture,
     ) -> Self {
         Self {
             pid,
             stdout_rx,
+            control,
             exit: Some(exit),
         }
+    }
+
+    /// Return a cloneable control handle when this process was spawned with a
+    /// control sink.
+    pub fn control_handle(&self) -> Option<GuestProcessControlHandle> {
+        self.control.clone()
     }
 
     /// Consume the backend exit future.
@@ -177,6 +228,12 @@ impl GuestProcessHandle {
 pub enum SpawnProcessOutputMode<'a> {
     Buffered,
     Stream { guest_log_path: Option<&'a str> },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpawnProcessControl {
+    None,
+    GuestAgent,
 }
 
 impl<'a> SpawnProcessOutputMode<'a> {
