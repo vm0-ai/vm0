@@ -5,7 +5,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { VOLUME_ORG_USER_ID } from "@vm0/core";
+import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";

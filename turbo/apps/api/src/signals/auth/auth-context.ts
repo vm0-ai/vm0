@@ -9,7 +9,7 @@ import {
   verifyZeroToken,
 } from "./tokens";
 import { clerkSessionAuth$ } from "./clerk-session";
-import { ZeroCapability } from "@vm0/api-contracts";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { AuthContext, CliAuth, ZeroAuthContext } from "../../types/auth";
 import {
   cliTokenRecord,

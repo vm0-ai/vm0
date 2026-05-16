@@ -51,9 +51,9 @@ import {
 } from "@vm0/api-contracts/contracts/runs";
 import {
   isSupportedFramework,
-  MOUNT_PATH_TEMPLATE,
   type SupportedFramework,
-} from "@vm0/core";
+} from "@vm0/core/frameworks";
+import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,

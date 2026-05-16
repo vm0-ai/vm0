@@ -1,4 +1,4 @@
-import { ZeroCapability } from "@vm0/api-contracts";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
 export type ApiOrgRole = "admin" | "member";
 

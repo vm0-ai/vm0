@@ -1,15 +1,17 @@
 import { gzipSync } from "node:zlib";
 
 import type { StorageManifest } from "@vm0/api-contracts/contracts/runners";
+import { expandVariablesInString } from "@vm0/core/variable-expander";
 import {
-  expandVariablesInString,
   getInstructionsFilename,
-  getInstructionsStorageName,
-  MIN_VERSION_PREFIX_LENGTH,
-  SYSTEM_ORG_ID,
   type SupportedFramework,
+} from "@vm0/core/frameworks";
+import {
+  getInstructionsStorageName,
+  SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
-} from "@vm0/core";
+} from "@vm0/core/storage-names";
+import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import type { Getter } from "ccstate";
 import { and, eq, like } from "drizzle-orm";
