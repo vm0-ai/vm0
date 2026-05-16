@@ -418,6 +418,22 @@ describe("POST /api/zero/runs", () => {
     expect(run?.appendSystemPrompt).toContain("# Agent Identity");
     expect(run?.appendSystemPrompt).toContain("Your name is Research Bot.");
     expect(run?.appendSystemPrompt).toContain("# Agent Tools");
+    for (const toolHint of [
+      "zero web download-file -h",
+      "zero slack download-file -h",
+      "zero telegram download-file -h",
+      "zero phone download-file -h",
+      "zero connector status <type>",
+      "zero doctor check-connector --help",
+      "zero doctor generate -h",
+      "zero doctor permission-deny --help",
+      "zero doctor permission-change --help",
+      "zero skill --help",
+      "zero chat message send --help",
+      "zero developer-support --help",
+    ]) {
+      expect(run?.appendSystemPrompt).toContain(toolHint);
+    }
     expect(run?.appendSystemPrompt).toContain("# Current User Info");
     expect(run?.appendSystemPrompt).toContain("Name: Test User");
     expect(run?.appendSystemPrompt).toContain("Timezone: America/Los_Angeles");

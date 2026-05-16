@@ -726,12 +726,17 @@ describe("POST /api/zero/chat/messages", () => {
 
     const [run] = await store
       .set(writeDb$)
-      .select({ prompt: agentRuns.prompt })
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
       .from(agentRuns)
       .where(eq(agentRuns.id, response.body.runId!))
       .limit(1);
     expect(run?.prompt).toContain("[Web file] notes.txt (text/plain)");
     expect(run?.prompt).toContain(`[ID] ${fileId}`);
+    expect(run?.appendSystemPrompt).toContain("zero web download-file -h");
+    expect(run?.appendSystemPrompt).toContain("zero web upload-file -h");
 
     const message = await firstUserMessage(response.body.threadId);
     expect(message?.content).toBe("read this file");
