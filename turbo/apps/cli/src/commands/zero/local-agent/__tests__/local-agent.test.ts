@@ -21,6 +21,15 @@ describe("local-agent command registration", () => {
     expect(subNames).not.toContain("connect");
     expect(subNames).not.toContain("host");
     expect(subNames).not.toContain("kill");
+
+    const start = localAgent!.commands.find((command) => {
+      return command.name() === "start";
+    });
+    expect(
+      start?.options.some((option) => {
+        return option.long === "--claude-arg";
+      }),
+    ).toBe(true);
   });
 
   it("registers list and run under zero", () => {

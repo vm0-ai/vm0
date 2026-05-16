@@ -42,6 +42,7 @@ interface HostStartOptions {
   name?: string;
   workdir?: string;
   backend?: string;
+  claudeArg?: string[];
   permissionMode?: string;
   hostId?: string;
   new?: boolean;
@@ -679,6 +680,7 @@ async function runHostLoop(params: {
   hostToken: string;
   hostName: string;
   supportedBackends: LocalAgentBackend[];
+  claudeArgs: string[];
   permissionMode: LocalAgentPermissionMode;
   workdir: string;
 }): Promise<void> {
@@ -769,6 +771,7 @@ async function runHostLoop(params: {
         backend: nextJob.job.backend,
         prompt: nextJob.job.prompt,
         workdir: params.workdir,
+        claudeArgs: params.claudeArgs,
         permissionMode: params.permissionMode,
       });
 
@@ -798,6 +801,14 @@ export const startCommand = new Command()
   .option("--name <name>", "New host name, or a closed host name to reactivate")
   .option("--workdir <path>", "Working directory for Codex/Claude jobs")
   .option("--backend <backend>", "codex or claude-code for a new host")
+  .option(
+    "--claude-arg <arg>",
+    "Additional argument to pass to Claude Code jobs",
+    (value: string, previous: string[]) => {
+      return [...previous, value];
+    },
+    [] as string[],
+  )
   .option("--permission-mode <mode>", "Permission mode for Codex/Claude jobs")
   .option(
     "--host-id <id>",
@@ -808,6 +819,7 @@ export const startCommand = new Command()
     withErrorHandler(async (options: HostStartOptions) => {
       const requestedHostName = options.name?.trim();
       const workdir = options.workdir?.trim() || process.cwd();
+      const claudeArgs = options.claudeArg ?? [];
       const savedHost = await getLocalAgentHost();
       const selection = await chooseHostForStart({
         requestedHostName,
@@ -835,6 +847,9 @@ export const startCommand = new Command()
             requestedBackend: options.backend,
           })
         : await chooseBackend(probes, options.backend);
+      if (claudeArgs.length > 0 && selectedBackend !== "claude-code") {
+        throw new Error("--claude-arg can only be used with Claude Code jobs");
+      }
       const permissionMode = selection.restoredHost
         ? chooseRestoredPermissionMode({
             backend: selectedBackend,
@@ -882,6 +897,7 @@ export const startCommand = new Command()
         hostToken: started.hostToken,
         hostName: selection.hostName,
         supportedBackends,
+        claudeArgs,
         permissionMode,
         workdir,
       });

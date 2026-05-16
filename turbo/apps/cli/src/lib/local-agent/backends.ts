@@ -137,11 +137,17 @@ function executionCommand(
   backend: LocalAgentBackend,
   prompt: string,
   permissionMode: LocalAgentPermissionMode,
+  claudeArgs: readonly string[] = [],
 ): { command: string; args: string[] } {
   if (backend === "claude-code") {
     return {
       command: "claude",
-      args: ["-p", ...claudePermissionArgs(permissionMode), prompt],
+      args: [
+        "-p",
+        ...claudePermissionArgs(permissionMode),
+        ...claudeArgs,
+        prompt,
+      ],
     };
   }
   return {
@@ -162,12 +168,14 @@ export async function executeLocalAgentBackend(params: {
   backend: LocalAgentBackend;
   prompt: string;
   workdir: string;
+  claudeArgs?: readonly string[];
   permissionMode: LocalAgentPermissionMode;
 }): Promise<LocalAgentExecutionResult> {
   const { command, args } = executionCommand(
     params.backend,
     params.prompt,
     params.permissionMode,
+    params.claudeArgs,
   );
 
   return new Promise((resolve) => {
