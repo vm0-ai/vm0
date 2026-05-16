@@ -880,13 +880,16 @@ describe("POST /api/v1/chat-threads/messages", () => {
       .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(eq(agentRuns.id, message.runId))
       .limit(1);
-    expect(run).toStrictEqual({
+    expect(run).toMatchObject({
       prompt: "hello from v1",
-      appendSystemPrompt:
-        "# Current Integration\nYou are currently running inside: Web\n\nYou are communicating with the user through the web chat UI.",
       triggerSource: "web",
       chatThreadId: response.body.threadId,
     });
+    expect(run?.appendSystemPrompt).toContain("# Agent Tools");
+    expect(run?.appendSystemPrompt).toContain("# Current User Info");
+    expect(run?.appendSystemPrompt).toContain(
+      "# Current Integration\nYou are currently running inside: Web\n\nYou are communicating with the user through the web chat UI.",
+    );
 
     const [callback] = await writeDb
       .select({
