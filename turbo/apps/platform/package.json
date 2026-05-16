@@ -54,10 +54,10 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.59.2",
-    "@typescript-eslint/utils": "^8.59.2",
+    "@typescript-eslint/rule-tester": "^8.59.3",
+    "@typescript-eslint/utils": "^8.59.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vitest/browser-playwright": "4.1.5",
+    "@vitest/browser-playwright": "4.1.6",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
     "eslint-plugin-react": "^7.37.5",
@@ -70,8 +70,8 @@
     "playwright": "1.59.1",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.59.2",
+    "typescript-eslint": "^8.59.3",
     "vite": "^8.0.0",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }

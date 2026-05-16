@@ -13,8 +13,8 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1045.0",
-    "@aws-sdk/s3-request-presigner": "^3.1045.0",
+    "@aws-sdk/client-s3": "^3.1048.0",
+    "@aws-sdk/s3-request-presigner": "^3.1048.0",
     "@axiomhq/js": "^1.5.0",
     "@axiomhq/logging": "^0.1.6",
     "@clerk/backend": "^3.4.1",
@@ -29,7 +29,7 @@
     "@t3-oss/env-core": "^0.13.11",
     "@team-plain/typescript-sdk": "^5.12.1",
     "@vercel/functions": "^3.4.4",
-    "@vercel/oidc": "^3.2.1",
+    "@vercel/oidc": "^3.4.1",
     "@vercel/otel": "^2.1.2",
     "@vercel/sandbox": "^1.10.2",
     "@vm0/api-contracts": "workspace:*",
@@ -66,8 +66,8 @@
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
     "@types/web-push": "^3.6.4",
-    "@typescript-eslint/rule-tester": "^8.59.2",
-    "@typescript-eslint/utils": "^8.59.2",
+    "@typescript-eslint/rule-tester": "^8.59.3",
+    "@typescript-eslint/utils": "^8.59.3",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "adm-zip": "^0.5.17",
@@ -78,6 +78,6 @@
     "tsx": "^4.19.0",
     "typescript": "5.9.3",
     "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
