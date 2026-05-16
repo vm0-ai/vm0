@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.54.0](https://github.com/vm0-ai/vm0/compare/api-v1.53.0...api-v1.54.0) (2026-05-16)
+
+
+### Features
+
+* add stripe cli auth browser flow ([#13532](https://github.com/vm0-ai/vm0/issues/13532)) ([0fadd22](https://github.com/vm0-ai/vm0/commit/0fadd226b52d1c7e817a75d47e0e905497d7ddf1))
+* expose model and provider routing commands ([#13519](https://github.com/vm0-ai/vm0/issues/13519)) ([25eaf85](https://github.com/vm0-ai/vm0/commit/25eaf85d1c576ce679c32d1beecbdc470bbf09a0))
+
+
+### Bug Fixes
+
+* align api agent tools prompt ([#13546](https://github.com/vm0-ai/vm0/issues/13546)) ([d78f478](https://github.com/vm0-ai/vm0/commit/d78f478f7bd36e8cd0796677388d761256bb1a73))
+* **api:** target runner dispatch by session affinity ([#13529](https://github.com/vm0-ai/vm0/issues/13529)) ([ff4e263](https://github.com/vm0-ai/vm0/commit/ff4e26333c3736075f1e00014af475f0012e030a))
+* re-resolve chat thread providers ([#13545](https://github.com/vm0-ai/vm0/issues/13545)) ([08b13c8](https://github.com/vm0-ai/vm0/commit/08b13c8d2c7e7c12c650a613b86d3d3d7ec928d4))
+
+
+### Refactoring
+
+* proxy push subscriptions to api ([#13536](https://github.com/vm0-ai/vm0/issues/13536)) ([9fb1698](https://github.com/vm0-ai/vm0/commit/9fb1698d300ff994c60267083e015580a43b854c))
+
+
+### Performance Improvements
+
+* **api:** trim tsc include and enable incremental ([#13540](https://github.com/vm0-ai/vm0/issues/13540)) ([c77764c](https://github.com/vm0-ai/vm0/commit/c77764c3038266818673cca50ed1f8a186f23e67))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.0
+    * @vm0/connectors bumped to 1.14.0
+    * @vm0/core bumped to 8.280.0
+    * @vm0/db bumped to 1.14.5
+
 ## [1.53.0](https://github.com/vm0-ai/vm0/compare/api-v1.52.3...api-v1.53.0) (2026-05-16)
 
 

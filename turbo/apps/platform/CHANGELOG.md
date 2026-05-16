@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.360.0](https://github.com/vm0-ai/vm0/compare/app-v0.359.0...app-v0.360.0) (2026-05-16)
+
+
+### Features
+
+* add stripe cli auth browser flow ([#13532](https://github.com/vm0-ai/vm0/issues/13532)) ([0fadd22](https://github.com/vm0-ai/vm0/commit/0fadd226b52d1c7e817a75d47e0e905497d7ddf1))
+* expose model and provider routing commands ([#13519](https://github.com/vm0-ai/vm0/issues/13519)) ([25eaf85](https://github.com/vm0-ai/vm0/commit/25eaf85d1c576ce679c32d1beecbdc470bbf09a0))
+
+
+### Bug Fixes
+
+* re-resolve chat thread providers ([#13545](https://github.com/vm0-ai/vm0/issues/13545)) ([08b13c8](https://github.com/vm0-ai/vm0/commit/08b13c8d2c7e7c12c650a613b86d3d3d7ec928d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.0
+    * @vm0/connectors bumped to 1.14.0
+    * @vm0/core bumped to 8.280.0
+
 ## [0.359.0](https://github.com/vm0-ai/vm0/compare/app-v0.358.1...app-v0.359.0) (2026-05-16)
 
 

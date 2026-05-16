@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.101.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.5...runner-rs-v0.101.6) (2026-05-16)
+
+
+### Performance Improvements
+
+* **runner:** chunk network log uploads ([#13549](https://github.com/vm0-ai/vm0/issues/13549)) ([ae90576](https://github.com/vm0-ai/vm0/commit/ae90576082ef03efa78d5438af17afa0ce08b1b8))
+
 ## [0.101.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.4...runner-rs-v0.101.5) (2026-05-16)
 
 ## [0.101.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.3...runner-rs-v0.101.4) (2026-05-15)
