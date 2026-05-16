@@ -6,7 +6,7 @@
 
 use std::io::{self, Read, Write};
 use std::mem::{MaybeUninit, size_of};
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant};
 
@@ -59,23 +59,23 @@ pub fn bind_abstract_listener(name: &str) -> io::Result<UnixListener> {
     let addr = abstract_sockaddr(name)?;
     let len = sockaddr_len(name);
     // SAFETY: fd is a valid AF_UNIX socket, addr/len describe a sockaddr_un.
-    let ret = unsafe { libc::bind(fd, &addr as *const _ as *const libc::sockaddr, len) };
+    let ret = unsafe {
+        libc::bind(
+            fd.as_raw_fd(),
+            &addr as *const _ as *const libc::sockaddr,
+            len,
+        )
+    };
     if ret != 0 {
-        let err = io::Error::last_os_error();
-        // SAFETY: fd is owned by this function on this error path.
-        unsafe { libc::close(fd) };
-        return Err(err);
+        return Err(io::Error::last_os_error());
     }
     // SAFETY: fd is a valid bound AF_UNIX socket.
-    let ret = unsafe { libc::listen(fd, 1) };
+    let ret = unsafe { libc::listen(fd.as_raw_fd(), 1) };
     if ret != 0 {
-        let err = io::Error::last_os_error();
-        // SAFETY: fd is owned by this function on this error path.
-        unsafe { libc::close(fd) };
-        return Err(err);
+        return Err(io::Error::last_os_error());
     }
     // SAFETY: fd is a valid listener and ownership is transferred.
-    Ok(unsafe { UnixListener::from_raw_fd(fd) })
+    Ok(unsafe { UnixListener::from_raw_fd(fd.into_raw_fd()) })
 }
 
 pub fn connect_abstract(name: &str) -> io::Result<UnixStream> {
@@ -83,15 +83,18 @@ pub fn connect_abstract(name: &str) -> io::Result<UnixStream> {
     let addr = abstract_sockaddr(name)?;
     let len = sockaddr_len(name);
     // SAFETY: fd is a valid AF_UNIX socket, addr/len describe a sockaddr_un.
-    let ret = unsafe { libc::connect(fd, &addr as *const _ as *const libc::sockaddr, len) };
+    let ret = unsafe {
+        libc::connect(
+            fd.as_raw_fd(),
+            &addr as *const _ as *const libc::sockaddr,
+            len,
+        )
+    };
     if ret != 0 {
-        let err = io::Error::last_os_error();
-        // SAFETY: fd is owned by this function on this error path.
-        unsafe { libc::close(fd) };
-        return Err(err);
+        return Err(io::Error::last_os_error());
     }
     // SAFETY: fd is a valid connected stream and ownership is transferred.
-    Ok(unsafe { UnixStream::from_raw_fd(fd) })
+    Ok(unsafe { UnixStream::from_raw_fd(fd.into_raw_fd()) })
 }
 
 pub fn accept_with_timeout(listener: &UnixListener, timeout: Duration) -> io::Result<UnixStream> {
@@ -217,13 +220,14 @@ pub fn read_response(stream: &mut UnixStream) -> io::Result<ControlResponse> {
     decode_response(&frame.payload)
 }
 
-fn create_unix_socket() -> io::Result<libc::c_int> {
+fn create_unix_socket() -> io::Result<OwnedFd> {
     // SAFETY: socket arguments are constants for an AF_UNIX stream socket.
     let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(fd)
+    // SAFETY: fd is a newly-created socket owned by this function.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 fn abstract_sockaddr(name: &str) -> io::Result<libc::sockaddr_un> {
@@ -522,6 +526,24 @@ mod tests {
             payload: vec![0; MAX_CONTROL_PAYLOAD_BYTES + 1],
         };
         assert!(write_request(&mut a, &request).is_err());
+    }
+
+    #[test]
+    fn abstract_socket_rejects_invalid_names() {
+        for name in ["", "bad\0name"] {
+            let err = bind_abstract_listener(name).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+            let err = connect_abstract(name).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        }
+
+        let too_long = "x".repeat(sockaddr_un_path_len());
+        let err = bind_abstract_listener(&too_long).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+
+        let err = connect_abstract(&too_long).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]
