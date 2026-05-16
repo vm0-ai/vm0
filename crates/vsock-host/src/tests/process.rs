@@ -404,7 +404,7 @@ async fn test_spawn_process_control_sink_statuses_use_default_error_mapping() {
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
         let control_nonce = decoded_spawn.control_nonce.unwrap();
@@ -423,7 +423,7 @@ async fn test_spawn_process_control_sink_statuses_use_default_error_mapping() {
             ("message-queue-full", ProcessControlStatus::QueueFull),
             ("message-sink-error", ProcessControlStatus::SinkError),
         ] {
-            let control = read_guest_message(&mut guest, &mut decoder).await;
+            let control = read_guest_message(&mut guest).await;
             let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
             assert_eq!(decoded_control.target_seq, spawn.seq);
             assert_eq!(decoded_control.control_nonce, control_nonce);
@@ -717,13 +717,13 @@ async fn test_spawn_process_control_rejects_payload_over_local_ipc_limit_before_
         let mut decoder = Decoder::new();
         mock_handshake(&mut guest, &mut decoder).await;
 
-        let spawn = read_guest_message(&mut guest, &mut decoder).await;
+        let spawn = read_guest_message(&mut guest).await;
         assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
         let payload = vsock_proto::encode_spawn_process_result(51);
         let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
         guest.write_all(&resp).await.unwrap();
 
-        let exec = read_guest_message(&mut guest, &mut decoder).await;
+        let exec = read_guest_message(&mut guest).await;
         assert_eq!(exec.msg_type, MSG_EXEC_START);
         send_exec_result(
             &mut guest,
