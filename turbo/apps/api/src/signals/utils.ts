@@ -77,14 +77,21 @@ export function isValidTimeZone(input: string): boolean {
 
 /**
  * Await `p`, swallowing non-abort rejections. Use for fire-and-forget work
- * where failure is acceptable. AbortError propagates.
+ * where failure is acceptable. AbortError propagates — either from `p`
+ * itself or from `signal` if one is passed — so a cancelled request never
+ * returns silently as if the work succeeded.
  */
-export async function bestEffort(p: Promise<unknown>): Promise<void> {
+export async function bestEffort(
+  p: Promise<unknown>,
+  signal?: AbortSignal,
+): Promise<void> {
   // eslint-disable-next-line no-restricted-syntax -- centralized .catch replacement
   try {
     await p;
+    signal?.throwIfAborted();
   } catch (error) {
     throwIfAbort(error);
+    signal?.throwIfAborted();
   }
 }
 

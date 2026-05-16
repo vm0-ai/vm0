@@ -191,14 +191,22 @@ const JSON_INVALID_SENTINEL = Object.freeze({});
 /**
  * Best-effort wrapper: await `p` and swallow non-abort errors.
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
+ * AbortError propagates — either from `p` itself or from `signal` if one is
+ * passed — so a cancelled request never returns silently as if the work
+ * succeeded.
  */
-export async function bestEffort(p: Promise<unknown>): Promise<void> {
+export async function bestEffort(
+  p: Promise<unknown>,
+  signal?: AbortSignal,
+): Promise<void> {
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line no-restricted-syntax
   try {
     await p;
+    signal?.throwIfAborted();
   } catch (error) {
     throwIfAbort(error);
+    signal?.throwIfAborted();
   }
 }
 
