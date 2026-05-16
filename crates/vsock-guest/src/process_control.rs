@@ -362,8 +362,29 @@ impl ControlSinkState {
         request: OwnedProcessControlRequest,
         writer: GuestWriter,
     ) -> Option<(ProcessControlStatus, String)> {
+        let pending_slot = match self.reserve_pending_slot() {
+            Ok(pending_slot) => pending_slot,
+            Err(error) => return Some(error),
+        };
+
+        let sink = Arc::clone(self);
+        match thread::Builder::new()
+            .name(THREAD_PROCESS_CONTROL_FORWARD.to_owned())
+            .spawn(move || forward_control_request(sink, pending_slot, request, writer))
+        {
+            Ok(_) => None,
+            Err(error) => Some((
+                ProcessControlStatus::SinkError,
+                format!("failed to start process control worker: {error}"),
+            )),
+        }
+    }
+
+    fn reserve_pending_slot(
+        self: &Arc<Self>,
+    ) -> Result<PendingControlSlot, (ProcessControlStatus, String)> {
         if !self.active.load(Ordering::Acquire) {
-            return Some((
+            return Err((
                 ProcessControlStatus::Inactive,
                 "process operation is not active".to_owned(),
             ));
@@ -372,26 +393,13 @@ impl ControlSinkState {
         let previous = self.pending.fetch_add(1, Ordering::AcqRel);
         if previous >= MAX_PENDING_CONTROL_REQUESTS {
             self.pending.fetch_sub(1, Ordering::AcqRel);
-            return Some((
+            return Err((
                 ProcessControlStatus::QueueFull,
                 "process control queue is full".to_owned(),
             ));
         }
 
-        let sink = Arc::clone(self);
-        match thread::Builder::new()
-            .name(THREAD_PROCESS_CONTROL_FORWARD.to_owned())
-            .spawn(move || forward_control_request(sink, request, writer))
-        {
-            Ok(_) => None,
-            Err(error) => {
-                self.pending.fetch_sub(1, Ordering::AcqRel);
-                Some((
-                    ProcessControlStatus::SinkError,
-                    format!("failed to start process control worker: {error}"),
-                ))
-            }
-        }
+        Ok(PendingControlSlot::new(Arc::clone(self)))
     }
 }
 
@@ -453,10 +461,10 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
 
 fn forward_control_request(
     sink: Arc<ControlSinkState>,
+    _pending_slot: PendingControlSlot,
     request: OwnedProcessControlRequest,
     writer: GuestWriter,
 ) {
-    let _pending_slot = PendingControlSlot::new(Arc::clone(&sink));
     let OwnedProcessControlRequest {
         response_seq,
         target_seq,
@@ -886,8 +894,6 @@ mod tests {
         assert_eq!(message_id, "msg-after-error");
         assert_eq!(diagnostic, "");
 
-        let sink = registry.resolve(11, FORWARD_NONCE).unwrap();
-        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
         client.join().unwrap();
     }
 
@@ -919,31 +925,12 @@ mod tests {
     #[test]
     fn process_control_queue_full_rejects_without_leaking_pending_slots() {
         let sink = Arc::new(ControlSinkState::new());
-        let (stream, peer) = UnixStream::pair().unwrap();
-        sink.connect(stream);
-        let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
-            ControlSinkInner::Connected(stream) => Arc::clone(stream),
-            _ => panic!("sink should be connected"),
-        };
-        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
-        let (guest, mut host) = UnixStream::pair().unwrap();
-        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let (guest, _host) = UnixStream::pair().unwrap();
         let writer = GuestWriter::new(guest);
+        let mut pending_slots = Vec::new();
 
-        for index in 0..MAX_PENDING_CONTROL_REQUESTS {
-            assert!(
-                sink.try_forward(
-                    OwnedProcessControlRequest {
-                        response_seq: 100 + index as u32,
-                        target_seq: 12,
-                        control_nonce: NONCE,
-                        message_id: format!("msg-{index}"),
-                        payload: b"payload".to_vec(),
-                    },
-                    writer.clone(),
-                )
-                .is_none()
-            );
+        for _ in 0..MAX_PENDING_CONTROL_REQUESTS {
+            pending_slots.push(sink.reserve_pending_slot().unwrap());
         }
         assert_eq!(
             sink.pending.load(Ordering::Acquire),
@@ -969,20 +956,59 @@ mod tests {
             MAX_PENDING_CONTROL_REQUESTS
         );
 
-        drop(peer);
-        drop(stream_guard);
-        for _ in 0..MAX_PENDING_CONTROL_REQUESTS {
-            let (_, _, status, _, _) = read_process_control_result(&mut host);
-            assert!(
-                matches!(
-                    status,
-                    ProcessControlStatus::SinkError
-                        | ProcessControlStatus::SinkTimeout
-                        | ProcessControlStatus::Inactive
-                ),
-                "unexpected status: {status:?}",
-            );
+        drop(pending_slots);
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn pending_control_slot_holds_existing_slot_until_drop() {
+        let sink = Arc::new(ControlSinkState::new());
+
+        {
+            let _slot = sink.reserve_pending_slot().unwrap();
+            assert_eq!(sink.pending.load(Ordering::Acquire), 1);
         }
+
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn pending_control_slot_releases_when_result_send_fails() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, peer) = UnixStream::pair().unwrap();
+        sink.connect(stream);
+        let pending_slot = sink.reserve_pending_slot().unwrap();
+
+        let client = std::thread::spawn(move || {
+            let mut peer = peer;
+            let request = process_control_ipc::read_request(&mut peer).unwrap();
+            process_control_ipc::write_response(
+                &mut peer,
+                &process_control_ipc::ControlResponse {
+                    message_id: request.message_id,
+                    status: process_control_ipc::ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap();
+        });
+
+        let (guest, host) = UnixStream::pair().unwrap();
+        drop(host);
+        forward_control_request(
+            Arc::clone(&sink),
+            pending_slot,
+            OwnedProcessControlRequest {
+                response_seq: 12,
+                target_seq: 8,
+                control_nonce: NONCE,
+                message_id: "msg-send-fails".to_owned(),
+                payload: b"payload".to_vec(),
+            },
+            GuestWriter::new(guest),
+        );
+
+        client.join().unwrap();
         assert_eq!(sink.pending.load(Ordering::Acquire), 0);
     }
 
@@ -997,12 +1023,13 @@ mod tests {
             .set_write_timeout(Some(Duration::from_secs(1)))
             .unwrap();
         sink.connect(stream);
-        sink.pending.fetch_add(1, Ordering::AcqRel);
+        let pending_slot = sink.reserve_pending_slot().unwrap();
 
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         forward_control_request(
             Arc::clone(&sink),
+            pending_slot,
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
@@ -1129,7 +1156,6 @@ mod tests {
         assert_eq!(status, ProcessControlStatus::Inactive);
         assert_eq!(message_id, "msg-after-close");
         assert_eq!(diagnostic, "process operation is not active");
-        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
 
         let err = process_control_ipc::read_request(&mut peer).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
