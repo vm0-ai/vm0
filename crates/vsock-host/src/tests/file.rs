@@ -805,6 +805,31 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
 }
 
 #[tokio::test]
+async fn write_file_connection_close_after_request_marks_tracker_not_parkable() {
+    let (host, mut guest, mut decoder) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
+    };
+
+    let msg = read_guest_message(&mut guest, &mut decoder).await;
+    assert_eq!(msg.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    drop(guest);
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn test_write_file_chunked() {
     let (host_stream, mut guest) = make_pair();
 
