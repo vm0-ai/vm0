@@ -9,7 +9,7 @@ export const lark = {
       LARK_APP_ID: "$vars.LARK_APP_ID",
     },
     helpText:
-      "Connect your Lark (Feishu) app to manage messages, documents, calendars, and workflows",
+      "Connect your Lark app to manage messages, documents, calendars, and workflows",
     authMethods: {
       "api-token": {
         label: "App Credentials",
