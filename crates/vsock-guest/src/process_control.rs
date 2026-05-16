@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -49,6 +49,7 @@ pub(crate) struct ProcessControlGuard {
 
 struct ControlSinkState {
     inner: Mutex<ControlSinkInner>,
+    ready: Condvar,
     active: AtomicBool,
     pending: AtomicUsize,
 }
@@ -219,6 +220,7 @@ impl ControlSinkState {
     fn new() -> Self {
         Self {
             inner: Mutex::new(ControlSinkInner::Waiting),
+            ready: Condvar::new(),
             active: AtomicBool::new(true),
             pending: AtomicUsize::new(0),
         }
@@ -233,9 +235,11 @@ impl ControlSinkState {
         if !self.active.load(Ordering::Acquire) {
             let _ = stream.shutdown(std::net::Shutdown::Both);
             *guard = ControlSinkInner::Closed;
+            self.ready.notify_all();
             return;
         }
         *guard = ControlSinkInner::Connected(Arc::new(Mutex::new(stream)));
+        self.ready.notify_all();
     }
 
     fn fail(&self, message: String) {
@@ -250,16 +254,65 @@ impl ControlSinkState {
         if !matches!(*guard, ControlSinkInner::Closed) {
             *guard = ControlSinkInner::Failed(message);
         }
+        self.ready.notify_all();
     }
 
     fn close(&self) {
         self.active.store(false, Ordering::Release);
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if let ControlSinkInner::Connected(stream) = &*guard {
-            let stream = stream.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
         *guard = ControlSinkInner::Closed;
+        self.ready.notify_all();
+    }
+
+    fn wait_for_stream(
+        &self,
+        timeout: Duration,
+    ) -> Result<Arc<Mutex<UnixStream>>, (ProcessControlStatus, String)> {
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(Instant::now);
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if !self.active.load(Ordering::Acquire) {
+                return Err((
+                    ProcessControlStatus::Inactive,
+                    "process operation is not active".to_owned(),
+                ));
+            }
+            match &*guard {
+                ControlSinkInner::Connected(stream) => return Ok(Arc::clone(stream)),
+                ControlSinkInner::Waiting => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Err((
+                            ProcessControlStatus::SinkUnavailable,
+                            "process control sink is not connected".to_owned(),
+                        ));
+                    }
+                    let wait = deadline.duration_since(now);
+                    let (next_guard, wait_result) = self
+                        .ready
+                        .wait_timeout(guard, wait)
+                        .unwrap_or_else(|e| e.into_inner());
+                    guard = next_guard;
+                    if wait_result.timed_out() {
+                        return Err((
+                            ProcessControlStatus::SinkUnavailable,
+                            "process control sink is not connected".to_owned(),
+                        ));
+                    }
+                }
+                ControlSinkInner::Failed(message) => {
+                    return Err((ProcessControlStatus::SinkError, message.clone()));
+                }
+                ControlSinkInner::Closed => {
+                    return Err((
+                        ProcessControlStatus::Inactive,
+                        "process operation is not active".to_owned(),
+                    ));
+                }
+            }
+        }
     }
 
     fn try_forward(
@@ -274,28 +327,6 @@ impl ControlSinkState {
             ));
         }
 
-        let stream = {
-            let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-            match &*guard {
-                ControlSinkInner::Connected(stream) => Arc::clone(stream),
-                ControlSinkInner::Waiting => {
-                    return Some((
-                        ProcessControlStatus::SinkUnavailable,
-                        "process control sink is not connected".to_owned(),
-                    ));
-                }
-                ControlSinkInner::Failed(message) => {
-                    return Some((ProcessControlStatus::SinkError, message.clone()));
-                }
-                ControlSinkInner::Closed => {
-                    return Some((
-                        ProcessControlStatus::Inactive,
-                        "process operation is not active".to_owned(),
-                    ));
-                }
-            }
-        };
-
         let previous = self.pending.fetch_add(1, Ordering::AcqRel);
         if previous >= MAX_PENDING_CONTROL_REQUESTS {
             self.pending.fetch_sub(1, Ordering::AcqRel);
@@ -308,7 +339,7 @@ impl ControlSinkState {
         let sink = Arc::clone(self);
         match thread::Builder::new()
             .name(THREAD_PROCESS_CONTROL_FORWARD.to_owned())
-            .spawn(move || forward_control_request(sink, stream, request, writer))
+            .spawn(move || forward_control_request(sink, request, writer))
         {
             Ok(_) => None,
             Err(error) => {
@@ -352,10 +383,7 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
     };
     match result {
         Ok(stream) => {
-            log(
-                "INFO",
-                "process_control: guest-agent control sink connected",
-            );
+            log("INFO", "process_control: control sink connected");
             sink.connect(stream);
         }
         Err(error) => {
@@ -370,42 +398,46 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
 
 fn forward_control_request(
     sink: Arc<ControlSinkState>,
-    stream: Arc<Mutex<UnixStream>>,
     request: OwnedProcessControlRequest,
     writer: GuestWriter,
 ) {
     let (status, diagnostic, mark_failed) = {
-        let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
-        let request_frame = ControlRequest {
-            message_id: request.message_id.clone(),
-            payload: request.payload.clone(),
-        };
-        match process_control_ipc::write_request(&mut stream, &request_frame)
-            .and_then(|()| process_control_ipc::read_response(&mut stream))
-        {
-            Ok(response) if response.message_id != request.message_id => (
-                ProcessControlStatus::SinkError,
-                format!(
-                    "process control sink message id mismatch: expected {}, got {}",
-                    request.message_id, response.message_id
-                ),
-                true,
-            ),
-            Ok(response) => match response.status {
-                ControlResponseStatus::Accepted => {
-                    (ProcessControlStatus::Delivered, response.diagnostic, false)
+        match sink.wait_for_stream(CONTROL_IO_TIMEOUT) {
+            Ok(stream) => {
+                let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
+                let request_frame = ControlRequest {
+                    message_id: request.message_id.clone(),
+                    payload: request.payload.clone(),
+                };
+                match process_control_ipc::write_request(&mut stream, &request_frame)
+                    .and_then(|()| process_control_ipc::read_response(&mut stream))
+                {
+                    Ok(response) if response.message_id != request.message_id => (
+                        ProcessControlStatus::SinkError,
+                        format!(
+                            "process control sink message id mismatch: expected {}, got {}",
+                            request.message_id, response.message_id
+                        ),
+                        true,
+                    ),
+                    Ok(response) => match response.status {
+                        ControlResponseStatus::Accepted => {
+                            (ProcessControlStatus::Delivered, response.diagnostic, false)
+                        }
+                        ControlResponseStatus::Rejected => {
+                            (ProcessControlStatus::Rejected, response.diagnostic, false)
+                        }
+                        ControlResponseStatus::Error => {
+                            (ProcessControlStatus::SinkError, response.diagnostic, false)
+                        }
+                    },
+                    Err(error) if is_timeout(&error) => {
+                        (ProcessControlStatus::SinkTimeout, error.to_string(), true)
+                    }
+                    Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
                 }
-                ControlResponseStatus::Rejected => {
-                    (ProcessControlStatus::Rejected, response.diagnostic, false)
-                }
-                ControlResponseStatus::Error => {
-                    (ProcessControlStatus::SinkError, response.diagnostic, false)
-                }
-            },
-            Err(error) if is_timeout(&error) => {
-                (ProcessControlStatus::SinkTimeout, error.to_string(), false)
             }
-            Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
+            Err((status, diagnostic)) => (status, diagnostic, false),
         }
     };
 
@@ -507,6 +539,30 @@ mod tests {
             Ok(_) => panic!("expected process control resolve to fail"),
             Err(error) => error,
         }
+    }
+
+    fn read_process_control_result(
+        stream: &mut UnixStream,
+    ) -> (u8, u32, ProcessControlStatus, String, String) {
+        let mut hdr = [0u8; 4];
+        stream.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).unwrap();
+        let mut full = Vec::with_capacity(4 + body_len);
+        full.extend_from_slice(&hdr);
+        full.extend_from_slice(&body);
+        let mut decoder = vsock_proto::Decoder::new();
+        let messages = decoder.decode(&full).unwrap();
+        assert_eq!(messages.len(), 1);
+        let result = vsock_proto::decode_process_control_result(&messages[0].payload).unwrap();
+        (
+            messages[0].msg_type,
+            messages[0].seq,
+            result.status,
+            result.message_id.to_owned(),
+            result.diagnostic.to_owned(),
+        )
     }
 
     #[test]
@@ -625,23 +681,90 @@ mod tests {
 
         handle_process_control(11, &payload, &registry, &writer).unwrap();
 
-        let mut hdr = [0u8; 4];
-        host.read_exact(&mut hdr).unwrap();
-        let body_len = u32::from_be_bytes(hdr) as usize;
-        let mut body = vec![0u8; body_len];
-        host.read_exact(&mut body).unwrap();
-        let mut full = Vec::with_capacity(4 + body_len);
-        full.extend_from_slice(&hdr);
-        full.extend_from_slice(&body);
-        let mut decoder = vsock_proto::Decoder::new();
-        let messages = decoder.decode(&full).unwrap();
-        assert_eq!(messages.len(), 1);
-        let result = vsock_proto::decode_process_control_result(&messages[0].payload).unwrap();
-        assert_eq!(messages[0].msg_type, MSG_PROCESS_CONTROL_RESULT);
-        assert_eq!(messages[0].seq, 11);
-        assert_eq!(result.status, ProcessControlStatus::Delivered);
-        assert_eq!(result.message_id, "msg-1");
+        let (msg_type, seq, status, message_id, _) = read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 11);
+        assert_eq!(status, ProcessControlStatus::Delivered);
+        assert_eq!(message_id, "msg-1");
 
         client.join().unwrap();
+    }
+
+    #[test]
+    fn handle_process_control_waits_for_sink_connection() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"fedcba9876543210";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(8, Some(FORWARD_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_process_control(8, FORWARD_NONCE, "msg-1", b"payload").unwrap();
+
+        handle_process_control(11, &payload, &registry, &writer).unwrap();
+
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        process_control_ipc::write_hello(&mut stream).unwrap();
+        let request = process_control_ipc::read_request(&mut stream).unwrap();
+        assert_eq!(request.message_id, "msg-1");
+        assert_eq!(request.payload, b"payload");
+        process_control_ipc::write_response(
+            &mut stream,
+            &process_control_ipc::ControlResponse {
+                message_id: request.message_id,
+                status: process_control_ipc::ControlResponseStatus::Accepted,
+                diagnostic: String::new(),
+            },
+        )
+        .unwrap();
+
+        let (msg_type, seq, status, message_id, _) = read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 11);
+        assert_eq!(status, ProcessControlStatus::Delivered);
+        assert_eq!(message_id, "msg-1");
+    }
+
+    #[test]
+    fn timed_out_control_sink_is_marked_failed() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, _peer) = UnixStream::pair().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(1)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        sink.connect(stream);
+        sink.pending.fetch_add(1, Ordering::AcqRel);
+
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        forward_control_request(
+            Arc::clone(&sink),
+            OwnedProcessControlRequest {
+                response_seq: 12,
+                target_seq: 8,
+                control_nonce: NONCE,
+                message_id: "msg-timeout".to_owned(),
+                payload: b"payload".to_vec(),
+            },
+            GuestWriter::new(guest),
+        );
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 12);
+        assert_eq!(status, ProcessControlStatus::SinkTimeout);
+        assert_eq!(message_id, "msg-timeout");
+        assert!(!diagnostic.is_empty());
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Failed(_)
+        ));
     }
 }

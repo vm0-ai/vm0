@@ -1,4 +1,4 @@
-//! Local guest-agent process-control channel.
+//! Local process-control IPC channel.
 //!
 //! This crate is intentionally std-only. `vsock-guest` uses it from blocking
 //! worker threads, while `guest-agent` can use it without introducing another

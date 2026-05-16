@@ -566,7 +566,7 @@ async fn run_in_sandbox(
             output: SpawnProcessOutputMode::Stream {
                 guest_log_path: None,
             },
-            control: SpawnProcessControl::GuestAgent,
+            control: SpawnProcessControl::Enabled,
         })
         .await;
 

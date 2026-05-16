@@ -233,7 +233,7 @@ pub enum SpawnProcessOutputMode<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpawnProcessControl {
     None,
-    GuestAgent,
+    Enabled,
 }
 
 impl<'a> SpawnProcessOutputMode<'a> {

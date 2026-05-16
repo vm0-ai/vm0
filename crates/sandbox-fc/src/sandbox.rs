@@ -1602,7 +1602,7 @@ impl Sandbox for FirecrackerSandbox {
                 request.output.streams_stdout(),
                 request.output.guest_log_path(),
             )),
-            SpawnProcessControl::GuestAgent => Box::pin(vsock.spawn_process_with_control_sink(
+            SpawnProcessControl::Enabled => Box::pin(vsock.spawn_process_with_control_sink(
                 request.cmd,
                 request.timeout_ms(),
                 request.env,
@@ -1632,7 +1632,7 @@ impl Sandbox for FirecrackerSandbox {
                     .mark_in_guest()
                     .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let pid = handle.pid();
-                let process_control = (request.control == SpawnProcessControl::GuestAgent).then(|| {
+                let process_control = (request.control == SpawnProcessControl::Enabled).then(|| {
                     let control = handle.control_handle();
                     GuestProcessControlHandle::new(move |message_id, payload, timeout| {
                         let control = control.clone();
