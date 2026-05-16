@@ -24,7 +24,7 @@ pub(crate) struct CodexFailureDiagnostic {
     pub message: String,
 }
 
-/// Send a single event to the webhook, masking secrets first.
+/// Send a single event to the webhook.
 ///
 /// On framework session-start events, captures the session metadata needed by
 /// checkpoints before preparing the webhook payload.
