@@ -5,10 +5,11 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import type { ReactElement } from "react";
+import type { MouseEventHandler, ReactElement } from "react";
 
 import {
   connectorCliAuthState$,
+  openConnectorCliAuthApprovalPage$,
   runConnectorCliAuth$,
   setConnectorCliAuthMode$,
   type ConnectorCliAuthState,
@@ -104,38 +105,36 @@ function CliAuthModePicker({
 
 function BrowserVerificationPendingPanel({
   pendingState,
+  onOpenApprovalPage,
 }: {
   pendingState: BrowserVerificationPendingState;
+  onOpenApprovalPage: MouseEventHandler<HTMLButtonElement>;
 }) {
-  const statusText = pendingState.autoOpenFailed
+  const statusText = !pendingState.approvalOpened
     ? "Open the approval page to continue."
     : pendingState.status === "polling"
       ? "Checking connection..."
-      : pendingState.autoOpenAttempted
-        ? "Waiting for approval..."
-        : "Opening approval page...";
+      : "Waiting for approval...";
 
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-border/60 px-3 py-2.5">
-        <span className="text-xs text-muted-foreground">Verification code</span>
+        <span className="text-xs text-muted-foreground">
+          Confirm this pairing code matches the approval page
+        </span>
         <span className="mt-1 block font-mono text-lg font-semibold text-foreground">
           {pendingState.verificationText}
         </span>
       </div>
 
-      <Button asChild variant="outline" className="w-full">
-        <a
-          href={pendingState.browserUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open approval page
-        </a>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={onOpenApprovalPage}
+      >
+        Open approval page
       </Button>
-      <p className="break-all text-xs text-muted-foreground">
-        {pendingState.browserUrl}
-      </p>
 
       <p className="text-sm text-muted-foreground">{statusText}</p>
 
@@ -169,6 +168,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
   const rawState = useGet(connectorCliAuthState$);
   const cliAuthState = stateForConnector(rawState, type);
   const setMode = useSet(setConnectorCliAuthMode$);
+  const openApprovalPage = useSet(openConnectorCliAuthApprovalPage$);
   const [runLoadable, runCliAuth] = useLoadableSet(runConnectorCliAuth$);
   const modeOptions = cliAuthModeOptions(type);
   const inFlight =
@@ -204,6 +204,10 @@ function BrowserVerificationCliAuthConnectMethodContent({
     if (completed) {
       await onSuccess();
     }
+  });
+
+  const handleOpenApprovalPage = onDomEventFn(() => {
+    openApprovalPage(type);
   });
 
   return (
@@ -247,7 +251,10 @@ function BrowserVerificationCliAuthConnectMethodContent({
       )}
 
       {pendingState && (
-        <BrowserVerificationPendingPanel pendingState={pendingState} />
+        <BrowserVerificationPendingPanel
+          pendingState={pendingState}
+          onOpenApprovalPage={handleOpenApprovalPage}
+        />
       )}
     </div>
   );

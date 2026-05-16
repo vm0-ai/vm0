@@ -422,8 +422,7 @@ export type ConnectorCliAuthState =
       readonly verificationText: string;
       readonly expiresAtMs: number;
       readonly pollIntervalMs: number;
-      readonly autoOpenAttempted: boolean;
-      readonly autoOpenFailed: boolean;
+      readonly approvalOpened: boolean;
       readonly errorMessage: string | null;
     }
   | {
@@ -436,8 +435,7 @@ export type ConnectorCliAuthState =
       readonly verificationText: string;
       readonly expiresAtMs: number;
       readonly pollIntervalMs: number;
-      readonly autoOpenAttempted: boolean;
-      readonly autoOpenFailed: boolean;
+      readonly approvalOpened: boolean;
       readonly errorMessage: string | null;
     }
   | {
@@ -1133,7 +1131,6 @@ export const setPermissionDialogType$ = command(
 // CLI auth browser-verification flow state
 // ---------------------------------------------------------------------------
 
-const CLI_AUTH_AUTO_OPEN_DELAY_MS = IN_VITEST ? 10 : 2000;
 const CLI_AUTH_MIN_POLL_INTERVAL_MS = IN_VITEST ? 10 : 1000;
 
 type CliAuthBrowserVerificationStartResult = {
@@ -1356,6 +1353,18 @@ const pollConnectorCliAuthBrowserVerification$ = command(
         return false;
       }
 
+      if (!latest.approvalOpened) {
+        const remainingMs = expiresAtMs - Date.now();
+        if (remainingMs <= 0) {
+          break;
+        }
+        await delay(Math.min(CLI_AUTH_MIN_POLL_INTERVAL_MS, remainingMs), {
+          signal,
+        });
+        signal.throwIfAborted();
+        continue;
+      }
+
       set(internalConnectorCliAuthState$, {
         ...latest,
         status: "polling",
@@ -1426,9 +1435,34 @@ const pollConnectorCliAuthBrowserVerification$ = command(
   },
 );
 
-function openConnectorCliAuthBrowserUrl(browserUrl: string): boolean {
-  return window.open(browserUrl, "_blank", "noopener,noreferrer") !== null;
-}
+export const openConnectorCliAuthApprovalPage$ = command(
+  ({ get, set }, type: ConnectorType): boolean => {
+    const current = get(internalConnectorCliAuthState$);
+    if (
+      (current.status !== "pending" && current.status !== "polling") ||
+      current.connectorType !== type
+    ) {
+      return false;
+    }
+
+    const approvalWindow = window.open(current.browserUrl, "_blank");
+    if (!approvalWindow) {
+      set(internalConnectorCliAuthState$, {
+        ...current,
+        errorMessage: "Could not open the approval page. Try again.",
+      });
+      return false;
+    }
+
+    approvalWindow.opener = null;
+    set(internalConnectorCliAuthState$, {
+      ...current,
+      approvalOpened: true,
+      errorMessage: null,
+    });
+    return true;
+  },
+);
 
 export const runConnectorCliAuth$ = command(
   async (
@@ -1501,34 +1535,8 @@ export const runConnectorCliAuth$ = command(
           verificationText: startResult.verificationText,
           expiresAtMs,
           pollIntervalMs,
-          autoOpenAttempted: false,
-          autoOpenFailed: false,
+          approvalOpened: false,
           errorMessage: null,
-        });
-
-        await delay(
-          Math.min(CLI_AUTH_AUTO_OPEN_DELAY_MS, startResult.expiresInMs),
-          {
-            signal: flowSignal,
-          },
-        );
-        signal.throwIfAborted();
-        flowSignal.throwIfAborted();
-
-        const afterDelayState = get(internalConnectorCliAuthState$);
-        if (
-          !isCurrentConnectorCliAuthRequest(afterDelayState, type, requestId)
-        ) {
-          return false;
-        }
-        const browserOpened = openConnectorCliAuthBrowserUrl(
-          startResult.browserUrl,
-        );
-        set(internalConnectorCliAuthState$, {
-          ...afterDelayState,
-          status: "pending",
-          autoOpenAttempted: true,
-          autoOpenFailed: !browserOpened,
         });
 
         return await set(

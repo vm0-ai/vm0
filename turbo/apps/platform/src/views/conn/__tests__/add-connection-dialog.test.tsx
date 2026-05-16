@@ -63,16 +63,6 @@ function getButtonByText(matcher: string | RegExp): HTMLElement {
   return button;
 }
 
-function getLinkByText(matcher: string | RegExp): HTMLElement {
-  const link = screen.getAllByRole("link").find((element) => {
-    return elementTextMatches(element, matcher);
-  });
-  if (!link) {
-    throw new Error(`Link not found: ${String(matcher)}`);
-  }
-  return link;
-}
-
 describe("connect modal - display", () => {
   it("shows connector icon and label (CONN-D-016)", async () => {
     await openConnectModal("axiom");
@@ -381,7 +371,9 @@ describe("connect modal - interactions", () => {
   });
 
   it("starts Stripe CLI auth only after selecting a configured mode", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, opener: {} } as Window);
     setMockStripeCliAuthCompleteResponse({
       status: "pending",
       errorMessage: null,
@@ -414,14 +406,20 @@ describe("connect modal - interactions", () => {
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
     });
-    expect(getLinkByText("Open approval page")).toHaveAttribute(
-      "href",
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Open the approval page to continue."),
+    ).toBeInTheDocument();
+
+    click(getButtonByText("Open approval page"));
+
+    expect(openSpy).toHaveBeenCalledWith(
       "https://dashboard.stripe.com/stripecli/confirm_auth",
+      "_blank",
     );
+    expect(openSpy).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(
-        screen.getByText("Open the approval page to continue."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Waiting for approval...")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText(/close/i));
@@ -432,7 +430,10 @@ describe("connect modal - interactions", () => {
   });
 
   it("keeps Stripe CLI auth open when completion is still pending", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
+    vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      opener: {},
+    } as Window);
     setMockStripeCliAuthCompleteResponse({
       status: "pending",
       errorMessage: "Approval is still pending",
@@ -453,6 +454,8 @@ describe("connect modal - interactions", () => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
     });
 
+    click(getButtonByText("Open approval page"));
+
     await waitFor(() => {
       expect(screen.getByText("Approval is still pending")).toBeInTheDocument();
     });
@@ -465,7 +468,10 @@ describe("connect modal - interactions", () => {
   });
 
   it("stops polling when Stripe CLI auth completion returns a terminal failure", async () => {
-    vi.spyOn(window, "open").mockReturnValue(null);
+    vi.spyOn(window, "open").mockReturnValue({
+      closed: false,
+      opener: {},
+    } as Window);
     let completeCalls = 0;
     server.use(
       mockApi(zeroCliAuthStripeContract.complete, ({ respond }) => {
@@ -491,6 +497,11 @@ describe("connect modal - interactions", () => {
     click(getButtonByText("Sign in with Stripe"));
 
     await waitFor(() => {
+      expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
+    });
+    click(getButtonByText("Open approval page"));
+
+    await waitFor(() => {
       expect(
         screen.getByText("Stripe config did not contain a test mode API key"),
       ).toBeInTheDocument();
@@ -507,7 +518,9 @@ describe("connect modal - interactions", () => {
   });
 
   it("completes Stripe CLI auth and opens the post-connect permission dialog", async () => {
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false, opener: {} } as Window);
 
     await openConnectModal("stripe", {
       featureSwitches: { [FeatureSwitchKey.CliAuthStripe]: true },
@@ -523,6 +536,9 @@ describe("connect modal - interactions", () => {
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
     });
+    expect(openSpy).not.toHaveBeenCalled();
+
+    click(getButtonByText("Open approval page"));
 
     await waitFor(() => {
       expect(
@@ -532,8 +548,8 @@ describe("connect modal - interactions", () => {
     expect(openSpy).toHaveBeenCalledWith(
       "https://dashboard.stripe.com/stripecli/confirm_auth",
       "_blank",
-      "noopener,noreferrer",
     );
+    expect(openSpy).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
 
     click(screen.getByText("Later"));
