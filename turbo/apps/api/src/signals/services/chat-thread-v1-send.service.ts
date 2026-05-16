@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -11,12 +10,13 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { createAgentRun$ } from "./agent-run-create.service";
+import { createZeroRun$ } from "./zero-runs-create.service";
 
 interface OwnedThreadForSend {
   readonly id: string;
@@ -54,8 +54,7 @@ export const sendChatThreadMessageV1$ = command(
   async (
     { set },
     args: {
-      readonly userId: string;
-      readonly orgId: string;
+      readonly auth: AuthContext & { readonly orgId: string };
       readonly prompt: string;
       readonly threadId: string | undefined;
       readonly apiStartTime: number;
@@ -77,7 +76,7 @@ export const sendChatThreadMessageV1$ = command(
         .where(
           and(
             eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.userId),
+            eq(chatThreads.userId, args.auth.userId),
           ),
         )
         .limit(1);
@@ -91,7 +90,7 @@ export const sendChatThreadMessageV1$ = command(
       sessionId = await latestSessionIdForThread(db, thread.id);
       signal.throwIfAborted();
     } else {
-      const agentId = await defaultAgentId(db, args.orgId);
+      const agentId = await defaultAgentId(db, args.auth.orgId);
       signal.throwIfAborted();
 
       if (!agentId) {
@@ -103,7 +102,7 @@ export const sendChatThreadMessageV1$ = command(
       const [createdThread] = await db
         .insert(chatThreads)
         .values({
-          userId: args.userId,
+          userId: args.auth.userId,
           agentComposeId: agentId,
           title: null,
         })
@@ -120,23 +119,26 @@ export const sendChatThreadMessageV1$ = command(
       thread = createdThread;
     }
 
-    const triggerSource: TriggerSource = "web";
-    const runBody = {
-      prompt: args.prompt,
-      agentComposeId: thread.agentComposeId,
-      ...(sessionId ? { sessionId } : {}),
-      triggerSource,
-      appendSystemPrompt: buildWebChatPrompt(),
-    };
-
+    // Route through createZeroRun$ so the V1 surface matches the web chat
+    // path: env-ref validation is skipped, ZERO_TOKEN secret is injected,
+    // credit enforcement / concurrency queueing / skill volumes / connector
+    // allowlists are all applied. Direct createAgentRun$ calls left the V1
+    // path missing every one of those, which surfaced as a 400 "Missing
+    // required values: vars.*" whenever the default agent referenced
+    // integration vars the caller had not provided.
     const runResult = await set(
-      createAgentRun$,
+      createZeroRun$,
       {
-        userId: args.userId,
-        orgId: args.orgId,
-        body: runBody,
+        auth: args.auth,
         apiStartTime: args.apiStartTime,
         chatThreadId: thread.id,
+        triggerSource: "web",
+        appendSystemPrompt: buildWebChatPrompt(),
+        body: {
+          prompt: args.prompt,
+          agentId: thread.agentComposeId,
+          ...(sessionId ? { sessionId } : {}),
+        },
         callbacks: [
           {
             url: chatCallbackUrl(),
@@ -169,18 +171,21 @@ export const sendChatThreadMessageV1$ = command(
     }
 
     await publishUserSignal(
-      [args.userId],
+      [args.auth.userId],
       `chatThreadMessageCreated:${thread.id}`,
     );
     signal.throwIfAborted();
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChanged(args.auth.userId);
     signal.throwIfAborted();
 
-    await publishUserSignal([args.userId], `chatThreadRunCreated:${thread.id}`);
+    await publishUserSignal(
+      [args.auth.userId],
+      `chatThreadRunCreated:${thread.id}`,
+    );
     signal.throwIfAborted();
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChanged(args.auth.userId);
     signal.throwIfAborted();
 
     return {

@@ -65,8 +65,7 @@ const sendThreadMessageHandler$ = command(
     return await set(
       sendChatThreadMessageV1$,
       {
-        userId: auth.userId,
-        orgId: auth.orgId,
+        auth,
         prompt: body.data.prompt,
         threadId: body.data.threadId,
         apiStartTime,
