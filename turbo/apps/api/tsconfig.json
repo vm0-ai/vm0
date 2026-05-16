@@ -4,14 +4,11 @@
     "allowImportingTsExtensions": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo",
     "types": ["node", "vitest/globals"],
     "outDir": "./dist"
   },
-  "include": [
-    "src/**/*",
-    "custom-eslint/**/*",
-    "vitest.config.ts",
-    "vite.config.ts"
-  ],
+  "include": ["src/**/*", "custom-eslint/**/*"],
   "exclude": ["node_modules", "dist"]
 }
