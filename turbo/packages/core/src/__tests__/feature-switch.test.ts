@@ -68,14 +68,14 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should keep Stripe CLI auth disabled by default", () => {
+  it("should enable Stripe CLI auth for staff orgs only", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {})).toBe(false);
 
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       isFeatureEnabled(FeatureSwitchKey.CliAuthStripe, {
