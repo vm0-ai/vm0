@@ -114,9 +114,7 @@ type InferPathParams<R> = R extends { readonly pathParams: infer S }
 type InferQuery<R> = R extends { readonly query: infer S }
   ? z.output<S>
   : never;
-type InferBody<R> = R extends { readonly body: infer S }
-  ? z.output<S>
-  : never;
+type InferBody<R> = R extends { readonly body: infer S } ? z.output<S> : never;
 
 type BodyResult<T> =
   | { readonly ok: true; readonly data: T }
