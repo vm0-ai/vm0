@@ -300,8 +300,12 @@ pub async fn execute_cli(
                                     diagnostic.message
                                 );
                             }
-                            // Prepare event (fast: mask secrets, add seq) and enqueue
-                            // for background sending.  Never blocks the reading loop.
+                            // Capture checkpoint metadata before event payload preparation
+                            // mutates the event through masking.
+                            events::capture_session_metadata(&event);
+
+                            // Prepare event payload (mask secrets, add seq) and enqueue
+                            // for background sending. Network I/O stays off the reading loop.
                             if let Some(payload) = events::prepare_event(&mut event, seq, masker)
                                 && event_tx
                                     .send(PreparedEvent {

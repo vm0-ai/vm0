@@ -17,7 +17,7 @@
 //!
 //! # Coverage
 //!
-//! - End-to-end `send_event` → `extract_session_id` → marker write for the
+//! - End-to-end `send_event` → `capture_session_metadata` → marker write for the
 //!   codex `thread.started` event shape.
 //! - `session_history::read_session_history` decodes the marker and walks the
 //!   `YYYY/MM/DD/` codex layout.
@@ -63,7 +63,7 @@ fn setup_env_once() {
 }
 
 /// Serialise tests — they share both LazyLock state and the run-id-scoped
-/// `/tmp/vm0-session-*.txt` files written by `extract_session_id`.
+/// `/tmp/vm0-session-*.txt` files written by `capture_session_metadata`.
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 macro_rules! http_client {
@@ -73,7 +73,7 @@ macro_rules! http_client {
 }
 
 /// Wipe the per-run session-id / history-path files so each test starts
-/// from a clean slate. `extract_session_id` is idempotent (first id wins),
+/// from a clean slate. `capture_session_metadata` is idempotent (first id wins),
 /// so leaving stale files would mask real failures.
 fn reset_session_files() {
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
@@ -113,8 +113,8 @@ async fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "thread_id": "0193abcd-ef01-7234-89ab-cdef01234567"
     });
 
-    // No API token → send_event skips the HTTP POST but still runs
-    // extract_session_id, which is the part we want to assert.
+    // No API token → send_event skips the HTTP POST but still captures
+    // session metadata, which is the part we want to assert.
     let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
     assert!(
         result.is_ok(),

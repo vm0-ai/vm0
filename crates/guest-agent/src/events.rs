@@ -1,7 +1,7 @@
 //! Event sending — forwards masked JSONL events to the webhook endpoint.
 //!
-//! Extracts session ID from the `system/init` event and persists it for
-//! checkpoint use.
+//! Captures framework session metadata for checkpoint use and prepares masked
+//! event payloads for webhook delivery.
 
 use crate::constants;
 use crate::env;
@@ -26,30 +26,30 @@ pub(crate) struct CodexFailureDiagnostic {
 
 /// Send a single event to the webhook, masking secrets first.
 ///
-/// On the init event, extracts and persists the session ID and
-/// session history path.
+/// On framework session-start events, captures the session metadata needed by
+/// checkpoints before preparing the webhook payload.
 pub async fn send_event(
     http: &HttpClient,
     event: &mut Value,
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
+    capture_session_metadata(event);
+
     let Some(payload) = prepare_event(event, seq, masker) else {
         return Ok(());
     };
     post_event(http, &payload).await
 }
 
-/// Prepare an event for sending: extract session ID, add sequence number,
-/// mask secrets, and build the HTTP payload.
+/// Prepare an event webhook payload by adding a sequence number, masking
+/// secrets, and wrapping the event in the HTTP payload shape.
 ///
 /// Returns `None` if there is no API token (local/test mode) or the event
-/// should not be posted.  This function is fast (no I/O) and safe to call
-/// inline in the stdout reading loop.
+/// should not be posted. This function does not perform filesystem or network
+/// I/O; session metadata capture happens in `capture_session_metadata`, and
+/// network delivery happens in `post_event` / `send_event`.
 pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Option<Value> {
-    // Extract session ID from init event (must happen before masking)
-    extract_session_id(event);
-
     // No API token → local/test mode; skip posting events.
     if !env::has_api() {
         return None;
@@ -250,8 +250,8 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
     results
 }
 
-/// If this is a session-start event, extract the session id and write
-/// the session-history-path file.
+/// If this is a session-start event, capture the session id and persist the
+/// session-history-path metadata files for checkpoint use.
 ///
 /// Both frameworks emit a single id-bearing event near the top of their
 /// JSONL stream:
@@ -263,7 +263,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex: `CODEX_SEARCH:{sessions_dir}:{thread_id}` marker — codex
 ///   doesn't write the session file until turn-completion, so resolution
 ///   is deferred to checkpoint time.
-fn extract_session_id(event: &Value) {
+pub fn capture_session_metadata(event: &Value) {
     let parsed = match Framework::from_env() {
         Framework::ClaudeCode => extract_claude_session_id(event),
         Framework::Codex => extract_codex_thread_id(event),
@@ -679,7 +679,7 @@ mod tests {
         );
     }
 
-    // Note: end-to-end coverage of `extract_session_id` (including both
+    // Note: end-to-end coverage of `capture_session_metadata` (including both
     // the Claude `system/init` branch and the codex `thread.started`
     // branch) lives in the integration test suites:
     //   - `tests/integration.rs::send_event_extracts_claude_session_id`

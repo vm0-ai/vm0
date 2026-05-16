@@ -953,6 +953,38 @@ async fn send_event_masks_secrets() {
     mock.delete_async().await;
 }
 
+#[tokio::test]
+async fn prepare_event_does_not_capture_session_metadata() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let _server = &*MOCK_SERVER;
+
+    let sid_file = guest_agent::paths::session_id_file();
+    let hist_file = guest_agent::paths::session_history_path_file();
+    let _ = std::fs::remove_file(sid_file);
+    let _ = std::fs::remove_file(hist_file);
+
+    let masker = SecretMasker::from_raw("");
+    let mut event = json!({
+        "type": "system",
+        "subtype": "init",
+        "session_id": "ses-prepare-only"
+    });
+    let payload = guest_agent::events::prepare_event(&mut event, 1, &masker);
+
+    assert!(
+        payload.is_some(),
+        "prepare_event should still prepare a payload when the API token is configured"
+    );
+    assert!(
+        !std::path::Path::new(sid_file).exists(),
+        "prepare_event must not write the session ID file"
+    );
+    assert!(
+        !std::path::Path::new(hist_file).exists(),
+        "prepare_event must not write the session history path file"
+    );
+}
+
 // =========================================================================
 // Group 6: Session ID extraction
 // =========================================================================
