@@ -957,11 +957,10 @@ async fn send_event_masks_secrets() {
 async fn send_event_captures_session_metadata_before_masking() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
-    let _ = std::fs::remove_file(sid_file);
-    let _ = std::fs::remove_file(hist_file);
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -1005,19 +1004,16 @@ async fn send_event_captures_session_metadata_before_masking() {
     );
 
     mock.delete_async().await;
-    let _ = std::fs::remove_file(sid_file);
-    let _ = std::fs::remove_file(hist_file);
 }
 
 #[tokio::test]
 async fn prepare_event_does_not_capture_session_metadata() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let _server = &*MOCK_SERVER;
+    let _session_files = SessionCheckpointFilesGuard::new();
 
     let sid_file = guest_agent::paths::session_id_file();
     let hist_file = guest_agent::paths::session_history_path_file();
-    let _ = std::fs::remove_file(sid_file);
-    let _ = std::fs::remove_file(hist_file);
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({
