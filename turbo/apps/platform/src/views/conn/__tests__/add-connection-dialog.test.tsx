@@ -395,7 +395,7 @@ describe("connect modal - interactions", () => {
       expect(screen.getByText("Stripe CLI")).toBeInTheDocument();
     });
 
-    const startButton = getButtonByText("Start Stripe CLI auth");
+    const startButton = getButtonByText("Select a mode to start CLI auth");
     expect(startButton).toBeDisabled();
 
     expect(getButtonByText(/Test mode/)).toHaveTextContent(
@@ -406,9 +406,10 @@ describe("connect modal - interactions", () => {
     );
 
     click(getButtonByText(/Test mode/));
-    expect(startButton).toBeEnabled();
+    const selectedModeStartButton = getButtonByText("Start Stripe CLI auth");
+    expect(selectedModeStartButton).toBeEnabled();
 
-    click(startButton);
+    click(selectedModeStartButton);
 
     await waitFor(() => {
       expect(screen.getByText("stripe-code-123")).toBeInTheDocument();
@@ -604,7 +605,7 @@ describe("connect modal - state management", () => {
     });
 
     expect(screen.queryByText("stripe-code-123")).not.toBeInTheDocument();
-    expect(getButtonByText("Start Stripe CLI auth")).toBeDisabled();
+    expect(getButtonByText("Select a mode to start CLI auth")).toBeDisabled();
   });
 
   it("clears Stripe CLI auth state when switching connectors", async () => {

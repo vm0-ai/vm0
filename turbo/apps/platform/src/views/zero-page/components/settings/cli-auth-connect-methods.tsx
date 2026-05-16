@@ -228,12 +228,6 @@ function BrowserVerificationCliAuthConnectMethodContent({
             }}
           />
 
-          {requiresMode && !cliAuthState.mode && (
-            <p className="text-sm text-muted-foreground">
-              Select a mode to start CLI auth.
-            </p>
-          )}
-
           {errorText && <p className="text-sm text-destructive">{errorText}</p>}
 
           <Button
@@ -245,7 +239,9 @@ function BrowserVerificationCliAuthConnectMethodContent({
             {cliAuthState.status === "starting" ||
             runLoadable.state === "loading"
               ? "Starting..."
-              : `Start ${cliAuthConfig.label} auth`}
+              : requiresMode && !cliAuthState.mode
+                ? "Select a mode to start CLI auth"
+                : `Start ${cliAuthConfig.label} auth`}
           </Button>
         </>
       )}
