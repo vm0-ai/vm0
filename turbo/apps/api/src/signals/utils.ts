@@ -52,6 +52,18 @@ export function safeUrlParse(input: string): URL | undefined {
   }
 }
 
+export function safeSync<T>(
+  fn: () => T,
+): { readonly ok: T } | { readonly error: unknown } {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded sync
+  try {
+    return { ok: fn() };
+  } catch (error) {
+    throwIfAbort(error);
+    return { error };
+  }
+}
+
 export function isValidTimeZone(input: string): boolean {
   // eslint-disable-next-line no-restricted-syntax -- centralized guarded Intl timezone validation
   try {

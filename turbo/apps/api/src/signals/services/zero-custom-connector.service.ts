@@ -15,7 +15,7 @@ import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-s
 import { db$, writeDb$ } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { safeUrlParse } from "../utils";
+import { safeSync, safeUrlParse } from "../utils";
 
 const L = logger("CustomConnectorService");
 
@@ -82,12 +82,13 @@ function normalizePrefix(raw: string): string | BadRequestResponse {
     : `${url.pathname}/`;
   const normalized = `${url.origin}${pathname}`;
   const firewallBase = expandHostWildcardsInBaseUrl(normalized);
-  try {
+  const validation = safeSync(() => {
     validateBaseUrl(firewallBase, "custom connector");
-  } catch (error) {
+  });
+  if ("error" in validation) {
     const message =
-      error instanceof Error
-        ? error.message.replace(firewallBase, normalized)
+      validation.error instanceof Error
+        ? validation.error.message.replace(firewallBase, normalized)
         : "not a valid URL";
     return badRequestMessage(`Invalid prefix URL: ${raw}: ${message}`);
   }
