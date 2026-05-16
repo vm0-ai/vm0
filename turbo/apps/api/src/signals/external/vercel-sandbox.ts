@@ -21,6 +21,20 @@ import {
 
 type VercelSandboxSdk = typeof import("@vercel/sandbox");
 type VercelNetworkPolicy = import("@vercel/sandbox").NetworkPolicy;
+type VercelCommandLog = {
+  readonly stream: string;
+  readonly data: string;
+};
+type VercelCommandLike = {
+  readonly cmdId: string;
+  readonly exitCode: number | null;
+  readonly wait: (params?: {
+    readonly signal?: AbortSignal;
+  }) => Promise<VercelCommandLike>;
+  readonly logs: (params?: {
+    readonly signal?: AbortSignal;
+  }) => AsyncIterable<VercelCommandLog>;
+};
 type VercelSandboxCredentials = {
   readonly teamId: string;
   readonly projectId: string;
@@ -115,6 +129,31 @@ async function vercelSandboxOperation<T>(
   throw sandboxErrorToException(result.error);
 }
 
+async function collectVercelCommandLogs(
+  command: VercelCommandLike,
+  outputLimitBytes: number,
+  signal?: AbortSignal,
+) {
+  const stdout = createBoundedTextCollector(outputLimitBytes);
+  const stderr = createBoundedTextCollector(outputLimitBytes);
+
+  for await (const log of command.logs({ signal })) {
+    signal?.throwIfAborted();
+    if (log.stream === "stdout") {
+      stdout.writable.write(log.data);
+      continue;
+    }
+    if (log.stream === "stderr") {
+      stderr.writable.write(log.data);
+    }
+  }
+
+  return {
+    stdout: stdout.output(),
+    stderr: stderr.output(),
+  };
+}
+
 function createRealVercelSandboxClient(): SandboxClient {
   return {
     create(options = {}): Promise<SandboxHandle> {
@@ -172,25 +211,28 @@ function createRealVercelSandboxClient(): SandboxClient {
           };
         }
 
-        const stdout = createBoundedTextCollector(outputLimitBytes);
-        const stderr = createBoundedTextCollector(outputLimitBytes);
         const command = await sandbox.runCommand({
           cmd: options.cmd,
           args: options.args ? [...options.args] : undefined,
           cwd: options.cwd,
           env: options.env ? { ...options.env } : undefined,
-          stdout: stdout.writable,
-          stderr: stderr.writable,
+          detached: true,
           signal: options.signal,
         });
+        const finishedCommand = await command.wait({ signal: options.signal });
+        const output = await collectVercelCommandLogs(
+          finishedCommand,
+          outputLimitBytes,
+          options.signal,
+        );
 
         return {
           sandboxId: handle.sandboxId,
-          commandId: command.cmdId,
+          commandId: finishedCommand.cmdId,
           detached: false,
-          exitCode: command.exitCode,
-          stdout: stdout.output(),
-          stderr: stderr.output(),
+          exitCode: finishedCommand.exitCode,
+          stdout: output.stdout,
+          stderr: output.stderr,
         };
       });
     },

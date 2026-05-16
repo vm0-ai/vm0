@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { getApiTestMocks, resetApiTestMocks } from "../../../__tests__/mocks";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   getVercelSandboxClient,
@@ -64,6 +65,7 @@ function commandResult(
 afterEach(() => {
   clearMockSandboxClient();
   clearMockSandboxCleanupTimeoutMs();
+  resetApiTestMocks();
 });
 
 describe("sandbox utilities", () => {
@@ -307,6 +309,59 @@ describe("Vercel sandbox client test override", () => {
       create: [{ runtime: "node24" }],
       get: ["sb_test"],
       stop: [handle],
+    });
+  });
+
+  it("waits for Vercel commands without the SDK wait stream", async () => {
+    const mocks = getApiTestMocks();
+    mocks.vercelSandbox.waitCommand.mockResolvedValue({
+      cmdId: "cmd_mock",
+      exitCode: 3,
+    });
+    mocks.vercelSandbox.logs.mockImplementation(async function* () {
+      await Promise.resolve();
+      yield { stream: "stdout", data: "hello " };
+      yield { stream: "stderr", data: "warning" };
+      yield { stream: "stdout", data: "world" };
+    });
+
+    const result = await getVercelSandboxClient().runCommand(sandboxHandle(), {
+      cmd: "node",
+      args: ["--version"],
+      outputLimitBytes: 8,
+    });
+
+    expect(mocks.vercelSandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "node",
+      args: ["--version"],
+      cwd: undefined,
+      env: undefined,
+      detached: true,
+      signal: undefined,
+    });
+    expect(mocks.vercelSandbox.waitCommand).toHaveBeenCalledWith("cmd_mock", {
+      signal: undefined,
+    });
+    expect(mocks.vercelSandbox.logs).toHaveBeenCalledWith("cmd_mock", {
+      signal: undefined,
+    });
+    expect(result).toStrictEqual({
+      sandboxId: sandboxHandle().sandboxId,
+      commandId: "cmd_mock",
+      detached: false,
+      exitCode: 3,
+      stdout: {
+        text: "hello wo",
+        bytes: 11,
+        limitBytes: 8,
+        truncated: true,
+      },
+      stderr: {
+        text: "warning",
+        bytes: 7,
+        limitBytes: 8,
+        truncated: false,
+      },
     });
   });
 
