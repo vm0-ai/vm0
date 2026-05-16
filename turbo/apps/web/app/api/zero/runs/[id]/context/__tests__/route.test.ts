@@ -112,6 +112,60 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(data.featureFlags).toEqual({ computerUse: true, voiceChat: false });
   });
 
+  it("omits sparse null Axiom fields before response validation", async () => {
+    const userId = uniqueId("zctx-null");
+    await setupOrg(userId);
+    const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
+    const { runId } = await seedTestRun(userId, compose.composeId, {
+      status: "running",
+      prompt: "test prompt",
+    });
+
+    const snapshot = makeSnapshot(runId, userId);
+    context.mocks.axiom.queryAxiom.mockResolvedValue([
+      {
+        ...snapshot,
+        environment: {
+          OPENAI_API_KEY: null,
+          ZERO_TOKEN: "***",
+        } as unknown as RunContextSnapshot["environment"],
+        networkPolicies: {
+          github: {
+            allow: ["repo-read"],
+            deny: [],
+            ask: [],
+            unknownPolicy: "allow",
+          },
+          slack: {
+            allow: null,
+            deny: null,
+            ask: null,
+            unknownPolicy: null,
+          },
+        } as unknown as RunContextSnapshot["networkPolicies"],
+        featureFlags: {
+          apiBackend: true,
+          voiceChat: null,
+        } as unknown as RunContextSnapshot["featureFlags"],
+      },
+    ]);
+
+    const response = await GET(createTestRequest(contextUrl(runId)));
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.environment).toEqual({ ZERO_TOKEN: "***" });
+    expect(data.networkPolicies).toEqual({
+      github: {
+        allow: ["repo-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "allow",
+      },
+    });
+    expect(data.featureFlags).toEqual({ apiBackend: true });
+  });
+
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("zctx-nf");
     await setupOrg(userId);
