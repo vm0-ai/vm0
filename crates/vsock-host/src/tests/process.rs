@@ -168,6 +168,45 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_with_control_sink_sets_control_sink_flag() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        assert_eq!(decoded_spawn.command, "run-agent");
+        assert!(
+            decoded_spawn.control_nonce.is_some(),
+            "control sink spawn should include a nonce",
+        );
+        assert!(
+            decoded_spawn.control_sink,
+            "spawn_process_with_control_sink should set the control sink flag",
+        );
+
+        let payload = vsock_proto::encode_spawn_process_result(43);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process_with_control_sink("run-agent", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 43);
+    drop(handle);
+    assert_eq!(registration_counts(&host), (0, 0, 0));
+}
+
+#[tokio::test]
 async fn test_spawn_process_concurrent_controls_route_by_request_seq() {
     let (host_stream, mut guest) = make_pair();
 
