@@ -100,20 +100,38 @@ const validatedQuery$ = computed((get): unknown => {
   return result.data;
 });
 
-type RouteWithPathParams<T> = AppRoute & { readonly pathParams: z.ZodType<T> };
-type RouteWithQuery<T> = AppRoute & { readonly query: z.ZodType<T> };
-type RouteWithBody<T> = AppRoute & { readonly body: z.ZodType<T> };
+type RouteWithPathParams = AppRoute & { readonly pathParams: unknown };
+type RouteWithQuery = AppRoute & { readonly query: unknown };
+type RouteWithBody = AppRoute & { readonly body: unknown };
+
+// Cheap structural body-type extractor. Avoids matching against
+// `z.ZodType<T>`, whose three-parameter generic (Output/Input/Internals)
+// triggers deep `IndexedAccess<SubstitutionType<TypeParameter>>` chains
+// in Zod v4. `z.output<S>` is a shallow conditional on `{ _zod: { output } }`.
+type InferPathParams<R> = R extends { readonly pathParams: infer S }
+  ? z.output<S>
+  : never;
+type InferQuery<R> = R extends { readonly query: infer S }
+  ? z.output<S>
+  : never;
+type InferBody<R> = R extends { readonly body: infer S }
+  ? z.output<S>
+  : never;
 
 type BodyResult<T> =
   | { readonly ok: true; readonly data: T }
   | { readonly ok: false; readonly response: BadRequestResponse };
 
-export function pathParamsOf<T>(_route: RouteWithPathParams<T>): Computed<T> {
-  return validatedPathParams$ as Computed<T>;
+export function pathParamsOf<R extends RouteWithPathParams>(
+  _route: R,
+): Computed<InferPathParams<R>> {
+  return validatedPathParams$ as Computed<InferPathParams<R>>;
 }
 
-export function queryOf<T>(_route: RouteWithQuery<T>): Computed<T> {
-  return validatedQuery$ as Computed<T>;
+export function queryOf<R extends RouteWithQuery>(
+  _route: R,
+): Computed<InferQuery<R>> {
+  return validatedQuery$ as Computed<InferQuery<R>>;
 }
 
 const bodyResult$ = computed(async (get): Promise<BodyResult<unknown>> => {
@@ -144,8 +162,8 @@ const bodyResult$ = computed(async (get): Promise<BodyResult<unknown>> => {
   return { ok: true, data: result.data };
 });
 
-export function bodyResultOf<T>(
-  _route: RouteWithBody<T>,
-): Computed<Promise<BodyResult<T>>> {
-  return bodyResult$ as Computed<Promise<BodyResult<T>>>;
+export function bodyResultOf<R extends RouteWithBody>(
+  _route: R,
+): Computed<Promise<BodyResult<InferBody<R>>>> {
+  return bodyResult$ as Computed<Promise<BodyResult<InferBody<R>>>>;
 }
