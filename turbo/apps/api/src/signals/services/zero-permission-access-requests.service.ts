@@ -24,7 +24,8 @@ import {
   postMessage,
 } from "../external/slack-message-client";
 import { nowDate } from "../external/time";
-import { detach, Mechanism, tapError } from "../utils";
+import { waitUntil } from "../context/wait-until";
+import { tapError } from "../utils";
 import type { ApiOrgRole } from "../../types/auth";
 import { decryptSecretValue } from "./crypto.utils";
 
@@ -468,7 +469,7 @@ export const createPermissionAccessRequest$ = command(
     const requesterNames = await requesterNameMap(client, [args.userId]);
     signal.throwIfAborted();
 
-    detach(
+    waitUntil(
       tapError(
         notifyOwnerOfRequest(db, {
           orgId: args.orgId,
@@ -486,8 +487,6 @@ export const createPermissionAccessRequest$ = command(
           log.error("Failed to notify owner of permission request", { error });
         },
       ),
-      Mechanism.WaitUntil,
-      "notifyOwnerOfRequest",
     );
 
     return { kind: "ok", request: formatPermissionAccessRequest(row) };
@@ -588,7 +587,7 @@ export const resolvePermissionAccessRequest$ = command(
       `Resolved permission access request: ${args.requestId} as ${newStatus}`,
     );
 
-    detach(
+    waitUntil(
       tapError(
         notifyRequesterOfResolution(db, {
           orgId: args.orgId,
@@ -607,8 +606,6 @@ export const resolvePermissionAccessRequest$ = command(
           });
         },
       ),
-      Mechanism.WaitUntil,
-      "notifyRequesterOfResolution",
     );
 
     return { kind: "ok", request: formatPermissionAccessRequest(updated) };
