@@ -738,6 +738,101 @@ mod tests {
     }
 
     #[test]
+    fn pending_process_control_returns_inactive_when_operation_releases() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"0011223344556677";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(10, Some(FORWARD_NONCE), true).unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_process_control(10, FORWARD_NONCE, "msg-release", b"payload")
+                .unwrap();
+
+        handle_process_control(13, &payload, &registry, &writer).unwrap();
+        registration.guard.release();
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 13);
+        assert_eq!(status, ProcessControlStatus::Inactive);
+        assert_eq!(message_id, "msg-release");
+        assert_eq!(diagnostic, "process operation is not active");
+    }
+
+    #[test]
+    fn process_control_queue_full_rejects_without_leaking_pending_slots() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, peer) = UnixStream::pair().unwrap();
+        sink.connect(stream);
+        let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+            ControlSinkInner::Connected(stream) => Arc::clone(stream),
+            _ => panic!("sink should be connected"),
+        };
+        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+
+        for index in 0..MAX_PENDING_CONTROL_REQUESTS {
+            assert!(
+                sink.try_forward(
+                    OwnedProcessControlRequest {
+                        response_seq: 100 + index as u32,
+                        target_seq: 12,
+                        control_nonce: NONCE,
+                        message_id: format!("msg-{index}"),
+                        payload: b"payload".to_vec(),
+                    },
+                    writer.clone(),
+                )
+                .is_none()
+            );
+        }
+        assert_eq!(
+            sink.pending.load(Ordering::Acquire),
+            MAX_PENDING_CONTROL_REQUESTS
+        );
+
+        let immediate = sink
+            .try_forward(
+                OwnedProcessControlRequest {
+                    response_seq: 199,
+                    target_seq: 12,
+                    control_nonce: NONCE,
+                    message_id: "msg-overflow".to_owned(),
+                    payload: b"payload".to_vec(),
+                },
+                writer,
+            )
+            .expect("overflow request should be rejected synchronously");
+        assert_eq!(immediate.0, ProcessControlStatus::QueueFull);
+        assert_eq!(immediate.1, "process control queue is full");
+        assert_eq!(
+            sink.pending.load(Ordering::Acquire),
+            MAX_PENDING_CONTROL_REQUESTS
+        );
+
+        drop(peer);
+        drop(stream_guard);
+        for _ in 0..MAX_PENDING_CONTROL_REQUESTS {
+            let (_, _, status, _, _) = read_process_control_result(&mut host);
+            assert!(
+                matches!(
+                    status,
+                    ProcessControlStatus::SinkError
+                        | ProcessControlStatus::SinkTimeout
+                        | ProcessControlStatus::Inactive
+                ),
+                "unexpected status: {status:?}",
+            );
+        }
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
     fn timed_out_control_sink_is_marked_failed() {
         let sink = Arc::new(ControlSinkState::new());
         let (stream, _peer) = UnixStream::pair().unwrap();
