@@ -7,7 +7,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { safeAsync, settle } from "../utils";
+import { settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-thread.service";
 
 const log = logger("api:zero:chat-title");
@@ -204,19 +204,21 @@ export async function generateAndPersistChatThreadTitle(args: {
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): Promise<void> {
-  const result = await safeAsync(async () => {
-    const priorRounds = args.includePriorRounds
-      ? await getLatestTitleContextMessages(args.db, args.threadId)
-      : [];
-    const title = await generateChatTitle({
-      currentUserMessage: args.prompt,
-      priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
-    });
-    if (title) {
-      await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
-    }
-  });
-  if ("error" in result) {
+  const result = await settle(
+    (async () => {
+      const priorRounds = args.includePriorRounds
+        ? await getLatestTitleContextMessages(args.db, args.threadId)
+        : [];
+      const title = await generateChatTitle({
+        currentUserMessage: args.prompt,
+        priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+      });
+      if (title) {
+        await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
+      }
+    })(),
+  );
+  if (!result.ok) {
     log.warn("Chat title generation failed", {
       threadId: args.threadId,
       err: result.error,
@@ -232,22 +234,24 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
   readonly prompt: string;
   readonly currentAssistantReply: string | undefined;
 }): Promise<void> {
-  const result = await safeAsync(async () => {
-    const priorRounds = await getLatestTitleContextMessages(
-      args.db,
-      args.threadId,
-      { excludeRunId: args.runId },
-    );
-    const title = await generateChatTitle({
-      currentUserMessage: args.prompt,
-      currentAssistantReply: args.currentAssistantReply,
-      priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
-    });
-    if (title) {
-      await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
-    }
-  });
-  if ("error" in result) {
+  const result = await settle(
+    (async () => {
+      const priorRounds = await getLatestTitleContextMessages(
+        args.db,
+        args.threadId,
+        { excludeRunId: args.runId },
+      );
+      const title = await generateChatTitle({
+        currentUserMessage: args.prompt,
+        currentAssistantReply: args.currentAssistantReply,
+        priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
+      });
+      if (title) {
+        await updateChatThreadTitle(args.db, args.threadId, args.userId, title);
+      }
+    })(),
+  );
+  if (!result.ok) {
     log.warn("Chat title generation failed", {
       threadId: args.threadId,
       err: result.error,

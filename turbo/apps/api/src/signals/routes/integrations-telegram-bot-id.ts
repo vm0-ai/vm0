@@ -18,7 +18,7 @@ import { decryptSecretValue } from "../services/crypto.utils";
 import { telegramIntegrationBotStatus } from "../services/zero-telegram-data.service";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const log = logger("api:telegram:integration-bot");
@@ -101,11 +101,11 @@ const updateOfficialBot$ = command(
       });
     signal.throwIfAborted();
 
-    const publishResult = await safeAsync(() => {
-      return publishUserSignal([args.auth.userId], "telegram:changed");
-    });
+    const publishResult = await settle(
+      publishUserSignal([args.auth.userId], "telegram:changed"),
+    );
     signal.throwIfAborted();
-    if ("error" in publishResult) {
+    if (!publishResult.ok) {
       log.warn("Failed to publish Telegram user change", {
         error: publishResult.error,
       });
@@ -182,11 +182,11 @@ const updateCustomBot$ = command(
       );
     signal.throwIfAborted();
 
-    const publishResult = await safeAsync(() => {
-      return publishOrgSignal(installation.orgId, "telegram:changed");
-    });
+    const publishResult = await settle(
+      publishOrgSignal(installation.orgId, "telegram:changed"),
+    );
     signal.throwIfAborted();
-    if ("error" in publishResult) {
+    if (!publishResult.ok) {
       log.warn("Failed to publish Telegram org change", {
         error: publishResult.error,
       });
@@ -277,11 +277,9 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const botToken = decryptSecretValue(installation.encryptedBotToken);
-  const webhookResult = await safeAsync(() => {
-    return deleteWebhook(botToken);
-  });
+  const webhookResult = await settle(deleteWebhook(botToken));
   signal.throwIfAborted();
-  if ("error" in webhookResult) {
+  if (!webhookResult.ok) {
     log.warn("Failed to remove Telegram webhook", {
       error: webhookResult.error,
     });
@@ -292,11 +290,11 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .where(eq(telegramInstallations.telegramBotId, installation.telegramBotId));
   signal.throwIfAborted();
 
-  const publishResult = await safeAsync(() => {
-    return publishOrgSignal(installation.orgId, "telegram:changed");
-  });
+  const publishResult = await settle(
+    publishOrgSignal(installation.orgId, "telegram:changed"),
+  );
   signal.throwIfAborted();
-  if ("error" in publishResult) {
+  if (!publishResult.ok) {
     log.warn("Failed to publish Telegram org change", {
       error: publishResult.error,
     });

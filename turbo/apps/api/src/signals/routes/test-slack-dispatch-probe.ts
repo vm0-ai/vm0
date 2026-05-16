@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route";
 import { dispatchZeroSlackProbe$ } from "../services/zero-slack-webhooks.service";
-import { safeAsync, settle } from "../utils";
+import { settle } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -106,8 +106,8 @@ const postSlackDispatchProbe$ = command(
       };
     }
 
-    const dispatchResult = await safeAsync(() => {
-      return set(
+    const dispatchResult = await settle(
+      set(
         dispatchZeroSlackProbe$,
         {
           workspaceId: body.team_id,
@@ -119,10 +119,10 @@ const postSlackDispatchProbe$ = command(
           apiStartTime: now(),
         },
         signal,
-      );
-    });
+      ),
+    );
     signal.throwIfAborted();
-    if ("error" in dispatchResult) {
+    if (!dispatchResult.ok) {
       return {
         status: 200 as const,
         body: {

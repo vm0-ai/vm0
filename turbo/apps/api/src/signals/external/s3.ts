@@ -10,7 +10,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { env } from "../../lib/env";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 interface S3Object {
   readonly key: string;
@@ -333,10 +333,12 @@ function s3ObjectExistsWithClient(
 ): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const client = get(client$);
-    const result = await safeAsync(async () => {
-      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-    });
-    if ("ok" in result) {
+    const result = await settle(
+      (async () => {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      })(),
+    );
+    if (result.ok) {
       return true;
     }
 

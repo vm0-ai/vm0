@@ -18,7 +18,7 @@ import { getDatasetName, queryAxiom } from "../external/axiom";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const L = logger("CronAggregateInsights");
 const OTHER_USAGE_AGENT_NAME = "Other usage";
@@ -937,16 +937,18 @@ async function queryWindowNetworkData(
 | project runId, host, firewall_name, firewall_permission, action
 | limit 100000`;
 
-  const axiomResult = await safeAsync(async () => {
-    return [
-      ...((await get(
-        queryAxiom(apl),
-      )) as unknown as readonly AxiomNetworkRow[]),
-    ];
-  });
-  const networkRows = "ok" in axiomResult ? axiomResult.ok : [];
-  const axiomDegraded = "error" in axiomResult;
-  if ("error" in axiomResult) {
+  const axiomResult = await settle(
+    (async (): Promise<AxiomNetworkRow[]> => {
+      return [
+        ...((await get(
+          queryAxiom(apl),
+        )) as unknown as readonly AxiomNetworkRow[]),
+      ];
+    })(),
+  );
+  const networkRows = axiomResult.ok ? axiomResult.value : [];
+  const axiomDegraded = !axiomResult.ok;
+  if (!axiomResult.ok) {
     L.error("Failed to query Axiom for network logs", {
       error:
         axiomResult.error instanceof Error

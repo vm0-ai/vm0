@@ -19,7 +19,7 @@ import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
@@ -94,8 +94,8 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const db = set(writeDb$);
-  const insertResult = await safeAsync(() => {
-    return db
+  const insertResult = await settle(
+    db
       .insert(usageEvent)
       .values(
         body.events.map((event) => {
@@ -111,10 +111,10 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
           };
         }),
       )
-      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
-  });
+      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] }),
+  );
   signal.throwIfAborted();
-  if ("error" in insertResult) {
+  if (!insertResult.ok) {
     if (isForeignKeyViolation(insertResult.error)) {
       L.debug("Run not found for usage event, dropping", {
         runId: body.runId,

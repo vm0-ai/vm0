@@ -11,7 +11,7 @@ import {
   getChatgptOAuthClientId,
 } from "../services/codex-oauth-browser.service";
 import { upsertUserMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const STATE_COOKIE_NAME = "model_provider_oauth_state";
@@ -222,64 +222,68 @@ const callbackInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return redirectWithError(origin, "Missing PKCE verifier", true);
   }
 
-  const result = await safeAsync(async () => {
-    const exchangeResult = await exchangeChatgptCode({
-      clientId: getChatgptOAuthClientId(),
-      code: authorizationCode,
-      redirectUri: `${origin}/api/zero/me/model-providers/codex-oauth-token/oauth/callback`,
-      codeVerifier,
-    });
-    signal.throwIfAborted();
+  const result = await settle(
+    (async (): Promise<Response> => {
+      const exchangeResult = await exchangeChatgptCode({
+        clientId: getChatgptOAuthClientId(),
+        code: authorizationCode,
+        redirectUri: `${origin}/api/zero/me/model-providers/codex-oauth-token/oauth/callback`,
+        codeVerifier,
+      });
+      signal.throwIfAborted();
 
-    const upsertResult = await set(
-      upsertUserMultiAuthModelProvider$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        type: "codex-oauth-token",
-        authMethod: "oauth",
-        secretValues: {
-          CHATGPT_ACCESS_TOKEN: exchangeResult.accessToken,
-          CHATGPT_REFRESH_TOKEN: exchangeResult.refreshToken,
-          CHATGPT_ACCOUNT_ID: exchangeResult.accountId,
-          CHATGPT_ID_TOKEN: exchangeResult.idToken,
+      const upsertResult = await set(
+        upsertUserMultiAuthModelProvider$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          type: "codex-oauth-token",
+          authMethod: "oauth",
+          secretValues: {
+            CHATGPT_ACCESS_TOKEN: exchangeResult.accessToken,
+            CHATGPT_REFRESH_TOKEN: exchangeResult.refreshToken,
+            CHATGPT_ACCOUNT_ID: exchangeResult.accountId,
+            CHATGPT_ID_TOKEN: exchangeResult.idToken,
+          },
+          metadata: {
+            tokenExpiresAt: exchangeResult.tokenExpiresAt,
+            workspaceName: exchangeResult.workspaceName,
+            planType: exchangeResult.planType,
+          },
         },
-        metadata: {
-          tokenExpiresAt: exchangeResult.tokenExpiresAt,
-          workspaceName: exchangeResult.workspaceName,
-          planType: exchangeResult.planType,
-        },
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if ("status" in upsertResult) {
-      throw new Error(upsertResult.body.error.message);
-    }
+        signal,
+      );
+      signal.throwIfAborted();
+      if ("status" in upsertResult) {
+        throw new Error(upsertResult.body.error.message);
+      }
 
-    const successUrl = new URL("/connector/success", origin);
-    successUrl.searchParams.set("type", "openai");
-    successUrl.searchParams.set(
-      "username",
-      exchangeResult.workspaceName ?? exchangeResult.userInfo.email ?? "OpenAI",
-    );
-    const response = redirectResponse(successUrl.toString());
-    response.headers.append(
-      "Set-Cookie",
-      buildDeleteCookieHeader(STATE_COOKIE_NAME),
-    );
-    response.headers.append(
-      "Set-Cookie",
-      buildDeleteCookieHeader(PKCE_COOKIE_NAME),
-    );
-    return response;
-  });
+      const successUrl = new URL("/connector/success", origin);
+      successUrl.searchParams.set("type", "openai");
+      successUrl.searchParams.set(
+        "username",
+        exchangeResult.workspaceName ??
+          exchangeResult.userInfo.email ??
+          "OpenAI",
+      );
+      const response = redirectResponse(successUrl.toString());
+      response.headers.append(
+        "Set-Cookie",
+        buildDeleteCookieHeader(STATE_COOKIE_NAME),
+      );
+      response.headers.append(
+        "Set-Cookie",
+        buildDeleteCookieHeader(PKCE_COOKIE_NAME),
+      );
+      return response;
+    })(),
+  );
   signal.throwIfAborted();
 
-  if ("error" in result) {
+  if (!result.ok) {
     return redirectWithError(origin, errorMessage(result.error), true);
   }
-  return result.ok;
+  return result.value;
 });
 
 export const zeroMeModelProvidersCodexOauthRoutes: readonly RouteEntry[] = [

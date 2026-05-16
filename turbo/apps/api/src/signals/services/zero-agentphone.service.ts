@@ -38,7 +38,7 @@ import {
   sendAgentPhoneMessage,
   sendAgentPhoneTypingIndicator,
 } from "../external/agentphone-client";
-import { safeAsync, safeUrlParse } from "../utils";
+import { safeUrlParse, settle } from "../utils";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
@@ -1154,10 +1154,10 @@ async function refreshTypingIfSupported(
   }
   const conversationId = event.conversationId;
 
-  const result = await safeAsync(() => {
-    return sendAgentPhoneTypingIndicator({ conversationId }, signal);
-  });
-  if ("error" in result) {
+  const result = await settle(
+    sendAgentPhoneTypingIndicator({ conversationId }, signal),
+  );
+  if (!result.ok) {
     log.debug("Failed to send AgentPhone typing indicator", {
       conversationId: event.conversationId,
       error: result.error,
@@ -1964,10 +1964,10 @@ export async function resolveAgentPhoneAuditLogsUrl(args: {
 export async function publishAgentPhoneUserChanged(
   userId: string,
 ): Promise<void> {
-  const result = await safeAsync(() => {
-    return publishUserSignal([userId], "agentphone:changed");
-  });
-  if ("error" in result) {
+  const result = await settle(
+    publishUserSignal([userId], "agentphone:changed"),
+  );
+  if (!result.ok) {
     log.warn("Failed to publish AgentPhone user signal", {
       userId,
       error: result.error,

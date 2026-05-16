@@ -12,7 +12,7 @@ import {
   createAgentCheckpoint$,
   prepareCheckpointHistoryUpload$,
 } from "../services/agent-webhook-checkpoints.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   getSandboxAuthForRun,
   unauthorizedRunMismatch,
@@ -47,19 +47,19 @@ const createCheckpoint$ = command(async ({ get, set }, signal: AbortSignal) => {
     return unauthorizedRunMismatch;
   }
 
-  const result = await safeAsync(() => {
-    return set(createAgentCheckpoint$, { auth, body }, signal);
-  });
+  const result = await settle(
+    set(createAgentCheckpoint$, { auth, body }, signal),
+  );
   signal.throwIfAborted();
 
-  if ("error" in result) {
+  if (!result.ok) {
     if (isForeignKeyViolation(result.error)) {
       return notFound("Agent run not found");
     }
     throw result.error;
   }
 
-  return result.ok;
+  return result.value;
 });
 
 const prepareHistoryBody$ = bodyResultOf(

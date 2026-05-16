@@ -5,7 +5,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -66,13 +66,13 @@ const getOrgLogoInner$ = computed(async (get) => {
   }
 
   const client = get(clerk$);
-  const result = await safeAsync(() => {
-    return client.organizations.getOrganization({
+  const result = await settle(
+    client.organizations.getOrganization({
       organizationId: auth.orgId,
-    });
-  });
+    }),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     if (isOrgLookupNotFound(result.error)) {
       return orgLogoNotFound;
     }
@@ -82,8 +82,8 @@ const getOrgLogoInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      logoUrl: result.ok.imageUrl || null,
-      hasImage: result.ok.hasImage,
+      logoUrl: result.value.imageUrl || null,
+      hasImage: result.value.hasImage,
     },
   };
 });
@@ -117,12 +117,12 @@ const postOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const client = get(clerk$);
-  const result = await safeAsync(() => {
-    return client.organizations.updateOrganizationLogo(orgId, { file });
-  });
+  const result = await settle(
+    client.organizations.updateOrganizationLogo(orgId, { file }),
+  );
   signal.throwIfAborted();
 
-  if ("error" in result) {
+  if (!result.ok) {
     if (isOrgLookupNotFound(result.error)) {
       return orgLogoNotFound;
     }
@@ -135,8 +135,8 @@ const postOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   return {
     status: 200 as const,
     body: {
-      logoUrl: result.ok.imageUrl || null,
-      hasImage: result.ok.hasImage,
+      logoUrl: result.value.imageUrl || null,
+      hasImage: result.value.hasImage,
     },
   };
 });
@@ -153,12 +153,12 @@ const deleteOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const client = get(clerk$);
-  const result = await safeAsync(() => {
-    return client.organizations.deleteOrganizationLogo(orgId);
-  });
+  const result = await settle(
+    client.organizations.deleteOrganizationLogo(orgId),
+  );
   signal.throwIfAborted();
 
-  if ("error" in result) {
+  if (!result.ok) {
     if (isOrgLookupNotFound(result.error)) {
       return orgLogoNotFound;
     }
@@ -171,8 +171,8 @@ const deleteOrgLogoInner$ = command(async ({ get }, signal: AbortSignal) => {
   return {
     status: 200 as const,
     body: {
-      logoUrl: result.ok.imageUrl || null,
-      hasImage: result.ok.hasImage,
+      logoUrl: result.value.imageUrl || null,
+      hasImage: result.value.hasImage,
     },
   };
 });

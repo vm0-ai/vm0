@@ -53,17 +53,17 @@ const restrictedSyntax = [
 
 // Promise chaining ban — see issue #13535. .then/.catch hide error and
 // loading state; production code should await and centralize guarded async
-// work in signals/utils.ts (safeAsync, safeJsonParse, detach, etc.).
+// work in signals/utils.ts (settle, safeJsonParse, detach, etc.).
 const promiseChainSyntax = [
   {
     selector: "CallExpression[callee.property.name='then']",
     message:
-      "Promise.then is not allowed. Use await, or centralize the guarded async in signals/utils.ts (safeAsync, detach).",
+      "Promise.then is not allowed. Use await, or centralize the guarded async in signals/utils.ts (settle, detach).",
   },
   {
     selector: "CallExpression[callee.property.name='catch']",
     message:
-      "Promise.catch is not allowed. Use safeAsync from signals/utils.ts (or detach for fire-and-forget).",
+      "Promise.catch is not allowed. Use settle from signals/utils.ts (or detach for fire-and-forget).",
   },
 ];
 
@@ -71,7 +71,7 @@ const promiseChainSyntax = [
 // only infrastructure that wraps runtime primitives stays on raw
 // .then/.catch. Production code under src/signals/routes and
 // src/signals/services must route through the centralized helpers
-// (safeAsync, tapError, onRejection, settle, detach, bestEffort).
+// (settle, tapError, onRejection, detach, bestEffort).
 const promiseChainAllowlist = [
   // pg/OTel instrumentation: needs .then chains around the wrapped pg.query
   // call to attach span lifecycle without forcing an async wrapper around

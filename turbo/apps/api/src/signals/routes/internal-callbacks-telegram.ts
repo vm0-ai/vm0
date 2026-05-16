@@ -41,7 +41,7 @@ import {
 } from "../services/zero-telegram-callback-persistence.service";
 import { telegramBotToken } from "../services/zero-telegram-data.service";
 import { resolveTelegramAgentReplyFooterText } from "../services/zero-telegram-footer.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const L = logger("InternalCallbacksTelegram");
 
@@ -141,14 +141,10 @@ async function deleteThinkingMessageIfPresent(args: {
     return;
   }
 
-  const result = await safeAsync(() => {
-    return deleteMessage(
-      args.botToken,
-      args.chatId,
-      Number(args.thinkingMessageId),
-    );
-  });
-  if ("error" in result) {
+  const result = await settle(
+    deleteMessage(args.botToken, args.chatId, Number(args.thinkingMessageId)),
+  );
+  if (!result.ok) {
     L.debug("Failed to delete legacy thinking placeholder", {
       thinkingMessageId: args.thinkingMessageId,
       error: result.error,
@@ -487,11 +483,11 @@ const handleTelegramCallback$ = command(
     }
 
     if (callback.status === "progress") {
-      const typing = await safeAsync(() => {
-        return sendChatAction(botToken, payload.chatId, "typing");
-      });
+      const typing = await settle(
+        sendChatAction(botToken, payload.chatId, "typing"),
+      );
       signal.throwIfAborted();
-      if ("error" in typing) {
+      if (!typing.ok) {
         L.debug("Failed to refresh typing indicator", {
           runId: callback.runId,
           error: typing.error,

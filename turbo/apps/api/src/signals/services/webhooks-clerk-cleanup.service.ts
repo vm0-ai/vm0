@@ -40,7 +40,7 @@ import { nowDate } from "../external/time";
 import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
-import { safeAsync, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
@@ -339,10 +339,10 @@ async function deleteUserObjectsForPrefixesBestEffort(args: {
   readonly userId: string;
 }): Promise<void> {
   for (const prefix of args.prefixes) {
-    const objectsResult = await safeAsync(() => {
-      return args.get(listS3Objects(args.bucket, prefix));
-    });
-    if ("error" in objectsResult) {
+    const objectsResult = await settle(
+      args.get(listS3Objects(args.bucket, prefix)),
+    );
+    if (!objectsResult.ok) {
       L.warn("failed to list user storage objects", {
         userId: args.userId,
         prefix,
@@ -351,21 +351,21 @@ async function deleteUserObjectsForPrefixesBestEffort(args: {
       continue;
     }
 
-    if (objectsResult.ok.length === 0) {
+    if (objectsResult.value.length === 0) {
       continue;
     }
 
-    const deleteResult = await safeAsync(() => {
-      return args.get(
+    const deleteResult = await settle(
+      args.get(
         deleteS3Objects(
           args.bucket,
-          objectsResult.ok.map((object) => {
+          objectsResult.value.map((object) => {
             return object.key;
           }),
         ),
-      );
-    });
-    if ("error" in deleteResult) {
+      ),
+    );
+    if (!deleteResult.ok) {
       L.warn("failed to delete user storage objects", {
         userId: args.userId,
         prefix,
@@ -431,10 +431,10 @@ async function deleteUserS3Data(args: {
   const exportKeys = exportRows.flatMap((row) => {
     return row.s3Key ? [row.s3Key] : [];
   });
-  const deleteExportsResult = await safeAsync(() => {
-    return args.get(deleteS3Objects(bucket, exportKeys));
-  });
-  if ("error" in deleteExportsResult) {
+  const deleteExportsResult = await settle(
+    args.get(deleteS3Objects(bucket, exportKeys)),
+  );
+  if (!deleteExportsResult.ok) {
     L.warn("failed to delete user export objects", {
       userId: args.userId,
       count: exportKeys.length,

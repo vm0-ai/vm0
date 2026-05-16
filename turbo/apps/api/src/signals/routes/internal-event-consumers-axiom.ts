@@ -7,7 +7,7 @@ import {
 } from "../../lib/event-consumer/route";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
 import type { RouteEntry } from "../route";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 
@@ -38,11 +38,11 @@ const ingestAxiomEvents$ = command(async ({ get }, signal: AbortSignal) => {
     };
   }
 
-  const flushed = await safeAsync(() => {
-    return flushAxiom({ throwOnError: true, client: "sessions" });
-  });
+  const flushed = await settle(
+    flushAxiom({ throwOnError: true, client: "sessions" }),
+  );
   signal.throwIfAborted();
-  if ("error" in flushed) {
+  if (!flushed.ok) {
     return {
       status: 503 as const,
       body: { error: "Axiom agent-run-events flush failed" },

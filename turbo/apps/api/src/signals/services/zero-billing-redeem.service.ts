@@ -8,7 +8,7 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { getCampaign } from "./one-time-products";
 
@@ -48,12 +48,10 @@ export const startOrResumeRedemption$ = command(
     args: RedemptionArgs,
     signal: AbortSignal,
   ): Promise<RedemptionResult> => {
-    const outcome = await safeAsync(async () => {
-      return await runRedemption(args, set, signal);
-    });
+    const outcome = await settle(runRedemption(args, set, signal));
     signal.throwIfAborted();
-    if ("ok" in outcome) {
-      return outcome.ok;
+    if (outcome.ok) {
+      return outcome.value;
     }
     if (outcome.error instanceof StripeSDK.errors.StripeError) {
       log.error("redeem: stripe error", {
@@ -240,14 +238,14 @@ const ensureCampaignStillAvailable$ = command(
 
     const stripe = getStripeClient();
     // Parallel: each is an independent Stripe read; wall time is one RTT.
-    const fetched = await safeAsync(async () => {
-      return await Promise.all([
+    const fetched = await settle(
+      Promise.all([
         stripe.coupons.retrieve(campaign.couponId),
         stripe.prices.retrieve(campaign.priceId),
-      ]);
-    });
+      ]),
+    );
     signal.throwIfAborted();
-    if ("error" in fetched) {
+    if (!fetched.ok) {
       if (
         fetched.error instanceof StripeSDK.errors.StripeInvalidRequestError &&
         fetched.error.code === "resource_missing"
@@ -264,7 +262,7 @@ const ensureCampaignStillAvailable$ = command(
       throw fetched.error;
     }
     signal.throwIfAborted();
-    const [coupon, price] = fetched.ok;
+    const [coupon, price] = fetched.value;
 
     if (!coupon.valid) {
       log.warn("one_time_purchase coupon no longer valid on resume", {
@@ -306,11 +304,11 @@ const cleanupStaleRedemption$ = command(
     const stripe = getStripeClient();
     // Best-effort: don't let session-already-expired prevent row cleanup.
     // Sessions auto-expire after 24h anyway; a failure here is cosmetic.
-    const expireOutcome = await safeAsync(async () => {
-      return await stripe.checkout.sessions.expire(stripeSessionId);
-    });
+    const expireOutcome = await settle(
+      stripe.checkout.sessions.expire(stripeSessionId),
+    );
     signal.throwIfAborted();
-    if ("error" in expireOutcome) {
+    if (!expireOutcome.ok) {
       log.debug("one_time_purchase session already expired or un-expirable", {
         orgId: args.orgId,
         campaignKey: args.campaignKey,

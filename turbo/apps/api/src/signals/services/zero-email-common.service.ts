@@ -24,7 +24,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -750,11 +750,9 @@ export const enqueueEmail$ = command(
       throw new Error("Failed to insert email outbox row");
     }
 
-    const drainResult = await safeAsync(() => {
-      return drainById(db, row.id);
-    });
+    const drainResult = await settle(drainById(db, row.id));
     signal.throwIfAborted();
-    if ("error" in drainResult) {
+    if (!drainResult.ok) {
       log.debug("Inline email outbox drain failed", {
         id: row.id,
         error: drainResult.error,
@@ -879,21 +877,23 @@ function downloadAndUploadEmailAttachment(
       return null;
     }
 
-    const bufferResult = await safeAsync(async () => {
-      const response = await fetch(attachment.downloadUrl);
-      if (!response.ok) {
-        return null;
-      }
-      return Buffer.from(await response.arrayBuffer());
-    });
-    if ("error" in bufferResult || !bufferResult.ok) {
+    const bufferResult = await settle(
+      (async (): Promise<Buffer | null> => {
+        const response = await fetch(attachment.downloadUrl);
+        if (!response.ok) {
+          return null;
+        }
+        return Buffer.from(await response.arrayBuffer());
+      })(),
+    );
+    if (!bufferResult.ok || !bufferResult.value) {
       return null;
     }
 
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
     const key = `${R2_PATH_PREFIX}/${emailId}/${attachment.id}-${attachment.filename}`;
     await get(
-      putS3Object(bucket, key, bufferResult.ok, attachment.contentType),
+      putS3Object(bucket, key, bufferResult.value, attachment.contentType),
     );
     return await get(
       generatePresignedGetUrl(
@@ -1095,13 +1095,11 @@ export async function getOrgIdBySlug(
     return cached.orgId;
   }
 
-  const orgResult = await safeAsync(() => {
-    return clerk.organizations.getOrganization({ slug });
-  });
-  if ("error" in orgResult) {
+  const orgResult = await settle(clerk.organizations.getOrganization({ slug }));
+  if (!orgResult.ok) {
     return null;
   }
-  const org = orgResult.ok;
+  const org = orgResult.value;
   if (!org.slug) {
     return null;
   }

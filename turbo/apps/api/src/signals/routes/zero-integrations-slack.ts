@@ -40,7 +40,7 @@ import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import { decryptSecretValue } from "../services/crypto.utils";
 import { env } from "../../lib/env";
 import type { RouteEntry } from "../route";
-import { bestEffort, safeAsync } from "../utils";
+import { bestEffort, settle } from "../utils";
 
 const c = initContract();
 
@@ -535,17 +535,17 @@ const getSlackDownloadFileInner$ = computed(async (get) => {
     );
   }
 
-  const fileInfoResult = await safeAsync(() => {
-    return getFileInfo(installation.botToken, fileId);
-  });
-  if ("error" in fileInfoResult) {
+  const fileInfoResult = await settle(
+    getFileInfo(installation.botToken, fileId),
+  );
+  if (!fileInfoResult.ok) {
     const response = slackApiErrorResponse(fileInfoResult.error);
     if (response) {
       return response;
     }
     throw fileInfoResult.error;
   }
-  const fileInfo = fileInfoResult.ok;
+  const fileInfo = fileInfoResult.value;
 
   const downloadUrl = fileInfo.url_private_download ?? fileInfo.url_private;
   if (!downloadUrl) {
@@ -564,17 +564,17 @@ const getSlackDownloadFileInner$ = computed(async (get) => {
     );
   }
 
-  const fileResponseResult = await safeAsync(() => {
-    return fetchSlackFile(downloadUrl, installation.botToken);
-  });
-  if ("error" in fileResponseResult) {
+  const fileResponseResult = await settle(
+    fetchSlackFile(downloadUrl, installation.botToken),
+  );
+  if (!fileResponseResult.ok) {
     const response = slackFileFetchErrorResponse(fileResponseResult.error);
     if (response) {
       return response;
     }
     throw fileResponseResult.error;
   }
-  const fileResponse = fileResponseResult.ok;
+  const fileResponse = fileResponseResult.value;
 
   const responseContentType = fileResponse.headers.get("content-type") ?? "";
   if (responseContentType.includes("text/html")) {

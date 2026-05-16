@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { writeDb$ } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { logger } from "../../lib/log";
 
 const L = logger("CreditRecharge");
@@ -140,51 +140,53 @@ export const triggerAutoRecharge$ = command(
 
     const stripe = getStripeClient();
 
-    const outcome = await safeAsync(async (): Promise<void> => {
-      const paymentMethodId = await resolvePaymentMethod(stripe, org);
-      signal.throwIfAborted();
-      if (!paymentMethodId) {
-        await clearPendingFlag();
-        return;
-      }
+    const outcome = await settle(
+      (async (): Promise<void> => {
+        const paymentMethodId = await resolvePaymentMethod(stripe, org);
+        signal.throwIfAborted();
+        if (!paymentMethodId) {
+          await clearPendingFlag();
+          return;
+        }
 
-      const invoice = await stripe.invoices.create({
-        customer: org.stripeCustomerId,
-        auto_advance: false,
-        default_payment_method: paymentMethodId,
-        metadata: {
-          type: "auto_recharge",
+        const invoice = await stripe.invoices.create({
+          customer: org.stripeCustomerId,
+          auto_advance: false,
+          default_payment_method: paymentMethodId,
+          metadata: {
+            type: "auto_recharge",
+            orgId,
+            creditsAmount: String(creditsAmount),
+          },
+        });
+        signal.throwIfAborted();
+
+        await stripe.invoiceItems.create({
+          invoice: invoice.id,
+          customer: org.stripeCustomerId,
+          amount: amountCents,
+          currency: "usd",
+          description: `Credit top-up: ${creditsAmount.toLocaleString()} credits`,
+        });
+        signal.throwIfAborted();
+
+        await stripe.invoices.finalizeInvoice(invoice.id);
+        signal.throwIfAborted();
+        await stripe.invoices.pay(invoice.id);
+        signal.throwIfAborted();
+
+        L.debug("Auto-recharge invoice created and paid", {
           orgId,
-          creditsAmount: String(creditsAmount),
-        },
-      });
-      signal.throwIfAborted();
-
-      await stripe.invoiceItems.create({
-        invoice: invoice.id,
-        customer: org.stripeCustomerId,
-        amount: amountCents,
-        currency: "usd",
-        description: `Credit top-up: ${creditsAmount.toLocaleString()} credits`,
-      });
-      signal.throwIfAborted();
-
-      await stripe.invoices.finalizeInvoice(invoice.id);
-      signal.throwIfAborted();
-      await stripe.invoices.pay(invoice.id);
-      signal.throwIfAborted();
-
-      L.debug("Auto-recharge invoice created and paid", {
-        orgId,
-        creditsAmount,
-        amountCents,
-        invoiceId: invoice.id,
-      });
-    });
+          creditsAmount,
+          amountCents,
+          invoiceId: invoice.id,
+        });
+      })(),
+    );
 
     signal.throwIfAborted();
 
-    if ("error" in outcome) {
+    if (!outcome.ok) {
       const { error } = outcome;
       L.warn("Auto-recharge Stripe call failed, clearing pending flag", {
         orgId,

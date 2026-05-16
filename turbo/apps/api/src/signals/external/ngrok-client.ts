@@ -5,7 +5,7 @@
  * Uses plain fetch() — no external SDK dependency.
  */
 import { logger } from "../../lib/log";
-import { safeAsync, throwIfAbort } from "../utils";
+import { settle, throwIfAbort } from "../utils";
 
 const log = logger("ngrok-client");
 
@@ -360,8 +360,8 @@ export async function safeDelete(
   resourceId: string,
   bestEffort = false,
 ): Promise<void> {
-  const result = await safeAsync(deleteFn);
-  if ("ok" in result) {
+  const result = await settle(deleteFn());
+  if (result.ok) {
     return;
   }
   const error = result.error;

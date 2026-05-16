@@ -15,7 +15,7 @@ import {
   queryAxiomDirect,
   type QueryAxiomOptions,
 } from "../signals/external/axiom";
-import { safeAsync } from "../signals/utils";
+import { settle } from "../signals/utils";
 import { escapeAplString } from "./axiom-apl";
 import { logger } from "./log";
 
@@ -158,12 +158,12 @@ async function waitForAgentEventPrefixVisible(
     // A query failure here is virtually guaranteed to repeat against the
     // events query that follows (same Axiom service, same dataset). Bail
     // out immediately so the caller's next call surfaces the real error
-    // without burning the remainder of the timeout window. safeAsync
+    // without burning the remainder of the timeout window. settle
     // re-raises AbortError so cancellation still propagates.
-    const queried = await safeAsync(() => {
-      return queryFn<AxiomAgentEventSequence>(apl, { noCache: true });
-    });
-    if ("error" in queried) {
+    const queried = await settle(
+      queryFn<AxiomAgentEventSequence>(apl, { noCache: true }),
+    );
+    if (!queried.ok) {
       return {
         visible: false,
         visibleThrough,
@@ -175,7 +175,7 @@ async function waitForAgentEventPrefixVisible(
       };
     }
 
-    const events = queried.ok;
+    const events = queried.value;
     const previousVisibleThrough = visibleThrough;
     visibleThrough = advanceVisiblePrefix(events, visibleThrough);
 

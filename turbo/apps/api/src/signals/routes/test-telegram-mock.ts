@@ -8,7 +8,7 @@ import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -76,15 +76,15 @@ async function logTelegramMockCall({
   readonly rawBody: string;
   readonly bodyJson: Record<string, unknown> | null;
 }): Promise<void> {
-  await safeAsync(() => {
-    return db.insert(e2eTelegramMockCallLog).values({
+  await settle(
+    db.insert(e2eTelegramMockCallLog).values({
       method,
       botToken,
       chatId: readLogChatId(bodyJson),
       body: rawBody,
       bodyJson,
-    });
-  });
+    }),
+  );
 }
 
 const postTestTelegramMock$ = command(

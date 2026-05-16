@@ -25,7 +25,7 @@ import {
   type AgentPhoneChannel,
 } from "../services/zero-agentphone.service";
 import type { RouteEntry } from "../route";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 interface UploadedFileInfo {
   readonly key: string;
@@ -128,8 +128,8 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const mimetype = body.contentType ?? inferMimetype(uploadedFile.filename);
-  const sendResult = await safeAsync(() => {
-    return sendAgentPhoneMessage(
+  const sendResult = await settle(
+    sendAgentPhoneMessage(
       {
         agentphoneAgentId,
         toNumber: phoneHandle,
@@ -137,17 +137,17 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
         mediaUrl: uploadedFile.fileUrl,
       },
       signal,
-    );
-  });
+    ),
+  );
   signal.throwIfAborted();
-  if ("error" in sendResult) {
+  if (!sendResult.ok) {
     const routeErr = agentPhoneRouteError(sendResult.error);
     if (routeErr) {
       return routeErr;
     }
     throw sendResult.error;
   }
-  const sent = sendResult.ok;
+  const sent = sendResult.value;
 
   await set(
     recordAgentPhoneUploadedFile$,

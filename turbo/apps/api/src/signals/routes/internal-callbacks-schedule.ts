@@ -19,7 +19,7 @@ import { nowDate } from "../external/time";
 import { getRunOutputText } from "../services/run-output.service";
 import { calculateNextRun } from "../services/zero-schedules.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 
@@ -83,11 +83,11 @@ async function getBestEffortRunOutputText(
   runId: string,
   signal: AbortSignal,
 ): Promise<string | undefined> {
-  const result = await safeAsync(() => {
-    return getRunOutputText(runId, { waitForOutput: false, signal });
-  });
+  const result = await settle(
+    getRunOutputText(runId, { waitForOutput: false, signal }),
+  );
   signal.throwIfAborted();
-  return "ok" in result ? result.ok : undefined;
+  return result.ok ? result.value : undefined;
 }
 
 function createScheduleCallbackHandler(

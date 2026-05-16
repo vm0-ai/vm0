@@ -17,7 +17,7 @@ import {
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
 } from "../services/zero-agentphone.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 function routeError<Status extends 400 | 401 | 403 | 404 | 502>(
   status: Status,
@@ -74,25 +74,25 @@ const sendMessage$ = command(async ({ get, set }, signal: AbortSignal) => {
     return routeError(404, "AgentPhone agent not found", "NOT_FOUND");
   }
 
-  const sendResult = await safeAsync(() => {
-    return sendAgentPhoneMessage(
+  const sendResult = await settle(
+    sendAgentPhoneMessage(
       {
         agentphoneAgentId,
         toNumber: phoneHandle,
         body: body.text,
       },
       signal,
-    );
-  });
+    ),
+  );
   signal.throwIfAborted();
-  if ("error" in sendResult) {
+  if (!sendResult.ok) {
     const routeErr = agentPhoneRouteError(sendResult.error);
     if (routeErr) {
       return routeErr;
     }
     throw sendResult.error;
   }
-  const sent = sendResult.ok;
+  const sent = sendResult.value;
 
   await storeOutboundAgentPhoneMessage(db, {
     agentphoneMessageId: sent.id,

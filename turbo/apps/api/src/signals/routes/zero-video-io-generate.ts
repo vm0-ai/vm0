@@ -11,7 +11,7 @@ import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   checkVideoCredits$,
   downloadFalVideo,
@@ -204,18 +204,17 @@ const runVideoGenerationJob$ = command(
 
 const runVideoGenerationJobSafely$ = command(
   async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
-    const result = await safeAsync(async () => {
-      return await set(runVideoGenerationJob$, args, signal);
-    });
+    const result = await settle(set(runVideoGenerationJob$, args, signal));
     signal.throwIfAborted();
-    const admissionStatus: AdmissionCompletionStatus =
-      "ok" in result ? result.ok : "failed";
+    const admissionStatus: AdmissionCompletionStatus = result.ok
+      ? result.value
+      : "failed";
     await set(completeRunBuiltInAdmission$, {
       admission: args.admission,
       status: admissionStatus,
     });
     signal.throwIfAborted();
-    if ("ok" in result) {
+    if (result.ok) {
       return;
     }
 

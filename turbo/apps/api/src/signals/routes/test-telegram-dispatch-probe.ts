@@ -4,7 +4,7 @@ import { testTelegramDispatchProbeContract } from "@vm0/api-contracts/contracts/
 import { now } from "../external/time";
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import {
   dispatchTelegramDirectMessage$,
   dispatchTelegramMention$,
@@ -156,24 +156,26 @@ const postTestTelegramDispatchProbe$ = command(
 
     const message = buildMessage(body);
     const apiStartTime = now();
-    const dispatch = safeAsync(async () => {
-      if (message.chat.type === "private") {
-        await set(
-          dispatchTelegramDirectMessage$,
-          { update: { message }, installationId: body.bot_id, apiStartTime },
-          signal,
-        );
-      } else {
-        await set(
-          dispatchTelegramMention$,
-          { update: { message }, installationId: body.bot_id, apiStartTime },
-          signal,
-        );
-      }
-    });
+    const dispatch = settle(
+      (async () => {
+        if (message.chat.type === "private") {
+          await set(
+            dispatchTelegramDirectMessage$,
+            { update: { message }, installationId: body.bot_id, apiStartTime },
+            signal,
+          );
+        } else {
+          await set(
+            dispatchTelegramMention$,
+            { update: { message }, installationId: body.bot_id, apiStartTime },
+            signal,
+          );
+        }
+      })(),
+    );
     const result = await dispatch;
     signal.throwIfAborted();
-    if ("error" in result) {
+    if (!result.ok) {
       return { status: 200 as const, body: handlerErrorBody(result.error) };
     }
     return { status: 200 as const, body: { ok: true as const } };

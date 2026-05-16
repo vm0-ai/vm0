@@ -19,7 +19,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   decryptSecretValue,
   decryptSecretsMap,
@@ -651,15 +651,15 @@ async function refreshConnectorAccessToken(
     return null;
   }
 
-  const refreshResult = await safeAsync(() => {
-    return prepared.handler.refreshToken(
+  const refreshResult = await settle(
+    prepared.handler.refreshToken(
       prepared.context.clientId,
       prepared.context.clientSecret ?? "",
       prepared.context.currentRefreshToken,
-    );
-  });
+    ),
+  );
 
-  if ("error" in refreshResult) {
+  if (!refreshResult.ok) {
     const error = refreshResult.error;
     const message = error instanceof Error ? error.message : "Unknown error";
     const errorCode = isChatgptRefreshError(error) ? error.code : null;
@@ -674,7 +674,7 @@ async function refreshConnectorAccessToken(
     return null;
   }
 
-  const result = refreshResult.ok;
+  const result = refreshResult.value;
   await markRefreshSuccess(args, prepared.context, result);
   args.connectorSecrets[prepared.context.accessTokenSecret] =
     result.accessToken;
@@ -1159,11 +1159,10 @@ export async function resolveFirewallAuth(
       };
     }
 > {
-  const decryptedResult = await safeAsync(() => {
-    return Promise.resolve(decryptSecretsMap(body.encryptedSecrets));
-  });
-  const decryptedSecrets =
-    "error" in decryptedResult ? null : decryptedResult.ok;
+  const decryptedResult = await settle(
+    Promise.resolve(decryptSecretsMap(body.encryptedSecrets)),
+  );
+  const decryptedSecrets = decryptedResult.ok ? decryptedResult.value : null;
 
   if (!decryptedSecrets) {
     return badRequestMessage("Failed to decrypt secrets");

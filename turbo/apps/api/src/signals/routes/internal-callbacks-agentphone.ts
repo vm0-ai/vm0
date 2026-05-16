@@ -32,7 +32,7 @@ import {
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
 } from "../services/zero-agentphone.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const log = logger("api:callback:agentphone");
 
@@ -75,10 +75,10 @@ async function refreshTypingIfSupported(args: {
   }
   const conversationId = args.payload.conversationId;
 
-  const result = await safeAsync(() => {
-    return sendAgentPhoneTypingIndicator({ conversationId }, args.signal);
-  });
-  if ("error" in result) {
+  const result = await settle(
+    sendAgentPhoneTypingIndicator({ conversationId }, args.signal),
+  );
+  if (!result.ok) {
     log.debug("Failed to refresh AgentPhone typing indicator", {
       runId: args.runId,
       error: result.error,
@@ -237,17 +237,17 @@ async function handleCompletion(args: {
     footerText,
   });
 
-  const sendResult = await safeAsync(() => {
-    return sendAgentPhoneMessage(
+  const sendResult = await settle(
+    sendAgentPhoneMessage(
       {
         agentphoneAgentId: args.payload.agentphoneAgentId,
         toNumber: args.payload.phoneHandle,
         body,
       },
       args.signal,
-    );
-  });
-  if ("error" in sendResult) {
+    ),
+  );
+  if (!sendResult.ok) {
     if (isAgentPhoneApiError(sendResult.error)) {
       return {
         status: 502 as const,
@@ -260,7 +260,7 @@ async function handleCompletion(args: {
     }
     throw sendResult.error;
   }
-  const sent = sendResult.ok;
+  const sent = sendResult.value;
   args.signal.throwIfAborted();
 
   await storeOutboundAgentPhoneMessage(args.db, {

@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../external/time";
-import { safeAsync, safeJsonParse, tapError } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 import {
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
@@ -49,12 +49,12 @@ async function verifyGitHubWebhookSignature(args: {
     .update(args.body)
     .digest("hex")}`;
 
-  const result = await safeAsync(() => {
-    return Promise.resolve(
+  const result = await settle(
+    Promise.resolve(
       timingSafeEqual(Buffer.from(args.signature), Buffer.from(expected)),
-    );
-  });
-  return "ok" in result ? result.ok : false;
+    ),
+  );
+  return result.ok ? result.value : false;
 }
 
 const postGithubWebhook$ = command(

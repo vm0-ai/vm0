@@ -18,7 +18,7 @@ import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   addGithubCommentReaction,
   fetchGithubIssueComments,
@@ -802,53 +802,55 @@ const dispatchGithubAgentRun$ = command(
       reactionId,
     });
 
-    const dispatchResult = await safeAsync(async () => {
-      const result = await set(
-        createZeroIntegrationRun$,
-        {
-          userId: vm0UserId,
-          orgId: target.orgId,
-          agentId: target.zeroAgentId,
-          sessionId: existingSessionId,
-          prompt: promptParts.prompt,
-          appendSystemPrompt: promptParts.appendSystemPrompt,
-          triggerSource: "github",
-          callbacks: [
-            {
-              url: `${env("VM0_API_URL")}/api/internal/callbacks/github/issues`,
-              secret: generateCallbackSecret(),
-              payload: callbackPayload,
-            },
-          ],
-          apiStartTime: params.apiStartTime,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
+    const dispatchResult = await settle(
+      (async () => {
+        const result = await set(
+          createZeroIntegrationRun$,
+          {
+            userId: vm0UserId,
+            orgId: target.orgId,
+            agentId: target.zeroAgentId,
+            sessionId: existingSessionId,
+            prompt: promptParts.prompt,
+            appendSystemPrompt: promptParts.appendSystemPrompt,
+            triggerSource: "github",
+            callbacks: [
+              {
+                url: `${env("VM0_API_URL")}/api/internal/callbacks/github/issues`,
+                secret: generateCallbackSecret(),
+                payload: callbackPayload,
+              },
+            ],
+            apiStartTime: params.apiStartTime,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
 
-      if (result.status !== 201) {
-        throw new Error(createRunErrorMessage(result));
-      }
+        if (result.status !== 201) {
+          throw new Error(createRunErrorMessage(result));
+        }
 
-      L.debug("Agent run dispatched for GitHub issue", {
-        runId: result.body.runId,
-        repo: params.repo,
-        issueNumber,
-      });
+        L.debug("Agent run dispatched for GitHub issue", {
+          runId: result.body.runId,
+          repo: params.repo,
+          issueNumber,
+        });
 
-      await updateExistingSessionComment({
-        db,
-        installationDbId: installation.id,
-        repo: params.repo,
-        issueNumber,
-        existingSessionId,
-        commentId: params.commentId,
-      });
-      signal.throwIfAborted();
-    });
+        await updateExistingSessionComment({
+          db,
+          installationDbId: installation.id,
+          repo: params.repo,
+          issueNumber,
+          existingSessionId,
+          commentId: params.commentId,
+        });
+        signal.throwIfAborted();
+      })(),
+    );
     signal.throwIfAborted();
 
-    if ("error" in dispatchResult) {
+    if (!dispatchResult.ok) {
       await handleDispatchError({
         error: dispatchResult.error,
         token,

@@ -6,7 +6,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { submitZeroReportError$ } from "../services/zero-report-error.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const log = logger("route:zero-report-error");
@@ -59,8 +59,8 @@ const submitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const submitted = await safeAsync(() => {
-    return set(
+  const submitted = await settle(
+    set(
       submitZeroReportError$,
       {
         userId: auth.userId,
@@ -68,17 +68,17 @@ const submitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         ...bodyResult.data,
       },
       signal,
-    );
-  });
+    ),
+  );
   signal.throwIfAborted();
-  if ("error" in submitted) {
+  if (!submitted.ok) {
     log.warn("Failed to submit zero error report", {
       error: String(submitted.error),
     });
     return internalError;
   }
 
-  const result = submitted.ok;
+  const result = submitted.value;
 
   if (result.kind === "run_not_found") {
     return runNotFound;

@@ -240,7 +240,7 @@ export async function sendChatAction(
  * Delete a Telegram message.
  *
  * Response failures throw; callers that want best-effort cleanup should use
- * safeAsync around this function.
+ * settle around this function.
  */
 export async function deleteMessage(
   token: string,

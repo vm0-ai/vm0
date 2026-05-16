@@ -31,7 +31,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
 const DOWNLOAD_URL_EXPIRY_SECONDS = 3600;
@@ -427,15 +427,13 @@ async function resolveSessionHistory(
   legacyText: string | null,
 ): Promise<string | null> {
   if (hash) {
-    const result = await safeAsync(() => {
-      return runtime.get(
-        downloadS3Buffer(runtime.bucket, `blobs/${hash}.blob`),
-      );
-    });
+    const result = await settle(
+      runtime.get(downloadS3Buffer(runtime.bucket, `blobs/${hash}.blob`)),
+    );
     runtime.signal.throwIfAborted();
 
-    if ("ok" in result) {
-      return result.ok.toString("utf8");
+    if (result.ok) {
+      return result.value.toString("utf8");
     }
 
     if (legacyText) {
@@ -861,12 +859,10 @@ export const executeUserExportJob$ = command(
       bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
     };
 
-    const result = await safeAsync(() => {
-      return runExportJob(runtime, args);
-    });
+    const result = await settle(runExportJob(runtime, args));
     signal.throwIfAborted();
 
-    if ("ok" in result) {
+    if (result.ok) {
       return;
     }
 

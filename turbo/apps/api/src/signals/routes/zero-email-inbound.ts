@@ -41,7 +41,7 @@ import {
   verifyResendWebhook,
   verifySenderAuthenticity,
 } from "../services/zero-email-common.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const log = logger("zero:email:inbound");
 
@@ -581,32 +581,34 @@ const processReceivedEmail$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const result = await safeAsync(async () => {
-      const handlerResult = await set(
-        args.hasReplyAddress
-          ? handleInboundEmailReply$
-          : handleInboundEmailTrigger$,
-        { event: args.event, apiStartTime: args.apiStartTime },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (!handlerResult.ok && args.event.data.from) {
-        await set(
-          sendInboundErrorReply$,
-          {
-            to: args.event.data.from,
-            subject: args.event.data.subject,
-            errorMessage: handlerResult.errorMessage,
-          },
+    const result = await settle(
+      (async () => {
+        const handlerResult = await set(
+          args.hasReplyAddress
+            ? handleInboundEmailReply$
+            : handleInboundEmailTrigger$,
+          { event: args.event, apiStartTime: args.apiStartTime },
           signal,
         );
-      }
-    });
+        signal.throwIfAborted();
+        if (!handlerResult.ok && args.event.data.from) {
+          await set(
+            sendInboundErrorReply$,
+            {
+              to: args.event.data.from,
+              subject: args.event.data.subject,
+              errorMessage: handlerResult.errorMessage,
+            },
+            signal,
+          );
+        }
+      })(),
+    );
     signal.throwIfAborted();
-    if ("error" in result) {
+    if (!result.ok) {
       log.error("Failed to handle inbound email", { error: result.error });
-      const sendResult = await safeAsync(() => {
-        return set(
+      const sendResult = await settle(
+        set(
           sendInboundErrorReply$,
           {
             to: args.event.data.from,
@@ -615,10 +617,10 @@ const processReceivedEmail$ = command(
               "An internal error occurred while processing your email. Please try again later.",
           },
           signal,
-        );
-      });
+        ),
+      );
       signal.throwIfAborted();
-      if ("error" in sendResult) {
+      if (!sendResult.ok) {
         log.error("Failed to send inbound email error reply", {
           sendError: sendResult.error,
         });
@@ -639,16 +641,16 @@ const handleInboundRoute$ = command(
     const rawBody = await req.text();
     signal.throwIfAborted();
 
-    const payloadResult = await safeAsync(() => {
-      return Promise.resolve(verifyResendWebhook(rawBody, svixHeaders));
-    });
+    const payloadResult = await settle(
+      Promise.resolve(verifyResendWebhook(rawBody, svixHeaders)),
+    );
     signal.throwIfAborted();
-    if ("error" in payloadResult) {
+    if (!payloadResult.ok) {
       log.warn("Webhook signature verification failed");
       return jsonResponse({ error: "Invalid signature" }, 401);
     }
 
-    const event = payloadResult.ok as WebhookEvent;
+    const event = payloadResult.value as WebhookEvent;
     if (event.type === "email.bounced") {
       await set(handleBounce$, event, signal);
       signal.throwIfAborted();

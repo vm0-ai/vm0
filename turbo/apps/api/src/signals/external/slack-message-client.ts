@@ -5,7 +5,7 @@ import {
   type View,
 } from "@slack/web-api";
 
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 type OpenDmResult =
   | { readonly kind: "ok"; readonly channelId: string }
@@ -46,19 +46,17 @@ export async function openDMChannel(
   client: WebClient,
   userId: string,
 ): Promise<OpenDmResult> {
-  const result = await safeAsync(() => {
-    return client.conversations.open({ users: userId });
-  });
-  if ("error" in result) {
+  const result = await settle(client.conversations.open({ users: userId }));
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
     throw result.error;
   }
-  if (!result.ok.channel?.id) {
+  if (!result.value.channel?.id) {
     return { kind: "slack_error", error: "missing_channel_id" };
   }
-  return { kind: "ok", channelId: result.ok.channel.id };
+  return { kind: "ok", channelId: result.value.channel.id };
 }
 
 export async function postMessage(
@@ -70,21 +68,21 @@ export async function postMessage(
     readonly blocks?: (Block | KnownBlock)[];
   },
 ): Promise<PostMessageResult> {
-  const result = await safeAsync(() => {
-    return client.chat.postMessage({
+  const result = await settle(
+    client.chat.postMessage({
       channel,
       text,
       thread_ts: options?.threadTs,
       blocks: options?.blocks,
-    });
-  });
-  if ("error" in result) {
+    }),
+  );
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
     throw result.error;
   }
-  return { kind: "ok", ts: result.ok.ts, channel: result.ok.channel };
+  return { kind: "ok", ts: result.value.ts, channel: result.value.channel };
 }
 
 export async function setThreadStatus(
@@ -127,22 +125,22 @@ export async function postEphemeral(
     readonly blocks?: (Block | KnownBlock)[];
   },
 ): Promise<PostEphemeralResult> {
-  const result = await safeAsync(() => {
-    return client.chat.postEphemeral({
+  const result = await settle(
+    client.chat.postEphemeral({
       channel: options.channel,
       user: options.user,
       text: options.text,
       thread_ts: options.threadTs,
       blocks: options.blocks,
-    });
-  });
-  if ("error" in result) {
+    }),
+  );
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
     throw result.error;
   }
-  return { kind: "ok", ts: result.ok.message_ts };
+  return { kind: "ok", ts: result.value.message_ts };
 }
 
 export interface SlackUserInfo {
@@ -228,25 +226,28 @@ export async function getUploadUrlExternal(
   client: WebClient,
   args: { readonly filename: string; readonly length: number },
 ): Promise<GetUploadUrlResult> {
-  const result = await safeAsync(() => {
-    return client.files.getUploadURLExternal({
+  const result = await settle(
+    client.files.getUploadURLExternal({
       filename: args.filename,
       length: args.length,
-    });
-  });
-  if ("error" in result) {
+    }),
+  );
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
     throw result.error;
   }
-  if (!result.ok.ok || !result.ok.upload_url || !result.ok.file_id) {
-    return { kind: "slack_error", error: result.ok.error ?? "unknown error" };
+  if (!result.value.ok || !result.value.upload_url || !result.value.file_id) {
+    return {
+      kind: "slack_error",
+      error: result.value.error ?? "unknown error",
+    };
   }
   return {
     kind: "ok",
-    uploadUrl: result.ok.upload_url,
-    fileId: result.ok.file_id,
+    uploadUrl: result.value.upload_url,
+    fileId: result.value.file_id,
   };
 }
 
@@ -264,15 +265,15 @@ export async function completeUploadExternal(
     readonly initialComment?: string;
   },
 ): Promise<CompleteUploadResult> {
-  const result = await safeAsync(() => {
-    return client.files.completeUploadExternal({
+  const result = await settle(
+    client.files.completeUploadExternal({
       files: [{ id: args.fileId, title: args.title }],
       channel_id: args.channel,
       thread_ts: args.threadTs,
       initial_comment: args.initialComment,
-    });
-  });
-  if ("error" in result) {
+    }),
+  );
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
@@ -299,15 +300,13 @@ export async function getFileInfo(
   client: WebClient,
   fileId: string,
 ): Promise<GetFileInfoResult> {
-  const result = await safeAsync(() => {
-    return client.files.info({ file: fileId });
-  });
-  if ("error" in result) {
+  const result = await settle(client.files.info({ file: fileId }));
+  if (!result.ok) {
     if (isSlackPlatformError(result.error)) {
       return { kind: "slack_error", error: result.error.data.error };
     }
     throw result.error;
   }
-  const file = result.ok.file as SlackFileInfo | undefined;
+  const file = result.value.file as SlackFileInfo | undefined;
   return { kind: "ok", file };
 }

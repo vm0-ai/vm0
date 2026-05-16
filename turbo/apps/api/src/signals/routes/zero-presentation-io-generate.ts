@@ -16,7 +16,7 @@ import {
   type ImagePricing,
 } from "../services/zero-image-io-generate.service";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   checkPresentationCredits$,
   createOpenAiPresentationRequest,
@@ -245,18 +245,19 @@ const runPresentationGenerationJobSafely$ = command(
     args: PresentationJobArgs,
     signal: AbortSignal,
   ): Promise<void> => {
-    const result = await safeAsync(async () => {
-      return await set(runPresentationGenerationJob$, args, signal);
-    });
+    const result = await settle(
+      set(runPresentationGenerationJob$, args, signal),
+    );
     signal.throwIfAborted();
-    const admissionStatus: AdmissionCompletionStatus =
-      "ok" in result ? result.ok : "failed";
+    const admissionStatus: AdmissionCompletionStatus = result.ok
+      ? result.value
+      : "failed";
     await set(completeRunBuiltInAdmission$, {
       admission: args.admission,
       status: admissionStatus,
     });
     signal.throwIfAborted();
-    if ("ok" in result) {
+    if (result.ok) {
       return;
     }
 

@@ -7,7 +7,7 @@ import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 
 import type { Db } from "../external/db";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { encryptSecretValue } from "./crypto.utils";
@@ -380,20 +380,20 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   readonly composeId: string | null;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const installationsResult = await safeAsync(() => {
-    return listGithubAppInstallations({
+  const installationsResult = await settle(
+    listGithubAppInstallations({
       appId: args.appId,
       privateKey: args.privateKey,
       signal: args.signal,
-    });
-  });
-  if ("error" in installationsResult) {
+    }),
+  );
+  if (!installationsResult.ok) {
     L.warn("Failed to list app installations", {
       error: installationsResult.error,
     });
     return false;
   }
-  const installations = installationsResult.ok;
+  const installations = installationsResult.value;
   args.signal.throwIfAborted();
 
   if (installations.length === 0) {

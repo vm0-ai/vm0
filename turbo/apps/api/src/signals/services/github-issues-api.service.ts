@@ -1,5 +1,5 @@
 import { logger } from "../../lib/log";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const L = logger("GithubIssuesApi");
@@ -87,11 +87,13 @@ export async function postGithubIssueCommentBestEffort(args: {
   readonly body: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const result = await safeAsync(async (): Promise<void> => {
-    await postGithubIssueComment(args);
-  });
+  const result = await settle(
+    (async (): Promise<void> => {
+      await postGithubIssueComment(args);
+    })(),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     L.warn("Best-effort comment failed", {
       repo: args.repo,
       issueNumber: args.issueNumber,
@@ -107,31 +109,33 @@ export async function addGithubCommentReaction(args: {
   readonly content: string;
   readonly signal: AbortSignal;
 }): Promise<string | undefined> {
-  const result = await safeAsync(async (): Promise<string | undefined> => {
-    const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions`,
-      {
-        method: "POST",
-        headers: authHeaders(args.token),
-        body: JSON.stringify({ content: args.content }),
-        signal: args.signal,
-      },
-    );
+  const result = await settle(
+    (async (): Promise<string | undefined> => {
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions`,
+        {
+          method: "POST",
+          headers: authHeaders(args.token),
+          body: JSON.stringify({ content: args.content }),
+          signal: args.signal,
+        },
+      );
 
-    if (!response.ok) {
-      L.warn("Failed to add comment reaction", {
-        commentId: args.commentId,
-        content: args.content,
-        status: response.status,
-      });
-      return undefined;
-    }
+      if (!response.ok) {
+        L.warn("Failed to add comment reaction", {
+          commentId: args.commentId,
+          content: args.content,
+          status: response.status,
+        });
+        return undefined;
+      }
 
-    const data = (await response.json()) as { readonly id: number };
-    return String(data.id);
-  });
+      const data = (await response.json()) as { readonly id: number };
+      return String(data.id);
+    })(),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     L.warn("Failed to add comment reaction", {
       commentId: args.commentId,
       content: args.content,
@@ -140,7 +144,7 @@ export async function addGithubCommentReaction(args: {
     return undefined;
   }
 
-  return result.ok;
+  return result.value;
 }
 
 export async function removeGithubCommentReaction(args: {
@@ -150,26 +154,28 @@ export async function removeGithubCommentReaction(args: {
   readonly reactionId: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const result = await safeAsync(async (): Promise<void> => {
-    const response = await fetch(
-      `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions/${args.reactionId}`,
-      {
-        method: "DELETE",
-        headers: authHeaders(args.token),
-        signal: args.signal,
-      },
-    );
+  const result = await settle(
+    (async (): Promise<void> => {
+      const response = await fetch(
+        `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions/${args.reactionId}`,
+        {
+          method: "DELETE",
+          headers: authHeaders(args.token),
+          signal: args.signal,
+        },
+      );
 
-    if (!response.ok) {
-      L.warn("Failed to remove comment reaction", {
-        commentId: args.commentId,
-        reactionId: args.reactionId,
-        status: response.status,
-      });
-    }
-  });
+      if (!response.ok) {
+        L.warn("Failed to remove comment reaction", {
+          commentId: args.commentId,
+          reactionId: args.reactionId,
+          status: response.status,
+        });
+      }
+    })(),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     L.warn("Failed to remove comment reaction", {
       commentId: args.commentId,
       reactionId: args.reactionId,

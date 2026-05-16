@@ -5,7 +5,7 @@ import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
 import type { Db } from "../external/db";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const log = logger("api:push");
 
@@ -44,8 +44,8 @@ export async function sendUserPushNotifications(args: {
   const payload = JSON.stringify(args.notification);
   await Promise.all(
     subscriptions.map(async (subscription) => {
-      const result = await safeAsync(() => {
-        return webpush.sendNotification(
+      const result = await settle(
+        webpush.sendNotification(
           {
             endpoint: subscription.endpoint,
             keys: {
@@ -54,9 +54,9 @@ export async function sendUserPushNotifications(args: {
             },
           },
           payload,
-        );
-      });
-      if ("ok" in result) {
+        ),
+      );
+      if (result.ok) {
         return;
       }
 

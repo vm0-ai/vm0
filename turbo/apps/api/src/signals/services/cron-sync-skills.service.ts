@@ -32,7 +32,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { deleteS3Objects, listS3Objects, putS3Object } from "../external/s3";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 
 interface SyncSkillsResult {
@@ -604,22 +604,24 @@ async function removeOrphanedSkills(args: {
 
   const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
   for (const storage of orphanStorages) {
-    const cleanupResult = await safeAsync(async () => {
-      const objects = await args.get(listS3Objects(bucket, storage.s3Prefix));
-      args.signal.throwIfAborted();
-      if (objects.length > 0) {
-        await args.get(
-          deleteS3Objects(
-            bucket,
-            objects.map((object) => {
-              return object.key;
-            }),
-          ),
-        );
+    const cleanupResult = await settle(
+      (async () => {
+        const objects = await args.get(listS3Objects(bucket, storage.s3Prefix));
         args.signal.throwIfAborted();
-      }
-    });
-    if ("error" in cleanupResult) {
+        if (objects.length > 0) {
+          await args.get(
+            deleteS3Objects(
+              bucket,
+              objects.map((object) => {
+                return object.key;
+              }),
+            ),
+          );
+          args.signal.throwIfAborted();
+        }
+      })(),
+    );
+    if (!cleanupResult.ok) {
       log.warn("Failed to clean up S3 objects for removed skill", {
         s3Prefix: storage.s3Prefix,
         error:

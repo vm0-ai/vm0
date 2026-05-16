@@ -18,7 +18,7 @@ import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 
 type ComputedGetter = Getter;
@@ -476,8 +476,8 @@ async function resolveVolumeStorage(args: {
   readonly allowSystemFallback: boolean;
 }): Promise<StorageResolution | null> {
   if (args.allowSystemFallback && args.volume.system) {
-    const systemResult = await safeAsync(() => {
-      return resolveStorageVersion(
+    const systemResult = await settle(
+      resolveStorageVersion(
         args.db,
         {
           orgId: SYSTEM_ORG_ID,
@@ -486,10 +486,10 @@ async function resolveVolumeStorage(args: {
           type: "volume",
         },
         volumeVersion(args.volume),
-      );
-    });
-    if ("ok" in systemResult) {
-      return systemResult.ok;
+      ),
+    );
+    if (systemResult.ok) {
+      return systemResult.value;
     }
     if (!isMissingStorageError(systemResult.error)) {
       throw systemResult.error;
@@ -545,21 +545,21 @@ async function buildComposeStorageEntry(args: {
   readonly agentOrgId: string;
   readonly volume: ResolvedVolume;
 }): Promise<ManifestStorage | null> {
-  const resolvedResult = await safeAsync(() => {
-    return resolveVolumeStorage({
+  const resolvedResult = await settle(
+    resolveVolumeStorage({
       db: args.db,
       volume: args.volume,
       primaryOrgId: args.agentOrgId,
       allowSystemFallback: true,
-    });
-  });
-  if ("error" in resolvedResult) {
+    }),
+  );
+  if (!resolvedResult.ok) {
     if (args.volume.optional && isMissingStorageError(resolvedResult.error)) {
       return null;
     }
     throw resolvedResult.error;
   }
-  if (!resolvedResult.ok) {
+  if (!resolvedResult.value) {
     return null;
   }
   return await buildStorageEntry({
@@ -569,7 +569,7 @@ async function buildComposeStorageEntry(args: {
     mountPath: args.volume.mountPath,
     vasStorageName: args.volume.vasStorageName,
     instructionsTargetFilename: args.volume.instructionsTargetFilename,
-    resolved: resolvedResult.ok,
+    resolved: resolvedResult.value,
   });
 }
 
@@ -580,21 +580,21 @@ async function buildAdditionalStorageEntry(args: {
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
 }): Promise<ManifestStorage | null> {
-  const resolvedResult = await safeAsync(() => {
-    return resolveVolumeStorage({
+  const resolvedResult = await settle(
+    resolveVolumeStorage({
       db: args.db,
       volume: args.volume,
       primaryOrgId: args.runtimeOrgId,
       allowSystemFallback: true,
-    });
-  });
-  if ("error" in resolvedResult) {
+    }),
+  );
+  if (!resolvedResult.ok) {
     if (isMissingStorageError(resolvedResult.error)) {
       return null;
     }
     throw resolvedResult.error;
   }
-  if (!resolvedResult.ok) {
+  if (!resolvedResult.value) {
     return null;
   }
   return await buildStorageEntry({
@@ -603,7 +603,7 @@ async function buildAdditionalStorageEntry(args: {
     name: args.volume.name,
     mountPath: args.volume.mountPath,
     vasStorageName: args.volume.name,
-    resolved: resolvedResult.ok,
+    resolved: resolvedResult.value,
   });
 }
 

@@ -21,7 +21,7 @@ import {
   findOrCreateReservedDomain,
   safeDelete,
 } from "../external/ngrok-client";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { encryptSecretValue } from "./crypto.utils";
 
 const log = logger("service:computer-connector");
@@ -146,13 +146,15 @@ async function rollbackDbState(
   args: CreateComputerConnectorArgs,
   refs: ProvisionedRefs,
 ): Promise<void> {
-  const result = await safeAsync(async () => {
-    await deleteComputerConnectorSecrets(db, args);
-    if (refs.connectorId) {
-      await db.delete(connectors).where(eq(connectors.id, refs.connectorId));
-    }
-  });
-  if ("error" in result) {
+  const result = await settle(
+    (async () => {
+      await deleteComputerConnectorSecrets(db, args);
+      if (refs.connectorId) {
+        await db.delete(connectors).where(eq(connectors.id, refs.connectorId));
+      }
+    })(),
+  );
+  if (!result.ok) {
     log.warn("Failed to clean up computer connector DB state", {
       orgId: args.orgId,
       error:
@@ -330,13 +332,13 @@ export const createComputerConnector$ = command(
     }
 
     const refs: ProvisionedRefs = {};
-    const result = await safeAsync(() => {
-      return provisionAndPersistConnector({ db, args, apiKey, refs }, signal);
-    });
+    const result = await settle(
+      provisionAndPersistConnector({ db, args, apiKey, refs }, signal),
+    );
     signal.throwIfAborted();
 
-    if ("ok" in result) {
-      return { kind: "created", connector: result.ok };
+    if (result.ok) {
+      return { kind: "created", connector: result.value };
     }
 
     log.error("Failed to create computer connector, cleaning up", {

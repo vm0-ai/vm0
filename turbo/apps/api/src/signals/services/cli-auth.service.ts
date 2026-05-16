@@ -12,7 +12,7 @@ import { generateCliToken } from "../auth/tokens";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 export const CLI_TOKEN_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60;
@@ -60,19 +60,17 @@ export const orgIdBySlug$ = command(
     }
 
     const client = get(clerk$);
-    const result = await safeAsync(() => {
-      return client.organizations.getOrganization({ slug });
-    });
+    const result = await settle(client.organizations.getOrganization({ slug }));
     signal.throwIfAborted();
 
-    if ("error" in result) {
+    if (!result.ok) {
       if (isClerkNotFound(result.error)) {
         return null;
       }
       throw result.error;
     }
 
-    const org = result.ok;
+    const org = result.value;
     if (!org.slug) {
       return null;
     }

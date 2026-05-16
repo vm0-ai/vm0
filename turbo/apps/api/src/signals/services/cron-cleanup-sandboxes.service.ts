@@ -12,7 +12,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { deleteS3Objects } from "../external/s3";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
@@ -293,14 +293,14 @@ export const cleanupSandboxes$ = command(
     }
 
     for (const run of expiredRuns) {
-      const cleanupResult = await safeAsync(() => {
-        return cleanupSingleRun(set, db, run, signal);
-      });
+      const cleanupResult = await settle(
+        cleanupSingleRun(set, db, run, signal),
+      );
       signal.throwIfAborted();
 
-      if ("ok" in cleanupResult) {
-        if (cleanupResult.ok) {
-          results.push(cleanupResult.ok);
+      if (cleanupResult.ok) {
+        if (cleanupResult.value) {
+          results.push(cleanupResult.value);
         }
       } else {
         const errorMessage =

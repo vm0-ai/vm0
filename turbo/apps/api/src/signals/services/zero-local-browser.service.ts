@@ -29,7 +29,7 @@ import {
   publishLocalBrowserHostsChanged,
   publishUserSignal,
 } from "../external/realtime";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { logger } from "../../lib/log";
 
 const LOCAL_BROWSER_DEVICE_CODE_TTL_SECONDS = 15 * 60;
@@ -477,11 +477,11 @@ async function publishConnectorChangedSafe(
   userId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const publishResult = await safeAsync(() => {
-    return publishUserSignal([userId], "connector:changed");
-  });
+  const publishResult = await settle(
+    publishUserSignal([userId], "connector:changed"),
+  );
   signal.throwIfAborted();
-  if ("error" in publishResult) {
+  if (!publishResult.ok) {
     L.warn("Failed to publish connector change", {
       userId,
       error: publishResult.error,
@@ -493,11 +493,9 @@ async function publishLocalBrowserHostsChangedSafe(
   userId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const publishResult = await safeAsync(() => {
-    return publishLocalBrowserHostsChanged(userId);
-  });
+  const publishResult = await settle(publishLocalBrowserHostsChanged(userId));
   signal.throwIfAborted();
-  if ("error" in publishResult) {
+  if (!publishResult.ok) {
     L.warn("Failed to publish local-browser host change", {
       userId,
       error: publishResult.error,
@@ -520,11 +518,11 @@ async function publishLocalBrowserCommandAvailableSafe(
   commandId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const publishResult = await safeAsync(() => {
-    return publishLocalBrowserHostCommandAvailable(hostId, commandId);
-  });
+  const publishResult = await settle(
+    publishLocalBrowserHostCommandAvailable(hostId, commandId),
+  );
   signal.throwIfAborted();
-  if ("error" in publishResult) {
+  if (!publishResult.ok) {
     L.warn("Failed to publish local-browser command notification", {
       hostId,
       commandId,
@@ -578,12 +576,12 @@ export const createLocalBrowserDeviceCode$ = command(
     let realtime:
       | Awaited<ReturnType<typeof createLocalBrowserDeviceRealtimeSubscription>>
       | undefined;
-    const realtimeResult = await safeAsync(() => {
-      return createLocalBrowserDeviceRealtimeSubscription(row.id);
-    });
+    const realtimeResult = await settle(
+      createLocalBrowserDeviceRealtimeSubscription(row.id),
+    );
     signal.throwIfAborted();
-    if ("ok" in realtimeResult) {
-      realtime = realtimeResult.ok;
+    if (realtimeResult.ok) {
+      realtime = realtimeResult.value;
     } else {
       L.warn(
         "Failed to create local-browser device realtime token",

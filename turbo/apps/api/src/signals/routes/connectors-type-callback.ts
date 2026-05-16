@@ -20,7 +20,7 @@ import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { optionalEnv } from "../../lib/env";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 
 const STATE_COOKIE_NAME = "connector_oauth_state";
@@ -275,46 +275,48 @@ const callbackConnectorInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const callbackResult = await safeAsync(async () => {
-      const redirectUri = `${origin}/api/connectors/${params.type}/callback`;
-      const token = await exchangeTokenForConnector({
-        connectorType,
-        code,
-        redirectUri,
-        state,
-        codeVerifier,
-      });
-      signal.throwIfAborted();
+    const callbackResult = await settle(
+      (async (): Promise<Response> => {
+        const redirectUri = `${origin}/api/connectors/${params.type}/callback`;
+        const token = await exchangeTokenForConnector({
+          connectorType,
+          code,
+          redirectUri,
+          state,
+          codeVerifier,
+        });
+        signal.throwIfAborted();
 
-      const handler = PROVIDER_HANDLERS[connectorType];
-      const result = await set(
-        upsertOAuthConnector$,
-        {
-          orgId: auth.orgId,
-          userId: auth.userId,
-          type: connectorType,
-          accessToken: token.accessToken,
-          userInfo: token.userInfo,
-          oauthScopes: getRequestedScopes(connectorType),
-          refreshToken: token.refreshToken,
-          refreshSecretName: handler.getRefreshSecretName?.(),
-          expiresIn: token.expiresIn,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
+        const handler = PROVIDER_HANDLERS[connectorType];
+        const result = await set(
+          upsertOAuthConnector$,
+          {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            type: connectorType,
+            accessToken: token.accessToken,
+            userInfo: token.userInfo,
+            oauthScopes: getRequestedScopes(connectorType),
+            refreshToken: token.refreshToken,
+            refreshSecretName: handler.getRefreshSecretName?.(),
+            expiresIn: token.expiresIn,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
 
-      await completeConnectorSession(writeDb, sessionId, signal);
-      return successRedirectResponse({
-        origin,
-        type: params.type,
-        username: result.connector.externalUsername,
-      });
-    });
+        await completeConnectorSession(writeDb, sessionId, signal);
+        return successRedirectResponse({
+          origin,
+          type: params.type,
+          username: result.connector.externalUsername,
+        });
+      })(),
+    );
     signal.throwIfAborted();
 
-    if ("ok" in callbackResult) {
-      return callbackResult.ok;
+    if (callbackResult.ok) {
+      return callbackResult.value;
     }
 
     await markConnectorSessionError(

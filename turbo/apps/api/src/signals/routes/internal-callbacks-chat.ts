@@ -52,7 +52,7 @@ import {
   generateAndPersistChatThreadTitleFromCallback,
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
-import { safeAsync, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 
 const log = logger("callback:chat");
 const GOAL_DONE_SENTINEL = "[GOAL_DONE]";
@@ -454,12 +454,12 @@ async function handleCompletedChatCallback(args: {
 
   let summary: string | null = null;
   if (lastResultText) {
-    const generated = await safeAsync(() => {
-      return generateChatNotificationSummary(args.run.prompt, lastResultText);
-    });
+    const generated = await settle(
+      generateChatNotificationSummary(args.run.prompt, lastResultText),
+    );
     args.signal.throwIfAborted();
-    if ("ok" in generated) {
-      summary = generated.ok;
+    if (generated.ok) {
+      summary = generated.value;
     } else {
       log.warn("Failed to generate notification summary", {
         runId: args.runId,

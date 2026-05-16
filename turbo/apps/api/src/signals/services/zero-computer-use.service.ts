@@ -19,7 +19,7 @@ import {
   findOrCreateReservedDomain,
   safeDelete,
 } from "../external/ngrok-client";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const log = logger("service:computer-use");
 
@@ -341,15 +341,15 @@ export const registerHost$ = command(
       endpointId?: string;
     } = {};
 
-    const result = await safeAsync(() => {
-      return provisionAndPersistHost(
+    const result = await settle(
+      provisionAndPersistHost(
         { db, args, apiKey, reusableDomain, refs },
         signal,
-      );
-    });
+      ),
+    );
     signal.throwIfAborted();
-    if ("ok" in result) {
-      return result.ok;
+    if (result.ok) {
+      return result.value;
     }
     log.error("Failed to register host, cleaning up", {
       orgId: args.orgId,

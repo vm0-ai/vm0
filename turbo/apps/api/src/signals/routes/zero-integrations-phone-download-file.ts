@@ -12,7 +12,7 @@ import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { agentPhoneFilenameFromMediaUrl } from "../services/zero-agentphone.service";
 import type { RouteEntry } from "../route";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const log = logger("api:zero:integrations:phone:download-file");
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -62,11 +62,9 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   const fileName = agentPhoneFilenameFromMediaUrl(mediaUrl, query.file_id);
   const fallbackMimetype = inferMimetype(fileName);
 
-  const downloadResult = await safeAsync(() => {
-    return fetch(mediaUrl, { signal });
-  });
+  const downloadResult = await settle(fetch(mediaUrl, { signal }));
   signal.throwIfAborted();
-  if ("error" in downloadResult) {
+  if (!downloadResult.ok) {
     log.warn("AgentPhone file download failed", {
       fileId: query.file_id,
       error: downloadResult.error,
@@ -77,7 +75,7 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
       "BAD_GATEWAY",
     );
   }
-  const downloadResponse = downloadResult.ok;
+  const downloadResponse = downloadResult.value;
   signal.throwIfAborted();
   if (!downloadResponse.ok) {
     log.warn("AgentPhone media download failed", {

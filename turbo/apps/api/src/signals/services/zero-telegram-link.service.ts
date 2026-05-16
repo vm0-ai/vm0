@@ -14,7 +14,7 @@ import { now, nowDate } from "../external/time";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { putS3Object } from "../external/s3";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 import { decryptSecretValue } from "./crypto.utils";
 
@@ -194,10 +194,10 @@ export function verifyConnectSignature(args: {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  const publishResult = await safeAsync(() => {
-    return publishUserSignal([userId], "telegram:changed");
-  });
-  if ("error" in publishResult) {
+  const publishResult = await settle(
+    publishUserSignal([userId], "telegram:changed"),
+  );
+  if (!publishResult.ok) {
     L.warn("Failed to publish Telegram user change", {
       error: publishResult.error,
     });

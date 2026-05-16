@@ -6,7 +6,7 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { safeAsync, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -97,7 +97,7 @@ export async function createRunnerGroupRealtimeToken(
  * NOT best-effort: rejections from Ably propagate to the caller, matching
  * web's behaviour. Wave 2/3 mutation handlers should use this directly; if
  * a non-blocking publish becomes necessary for a future route, prefer
- * `safeAsync` from ../utils.
+ * `settle` from ../utils.
  */
 export async function publishUserSignal(
   userIds: readonly string[],
@@ -185,12 +185,14 @@ export async function publishRunnerJobNotification(
   runId: string,
   profile: string,
 ): Promise<boolean> {
-  const result = await safeAsync(async () => {
-    const channel = ablyClient().channels.get(`runner-group:${group}`);
-    await channel.publish("job", { runId, profile });
-    L.debug(`Published job ${runId} to runner-group:${group}`);
-  });
-  if ("ok" in result) {
+  const result = await settle(
+    (async () => {
+      const channel = ablyClient().channels.get(`runner-group:${group}`);
+      await channel.publish("job", { runId, profile });
+      L.debug(`Published job ${runId} to runner-group:${group}`);
+    })(),
+  );
+  if (result.ok) {
     return true;
   }
   L.warn("Failed to publish runner job notification", {

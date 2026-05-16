@@ -6,7 +6,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 
 const L = logger("AgentRunCallback");
@@ -115,15 +115,15 @@ async function dispatchSingleCallback(
     headers["x-vercel-protection-bypass"] = bypass;
   }
 
-  const responseResult = await safeAsync(() => {
-    return fetch(resolveCallbackUrl(callback.url), {
+  const responseResult = await settle(
+    fetch(resolveCallbackUrl(callback.url), {
       method: "POST",
       headers,
       body,
-    });
-  });
+    }),
+  );
 
-  if (!("ok" in responseResult)) {
+  if (!responseResult.ok) {
     const errorMessage =
       responseResult.error instanceof Error
         ? responseResult.error.message
@@ -137,7 +137,7 @@ async function dispatchSingleCallback(
     return { callbackId: callback.id, success: false, error: errorMessage };
   }
 
-  const response = responseResult.ok;
+  const response = responseResult.value;
   if (response.ok) {
     await db
       .update(agentRunCallbacks)

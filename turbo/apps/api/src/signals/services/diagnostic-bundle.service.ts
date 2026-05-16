@@ -20,7 +20,7 @@ import { clerk$ } from "../external/clerk";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { db$, type Db } from "../external/db";
-import { safeAsync, settle, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { createPlainSupportThread } from "./plain-support.service";
 
@@ -533,21 +533,23 @@ async function collectSystemLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-  const queried = await safeAsync(async () => {
-    const events = (await get(queryAxiom(apl))) as { log: string }[];
-    return events
-      .map((event) => {
-        return event.log;
-      })
-      .join("");
-  });
-  if ("error" in queried) {
+  const queried = await settle(
+    (async (): Promise<string> => {
+      const events = (await get(queryAxiom(apl))) as { log: string }[];
+      return events
+        .map((event) => {
+          return event.log;
+        })
+        .join("");
+    })(),
+  );
+  if (!queried.ok) {
     log.warn("Failed to collect system log from Axiom", {
       error: String(queried.error),
     });
     return "";
   }
-  return queried.ok;
+  return queried.value;
 }
 
 async function collectNetworkLog(
@@ -568,16 +570,18 @@ async function collectNetworkLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-  const queried = await safeAsync(async () => {
-    return (await get(queryAxiom(apl))) as Record<string, unknown>[];
-  });
-  if ("error" in queried) {
+  const queried = await settle(
+    (async (): Promise<Record<string, unknown>[]> => {
+      return (await get(queryAxiom(apl))) as Record<string, unknown>[];
+    })(),
+  );
+  if (!queried.ok) {
     log.warn("Failed to collect network log from Axiom", {
       error: String(queried.error),
     });
     return [];
   }
-  return queried.ok;
+  return queried.value;
 }
 
 async function collectAgentEvents(
@@ -609,19 +613,21 @@ async function collectAgentEvents(
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
 
-  const queried = await safeAsync(async () => {
-    const events = (await get(
-      queryAxiom(apl, { noCache: true }),
-    )) as unknown as readonly ChatHistoryEvent[];
-    return [...events];
-  });
-  if ("error" in queried) {
+  const queried = await settle(
+    (async (): Promise<ChatHistoryEvent[]> => {
+      const events = (await get(
+        queryAxiom(apl, { noCache: true }),
+      )) as unknown as readonly ChatHistoryEvent[];
+      return [...events];
+    })(),
+  );
+  if (!queried.ok) {
     log.warn("Failed to collect agent events from Axiom", {
       error: String(queried.error),
     });
     return [];
   }
-  return queried.ok;
+  return queried.value;
 }
 
 async function waitForAgentEventWatermarks(
@@ -793,21 +799,23 @@ async function queryAgentEvents(
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
 
-  const queried = await safeAsync(async () => {
-    const events = (await get(
-      queryAxiom(apl, {
-        noCache: true,
-      }),
-    )) as unknown as readonly AxiomAgentEvent[];
-    return [...events];
-  });
-  if ("error" in queried) {
+  const queried = await settle(
+    (async (): Promise<AxiomAgentEvent[]> => {
+      const events = (await get(
+        queryAxiom(apl, {
+          noCache: true,
+        }),
+      )) as unknown as readonly AxiomAgentEvent[];
+      return [...events];
+    })(),
+  );
+  if (!queried.ok) {
     log.warn("Failed to collect agent telemetry", {
       error: String(queried.error),
     });
     return [];
   }
-  return queried.ok;
+  return queried.value;
 }
 
 async function queryNetworkLogs(
@@ -820,16 +828,18 @@ async function queryNetworkLogs(
 | order by _time asc
 | limit 5000`;
 
-  const queried = await safeAsync(async () => {
-    return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
-  });
-  if ("error" in queried) {
+  const queried = await settle(
+    (async (): Promise<AxiomNetworkEvent[]> => {
+      return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
+    })(),
+  );
+  if (!queried.ok) {
     log.warn("Failed to collect network logs", {
       error: String(queried.error),
     });
     return [];
   }
-  return queried.ok;
+  return queried.value;
 }
 
 async function queryRunContext(
@@ -867,33 +877,37 @@ async function resolveUserEmail(
   get: ComputedGetter,
   userId: string,
 ): Promise<string> {
-  const result = await safeAsync(async () => {
-    const client = get(clerk$);
-    const users = await client.users.getUserList({ userId: [userId] });
-    const user = users.data.find((candidate: ClerkEmailProfile) => {
-      return candidate.id === userId;
-    });
-    return user ? (primaryEmail(user) ?? userId) : userId;
-  });
-  if ("error" in result) {
+  const result = await settle(
+    (async (): Promise<string> => {
+      const client = get(clerk$);
+      const users = await client.users.getUserList({ userId: [userId] });
+      const user = users.data.find((candidate: ClerkEmailProfile) => {
+        return candidate.id === userId;
+      });
+      return user ? (primaryEmail(user) ?? userId) : userId;
+    })(),
+  );
+  if (!result.ok) {
     return userId;
   }
-  return result.ok;
+  return result.value;
 }
 
 async function resolveOrgName(
   get: ComputedGetter,
   orgId: string,
 ): Promise<string> {
-  const result = await safeAsync(async () => {
-    const client = get(clerk$);
-    const org = await client.organizations.getOrganization({
-      organizationId: orgId,
-    });
-    return org.name;
-  });
-  if ("error" in result) {
+  const result = await settle(
+    (async (): Promise<string> => {
+      const client = get(clerk$);
+      const org = await client.organizations.getOrganization({
+        organizationId: orgId,
+      });
+      return org.name;
+    })(),
+  );
+  if (!result.ok) {
     return orgId;
   }
-  return result.ok;
+  return result.value;
 }

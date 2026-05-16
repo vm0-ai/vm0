@@ -27,7 +27,7 @@ import {
   getOfficialTelegramBotConfig,
   OFFICIAL_TELEGRAM_BOT_ID,
 } from "../external/telegram-official";
-import { safeAsync, safeUrlParse, settle } from "../utils";
+import { safeUrlParse, settle } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
@@ -718,18 +718,16 @@ async function resolveIntegrationTokenStatus(
   installation: TelegramInstallationRow,
 ): Promise<TelegramBot["tokenStatus"]> {
   const token = decryptSecretValue(installation.encryptedBotToken);
-  const result = await safeAsync(() => {
-    return getMe(token);
-  });
+  const result = await settle(getMe(token));
 
-  if ("error" in result) {
+  if (!result.ok) {
     if (isInvalidTelegramTokenError(result.error)) {
       return "invalid";
     }
     return "unknown";
   }
 
-  if (String(result.ok.id) !== installation.telegramBotId) {
+  if (String(result.value.id) !== installation.telegramBotId) {
     return "invalid";
   }
   return "valid";

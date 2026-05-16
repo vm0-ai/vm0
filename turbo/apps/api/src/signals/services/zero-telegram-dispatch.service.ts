@@ -23,7 +23,7 @@ import { sendChatAction, sendMessage } from "../external/telegram-client";
 import { publishUserSignal } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import { decryptSecretValue } from "./crypto.utils";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
@@ -403,10 +403,10 @@ async function sendTypingAction(args: {
   readonly botToken: string;
   readonly chatId: string;
 }): Promise<void> {
-  const result = await safeAsync(() => {
-    return sendChatAction(args.botToken, args.chatId, "typing");
-  });
-  if ("error" in result) {
+  const result = await settle(
+    sendChatAction(args.botToken, args.chatId, "typing"),
+  );
+  if (!result.ok) {
     L.debug("Failed to send Telegram typing action", {
       chatId: args.chatId,
       error: result.error,
@@ -464,10 +464,8 @@ async function loadInstallation(
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  const result = await safeAsync(() => {
-    return publishUserSignal([userId], "telegram:changed");
-  });
-  if ("error" in result) {
+  const result = await settle(publishUserSignal([userId], "telegram:changed"));
+  if (!result.ok) {
     L.warn("Failed to publish Telegram user change", { error: result.error });
   }
 }

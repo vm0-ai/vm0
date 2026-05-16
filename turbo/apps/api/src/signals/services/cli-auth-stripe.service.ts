@@ -15,7 +15,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { safeAsync, safeJsonParse, safeSync } from "../utils";
+import { safeJsonParse, safeSync, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
@@ -607,8 +607,8 @@ async function createCliAuthStripeSandbox(args: {
   }
 
   const sandbox = createResult.value;
-  const updateResult = await safeAsync(() => {
-    return args.writeDb
+  const updateResult = await settle(
+    args.writeDb
       .update(connectorCliAuthSessions)
       .set({
         sandboxId: sandbox.sandboxId,
@@ -620,13 +620,13 @@ async function createCliAuthStripeSandbox(args: {
           eq(connectorCliAuthSessions.status, "initializing"),
         ),
       )
-      .returning();
-  });
-  if ("error" in updateResult) {
+      .returning(),
+  );
+  if (!updateResult.ok) {
     await cleanupSandbox(args.client, sandbox);
     throw updateResult.error;
   }
-  const updatedSession = updateResult.ok[0];
+  const updatedSession = updateResult.value[0];
   if (!updatedSession) {
     await cleanupSandboxSafely({
       client: args.client,
@@ -994,15 +994,15 @@ export async function startCliAuthStripe(args: {
   if (!startResult.ok) {
     return startResult.result;
   }
-  const persistResult = await safeAsync(() => {
-    return markCliAuthStripeSessionAwaitingApproval({
+  const persistResult = await settle(
+    markCliAuthStripeSessionAwaitingApproval({
       writeDb: args.writeDb,
       session: sandboxResult.session,
       output: startResult.output,
       mode: args.mode,
-    });
-  });
-  if ("error" in persistResult) {
+    }),
+  );
+  if (!persistResult.ok) {
     await cleanupSandboxSafely({
       client,
       sandbox: sandboxResult.sandbox,
@@ -1010,7 +1010,7 @@ export async function startCliAuthStripe(args: {
     });
     throw persistResult.error;
   }
-  if (!persistResult.ok) {
+  if (!persistResult.value) {
     await cleanupSandboxSafely({
       client,
       sandbox: sandboxResult.sandbox,
@@ -1054,10 +1054,10 @@ function cliAuthStripeApiTokenConnector(): ConnectorResponse {
 }
 
 async function publishCliAuthStripeConnectorChanged(userId: string) {
-  const publishResult = await safeAsync(() => {
-    return publishUserSignal([userId], "connector:changed");
-  });
-  if ("error" in publishResult) {
+  const publishResult = await settle(
+    publishUserSignal([userId], "connector:changed"),
+  );
+  if (!publishResult.ok) {
     L.warn("Failed to publish CLI auth Stripe connector change", {
       userId,
       error: publishResult.error,
@@ -1668,8 +1668,8 @@ async function completeClaimedCliAuthStripe(args: {
     return apiKeyResult.result;
   }
 
-  const importResult = await safeAsync(() => {
-    return importCliAuthStripeConnector({
+  const importResult = await settle(
+    importCliAuthStripeConnector({
       set: args.set,
       sessionId: args.session.id,
       claimedAt,
@@ -1678,9 +1678,9 @@ async function completeClaimedCliAuthStripe(args: {
       mode: args.providerState.mode,
       apiKey: apiKeyResult.apiKey,
       signal: args.signal,
-    });
-  });
-  if ("error" in importResult) {
+    }),
+  );
+  if (!importResult.ok) {
     if (isCliAuthStripeClaimLostError(importResult.error)) {
       return { status: "pending", errorMessage: null };
     }
@@ -1712,7 +1712,7 @@ async function completeClaimedCliAuthStripe(args: {
     sandbox: args.sandbox,
     reason: "import completed",
   });
-  return importResult.ok;
+  return importResult.value;
 }
 
 export const completeCliAuthStripe$ = command(

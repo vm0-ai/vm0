@@ -14,7 +14,7 @@ import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { db$ } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
-import { bestEffort, safeAsync, settle } from "../utils";
+import { bestEffort, settle } from "../utils";
 
 const L = logger("webhook:events");
 
@@ -275,8 +275,8 @@ export const receiveAgentEvents$ = command(
       `Dispatching events ${firstSequence}-${lastSequence} to consumers for run ${params.body.runId}`,
     );
     const startedAt = now();
-    const dispatchResult = await safeAsync(() => {
-      return set(
+    const dispatchResult = await settle(
+      set(
         dispatchAgentEventConsumers$,
         {
           runId: params.body.runId,
@@ -287,11 +287,11 @@ export const receiveAgentEvents$ = command(
           },
         },
         signal,
-      );
-    });
+      ),
+    );
     signal.throwIfAborted();
 
-    if ("error" in dispatchResult) {
+    if (!dispatchResult.ok) {
       if (isRequiredEventConsumerDispatchError(dispatchResult.error)) {
         return internalServerError(dispatchResult.error.message);
       }

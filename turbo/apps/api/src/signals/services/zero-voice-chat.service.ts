@@ -41,7 +41,7 @@ import { now, nowDate } from "../../lib/time";
 import { isBadRequestResponse, notFound } from "../../lib/error";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { createAgentRun$ } from "./agent-run-create.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -1097,8 +1097,8 @@ async function callReasoner(params: {
     return null;
   }
 
-  const responseResult = await safeAsync(() => {
-    return fetch(OPENROUTER_URL, {
+  const responseResult = await settle(
+    fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -1114,9 +1114,9 @@ async function callReasoner(params: {
         temperature: OPENROUTER_TEMPERATURE,
       }),
       signal: openRouterRequestSignal(params.signal),
-    });
-  });
-  if ("error" in responseResult) {
+    }),
+  );
+  if (!responseResult.ok) {
     if (isTimeoutError(responseResult.error)) {
       logReasoner.warn("reasoner fetch timed out");
       return null;
@@ -1128,7 +1128,7 @@ async function callReasoner(params: {
     throw responseResult.error;
   }
 
-  const response = responseResult.ok;
+  const response = responseResult.value;
   if (!response.ok) {
     const text = await response.text();
     logReasoner.warn(`reasoner request failed: ${response.status} ${text}`);
@@ -1404,8 +1404,8 @@ async function callCompactor(params: {
   readonly apiKey: string;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const responseResult = await safeAsync(() => {
-    return fetch(OPENROUTER_URL, {
+  const responseResult = await settle(
+    fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${params.apiKey}`,
@@ -1418,9 +1418,9 @@ async function callCompactor(params: {
         temperature: OPENROUTER_TEMPERATURE,
       }),
       signal: openRouterRequestSignal(params.signal),
-    });
-  });
-  if ("error" in responseResult) {
+    }),
+  );
+  if (!responseResult.ok) {
     if (isTimeoutError(responseResult.error)) {
       logCompactor.warn("compactor fetch timed out");
       return null;
@@ -1432,7 +1432,7 @@ async function callCompactor(params: {
     throw responseResult.error;
   }
 
-  const response = responseResult.ok;
+  const response = responseResult.value;
   if (!response.ok) {
     const text = await response.text();
     logCompactor.warn(`compactor request failed: ${response.status} ${text}`);
@@ -2323,16 +2323,16 @@ export const createVoiceChatEphemeralToken$ = command(
     | { readonly status: 200; readonly body: VoiceChatTokenResponse }
     | ErrorResponse<500, "INTERNAL_SERVER_ERROR">
   > => {
-    const tokenResult = await safeAsync(() => {
-      return requestEphemeralToken({
+    const tokenResult = await settle(
+      requestEphemeralToken({
         instructions: args.instructions,
         noiseReduction: args.noiseReduction,
         safetyIdentifier: safetyIdentifierForUser(args.userId),
         signal,
-      });
-    });
+      }),
+    );
     signal.throwIfAborted();
-    if ("error" in tokenResult) {
+    if (!tokenResult.ok) {
       if (isOpenAiTokenError(tokenResult.error)) {
         logToken.error("OpenAI token request failed", {
           status: tokenResult.error.status,
@@ -2342,6 +2342,6 @@ export const createVoiceChatEphemeralToken$ = command(
       }
       throw tokenResult.error;
     }
-    return { status: 200, body: tokenResult.ok };
+    return { status: 200, body: tokenResult.value };
   },
 );

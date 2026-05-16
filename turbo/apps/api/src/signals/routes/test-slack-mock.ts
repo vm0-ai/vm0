@@ -10,7 +10,7 @@ import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route";
-import { safeAsync, safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -78,15 +78,15 @@ async function logSlackMockCall(
   contentType: string,
 ): Promise<void> {
   const parsed = await readSlackMockBody(request, contentType);
-  await safeAsync(async () => {
-    await db.insert(e2eSlackMockCallLog).values({
+  await settle(
+    db.insert(e2eSlackMockCallLog).values({
       method,
       teamId: parsed.teamId,
       channelId: parsed.channelId,
       body: parsed.rawBody,
       bodyJson: parsed.bodyJson,
-    });
-  });
+    }),
+  );
 }
 
 function staticSlackMockHandler<T extends Record<string, unknown>>(

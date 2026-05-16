@@ -39,7 +39,7 @@ import {
   isCodexAuthJsonShapeError,
   parseCodexAuthJson,
 } from "../services/codex-auth-json-parser";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -328,11 +328,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if ("authJson" in bodyResult.data) {
     const { authJson } = bodyResult.data;
-    const parsedResult = await safeAsync(() => {
-      return Promise.resolve(parseCodexAuthJson(authJson));
-    });
+    const parsedResult = await settle(
+      Promise.resolve(parseCodexAuthJson(authJson)),
+    );
     signal.throwIfAborted();
-    if ("error" in parsedResult) {
+    if (!parsedResult.ok) {
       if (isCodexAuthJsonFreePlanError(parsedResult.error)) {
         return stringError(400, "Free plan rejected by parser");
       }
@@ -345,7 +345,7 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
       throw parsedResult.error;
     }
 
-    const parsed = parsedResult.ok;
+    const parsed = parsedResult.value;
     await set(
       upsertOrgMultiAuthModelProvider$,
       {

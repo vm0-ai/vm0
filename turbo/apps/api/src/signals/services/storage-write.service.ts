@@ -18,7 +18,7 @@ import {
   s3ObjectExists,
   verifyS3FilesExist,
 } from "../external/s3";
-import { safeAsync } from "../utils";
+import { settle } from "../utils";
 import {
   computeContentHashFromHashes,
   type FileEntryWithHash,
@@ -339,8 +339,8 @@ async function resolvePreparedFiles(args: {
     return args.input.files;
   }
 
-  const mergeResult = await safeAsync(() => {
-    return mergeWithBaseVersion({
+  const mergeResult = await settle(
+    mergeWithBaseVersion({
       get: args.get,
       db: args.db,
       bucket: args.bucket,
@@ -349,11 +349,11 @@ async function resolvePreparedFiles(args: {
       baseVersion,
       changes,
       signal: args.signal,
-    });
-  });
+    }),
+  );
   args.signal.throwIfAborted();
 
-  return "ok" in mergeResult ? mergeResult.ok : args.input.files;
+  return mergeResult.ok ? mergeResult.value : args.input.files;
 }
 
 async function existingStorageVersionIsReusable(args: {
@@ -630,17 +630,17 @@ async function recordStorageLineage(args: {
     return;
   }
 
-  const result = await safeAsync(() => {
-    return args.db.insert(storageVersionLineage).values({
+  const result = await settle(
+    args.db.insert(storageVersionLineage).values({
       storageId: args.storageId,
       versionId: args.versionId,
       parentVersionId,
       runId,
       storageType: args.storageType,
-    });
-  });
+    }),
+  );
 
-  if ("error" in result) {
+  if (!result.ok) {
     L.error(
       `Failed to record lineage for ${args.versionId}: ${
         result.error instanceof Error

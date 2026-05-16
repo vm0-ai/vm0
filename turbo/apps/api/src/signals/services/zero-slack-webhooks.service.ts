@@ -75,7 +75,7 @@ import {
 } from "./zero-user-data.service";
 import { publishSlackAdminSignal$ } from "./zero-slack-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
-import { safeAsync, safeJsonParse, tapError } from "../utils";
+import { safeJsonParse, settle, tapError } from "../utils";
 
 const L = logger("ZeroSlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
@@ -738,8 +738,8 @@ async function commandSwitchResponse(
   const client = createSlackClient(
     decryptSecretValue(installation.encryptedBotToken),
   );
-  const result = await safeAsync(() => {
-    return openView(
+  const result = await settle(
+    openView(
       client,
       payload.trigger_id,
       buildAgentPickerModal({
@@ -748,9 +748,9 @@ async function commandSwitchResponse(
         orgDefaultName,
         privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
       }),
-    );
-  });
-  if ("error" in result) {
+    ),
+  );
+  if (!result.ok) {
     L.warn("Failed to open agent picker modal", { error: result.error });
     return ephemeral(
       buildErrorMessage(
@@ -798,8 +798,8 @@ async function commandModelResponse(
   const client = createSlackClient(
     decryptSecretValue(args.installation.encryptedBotToken),
   );
-  const result = await safeAsync(() => {
-    return openView(
+  const result = await settle(
+    openView(
       client,
       args.payload.trigger_id,
       buildModelPickerModal({
@@ -807,9 +807,9 @@ async function commandModelResponse(
         currentSelectedModel: picker.currentSelectedModel,
         privateMetadata: JSON.stringify({ channelId: args.payload.channel_id }),
       }),
-    );
-  });
-  if ("error" in result) {
+    ),
+  );
+  if (!result.ok) {
     L.warn("Failed to open model picker modal", { error: result.error });
     return ephemeral(
       buildErrorMessage(
@@ -1834,8 +1834,8 @@ async function handleHomeSwitchAgent(
     ctx.connection.vm0UserId,
     ctx.orgId,
   );
-  const result = await safeAsync(() => {
-    return openView(
+  const result = await settle(
+    openView(
       createSlackClient(decryptSecretValue(ctx.installation.encryptedBotToken)),
       triggerId,
       buildAgentPickerModal({
@@ -1843,9 +1843,9 @@ async function handleHomeSwitchAgent(
         currentSelectedId: currentOverride,
         orgDefaultName,
       }),
-    );
-  });
-  if ("error" in result) {
+    ),
+  );
+  if (!result.ok) {
     L.warn("Failed to open switch modal from App Home", {
       error: result.error,
     });
