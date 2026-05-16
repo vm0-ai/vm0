@@ -29,7 +29,7 @@
     "@t3-oss/env-core": "^0.13.11",
     "@team-plain/typescript-sdk": "^5.12.1",
     "@vercel/functions": "^3.4.4",
-    "@vercel/oidc": "^3.2.1",
+    "@vercel/oidc": "^3.4.1",
     "@vercel/otel": "^2.1.2",
     "@vercel/sandbox": "^1.10.2",
     "@vm0/api-contracts": "workspace:*",
