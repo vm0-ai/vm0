@@ -423,7 +423,7 @@ function QueuedMessagesStrip({
         </span>
         <span className="text-sm text-muted-foreground">{label}</span>
       </div>
-      <div className="max-h-[200px] overflow-y-auto px-2 pb-7" role="list">
+      <div className="max-h-[200px] overflow-y-auto px-2 pt-1 pb-7" role="list">
         {items.map((item) => {
           return (
             <div
