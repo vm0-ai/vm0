@@ -159,6 +159,12 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/generate")).toBe(false);
   });
 
+  it("matches the logs search rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/logs/search")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/logs/search/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/logs")).toBe(false);
+  });
+
   it("matches the usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/usage")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/usage/extra")).toBe(false);

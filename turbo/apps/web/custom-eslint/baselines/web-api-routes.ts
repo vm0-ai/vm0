@@ -73,7 +73,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/event-consumers/chat-assistant/route.ts",
   "app/api/internal/event-consumers/telegram-typing/route.ts",
   "app/api/internal/event-consumers/voice-chat/route.ts",
-  "app/api/logs/search/route.ts",
   "app/api/runners/heartbeat/route.ts",
   "app/api/runners/jobs/[id]/claim/route.ts",
   "app/api/runners/poll/route.ts",
@@ -237,7 +236,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "98d3ec0828be1fa7b00ae04ca4e5e97e6c0d48fae2b353ff7aa6e79189abfe74";
+  "21fa2d05279b57fd46ae93ca1c72e831410789acba3f68a02b3ad37c4e7df87b";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

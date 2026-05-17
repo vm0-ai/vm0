@@ -222,6 +222,27 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain(`runId == "${fixture.runId}"`);
   });
 
+  it("uses the Axiom search operator for keyword search", async () => {
+    const fixture = await setupSearchFixture();
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      makeAxiomEvent(fixture.runId, 2, "deploy failed with error"),
+    ]);
+
+    const response = await accept(
+      logsClient().searchLogs({
+        query: { keyword: "deploy failed" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(1);
+    expect(response.body.results[0]?.matchedEvent.sequenceNumber).toBe(2);
+
+    const aplQuery = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
+    expect(aplQuery).toContain('search "*deploy failed*"');
+  });
+
   it("filters by agentId via database lookup", async () => {
     const fixture = await setupSearchFixture();
     context.mocks.axiom.query.mockResolvedValueOnce([
@@ -241,6 +262,65 @@ describe("GET /api/logs/search", () => {
 
     const aplQuery = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
     expect(aplQuery).toContain(`runId == "${fixture.runId}"`);
+  });
+
+  it("returns empty results for an agentId with no runs", async () => {
+    await setupSearchFixture();
+
+    const response = await accept(
+      logsClient().searchLogs({
+        query: { keyword: "test", agentId: randomUUID() },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toStrictEqual([]);
+    expect(response.body.hasMore).toBeFalsy();
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("sets hasMore when matches exceed the requested limit", async () => {
+    const fixture = await setupSearchFixture();
+    const events = Array.from({ length: 5 }, (_, index) => {
+      return makeAxiomEvent(fixture.runId, index, `Match ${index}`);
+    });
+    context.mocks.axiom.query.mockResolvedValueOnce(events);
+
+    const response = await accept(
+      logsClient().searchLogs({
+        query: { keyword: "Match", limit: 2 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(2);
+    expect(response.body.hasMore).toBeTruthy();
+  });
+
+  it("scopes broad searches to the authenticated organization runs", async () => {
+    const main = await setupSearchFixture();
+    const other = await setupSearchFixture();
+    mocks.clerk.session(main.userId, main.orgId);
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      makeAxiomEvent(main.runId, 1, "Default org event"),
+    ]);
+
+    const response = await accept(
+      logsClient().searchLogs({
+        query: { keyword: "event" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(1);
+    expect(response.body.results[0]?.runId).toBe(main.runId);
+
+    const aplQuery = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
+    expect(aplQuery).toContain(main.runId);
+    expect(aplQuery).not.toContain(other.runId);
   });
 
   it("returns empty when searching by runId from a different org", async () => {
