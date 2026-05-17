@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -117,13 +118,16 @@ impl ChunkedWriteCleanupGuard {
         normal_operation: &mut CompositeNormalOperation,
     ) -> io::Result<()> {
         let result = if let Some(shared) = self.shared.as_ref() {
-            exec_operation::exec_cleanup_with_composite_on_shared(
-                shared,
-                &self.command,
+            cleanup_timeout(
+                exec_operation::exec_cleanup_with_composite_on_shared(
+                    shared,
+                    &self.command,
+                    CLEANUP_EXEC_TIMEOUT_MS,
+                    &[],
+                    self.sudo,
+                    normal_operation,
+                ),
                 CLEANUP_EXEC_TIMEOUT_MS,
-                &[],
-                self.sudo,
-                normal_operation,
             )
             .await
             .and_then(validate_cleanup_result)
@@ -135,6 +139,15 @@ impl ChunkedWriteCleanupGuard {
         }
         result
     }
+}
+
+async fn cleanup_timeout<F>(cleanup: F, timeout_ms: u32) -> io::Result<ExecResult>
+where
+    F: Future<Output = io::Result<ExecResult>>,
+{
+    tokio::time::timeout(Duration::from_millis(timeout_ms as u64), cleanup)
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "cleanup command timed out"))?
 }
 
 fn validate_cleanup_result(result: ExecResult) -> io::Result<()> {
@@ -159,12 +172,15 @@ impl Drop for ChunkedWriteCleanupGuard {
         let sudo = self.sudo;
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                let _ = exec_operation::exec_cleanup_untracked_on_shared(
-                    &shared,
-                    &command,
+                let _ = cleanup_timeout(
+                    exec_operation::exec_cleanup_untracked_on_shared(
+                        &shared,
+                        &command,
+                        CLEANUP_EXEC_TIMEOUT_MS,
+                        &[],
+                        sudo,
+                    ),
                     CLEANUP_EXEC_TIMEOUT_MS,
-                    &[],
-                    sudo,
                 )
                 .await;
             });
