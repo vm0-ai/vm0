@@ -430,7 +430,7 @@ function QueuedMessagesStrip({
               key={item.id}
               role="listitem"
               aria-label="Queued message"
-              className="group flex items-center gap-2 rounded-md px-3 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+              className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
             >
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
