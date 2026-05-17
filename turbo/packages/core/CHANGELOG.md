@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.281.0](https://github.com/vm0-ai/vm0/compare/core-v8.280.1...core-v8.281.0) (2026-05-17)
+
+
+### Features
+
+* **zero:** always mount local-agent skill on every agent run ([#13603](https://github.com/vm0-ai/vm0/issues/13603)) ([654a5cb](https://github.com/vm0-ai/vm0/commit/654a5cb31d60240d846fea5cc6c65e8a311a49b6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.2
+    * @vm0/connectors bumped to 1.15.0
+
 ## [8.280.1](https://github.com/vm0-ai/vm0/compare/core-v8.280.0...core-v8.280.1) (2026-05-17)
 
 

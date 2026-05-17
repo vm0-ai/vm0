@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.361.0](https://github.com/vm0-ai/vm0/compare/app-v0.360.1...app-v0.361.0) (2026-05-17)
+
+
+### Features
+
+* add doubao connector ([#13600](https://github.com/vm0-ai/vm0/issues/13600)) ([49ef25f](https://github.com/vm0-ai/vm0/commit/49ef25f91be9cdaa2db2d0ef403b212402e8c3be))
+* add railway and railway-project connectors ([#13604](https://github.com/vm0-ai/vm0/issues/13604)) ([d1ea82b](https://github.com/vm0-ai/vm0/commit/d1ea82bb5630ea34bb5aeab655f039a4b8b51efe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.2
+    * @vm0/connectors bumped to 1.15.0
+    * @vm0/core bumped to 8.281.0
+
 ## [0.360.1](https://github.com/vm0-ai/vm0/compare/app-v0.360.0...app-v0.360.1) (2026-05-17)
 
 
