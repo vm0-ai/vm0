@@ -375,6 +375,11 @@ pub struct ExecOperationHandle {
     stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
 }
 
+struct ExecCancelWaitResult {
+    result: ExecOperationResult,
+    cancel_seq: Option<u32>,
+}
+
 impl ExecOperationHandle {
     /// Take the bounded output event receiver for streaming operations.
     pub fn take_stream_receiver(&mut self) -> Option<mpsc::Receiver<ExecOutputEvent>> {
@@ -393,9 +398,48 @@ impl ExecOperationHandle {
     ///
     /// If the terminal result is already available before cancel is sent, this
     /// returns that result without sending a duplicate cancel frame.
-    pub async fn cancel_and_wait(mut self, timeout: Duration) -> io::Result<ExecOperationResult> {
+    pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        let cancel_label_log = self.diagnostic.label_log.clone();
+        let registered_at = self.diagnostic.registered_at;
+        let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
+        if wait_result.cancel_seq.is_none()
+            || wait_result.result.termination == ExecTermination::Cancelled
+        {
+            if let Some(seq) = wait_result.cancel_seq {
+                tracing::info!(
+                    seq = seq,
+                    label = %cancel_label_log,
+                    elapsed_ms = registered_at.elapsed().as_millis(),
+                    "exec operation cancel completed"
+                );
+            }
+            return Ok(wait_result.result);
+        }
+
+        Err(io::Error::other(format!(
+            "exec cancel returned terminal state: {:?}",
+            wait_result.result.termination
+        )))
+    }
+
+    pub(crate) async fn cancel_and_wait_for_terminal(
+        self,
+        timeout: Duration,
+    ) -> io::Result<ExecOperationResult> {
+        self.cancel_and_wait_for_terminal_status(timeout)
+            .await
+            .map(|wait_result| wait_result.result)
+    }
+
+    async fn cancel_and_wait_for_terminal_status(
+        mut self,
+        timeout: Duration,
+    ) -> io::Result<ExecCancelWaitResult> {
         if let Some(result) = self.try_take_ready_result()? {
-            return Ok(result);
+            return Ok(ExecCancelWaitResult {
+                result,
+                cancel_seq: None,
+            });
         }
 
         let seq = self.seq.ok_or_else(|| {
@@ -418,23 +462,11 @@ impl ExecOperationHandle {
             "exec operation cancel sent"
         );
 
-        let cancel_label_log = self.diagnostic.label_log.clone();
-        let registered_at = self.diagnostic.registered_at;
         let result = self.wait_with_timeout(timeout, true).await?;
-        if result.termination == ExecTermination::Cancelled {
-            tracing::info!(
-                seq = seq,
-                label = %cancel_label_log,
-                elapsed_ms = registered_at.elapsed().as_millis(),
-                "exec operation cancel completed"
-            );
-            return Ok(result);
-        }
-
-        Err(io::Error::other(format!(
-            "exec cancel returned terminal state: {:?}",
-            result.termination
-        )))
+        Ok(ExecCancelWaitResult {
+            result,
+            cancel_seq: Some(seq),
+        })
     }
 
     fn try_take_ready_result(&mut self) -> io::Result<Option<ExecOperationResult>> {

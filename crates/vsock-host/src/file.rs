@@ -554,14 +554,18 @@ impl VsockHost {
         match drain_result {
             Ok(Ok(())) => {}
             Ok(Err(err)) => {
-                let cancel_result = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                let cancel_result = handle
+                    .cancel_and_wait_for_terminal(Duration::from_secs(1))
+                    .await;
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }
                 return Err(CopyFileToTempError::after_cancel(err, cancel_result));
             }
             Err(_) => {
-                let cancel_result = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                let cancel_result = handle
+                    .cancel_and_wait_for_terminal(Duration::from_secs(1))
+                    .await;
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }

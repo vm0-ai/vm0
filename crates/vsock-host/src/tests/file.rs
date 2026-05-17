@@ -413,6 +413,84 @@ async fn copy_file_removes_temp_without_publishing_on_stream_truncation() {
 }
 
 #[tokio::test]
+async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "vsock-host-copy-cancel-terminal-{}-{unique}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let host_path = dir.join("system.log");
+    std::fs::write(&host_path, b"old host log").unwrap();
+    let copy_path = host_path.clone();
+
+    let copy_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/vm0-system-run.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    send_exec_output(
+        &mut guest,
+        msg.seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"partial",
+        true,
+    )
+    .await;
+
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, msg.seq);
+    send_stream_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+    )
+    .await;
+
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("truncated"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
+    assert!(
+        std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("vm0tmp")),
+        "failed copy temp file should be removed"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
     let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()
