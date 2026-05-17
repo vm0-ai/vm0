@@ -37,6 +37,10 @@ inputs:
     description: "Backend API URL used by web proxy routes"
     required: false
     default: ""
+  cli-auth-snapshot-id:
+    description: "Workflow-built CLI auth toolchain snapshot ID override"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -53,6 +57,7 @@ runs:
         INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_API_URL: ${{ inputs.api-url }}
         INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
+        INPUT_CLI_AUTH_SNAPSHOT_ID: ${{ inputs.cli-auth-snapshot-id }}
       run: |
         set -euo pipefail
 
@@ -152,6 +157,7 @@ runs:
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
+          add_env VERCEL_CLI_AUTH_SNAPSHOT_ID "$(first_non_empty "$INPUT_CLI_AUTH_SNAPSHOT_ID" "$(repo_var VERCEL_CLI_AUTH_SNAPSHOT_ID)")"
         fi
         # Inject the workflow head commit explicitly so OTel / Sentry can tag
         # service.version and release on every deploy. Vercel CLI prebuilt

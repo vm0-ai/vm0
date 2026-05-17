@@ -1,0 +1,47 @@
+name: CLI Auth Toolchain Snapshot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Build CLI auth toolchain snapshot
+        id: snapshot
+        working-directory: turbo/apps/api
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          result_file="$(mktemp)"
+          pnpm build:cli-auth-toolchain-snapshot -- --expiration-ms $((30 * 24 * 60 * 60 * 1000)) > "$result_file"
+          jq . "$result_file"
+
+          snapshot_id="$(jq -r '.snapshotId // ""' "$result_file")"
+          if [[ -z "$snapshot_id" ]]; then
+            echo "::error::CLI auth toolchain snapshot builder did not output snapshotId"
+            exit 1
+          fi
+          echo "snapshot-id=$snapshot_id" >> "$GITHUB_OUTPUT"
+
+      - name: Publish stable CLI auth snapshot variable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT_ID: ${{ steps.snapshot.outputs.snapshot-id }}
+        run: gh variable set VERCEL_CLI_AUTH_SNAPSHOT_ID --repo "$GITHUB_REPOSITORY" --body "$SNAPSHOT_ID"

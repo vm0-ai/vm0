@@ -42,8 +42,14 @@ export type SandboxNetworkPolicy =
       };
     };
 
+export type SandboxCreateSource = {
+  readonly type: "snapshot";
+  readonly snapshotId: string;
+};
+
 export interface CreateSandboxOptions {
   readonly runtime?: string;
+  readonly source?: SandboxCreateSource;
   readonly timeoutMs?: number;
   readonly resources?: SandboxResources;
   readonly ports?: readonly number[];

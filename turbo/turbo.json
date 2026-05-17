@@ -211,6 +211,11 @@
     "GEMINI_API_KEY",
     "DEV"
   ],
+  "globalPassThroughEnv": [
+    "GITHUB_SHA",
+    "GIT_COMMIT_SHA",
+    "VERCEL_CLI_AUTH_SNAPSHOT_ID"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

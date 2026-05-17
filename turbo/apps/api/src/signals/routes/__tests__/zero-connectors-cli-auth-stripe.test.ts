@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { getApiTestMocks } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearMockedEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import {
   clearMockSandboxClient,
@@ -92,9 +93,22 @@ type CommandResultInput =
   | SandboxCommandResult
   | Promise<SandboxCommandResult>
   | (() => SandboxCommandResult | Promise<SandboxCommandResult>);
+type CreateResultInput =
+  | SandboxHandle
+  | Promise<SandboxHandle>
+  | Error
+  | (() => SandboxHandle | Promise<SandboxHandle>);
 
 function resolveCommandResult(input: CommandResultInput) {
   return typeof input === "function" ? input() : input;
+}
+
+async function resolveCreateResult(input: CreateResultInput) {
+  const result = typeof input === "function" ? await input() : await input;
+  if (result instanceof Error) {
+    throw result;
+  }
+  return result;
 }
 
 function deferred<T>() {
@@ -144,6 +158,8 @@ function mockStripeCliSandbox(
     readonly startNextStep?: string;
     readonly startVerificationCode?: string;
     readonly startStderr?: string;
+    readonly createResults?: readonly CreateResultInput[];
+    readonly installResults?: readonly CommandResultInput[];
     readonly startResults?: readonly CommandResultInput[];
     readonly completeExitCode?: number;
     readonly completeResults?: readonly CommandResultInput[];
@@ -152,6 +168,8 @@ function mockStripeCliSandbox(
 ) {
   const firstSandboxId = "sandbox_stripe_cli_auth_test";
   let createdSandboxCount = 0;
+  const createResults = [...(args.createResults ?? [])];
+  const installResults = [...(args.installResults ?? [])];
   const startResults = [...(args.startResults ?? [])];
   const completeResults = [...(args.completeResults ?? [])];
   const calls = {
@@ -173,6 +191,10 @@ function mockStripeCliSandbox(
   mockSandboxClient({
     create(options = {}) {
       calls.create.push(options);
+      const createResult = createResults.shift();
+      if (createResult) {
+        return resolveCreateResult(createResult);
+      }
       const sandboxId =
         createdSandboxCount === 0
           ? firstSandboxId
@@ -186,6 +208,21 @@ function mockStripeCliSandbox(
     runCommand(commandHandle, options) {
       calls.run.push({ handle: commandHandle, options });
       const script = options.args?.[1] ?? "";
+      if (script.includes("stripe-linux-checksums.txt")) {
+        const installResult = installResults.shift();
+        if (installResult) {
+          return Promise.resolve(resolveCommandResult(installResult));
+        }
+        if (!script.includes("--non-interactive")) {
+          return Promise.resolve(
+            commandResult({
+              sandboxId: commandHandle.sandboxId,
+              exitCode: 0,
+              stderr: "stripe_1.40.9_linux_x86_64.tar.gz: OK\n",
+            }),
+          );
+        }
+      }
       if (script.includes("--non-interactive")) {
         const startResult = startResults.shift();
         if (startResult) {
@@ -359,6 +396,7 @@ describe("CLI auth for Stripe connector routes", () => {
   const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
+    clearMockedEnv();
     clearMockNow();
     clearMockSandboxClient();
     while (fixtures.length > 0) {
@@ -467,6 +505,9 @@ describe("CLI auth for Stripe connector routes", () => {
     });
     const startScript = calls.run[0]?.options.args?.[1] ?? "";
     expect(startScript).toContain("--non-interactive");
+    expect(startScript.indexOf("stripe-linux-checksums.txt")).toBeLessThan(
+      startScript.indexOf("--non-interactive"),
+    );
     expect(startScript).toContain(
       "releases/download/v1.40.9/stripe_1.40.9_linux_x86_64.tar.gz",
     );
@@ -489,6 +530,129 @@ describe("CLI auth for Stripe connector routes", () => {
     });
     expect(session.encryptedProviderState).toBeTruthy();
     expect(session.encryptedProviderState).not.toContain("poll-token");
+  });
+
+  it("uses the configured CLI auth snapshot without install preflight", async () => {
+    mockOptionalEnv("VERCEL_CLI_AUTH_SNAPSHOT_ID", "snap_cli_auth");
+    await setupUser();
+    const calls = mockStripeCliSandbox();
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("pending");
+    expect(calls.create).toHaveLength(1);
+    expect(calls.create[0]).toMatchObject({
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_cli_auth",
+      },
+      timeoutMs: 15 * 60 * 1000,
+    });
+    expect(calls.create[0]?.runtime).toBeUndefined();
+    expect(calls.run).toHaveLength(1);
+    const startScript = calls.run[0]?.options.args?.[1] ?? "";
+    expect(startScript).toContain("--non-interactive");
+    expect(startScript).not.toContain("stripe-linux-checksums.txt");
+    expect(startScript).toContain(
+      "/vercel/sandbox/cli-auth/toolchain/bin/stripe",
+    );
+  });
+
+  it("falls back to a fresh sandbox when snapshot creation fails", async () => {
+    mockOptionalEnv("VERCEL_CLI_AUTH_SNAPSHOT_ID", "snap_cli_auth");
+    await setupUser();
+    const calls = mockStripeCliSandbox({
+      createResults: [new Error("snapshot expired")],
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("pending");
+    expect(calls.create).toHaveLength(2);
+    expect(calls.create[0]).toMatchObject({
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_cli_auth",
+      },
+    });
+    expect(calls.create[1]).toMatchObject({
+      runtime: "node24",
+      timeoutMs: 15 * 60 * 1000,
+    });
+    expect(calls.run).toHaveLength(1);
+    expect(calls.run[0]?.options.args?.[1]).toContain(
+      "stripe-linux-checksums.txt",
+    );
+  });
+
+  it("repairs a snapshot sandbox with a missing Stripe CLI and retries once", async () => {
+    mockOptionalEnv("VERCEL_CLI_AUTH_SNAPSHOT_ID", "snap_cli_auth");
+    await setupUser();
+    const calls = mockStripeCliSandbox({
+      startResults: [
+        commandResult({
+          exitCode: 127,
+          stderr: "/vercel/sandbox/cli-auth/toolchain/bin/stripe: not found\n",
+        }),
+        commandResult({ exitCode: 0, stdout: startOutput() }),
+      ],
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("pending");
+    expect(calls.run).toHaveLength(3);
+    expect(calls.run[0]?.options.args?.[1]).not.toContain(
+      "stripe-linux-checksums.txt",
+    );
+    expect(calls.run[1]?.options.args?.[1]).toContain(
+      "stripe-linux-checksums.txt",
+    );
+    expect(calls.run[1]?.options.args?.[1]).not.toContain("--non-interactive");
+    expect(calls.run[2]?.options.args?.[1]).toContain("--non-interactive");
+  });
+
+  it("does not repair non-toolchain provider failures from snapshot sandboxes", async () => {
+    mockOptionalEnv("VERCEL_CLI_AUTH_SNAPSHOT_ID", "snap_cli_auth");
+    await setupUser();
+    const calls = mockStripeCliSandbox({
+      startResults: [
+        commandResult({
+          exitCode: 1,
+          stderr: "Stripe login failed\n",
+        }),
+      ],
+    });
+
+    const response = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { mode: "test" },
+      }),
+      [503],
+    );
+
+    expect(response.body.error.code).toBe("CLI_AUTH_STRIPE_FAILED");
+    expect(calls.run).toHaveLength(1);
+    expect(calls.stop).toHaveLength(1);
   });
 
   it("reuses an active same-mode CLI auth session instead of starting another sandbox", async () => {

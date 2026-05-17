@@ -2,6 +2,7 @@ import { command, type Setter } from "ccstate";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { z } from "zod";
 
+import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { getVercelSandboxClient } from "../external/vercel-sandbox";
@@ -9,6 +10,7 @@ import {
   sandboxOperation,
   type SandboxClient,
   type SandboxCommandResult,
+  type SandboxError,
   type SandboxHandle,
 } from "../external/sandbox";
 import { connectors } from "@vm0/db/schema/connector";
@@ -26,11 +28,13 @@ import {
   type StripeCliAuthMode,
   type StripeCliAuthStartOutput,
 } from "./cli-auth-stripe-parser";
+import {
+  CLI_AUTH_TOOLCHAIN_RUNTIME,
+  CLI_AUTH_TOOLCHAIN_SNAPSHOT_ID_ENV,
+  CLI_AUTH_TOOLCHAIN_STRIPE_BIN,
+  cliAuthStripeInstallScript,
+} from "./cli-auth-toolchain.service";
 
-const CLI_AUTH_STRIPE_RUNTIME = "node24";
-const CLI_AUTH_STRIPE_VERSION = "1.40.9";
-const CLI_AUTH_STRIPE_ARCHIVE = `stripe_${CLI_AUTH_STRIPE_VERSION}_linux_x86_64.tar.gz`;
-const CLI_AUTH_STRIPE_RELEASE_URL = `https://github.com/stripe/stripe-cli/releases/download/v${CLI_AUTH_STRIPE_VERSION}`;
 const CLI_AUTH_STRIPE_TIMEOUT_MS = 15 * 60 * 1000;
 const CLI_AUTH_STRIPE_SESSION_TTL_SECONDS = 10 * 60;
 const CLI_AUTH_STRIPE_POLL_INTERVAL_SECONDS = 5;
@@ -40,7 +44,6 @@ const CLI_AUTH_STRIPE_COMPLETING_STALE_MS = 2 * 60 * 1000;
 const CLI_AUTH_STRIPE_OUTPUT_LIMIT_BYTES = 16 * 1024;
 const CLI_AUTH_STRIPE_CONFIG_LIMIT_BYTES = 16 * 1024;
 const CLI_AUTH_STRIPE_ROOT = "/vercel/sandbox/cli-auth/stripe";
-const CLI_AUTH_STRIPE_BIN_DIR = `${CLI_AUTH_STRIPE_ROOT}/bin`;
 const CLI_AUTH_STRIPE_CONFIG_HOME = `${CLI_AUTH_STRIPE_ROOT}/config`;
 const CLI_AUTH_STRIPE_CONFIG_PATH = `${CLI_AUTH_STRIPE_CONFIG_HOME}/stripe/config.toml`;
 const CLI_AUTH_STRIPE_CONNECTOR_TYPE = "stripe";
@@ -130,8 +133,19 @@ type CliAuthStripePendingResult = Extract<
   CliAuthStripeCompleteResult,
   { readonly status: "pending" }
 >;
+type CliAuthStripeStartInSandboxResult =
+  | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
+  | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult };
+type CliAuthStripeStartInSandboxFailure = Extract<
+  CliAuthStripeStartInSandboxResult,
+  { readonly ok: false }
+>;
 type ConnectorCliAuthSession = typeof connectorCliAuthSessions.$inferSelect;
 type ConnectorCliAuthSessionStatus = ConnectorCliAuthSession["status"];
+type CliAuthStripeSandboxOrigin =
+  | "snapshot"
+  | "fresh-no-snapshot"
+  | "fresh-after-snapshot-failure";
 
 const CLI_AUTH_STRIPE_ACTIVE_STATUSES = [
   "initializing",
@@ -174,32 +188,25 @@ type PreparedCliAuthStripeStart =
     };
 
 function startCommandScript(): string {
+  return `${cliAuthStripeInstallScript()}
+${stripeLoginStartCommandScript()}`;
+}
+
+function stripeLoginStartCommandScript(): string {
   return String.raw`set -euo pipefail
-BIN_DIR="${CLI_AUTH_STRIPE_BIN_DIR}"
 CONFIG_HOME="${CLI_AUTH_STRIPE_CONFIG_HOME}"
-mkdir -p "$BIN_DIR" "$CONFIG_HOME"
-if [ ! -x "$BIN_DIR/stripe" ]; then
-  curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/${CLI_AUTH_STRIPE_ARCHIVE}" -o "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}"
-  curl -fsSL "${CLI_AUTH_STRIPE_RELEASE_URL}/stripe-linux-checksums.txt" -o /tmp/stripe-linux-checksums.txt
-  grep " ${CLI_AUTH_STRIPE_ARCHIVE}$" /tmp/stripe-linux-checksums.txt > /tmp/stripe-cli.sha256
-  (cd /tmp && sha256sum -c stripe-cli.sha256) >&2
-  tar -xzf "/tmp/${CLI_AUTH_STRIPE_ARCHIVE}" -C "$BIN_DIR" stripe
-  chmod +x "$BIN_DIR/stripe"
-fi
-export PATH="$BIN_DIR:$PATH"
+mkdir -p "$CONFIG_HOME"
 export XDG_CONFIG_HOME="$CONFIG_HOME"
 export STRIPE_DEVICE_NAME="\${STRIPE_DEVICE_NAME:-vm0-cli-auth}"
-stripe login --non-interactive`;
+"${CLI_AUTH_TOOLCHAIN_STRIPE_BIN}" login --non-interactive`;
 }
 
 function completeCommandScript(): string {
   return String.raw`set -euo pipefail
-BIN_DIR="${CLI_AUTH_STRIPE_BIN_DIR}"
 CONFIG_HOME="${CLI_AUTH_STRIPE_CONFIG_HOME}"
-test -x "$BIN_DIR/stripe"
-export PATH="$BIN_DIR:$PATH"
+test -x "${CLI_AUTH_TOOLCHAIN_STRIPE_BIN}"
 export XDG_CONFIG_HOME="$CONFIG_HOME"
-timeout ${CLI_AUTH_STRIPE_COMPLETE_TIMEOUT_SECONDS}s stripe login --complete "$STRIPE_POLL_URL"`;
+timeout ${CLI_AUTH_STRIPE_COMPLETE_TIMEOUT_SECONDS}s "${CLI_AUTH_TOOLCHAIN_STRIPE_BIN}" login --complete "$STRIPE_POLL_URL"`;
 }
 
 function tokenExpiresAt(now: Date): Date {
@@ -567,6 +574,95 @@ async function createCliAuthStripeSession(args: {
   return session;
 }
 
+async function createCliAuthStripeSandboxHandle(args: {
+  readonly client: SandboxClient;
+  readonly signal: AbortSignal;
+}): Promise<
+  | {
+      readonly ok: true;
+      readonly sandbox: SandboxHandle;
+      readonly origin: CliAuthStripeSandboxOrigin;
+    }
+  | { readonly ok: false; readonly error: SandboxError }
+> {
+  const snapshotId = optionalEnv(CLI_AUTH_TOOLCHAIN_SNAPSHOT_ID_ENV);
+  let snapshotCreateError: SandboxError | null = null;
+
+  if (snapshotId) {
+    const snapshotResult = await sandboxOperation("create", () => {
+      return args.client.create({
+        source: {
+          type: "snapshot",
+          snapshotId,
+        },
+        timeoutMs: CLI_AUTH_STRIPE_TIMEOUT_MS,
+        signal: args.signal,
+      });
+    });
+    if (snapshotResult.ok) {
+      L.debug("Created CLI auth Stripe sandbox from CLI auth snapshot", {
+        sandboxId: snapshotResult.value.sandboxId,
+        snapshotId,
+      });
+      return {
+        ok: true,
+        sandbox: snapshotResult.value,
+        origin: "snapshot",
+      };
+    }
+    snapshotCreateError = snapshotResult.error;
+    L.warn(
+      "Failed to create CLI auth Stripe sandbox from CLI auth snapshot; retrying fresh sandbox",
+      {
+        snapshotId,
+        error: snapshotCreateError,
+      },
+    );
+  } else {
+    L.debug(
+      "No CLI auth snapshot ID configured; creating fresh CLI auth Stripe sandbox",
+      {
+        env: CLI_AUTH_TOOLCHAIN_SNAPSHOT_ID_ENV,
+      },
+    );
+  }
+
+  const freshResult = await sandboxOperation("create", () => {
+    return args.client.create({
+      runtime: CLI_AUTH_TOOLCHAIN_RUNTIME,
+      timeoutMs: CLI_AUTH_STRIPE_TIMEOUT_MS,
+      signal: args.signal,
+    });
+  });
+
+  if (!freshResult.ok) {
+    if (snapshotCreateError) {
+      return {
+        ok: false,
+        error: {
+          ...freshResult.error,
+          message: `CLI auth snapshot sandbox creation failed: ${snapshotCreateError.message}; fresh sandbox creation failed: ${freshResult.error.message}`,
+        },
+      };
+    }
+    return { ok: false, error: freshResult.error };
+  }
+
+  L.debug("Created fresh CLI auth Stripe sandbox", {
+    sandboxId: freshResult.value.sandboxId,
+    reason: snapshotCreateError
+      ? "snapshot-create-failed"
+      : "snapshot-id-missing",
+  });
+  return {
+    ok: true,
+    sandbox: freshResult.value,
+    origin: snapshotCreateError
+      ? "fresh-after-snapshot-failure"
+      : "fresh-no-snapshot",
+  };
+}
+
 async function createCliAuthStripeSandbox(args: {
   readonly writeDb: Db;
   readonly client: SandboxClient;
@@ -577,15 +673,13 @@ async function createCliAuthStripeSandbox(args: {
       readonly ok: true;
       readonly sandbox: SandboxHandle;
       readonly session: ConnectorCliAuthSession;
+      readonly origin: CliAuthStripeSandboxOrigin;
     }
   | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult }
 > {
-  const createResult = await sandboxOperation("create", () => {
-    return args.client.create({
-      runtime: CLI_AUTH_STRIPE_RUNTIME,
-      timeoutMs: CLI_AUTH_STRIPE_TIMEOUT_MS,
-      signal: args.signal,
-    });
+  const createResult = await createCliAuthStripeSandboxHandle({
+    client: args.client,
+    signal: args.signal,
   });
 
   if (!createResult.ok) {
@@ -606,7 +700,7 @@ async function createCliAuthStripeSandbox(args: {
     };
   }
 
-  const sandbox = createResult.value;
+  const sandbox = createResult.sandbox;
   const updateResult = await settle(
     args.writeDb
       .update(connectorCliAuthSessions)
@@ -645,7 +739,12 @@ async function createCliAuthStripeSandbox(args: {
   }
   args.signal.throwIfAborted();
 
-  return { ok: true, sandbox, session: updatedSession };
+  return {
+    ok: true,
+    sandbox,
+    session: updatedSession,
+    origin: createResult.origin,
+  };
 }
 
 function parseCliAuthStripeStartOutput(
@@ -669,88 +768,203 @@ function parseCliAuthStripeStartOutput(
   return { ok: true, output: parsedResult.ok };
 }
 
-async function runCliAuthStripeStartInSandbox(args: {
-  readonly writeDb: Db;
+function isCliAuthStripeToolchainFailure(
+  result: SandboxCommandResult,
+): boolean {
+  const text = commandText(result);
+  return (
+    result.exitCode === 126 ||
+    result.exitCode === 127 ||
+    /not found|no such file|permission denied/i.test(text) ||
+    /unknown flag.*non-interactive/i.test(text) ||
+    /unknown command.*login/i.test(text) ||
+    /unsupported.*non-interactive/i.test(text) ||
+    /requires.*stripe.*version/i.test(text)
+  );
+}
+
+async function runCliAuthStripeInstallInSandbox(args: {
   readonly client: SandboxClient;
   readonly sandbox: SandboxHandle;
-  readonly session: ConnectorCliAuthSession;
   readonly signal: AbortSignal;
 }): Promise<
-  | { readonly ok: true; readonly output: StripeCliAuthStartOutput }
-  | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult }
+  { readonly ok: true } | { readonly ok: false; readonly message: string }
 > {
-  const runResult = await sandboxOperation("run", () => {
+  const installResult = await sandboxOperation("run", () => {
     return args.client.runCommand(args.sandbox, {
       cmd: "sh",
-      args: ["-lc", startCommandScript()],
+      args: ["-lc", cliAuthStripeInstallScript()],
       outputLimitBytes: CLI_AUTH_STRIPE_OUTPUT_LIMIT_BYTES,
       signal: args.signal,
     });
   });
 
-  if (!runResult.ok) {
-    await markCliAuthStripeSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
-      message: runResult.error.message,
-      expectedStatus: args.session.status,
-      expectedUpdatedAt: args.session.updatedAt,
-    });
-    await cleanupSandbox(args.client, args.sandbox);
-    args.signal.throwIfAborted();
+  if (!installResult.ok) {
+    return { ok: false, message: installResult.error.message };
+  }
+  if (installResult.value.exitCode !== 0) {
     return {
       ok: false,
-      result: {
-        ok: false,
-        code: "CLI_AUTH_STRIPE_FAILED",
-        message: runResult.error.message,
-      },
+      message: commandFailedMessage(
+        "CLI auth for Stripe bootstrap",
+        installResult.value,
+      ),
     };
   }
 
-  if (runResult.value.exitCode !== 0) {
+  L.debug("Installed and verified CLI auth Stripe toolchain", {
+    sandboxId: args.sandbox.sandboxId,
+  });
+  return { ok: true };
+}
+
+function runCliAuthStripeStartCommand(args: {
+  readonly client: SandboxClient;
+  readonly sandbox: SandboxHandle;
+  readonly signal: AbortSignal;
+  readonly script: string;
+}) {
+  return sandboxOperation("run", () => {
+    return args.client.runCommand(args.sandbox, {
+      cmd: "sh",
+      args: ["-lc", args.script],
+      outputLimitBytes: CLI_AUTH_STRIPE_OUTPUT_LIMIT_BYTES,
+      signal: args.signal,
+    });
+  });
+}
+
+async function failCliAuthStripeStartInSandbox(args: {
+  readonly writeDb: Db;
+  readonly client: SandboxClient;
+  readonly sandbox: SandboxHandle;
+  readonly session: ConnectorCliAuthSession;
+  readonly signal: AbortSignal;
+  readonly message: string;
+}): Promise<CliAuthStripeStartInSandboxFailure> {
+  await markCliAuthStripeSessionError({
+    writeDb: args.writeDb,
+    sessionId: args.session.id,
+    message: args.message,
+    expectedStatus: args.session.status,
+    expectedUpdatedAt: args.session.updatedAt,
+  });
+  await cleanupSandbox(args.client, args.sandbox);
+  args.signal.throwIfAborted();
+  return {
+    ok: false,
+    result: {
+      ok: false,
+      code: "CLI_AUTH_STRIPE_FAILED",
+      message: args.message,
+    },
+  };
+}
+
+async function repairCliAuthStripeSnapshotToolchain(args: {
+  readonly writeDb: Db;
+  readonly client: SandboxClient;
+  readonly sandbox: SandboxHandle;
+  readonly session: ConnectorCliAuthSession;
+  readonly signal: AbortSignal;
+  readonly exitCode: number | null;
+}): Promise<
+  | { readonly ok: true; readonly result: SandboxCommandResult }
+  | { readonly ok: false; readonly result: CliAuthStripeStartFailureResult }
+> {
+  L.warn(
+    "CLI auth Stripe snapshot sandbox is missing the expected toolchain; installing pinned CLI and retrying once",
+    {
+      sandboxId: args.sandbox.sandboxId,
+      exitCode: args.exitCode,
+    },
+  );
+  const installResult = await runCliAuthStripeInstallInSandbox({
+    client: args.client,
+    sandbox: args.sandbox,
+    signal: args.signal,
+  });
+  if (!installResult.ok) {
+    return failCliAuthStripeStartInSandbox({
+      ...args,
+      message: installResult.message,
+    });
+  }
+
+  const retryResult = await runCliAuthStripeStartCommand({
+    client: args.client,
+    sandbox: args.sandbox,
+    signal: args.signal,
+    script: stripeLoginStartCommandScript(),
+  });
+  if (!retryResult.ok) {
+    return failCliAuthStripeStartInSandbox({
+      ...args,
+      message: retryResult.error.message,
+    });
+  }
+
+  return { ok: true, result: retryResult.value };
+}
+
+async function runCliAuthStripeStartInSandbox(args: {
+  readonly writeDb: Db;
+  readonly client: SandboxClient;
+  readonly sandbox: SandboxHandle;
+  readonly session: ConnectorCliAuthSession;
+  readonly origin: CliAuthStripeSandboxOrigin;
+  readonly signal: AbortSignal;
+}): Promise<CliAuthStripeStartInSandboxResult> {
+  const runResult = await runCliAuthStripeStartCommand({
+    client: args.client,
+    sandbox: args.sandbox,
+    signal: args.signal,
+    script:
+      args.origin === "snapshot"
+        ? stripeLoginStartCommandScript()
+        : startCommandScript(),
+  });
+
+  if (!runResult.ok) {
+    return failCliAuthStripeStartInSandbox({
+      ...args,
+      message: runResult.error.message,
+    });
+  }
+
+  let commandResult = runResult.value;
+  if (
+    args.origin === "snapshot" &&
+    commandResult.exitCode !== 0 &&
+    isCliAuthStripeToolchainFailure(commandResult)
+  ) {
+    const repairResult = await repairCliAuthStripeSnapshotToolchain({
+      ...args,
+      exitCode: commandResult.exitCode,
+    });
+    if (!repairResult.ok) {
+      return repairResult;
+    }
+    commandResult = repairResult.result;
+  }
+
+  if (commandResult.exitCode !== 0) {
     const message = commandFailedMessage(
       "CLI auth for Stripe start",
-      runResult.value,
+      commandResult,
     );
-    await markCliAuthStripeSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
+    return failCliAuthStripeStartInSandbox({
+      ...args,
       message,
-      expectedStatus: args.session.status,
-      expectedUpdatedAt: args.session.updatedAt,
     });
-    await cleanupSandbox(args.client, args.sandbox);
-    args.signal.throwIfAborted();
-    return {
-      ok: false,
-      result: {
-        ok: false,
-        code: "CLI_AUTH_STRIPE_FAILED",
-        message,
-      },
-    };
   }
 
-  const parsedResult = await parseCliAuthStripeStartOutput(runResult.value);
+  const parsedResult = await parseCliAuthStripeStartOutput(commandResult);
   if (!parsedResult.ok) {
-    await markCliAuthStripeSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
+    return failCliAuthStripeStartInSandbox({
+      ...args,
       message: parsedResult.message,
-      expectedStatus: args.session.status,
-      expectedUpdatedAt: args.session.updatedAt,
     });
-    await cleanupSandbox(args.client, args.sandbox);
-    args.signal.throwIfAborted();
-    return {
-      ok: false,
-      result: {
-        ok: false,
-        code: "CLI_AUTH_STRIPE_FAILED",
-        message: parsedResult.message,
-      },
-    };
   }
 
   return { ok: true, output: parsedResult.output };
@@ -989,6 +1203,7 @@ export async function startCliAuthStripe(args: {
     client,
     sandbox: sandboxResult.sandbox,
     session: sandboxResult.session,
+    origin: sandboxResult.origin,
     signal: args.signal,
   });
   if (!startResult.ok) {

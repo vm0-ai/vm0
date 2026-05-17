@@ -22,11 +22,20 @@ const smokeSandboxSchema = z.object({
 });
 
 const smokeCommandSchema = z.object({
-  cmd: z.literal("node"),
-  args: z.tuple([z.literal("--version")]),
+  cmd: z.string(),
+  args: z.array(z.string()),
   exitCode: z.number().int(),
   stdout: z.string(),
   stderr: z.string(),
+});
+
+const smokeCheckNameSchema = z.enum(["node", "cli-auth-stripe"]);
+
+const smokeCheckSchema = z.object({
+  name: smokeCheckNameSchema,
+  sandbox: smokeSandboxSchema,
+  command: smokeCommandSchema,
+  cleanup: z.object({ status: z.literal("stopped") }),
 });
 
 const smokeCleanupSchema = z.discriminatedUnion("status", [
@@ -42,8 +51,10 @@ const smokeFailureSchema = z.object({
     message: z.string(),
     code: z.literal("VERCEL_SANDBOX_SMOKE_FAILED"),
     phase: z.enum(["create", "run", "cleanup"]),
+    check: smokeCheckNameSchema,
     cause: smokeErrorSchema,
   }),
+  checks: z.array(smokeCheckSchema),
   sandbox: smokeSandboxSchema.optional(),
   command: smokeCommandSchema.optional(),
   cleanup: smokeCleanupSchema.optional(),
@@ -67,9 +78,7 @@ export const vercelSandboxSmokeContract = c.router({
     responses: {
       200: z.object({
         success: z.literal(true),
-        sandbox: smokeSandboxSchema,
-        command: smokeCommandSchema,
-        cleanup: z.object({ status: z.literal("stopped") }),
+        checks: z.array(smokeCheckSchema),
       }),
       401: unauthorizedSchema,
       503: smokeFailureSchema,
@@ -83,13 +92,13 @@ function failureMessage(
 ) {
   switch (result.phase) {
     case "create": {
-      return "Vercel Sandbox smoke check failed during sandbox creation";
+      return `${result.checkName} Vercel Sandbox smoke check failed during sandbox creation`;
     }
     case "run": {
-      return "Vercel Sandbox smoke check failed during command execution";
+      return `${result.checkName} Vercel Sandbox smoke check failed during command execution`;
     }
     case "cleanup": {
-      return "Vercel Sandbox smoke check failed during sandbox cleanup";
+      return `${result.checkName} Vercel Sandbox smoke check failed during sandbox cleanup`;
     }
   }
 }
@@ -106,9 +115,7 @@ const vercelSandboxSmokeRoute$ = command(
         status: 200 as const,
         body: {
           success: true as const,
-          sandbox: result.sandbox,
-          command: result.command,
-          cleanup: result.cleanup,
+          checks: result.checks,
         },
       };
     }
@@ -120,8 +127,10 @@ const vercelSandboxSmokeRoute$ = command(
           message: failureMessage(result),
           code: "VERCEL_SANDBOX_SMOKE_FAILED" as const,
           phase: result.phase,
+          check: result.checkName,
           cause: result.error,
         },
+        checks: result.checks,
         ...(result.sandbox ? { sandbox: result.sandbox } : {}),
         ...(result.command ? { command: result.command } : {}),
         ...(result.cleanup ? { cleanup: result.cleanup } : {}),

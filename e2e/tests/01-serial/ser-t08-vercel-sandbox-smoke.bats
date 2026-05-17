@@ -66,13 +66,25 @@ setup_file() {
 
     if ! jq -e '
       .success == true and
-      .sandbox.runtime == "node24" and
-      (.sandbox.id | type == "string" and length > 0) and
-      .command.cmd == "node" and
-      .command.args == ["--version"] and
-      .command.exitCode == 0 and
-      (.command.stdout | test("^v[0-9]+\\.[0-9]+\\.[0-9]+")) and
-      .cleanup.status == "stopped"
+      (.checks | length == 2) and
+      (.checks[] | select(.name == "node") |
+        .sandbox.runtime == "node24" and
+        (.sandbox.id | type == "string" and length > 0) and
+        .command.cmd == "node" and
+        .command.args == ["--version"] and
+        .command.exitCode == 0 and
+        (.command.stdout | test("^v[0-9]+\\.[0-9]+\\.[0-9]+")) and
+        .cleanup.status == "stopped"
+      ) and
+      (.checks[] | select(.name == "cli-auth-stripe") |
+        .sandbox.runtime == "node24" and
+        (.sandbox.id | type == "string" and length > 0) and
+        .command.cmd == "stripe" and
+        .command.args == ["--version"] and
+        .command.exitCode == 0 and
+        (.command.stdout | test("^stripe version 1\\.40\\.9\\b")) and
+        .cleanup.status == "stopped"
+      )
     ' "$body_file" >/dev/null; then
         echo "# smoke endpoint returned unexpected success payload" >&2
         echo "# response body: $(cat "$body_file")" >&2

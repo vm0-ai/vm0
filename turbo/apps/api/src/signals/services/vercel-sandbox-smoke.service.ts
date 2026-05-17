@@ -1,3 +1,4 @@
+import { optionalEnv } from "../../lib/env";
 import {
   getVercelSandboxClient,
   VERCEL_SANDBOX_SMOKE_RUNTIME,
@@ -5,19 +6,30 @@ import {
 } from "../external/vercel-sandbox";
 import {
   sandboxOperation,
+  type CreateSandboxOptions,
   type SandboxCleanupResult,
   type SandboxCommandResult,
   type SandboxError,
   type SandboxHandle,
 } from "../external/sandbox";
+import {
+  CLI_AUTH_TOOLCHAIN_SNAPSHOT_ID_ENV,
+  cliAuthStripeInstallScript,
+  cliAuthStripeVersionScript,
+} from "./cli-auth-toolchain.service";
 
-const SMOKE_COMMAND = Object.freeze({
+const NODE_SMOKE_COMMAND = Object.freeze({
   cmd: "node",
   args: ["--version"] as const,
 });
-const SMOKE_OUTPUT_LIMIT_BYTES = 1024;
+const STRIPE_SMOKE_COMMAND = Object.freeze({
+  cmd: "stripe",
+  args: ["--version"] as const,
+});
+const SMOKE_OUTPUT_LIMIT_BYTES = 4 * 1024;
 
 export type VercelSandboxSmokePhase = "create" | "run" | "cleanup";
+export type VercelSandboxSmokeCheckName = "node" | "cli-auth-stripe";
 
 export interface VercelSandboxSmokeError {
   readonly message: string;
@@ -34,8 +46,8 @@ export type VercelSandboxSmokeCleanup =
     };
 
 export interface VercelSandboxSmokeCommand {
-  readonly cmd: typeof SMOKE_COMMAND.cmd;
-  readonly args: typeof SMOKE_COMMAND.args;
+  readonly cmd: string;
+  readonly args: readonly string[];
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
@@ -46,17 +58,49 @@ export interface VercelSandboxSmokeSandbox {
   readonly runtime: typeof VERCEL_SANDBOX_SMOKE_RUNTIME;
 }
 
+export interface VercelSandboxSmokeCheck {
+  readonly name: VercelSandboxSmokeCheckName;
+  readonly sandbox: VercelSandboxSmokeSandbox;
+  readonly command: VercelSandboxSmokeCommand;
+  readonly cleanup: { readonly status: "stopped" };
+}
+
+type SmokeCheckDefinition = {
+  readonly name: VercelSandboxSmokeCheckName;
+  readonly createOptions: CreateSandboxOptions;
+  readonly runCommand: {
+    readonly cmd: string;
+    readonly args: readonly string[];
+  };
+  readonly displayCommand: {
+    readonly cmd: string;
+    readonly args: readonly string[];
+  };
+};
+
+type SmokeCheckResult =
+  | { readonly ok: true; readonly check: VercelSandboxSmokeCheck }
+  | {
+      readonly ok: false;
+      readonly checkName: VercelSandboxSmokeCheckName;
+      readonly phase: VercelSandboxSmokePhase;
+      readonly error: VercelSandboxSmokeError;
+      readonly sandbox?: VercelSandboxSmokeSandbox;
+      readonly command?: VercelSandboxSmokeCommand;
+      readonly cleanup?: VercelSandboxSmokeCleanup;
+    };
+
 export type VercelSandboxSmokeResult =
   | {
       readonly ok: true;
-      readonly sandbox: VercelSandboxSmokeSandbox;
-      readonly command: VercelSandboxSmokeCommand;
-      readonly cleanup: { readonly status: "stopped" };
+      readonly checks: readonly VercelSandboxSmokeCheck[];
     }
   | {
       readonly ok: false;
+      readonly checkName: VercelSandboxSmokeCheckName;
       readonly phase: VercelSandboxSmokePhase;
       readonly error: VercelSandboxSmokeError;
+      readonly checks: readonly VercelSandboxSmokeCheck[];
       readonly sandbox?: VercelSandboxSmokeSandbox;
       readonly command?: VercelSandboxSmokeCommand;
       readonly cleanup?: VercelSandboxSmokeCleanup;
@@ -77,11 +121,12 @@ function sandboxInfo(sandbox: SandboxHandle): VercelSandboxSmokeSandbox {
 }
 
 function commandInfo(
+  definition: SmokeCheckDefinition,
   result: SandboxCommandResult & { readonly exitCode: number },
 ): VercelSandboxSmokeCommand {
   return {
-    cmd: SMOKE_COMMAND.cmd,
-    args: SMOKE_COMMAND.args,
+    cmd: definition.displayCommand.cmd,
+    args: definition.displayCommand.args,
     exitCode: result.exitCode,
     stdout: result.stdout.text,
     stderr: result.stderr.text,
@@ -101,14 +146,49 @@ function smokeCleanup(
   };
 }
 
-export async function runVercelSandboxSmoke(
+function cliAuthStripeSmokeDefinition(): SmokeCheckDefinition {
+  const snapshotId = optionalEnv(CLI_AUTH_TOOLCHAIN_SNAPSHOT_ID_ENV);
+  if (snapshotId) {
+    return {
+      name: "cli-auth-stripe",
+      createOptions: {
+        source: { type: "snapshot", snapshotId },
+        timeoutMs: VERCEL_SANDBOX_SMOKE_TIMEOUT_MS,
+      },
+      runCommand: {
+        cmd: "sh",
+        args: ["-lc", cliAuthStripeVersionScript()],
+      },
+      displayCommand: STRIPE_SMOKE_COMMAND,
+    };
+  }
+
+  return {
+    name: "cli-auth-stripe",
+    createOptions: {
+      runtime: VERCEL_SANDBOX_SMOKE_RUNTIME,
+      timeoutMs: VERCEL_SANDBOX_SMOKE_TIMEOUT_MS,
+    },
+    runCommand: {
+      cmd: "sh",
+      args: [
+        "-lc",
+        `${cliAuthStripeInstallScript()}
+${cliAuthStripeVersionScript()}`,
+      ],
+    },
+    displayCommand: STRIPE_SMOKE_COMMAND,
+  };
+}
+
+async function runSmokeCheck(
+  definition: SmokeCheckDefinition,
   signal: AbortSignal,
-): Promise<VercelSandboxSmokeResult> {
+): Promise<SmokeCheckResult> {
   const client = getVercelSandboxClient();
   const createResult = await sandboxOperation("create", () => {
     return client.create({
-      runtime: VERCEL_SANDBOX_SMOKE_RUNTIME,
-      timeoutMs: VERCEL_SANDBOX_SMOKE_TIMEOUT_MS,
+      ...definition.createOptions,
       signal,
     });
   });
@@ -116,6 +196,7 @@ export async function runVercelSandboxSmoke(
   if (!createResult.ok) {
     return {
       ok: false,
+      checkName: definition.name,
       phase: "create",
       error: smokeError(createResult.error),
     };
@@ -127,8 +208,8 @@ export async function runVercelSandboxSmoke(
 
   const runResult = await sandboxOperation("run", () => {
     return client.runCommand(sandbox, {
-      cmd: SMOKE_COMMAND.cmd,
-      args: SMOKE_COMMAND.args,
+      cmd: definition.runCommand.cmd,
+      args: definition.runCommand.args,
       outputLimitBytes: SMOKE_OUTPUT_LIMIT_BYTES,
       signal,
     });
@@ -141,7 +222,7 @@ export async function runVercelSandboxSmoke(
         message: "Smoke command did not produce an exit code",
       };
     } else {
-      command = commandInfo({
+      command = commandInfo(definition, {
         ...runResult.value,
         exitCode: runResult.value.exitCode,
       });
@@ -156,6 +237,7 @@ export async function runVercelSandboxSmoke(
   if (runError) {
     return {
       ok: false,
+      checkName: definition.name,
       phase: "run",
       error: runError,
       sandbox: sandboxPayload,
@@ -166,6 +248,7 @@ export async function runVercelSandboxSmoke(
   if (!command) {
     return {
       ok: false,
+      checkName: definition.name,
       phase: "run",
       error: {
         name: "Error",
@@ -179,6 +262,7 @@ export async function runVercelSandboxSmoke(
   if (command.exitCode !== 0) {
     return {
       ok: false,
+      checkName: definition.name,
       phase: "run",
       error: {
         name: "Error",
@@ -193,6 +277,7 @@ export async function runVercelSandboxSmoke(
   if (cleanup.status === "failed") {
     return {
       ok: false,
+      checkName: definition.name,
       phase: "cleanup",
       error: cleanup.error,
       sandbox: sandboxPayload,
@@ -203,8 +288,51 @@ export async function runVercelSandboxSmoke(
 
   return {
     ok: true,
-    sandbox: sandboxPayload,
-    command,
-    cleanup,
+    check: {
+      name: definition.name,
+      sandbox: sandboxPayload,
+      command,
+      cleanup,
+    },
+  };
+}
+
+export async function runVercelSandboxSmoke(
+  signal: AbortSignal,
+): Promise<VercelSandboxSmokeResult> {
+  const checks: VercelSandboxSmokeCheck[] = [];
+  const definitions: readonly SmokeCheckDefinition[] = [
+    {
+      name: "node",
+      createOptions: {
+        runtime: VERCEL_SANDBOX_SMOKE_RUNTIME,
+        timeoutMs: VERCEL_SANDBOX_SMOKE_TIMEOUT_MS,
+      },
+      runCommand: NODE_SMOKE_COMMAND,
+      displayCommand: NODE_SMOKE_COMMAND,
+    },
+    cliAuthStripeSmokeDefinition(),
+  ];
+
+  for (const definition of definitions) {
+    const result = await runSmokeCheck(definition, signal);
+    if (!result.ok) {
+      return {
+        ok: false,
+        checkName: result.checkName,
+        phase: result.phase,
+        error: result.error,
+        checks,
+        ...(result.sandbox ? { sandbox: result.sandbox } : {}),
+        ...(result.command ? { command: result.command } : {}),
+        ...(result.cleanup ? { cleanup: result.cleanup } : {}),
+      };
+    }
+    checks.push(result.check);
+  }
+
+  return {
+    ok: true,
+    checks,
   };
 }

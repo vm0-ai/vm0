@@ -235,6 +235,39 @@ describe("Vercel sandbox client test override", () => {
     );
   });
 
+  it("passes snapshot source through to Vercel sandbox creation", async () => {
+    const mocks = getApiTestMocks();
+    mockOptionalEnv("VERCEL_TEAM_ID", "team_test");
+    mockOptionalEnv("VERCEL_PROJECT_ID", "project_test");
+    mockOptionalEnv("VERCEL_TOKEN", "token_test");
+
+    await expect(
+      getVercelSandboxClient().create({
+        source: {
+          type: "snapshot",
+          snapshotId: "snap_test",
+        },
+        timeoutMs: 1234,
+      }),
+    ).resolves.toStrictEqual({ sandboxId: "sb_created" });
+
+    expect(mocks.vercelSandbox.create).toHaveBeenCalledWith({
+      teamId: "team_test",
+      projectId: "project_test",
+      token: "token_test",
+      timeout: 1234,
+      resources: undefined,
+      ports: undefined,
+      env: undefined,
+      networkPolicy: undefined,
+      signal: undefined,
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_test",
+      },
+    });
+  });
+
   it("allows tests to override cleanup timeout", () => {
     expect(() => {
       mockSandboxCleanupTimeoutMs(1);

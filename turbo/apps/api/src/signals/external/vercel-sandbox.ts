@@ -45,6 +45,9 @@ type VercelSandboxCredentials = {
   readonly projectId: string;
   readonly token: string;
 };
+type VercelCreateSandboxParams = Parameters<
+  VercelSandboxSdk["Sandbox"]["create"]
+>[0];
 type VercelSandboxInstance = Awaited<ReturnType<typeof getSandbox>>;
 type VercelCommandOutput = Awaited<ReturnType<typeof collectVercelCommandLogs>>;
 
@@ -253,9 +256,8 @@ function createRealVercelSandboxClient(): SandboxClient {
     create(options = {}): Promise<SandboxHandle> {
       return vercelSandboxOperation("create", async () => {
         const Sandbox = await getVercelSandboxClass();
-        const sandbox = await Sandbox.create({
+        const baseParams = {
           ...getVercelSandboxCredentials(),
-          runtime: options.runtime,
           timeout: options.timeoutMs,
           resources: options.resources,
           ports: options.ports ? [...options.ports] : undefined,
@@ -264,7 +266,18 @@ function createRealVercelSandboxClient(): SandboxClient {
             | VercelNetworkPolicy
             | undefined,
           signal: options.signal,
-        });
+        } satisfies VercelCreateSandboxParams;
+        const sandbox = await Sandbox.create(
+          options.source
+            ? {
+                ...baseParams,
+                source: options.source,
+              }
+            : {
+                ...baseParams,
+                runtime: options.runtime,
+              },
+        );
 
         return { sandboxId: sandbox.sandboxId };
       });

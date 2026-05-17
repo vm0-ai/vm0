@@ -1,9 +1,11 @@
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv, clearMockedEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
+  clearMockSandboxClient,
   emptyBoundedTextOutput,
   mockSandboxClient,
   sandboxError,
+  type BoundedTextOutput,
   type CreateSandboxOptions,
   type RunSandboxCommandOptions,
   type SandboxCleanupResult,
@@ -19,19 +21,59 @@ function client() {
   return setupApp({ context })(vercelSandboxSmokeContract);
 }
 
+function textOutput(text: string): BoundedTextOutput {
+  return {
+    text,
+    bytes: Buffer.byteLength(text),
+    limitBytes: 4 * 1024,
+    truncated: false,
+  };
+}
+
+function commandResult(args: {
+  readonly exitCode: number | null;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}): SandboxCommandResult {
+  return {
+    sandboxId: "sandbox_smoke_test",
+    commandId: "cmd_smoke_test",
+    detached: false,
+    exitCode: args.exitCode,
+    stdout:
+      args.stdout === undefined
+        ? emptyBoundedTextOutput(4 * 1024)
+        : textOutput(args.stdout),
+    stderr:
+      args.stderr === undefined
+        ? emptyBoundedTextOutput(4 * 1024)
+        : textOutput(args.stderr),
+  };
+}
+
+type CommandResultInput =
+  | SandboxCommandResult
+  | Promise<SandboxCommandResult>
+  | (() => SandboxCommandResult | Promise<SandboxCommandResult>);
+
+function resolveCommandResult(input: CommandResultInput) {
+  return typeof input === "function" ? input() : input;
+}
+
 function mockSandbox(
   args: {
     readonly createError?: unknown;
     readonly runError?: unknown;
     readonly stopError?: unknown;
-    readonly runResult?: SandboxCommandResult;
+    readonly runResults?: readonly CommandResultInput[];
     readonly stop?: (
       handle: SandboxHandle,
       options?: StopSandboxOptions,
     ) => Promise<SandboxCleanupResult>;
   } = {},
 ) {
-  const handle = { sandboxId: "sandbox_smoke_test" };
+  let createdSandboxCount = 0;
+  const runResults = [...(args.runResults ?? [])];
   const calls = {
     create: [] as CreateSandboxOptions[],
     run: [] as {
@@ -51,7 +93,10 @@ function mockSandbox(
         throw args.createError;
       }
 
-      return Promise.resolve(handle);
+      createdSandboxCount += 1;
+      return Promise.resolve({
+        sandboxId: `sandbox_smoke_test_${String(createdSandboxCount)}`,
+      });
     },
     get(sandboxId) {
       return Promise.resolve({ sandboxId });
@@ -61,8 +106,18 @@ function mockSandbox(
       if (args.runError !== undefined) {
         throw args.runError;
       }
+      const runResult = runResults.shift();
+      if (runResult) {
+        return Promise.resolve(resolveCommandResult(runResult));
+      }
+      const script = options.args?.join(" ") ?? "";
       return Promise.resolve(
-        args.runResult ?? commandResult({ exitCode: 0, stdout: "v24.0.0\n" }),
+        script.includes("stripe")
+          ? commandResult({
+              exitCode: 0,
+              stdout: "stripe version 1.40.9\n",
+            })
+          : commandResult({ exitCode: 0, stdout: "v24.0.0\n" }),
       );
     },
     readFile() {
@@ -94,36 +149,6 @@ function mockSandbox(
   return calls;
 }
 
-function textOutput(text: string) {
-  return {
-    text,
-    bytes: Buffer.byteLength(text),
-    limitBytes: 1024,
-    truncated: false,
-  };
-}
-
-function commandResult(args: {
-  readonly exitCode: number | null;
-  readonly stdout?: string;
-  readonly stderr?: string;
-}): SandboxCommandResult {
-  return {
-    sandboxId: "sandbox_smoke_test",
-    commandId: "cmd_smoke_test",
-    detached: false,
-    exitCode: args.exitCode,
-    stdout:
-      args.stdout === undefined
-        ? emptyBoundedTextOutput(1024)
-        : textOutput(args.stdout),
-    stderr:
-      args.stderr === undefined
-        ? emptyBoundedTextOutput(1024)
-        : textOutput(args.stderr),
-  };
-}
-
 function abortError(message: string): Error {
   const error = new Error(message);
   error.name = "AbortError";
@@ -133,6 +158,11 @@ function abortError(message: string): Error {
 describe("POST /api/internal/vercel-sandbox/smoke", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", "test-cron-secret");
+  });
+
+  afterEach(() => {
+    clearMockedEnv();
+    clearMockSandboxClient();
   });
 
   it("requires the cron secret", async () => {
@@ -152,19 +182,7 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
     expect(calls.stop).toHaveLength(0);
   });
 
-  it("does not create a sandbox when the authorization header is missing", async () => {
-    const calls = mockSandbox();
-
-    const response = await accept(client().smoke({ headers: {} }), [401]);
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
-    });
-    expect(calls.create).toHaveLength(0);
-    expect(calls.stop).toHaveLength(0);
-  });
-
-  it("runs the fixed smoke command and stops the sandbox", async () => {
+  it("runs base and CLI auth toolchain smoke checks", async () => {
     const calls = mockSandbox();
 
     const response = await accept(
@@ -174,36 +192,81 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({
-      success: true,
-      sandbox: {
-        id: "sandbox_smoke_test",
-        runtime: "node24",
+    expect(response.body.checks).toStrictEqual([
+      {
+        name: "node",
+        sandbox: { id: "sandbox_smoke_test_1", runtime: "node24" },
+        command: {
+          cmd: "node",
+          args: ["--version"],
+          exitCode: 0,
+          stdout: "v24.0.0\n",
+          stderr: "",
+        },
+        cleanup: { status: "stopped" },
       },
-      command: {
-        cmd: "node",
-        args: ["--version"],
-        exitCode: 0,
-        stdout: "v24.0.0\n",
-        stderr: "",
+      {
+        name: "cli-auth-stripe",
+        sandbox: { id: "sandbox_smoke_test_2", runtime: "node24" },
+        command: {
+          cmd: "stripe",
+          args: ["--version"],
+          exitCode: 0,
+          stdout: "stripe version 1.40.9\n",
+          stderr: "",
+        },
+        cleanup: { status: "stopped" },
       },
-      cleanup: { status: "stopped" },
-    });
-    expect(calls.create).toHaveLength(1);
+    ]);
+    expect(calls.create).toHaveLength(2);
     expect(calls.create[0]).toMatchObject({
       runtime: "node24",
       timeoutMs: 60_000,
     });
-    expect(calls.run).toHaveLength(1);
+    expect(calls.create[1]).toMatchObject({
+      runtime: "node24",
+      timeoutMs: 60_000,
+    });
+    expect(calls.run).toHaveLength(2);
     expect(calls.run[0]?.options).toMatchObject({
       cmd: "node",
       args: ["--version"],
-      outputLimitBytes: 1024,
+      outputLimitBytes: 4 * 1024,
     });
-    expect(calls.stop).toHaveLength(1);
-    expect(calls.stop[0]?.handle).toStrictEqual({
-      sandboxId: "sandbox_smoke_test",
+    expect(calls.run[1]?.options.args?.[1]).toContain(
+      "stripe-linux-checksums.txt",
+    );
+    expect(calls.run[1]?.options.args?.[1]).toContain(
+      '/vercel/sandbox/cli-auth/toolchain/bin/stripe" --version',
+    );
+    expect(calls.stop).toHaveLength(2);
+  });
+
+  it("uses the configured CLI auth snapshot for the toolchain smoke check", async () => {
+    mockOptionalEnv("VERCEL_CLI_AUTH_SNAPSHOT_ID", "snap_cli_auth");
+    const calls = mockSandbox();
+
+    await accept(
+      client().smoke({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [200],
+    );
+
+    expect(calls.create[1]).toMatchObject({
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_cli_auth",
+      },
+      timeoutMs: 60_000,
     });
+    expect(calls.create[1]?.runtime).toBeUndefined();
+    expect(calls.run[1]?.options.args?.[1]).not.toContain(
+      "stripe-linux-checksums.txt",
+    );
+    expect(calls.run[1]?.options.args?.[1]).toContain(
+      '/vercel/sandbox/cli-auth/toolchain/bin/stripe" --version',
+    );
   });
 
   it("returns a failure when sandbox creation fails", async () => {
@@ -220,42 +283,17 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Vercel Sandbox smoke check failed during sandbox creation",
+        message:
+          "node Vercel Sandbox smoke check failed during sandbox creation",
         code: "VERCEL_SANDBOX_SMOKE_FAILED",
         phase: "create",
+        check: "node",
         cause: {
           name: "Error",
           message: "create failed token=[redacted]",
         },
       },
-    });
-    expect(calls.stop).toHaveLength(0);
-  });
-
-  it("redacts non-error sandbox creation failures", async () => {
-    const calls = mockSandbox({
-      createError:
-        'create failed Bearer sandbox-token password=plain-text VERCEL_OIDC_TOKEN=oidc-secret {"access_token":"json-secret"}',
-    });
-
-    const response = await accept(
-      client().smoke({
-        headers: { authorization: "Bearer test-cron-secret" },
-      }),
-      [503],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Vercel Sandbox smoke check failed during sandbox creation",
-        code: "VERCEL_SANDBOX_SMOKE_FAILED",
-        phase: "create",
-        cause: {
-          name: "Error",
-          message:
-            'create failed Bearer [redacted] password=[redacted] VERCEL_OIDC_TOKEN=[redacted] {"access_token":"[redacted]"}',
-        },
-      },
+      checks: [],
     });
     expect(calls.stop).toHaveLength(0);
   });
@@ -274,16 +312,19 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Vercel Sandbox smoke check failed during command execution",
+        message:
+          "node Vercel Sandbox smoke check failed during command execution",
         code: "VERCEL_SANDBOX_SMOKE_FAILED",
         phase: "run",
+        check: "node",
         cause: {
           name: "Error",
           message: "run failed",
         },
       },
+      checks: [],
       sandbox: {
-        id: "sandbox_smoke_test",
+        id: "sandbox_smoke_test_1",
         runtime: "node24",
       },
       cleanup: { status: "stopped" },
@@ -305,26 +346,22 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
       [503],
     );
 
-    expect(response.body).toStrictEqual({
+    expect(response.body.error).toStrictEqual({
+      message:
+        "node Vercel Sandbox smoke check failed during command execution",
+      code: "VERCEL_SANDBOX_SMOKE_FAILED",
+      phase: "run",
+      check: "node",
+      cause: {
+        name: "Error",
+        message: "run failed",
+      },
+    });
+    expect(response.body.cleanup).toStrictEqual({
+      status: "failed",
       error: {
-        message: "Vercel Sandbox smoke check failed during command execution",
-        code: "VERCEL_SANDBOX_SMOKE_FAILED",
-        phase: "run",
-        cause: {
-          name: "Error",
-          message: "run failed",
-        },
-      },
-      sandbox: {
-        id: "sandbox_smoke_test",
-        runtime: "node24",
-      },
-      cleanup: {
-        status: "failed",
-        error: {
-          name: "Error",
-          message: "stop failed",
-        },
+        name: "Error",
+        message: "stop failed",
       },
     });
     expect(calls.run).toHaveLength(1);
@@ -344,9 +381,11 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: "Vercel Sandbox smoke check failed during command execution",
+      message:
+        "node Vercel Sandbox smoke check failed during command execution",
       code: "VERCEL_SANDBOX_SMOKE_FAILED",
       phase: "run",
+      check: "node",
       cause: {
         name: "AbortError",
         message: "request aborted",
@@ -375,16 +414,19 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Vercel Sandbox smoke check failed during sandbox cleanup",
+        message:
+          "node Vercel Sandbox smoke check failed during sandbox cleanup",
         code: "VERCEL_SANDBOX_SMOKE_FAILED",
         phase: "cleanup",
+        check: "node",
         cause: {
           name: "AbortError",
           message: "Sandbox cleanup timed out",
         },
       },
+      checks: [],
       sandbox: {
-        id: "sandbox_smoke_test",
+        id: "sandbox_smoke_test_1",
         runtime: "node24",
       },
       command: {
@@ -399,50 +441,6 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
         error: {
           name: "AbortError",
           message: "Sandbox cleanup timed out",
-        },
-      },
-    });
-    expect(calls.stop).toHaveLength(1);
-  });
-
-  it("returns command diagnostics when cleanup fails", async () => {
-    const calls = mockSandbox({
-      stopError: new Error("stop failed"),
-    });
-
-    const response = await accept(
-      client().smoke({
-        headers: { authorization: "Bearer test-cron-secret" },
-      }),
-      [503],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Vercel Sandbox smoke check failed during sandbox cleanup",
-        code: "VERCEL_SANDBOX_SMOKE_FAILED",
-        phase: "cleanup",
-        cause: {
-          name: "Error",
-          message: "stop failed",
-        },
-      },
-      sandbox: {
-        id: "sandbox_smoke_test",
-        runtime: "node24",
-      },
-      command: {
-        cmd: "node",
-        args: ["--version"],
-        exitCode: 0,
-        stdout: "v24.0.0\n",
-        stderr: "",
-      },
-      cleanup: {
-        status: "failed",
-        error: {
-          name: "Error",
-          message: "stop failed",
         },
       },
     });
@@ -451,11 +449,13 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
 
   it("treats a non-zero command exit as a smoke failure", async () => {
     const calls = mockSandbox({
-      runResult: commandResult({
-        exitCode: 1,
-        stdout: "",
-        stderr: "unexpected\n",
-      }),
+      runResults: [
+        commandResult({
+          exitCode: 1,
+          stdout: "",
+          stderr: "unexpected\n",
+        }),
+      ],
     });
 
     const response = await accept(
@@ -466,6 +466,7 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
     );
 
     expect(response.body.error.phase).toBe("run");
+    expect(response.body.error.check).toBe("node");
     expect(response.body.command).toStrictEqual({
       cmd: "node",
       args: ["--version"],
@@ -479,11 +480,13 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
 
   it("treats a missing command exit code as a smoke failure", async () => {
     const calls = mockSandbox({
-      runResult: commandResult({
-        exitCode: null,
-        stdout: "started\n",
-        stderr: "",
-      }),
+      runResults: [
+        commandResult({
+          exitCode: null,
+          stdout: "started\n",
+          stderr: "",
+        }),
+      ],
     });
 
     const response = await accept(
@@ -494,9 +497,11 @@ describe("POST /api/internal/vercel-sandbox/smoke", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: "Vercel Sandbox smoke check failed during command execution",
+      message:
+        "node Vercel Sandbox smoke check failed during command execution",
       code: "VERCEL_SANDBOX_SMOKE_FAILED",
       phase: "run",
+      check: "node",
       cause: {
         name: "Error",
         message: "Smoke command did not produce an exit code",

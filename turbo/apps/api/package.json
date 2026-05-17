@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:cli-auth-toolchain-snapshot": "tsx scripts/build-cli-auth-toolchain-snapshot.ts",
     "dev": "VM0_DEBUG=* tsx watch --env-file=.env.local src/server.ts",
     "start": "tsx src/server.ts",
     "test": "vitest run",

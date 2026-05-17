@@ -82,6 +82,7 @@ jobs:
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
       ci-changed: ${{ steps.detect-ci.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect-e2e.outputs.e2e-changed }}
+      cli-auth-toolchain-changed: ${{ steps.detect-cli-auth-toolchain.outputs.cli-auth-toolchain-changed }}
       api-backend-needed: ${{ steps.detect-api-backend.outputs.api-backend-needed }}
       turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
@@ -194,6 +195,18 @@ jobs:
           else
             echo "No E2E test changes"
             echo "e2e-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect CLI auth toolchain changes
+        id: detect-cli-auth-toolchain
+        run: |
+          BASE_REF="${{ steps.detect.outputs.base-ref }}"
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^(turbo/apps/api/scripts/build-cli-auth-toolchain-snapshot\.ts|turbo/apps/api/package\.json|turbo/pnpm-lock\.yaml|turbo/apps/api/src/signals/external/(sandbox|vercel-sandbox)\.ts|turbo/apps/api/src/signals/services/(cli-auth-toolchain|cli-auth-stripe|vercel-sandbox-smoke)\.service\.ts|turbo/apps/api/src/signals/routes/vercel-sandbox-smoke\.ts|turbo/apps/api/src/signals/(external|routes)/__tests__/(sandbox|zero-connectors-cli-auth-stripe|vercel-sandbox-smoke)\.test\.ts|e2e/tests/01-serial/ser-t08-vercel-sandbox-smoke\.bats|\.github/actions/web-api-env/action\.yml|\.github/workflows/(turbo|cli-auth-toolchain-snapshot)\.yml)$"; then
+            echo "CLI auth toolchain changes detected"
+            echo "cli-auth-toolchain-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CLI auth toolchain changes"
+            echo "cli-auth-toolchain-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Detect web API backend proxy changes
@@ -702,12 +715,14 @@ jobs:
         needs.prepare.outputs.crates-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true' ||
+        needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
         needs.prepare.outputs.api-backend-needed == 'true'
       )
     outputs:
       preview-url: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
       api-preview-url: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
     permissions:
+      actions: write
       contents: read
       pull-requests: write
       issues: write
@@ -896,6 +911,46 @@ jobs:
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
+      - name: Build CLI auth toolchain snapshot
+        id: cli-auth-snapshot
+        if: |
+          needs.prepare.outputs.cli-auth-toolchain-changed == 'true' && (
+            github.event_name == 'pull_request' ||
+            (github.event_name == 'push' && github.ref == 'refs/heads/main')
+          )
+        working-directory: turbo/apps/api
+        env:
+          GIT_COMMIT_SHA: ${{ github.sha }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            expiration_ms=$((7 * 24 * 60 * 60 * 1000))
+          else
+            expiration_ms=$((30 * 24 * 60 * 60 * 1000))
+          fi
+
+          result_file="$(mktemp)"
+          pnpm build:cli-auth-toolchain-snapshot -- --expiration-ms "$expiration_ms" > "$result_file"
+          jq . "$result_file"
+
+          snapshot_id="$(jq -r '.snapshotId // ""' "$result_file")"
+          if [[ -z "$snapshot_id" ]]; then
+            echo "::error::CLI auth toolchain snapshot builder did not output snapshotId"
+            exit 1
+          fi
+          echo "snapshot-id=$snapshot_id" >> "$GITHUB_OUTPUT"
+
+      - name: Publish stable CLI auth snapshot variable
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cli-auth-snapshot.outputs.snapshot-id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT_ID: ${{ steps.cli-auth-snapshot.outputs.snapshot-id }}
+        run: gh variable set VERCEL_CLI_AUTH_SNAPSHOT_ID --repo "$GITHUB_REPOSITORY" --body "$SNAPSHOT_ID"
+
       - name: Resolve API deploy environment
         id: api-deploy-env
         # Web previews are built with VM0_API_BACKEND_URL pointing at the
@@ -909,6 +964,7 @@ jobs:
           needs.prepare.outputs.crates-changed == 'true' ||
           needs.prepare.outputs.ci-changed == 'true' ||
           needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
           needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/web-api-env
         with:
@@ -919,6 +975,7 @@ jobs:
           web-url: ${{ needs.prepare.outputs.web-preview-url }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.web-preview-url }}
+          cli-auth-snapshot-id: ${{ steps.cli-auth-snapshot.outputs.snapshot-id }}
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
@@ -933,6 +990,7 @@ jobs:
           needs.prepare.outputs.crates-changed == 'true' ||
           needs.prepare.outputs.ci-changed == 'true' ||
           needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
           needs.prepare.outputs.api-backend-needed == 'true'
         uses: ./.github/actions/vercel-deploy
         with:
@@ -961,6 +1019,7 @@ jobs:
           needs.prepare.outputs.crates-changed == 'true' ||
           needs.prepare.outputs.ci-changed == 'true' ||
           needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
           needs.prepare.outputs.api-backend-needed == 'true'
         run: |
           set -euo pipefail
@@ -987,6 +1046,7 @@ jobs:
             needs.prepare.outputs.crates-changed == 'true' ||
             needs.prepare.outputs.ci-changed == 'true' ||
             needs.prepare.outputs.e2e-changed == 'true' ||
+            needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
             needs.prepare.outputs.api-backend-needed == 'true'
           )
         uses: ./.github/actions/vercel-alias
@@ -1010,6 +1070,7 @@ jobs:
             needs.prepare.outputs.crates-changed == 'true' ||
             needs.prepare.outputs.ci-changed == 'true' ||
             needs.prepare.outputs.e2e-changed == 'true' ||
+            needs.prepare.outputs.cli-auth-toolchain-changed == 'true' ||
             needs.prepare.outputs.api-backend-needed == 'true'
           )
         uses: marocchino/sticky-pull-request-comment@v3

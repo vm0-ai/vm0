@@ -66,6 +66,12 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
   - Find in Vercel project settings → General → Team ID
 - `VERCEL_PROJECT_ID_WEB`: Your Vercel project ID for web app
   - Find in Vercel project settings → General → Project ID
+- `VERCEL_PROJECT_ID_API`: Your Vercel project ID for API app
+  - Used by preview API deploys and Vercel Sandbox CLI auth toolchain snapshot builds
+- `VERCEL_CLI_AUTH_SNAPSHOT_ID`: Latest stable Vercel Sandbox CLI auth toolchain snapshot ID (Optional)
+  - Store as a repository variable, not a secret
+  - CI refreshes this value from the CLI Auth Toolchain Snapshot workflow
+  - Clearing this variable is safe; CLI auth falls back to fresh sandboxes and pinned CLI installs
 - `NEON_PROJECT_ID`: Your Neon project ID (Optional but Recommended)
   - Find in Neon console → Project Settings → General
 - `CLERK_PUBLISHABLE_KEY`: Your Clerk publishable key (Required)
