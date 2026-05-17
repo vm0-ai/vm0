@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.102.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.6...runner-rs-v0.102.0) (2026-05-17)
+
+
+### Features
+
+* wire operation-bound process control to guest-agent ([#13538](https://github.com/vm0-ai/vm0/issues/13538)) ([3bc2ee1](https://github.com/vm0-ai/vm0/commit/3bc2ee1dda51d68c6825a1a71bf44edbc9692a0d))
+
 ## [0.101.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.5...runner-rs-v0.101.6) (2026-05-16)
 
 

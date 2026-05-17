@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.8...guest-agent-v0.32.0) (2026-05-17)
+
+
+### Features
+
+* wire operation-bound process control to guest-agent ([#13538](https://github.com/vm0-ai/vm0/issues/13538)) ([3bc2ee1](https://github.com/vm0-ai/vm0/commit/3bc2ee1dda51d68c6825a1a71bf44edbc9692a0d))
+
+
+### Refactoring
+
+* separate guest-agent session metadata capture ([#13550](https://github.com/vm0-ai/vm0/issues/13550)) ([8600e84](https://github.com/vm0-ai/vm0/commit/8600e844cdf87e0c72a717960538c6b704d65b97))
+
 ## [0.31.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.7...guest-agent-v0.31.8) (2026-05-16)
 
 

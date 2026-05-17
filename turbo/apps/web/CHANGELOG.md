@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.371.2](https://github.com/vm0-ai/vm0/compare/web-v12.371.1...web-v12.371.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* use api vercel project id for sandbox auth ([#13599](https://github.com/vm0-ai/vm0/issues/13599)) ([6a0daf6](https://github.com/vm0-ai/vm0/commit/6a0daf642039250f720ee45f12c08d70c15c939c))
+
+
+### Refactoring
+
+* proxy email unsubscribe to api ([#13577](https://github.com/vm0-ai/vm0/issues/13577)) ([f3f516c](https://github.com/vm0-ai/vm0/commit/f3f516cc31b458b831c98799e7ad1ea5da0d4578))
+* proxy generate image to api ([#13580](https://github.com/vm0-ai/vm0/issues/13580)) ([cec24a1](https://github.com/vm0-ai/vm0/commit/cec24a104ecff0fcd78a51a3eae4ab64fb57d395))
+* proxy github integration to api ([#13592](https://github.com/vm0-ai/vm0/issues/13592)) ([3c738e7](https://github.com/vm0-ai/vm0/commit/3c738e769fd615092cdebdd58ced58812cca6147))
+* proxy github oauth callback to api ([#13597](https://github.com/vm0-ai/vm0/issues/13597)) ([2358bd0](https://github.com/vm0-ai/vm0/commit/2358bd00e88d6a0853e470aeff5ae92484c8af0b))
+* proxy github oauth install to api ([#13595](https://github.com/vm0-ai/vm0/issues/13595)) ([6ee206b](https://github.com/vm0-ai/vm0/commit/6ee206b09174c0f346ca455780637e2ca6152772))
+* proxy logs search to api ([#13589](https://github.com/vm0-ai/vm0/issues/13589)) ([c2365a6](https://github.com/vm0-ai/vm0/commit/c2365a6273827087c45f93e9f9b725e2274f66c1))
+* proxy queue position to api ([#13573](https://github.com/vm0-ai/vm0/issues/13573)) ([75933d6](https://github.com/vm0-ai/vm0/commit/75933d6a2de2fd3befa82b4262ea5b90e9bcaac9))
+* proxy usage to api ([#13587](https://github.com/vm0-ai/vm0/issues/13587)) ([ec8a454](https://github.com/vm0-ai/vm0/commit/ec8a454c835d40f8158a127dd2633abb32eba5db))
+
 ## [12.371.1](https://github.com/vm0-ai/vm0/compare/web-v12.371.0...web-v12.371.1) (2026-05-17)
 
 

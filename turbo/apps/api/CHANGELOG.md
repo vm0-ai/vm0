@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.54.2](https://github.com/vm0-ai/vm0/compare/api-v1.54.1...api-v1.54.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* use api vercel project id for sandbox auth ([#13599](https://github.com/vm0-ai/vm0/issues/13599)) ([6a0daf6](https://github.com/vm0-ai/vm0/commit/6a0daf642039250f720ee45f12c08d70c15c939c))
+
+
+### Refactoring
+
+* proxy logs search to api ([#13589](https://github.com/vm0-ai/vm0/issues/13589)) ([c2365a6](https://github.com/vm0-ai/vm0/commit/c2365a6273827087c45f93e9f9b725e2274f66c1))
+
 ## [1.54.1](https://github.com/vm0-ai/vm0/compare/api-v1.54.0...api-v1.54.1) (2026-05-17)
 
 
