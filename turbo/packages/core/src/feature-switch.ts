@@ -64,11 +64,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Deel HR connector",
     enabled: false,
   },
-  [FeatureSwitchKey.DoubaoConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Doubao (Volcengine 豆包语音) speech connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the DocuSign e-signature connector",

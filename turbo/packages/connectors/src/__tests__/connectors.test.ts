@@ -103,13 +103,10 @@ describe("getAvailableConnectorAuthMethods", () => {
     ).toStrictEqual(["api-token"]);
   });
 
-  it("exposes Doubao API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("doubao", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("doubao", {
-        [FeatureSwitchKey.DoubaoConnector]: true,
-      }),
-    ).toStrictEqual(["api-token"]);
+  it("exposes Doubao API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethods("doubao", {})).toStrictEqual([
+      "api-token",
+    ]);
   });
 });
 

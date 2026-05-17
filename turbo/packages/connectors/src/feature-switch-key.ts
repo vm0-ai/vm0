@@ -10,7 +10,6 @@ export enum FeatureSwitchKey {
   CanvaConnector = "canvaConnector",
   ComputerConnector = "computerConnector",
   DeelConnector = "deelConnector",
-  DoubaoConnector = "doubaoConnector",
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
