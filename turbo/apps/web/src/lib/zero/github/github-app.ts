@@ -90,51 +90,6 @@ export async function getInstallationAccessToken(
 }
 
 /**
- * Get installation details from the GitHub API.
- *
- * Uses the App JWT to fetch the installation's account info
- * (target type, ID, and display name).
- */
-export async function getInstallationInfo(
-  appId: string,
-  privateKeyBase64: string,
-  installationId: string,
-): Promise<{
-  targetType: string;
-  targetId: string;
-  targetName: string;
-}> {
-  const safeId = validateInstallationId(installationId);
-  const jwt = createAppJWT(appId, privateKeyBase64);
-
-  const res = await fetch(
-    `https://api.github.com/app/installations/${safeId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    },
-  );
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Failed to get installation info: ${res.status} ${body}`);
-  }
-
-  const data = (await res.json()) as {
-    account: { id: number; login: string; type: string };
-  };
-
-  return {
-    targetType: data.account.type,
-    targetId: String(data.account.id),
-    targetName: data.account.login,
-  };
-}
-
-/**
  * Parse a PEM private key from either base64-encoded or raw PEM format.
  * Env vars often store PEM keys with newlines replaced by spaces.
  */

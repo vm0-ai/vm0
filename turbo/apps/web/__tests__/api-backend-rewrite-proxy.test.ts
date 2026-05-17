@@ -159,6 +159,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/generate")).toBe(false);
   });
 
+  it("matches the GitHub OAuth callback rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/github/oauth/callback")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/github/oauth/callback/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/github/oauth/callbacks")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/github/oauth")).toBe(false);
+  });
+
   it("matches the GitHub OAuth install rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/github/oauth/install")).toBe(
       true,

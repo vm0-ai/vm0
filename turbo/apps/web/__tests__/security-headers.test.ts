@@ -35,6 +35,13 @@ const GENERATE_IMAGE_NEXT_NEGATIVE_PATHS = [
   "/api/generate-image/extra",
   "/api/generate",
 ] as const;
+const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
+const GITHUB_OAUTH_CALLBACK_PATH = "/api/github/oauth/callback";
+const GITHUB_OAUTH_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/github/oauth/callback/extra",
+  "/api/github/oauth/install",
+  "/api/github/oauth",
+] as const;
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_INSTALL_PATH = "/api/github/oauth/install";
 const GITHUB_OAUTH_INSTALL_NEXT_NEGATIVE_PATHS = [
@@ -319,6 +326,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/generate-image",
         },
         {
+          source: GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/github/oauth/callback",
+        },
+        {
           source: GITHUB_OAUTH_INSTALL_REWRITE_SOURCE,
           destination: "https://api.example.test/api/github/oauth/install",
         },
@@ -579,6 +590,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GITHUB_OAUTH_INSTALL_PATH)).toStrictEqual({});
     for (const pathname of GITHUB_OAUTH_INSTALL_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact GitHub OAuth callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/github/oauth/callback",
+    });
+
+    const matcher = getPathMatch(GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(GITHUB_OAUTH_CALLBACK_PATH)).toStrictEqual({});
+    for (const pathname of GITHUB_OAUTH_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
