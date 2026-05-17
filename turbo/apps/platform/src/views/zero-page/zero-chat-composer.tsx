@@ -435,13 +435,13 @@ function QueuedMessagesStrip({
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
                 type="button"
-                className="shrink-0 rounded-lg p-2 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   onRemove?.(item.id);
                 }}
                 aria-label="Remove queued message"
               >
-                <IconX size={18} stroke={1.5} />
+                <IconX size={16} stroke={1.5} />
               </button>
             </div>
           );
