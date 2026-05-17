@@ -14,8 +14,7 @@ const DOCS_URL = "https://docs.paysponge.com";
 // Master keys carry the `sponge_master_` prefix per Sponge docs; fill the
 // remainder with the Coffee/Safe/Local vocabulary so the placeholder stays
 // format-correct without leaking a real key shape.
-const PLACEHOLDER_VALUE =
-  "sponge_master_CoffeeSafeLocalCoffeeSafeLocalCoffee";
+const PLACEHOLDER_VALUE = "sponge_master_CoffeeSafeLocalCoffeeSafeLocalCoffee";
 
 function generateTypeScript(): string {
   const lines: string[] = [
