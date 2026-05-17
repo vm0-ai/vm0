@@ -557,21 +557,34 @@ function RouteChoiceButton({
   );
 }
 
+function ProviderStatusBadge({ configured }: { configured: boolean }) {
+  if (configured) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+        <span className="h-1 w-1 rounded-full bg-emerald-500" />
+        Ready
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+      <span className="h-1 w-1 rounded-full bg-amber-500" />
+      Add key
+    </span>
+  );
+}
+
 function ProviderTypeSelect({
   value,
   types,
   providers,
   placeholder,
-  configuredLabel,
-  missingLabel,
   onChange,
 }: {
   value: ModelProviderType | null;
   types: ModelProviderType[];
   providers: ModelProviderResponse[];
   placeholder: string;
-  configuredLabel?: string;
-  missingLabel?: string;
   onChange: (type: ModelProviderType) => void;
 }) {
   if (types.length === 0) {
@@ -586,7 +599,14 @@ function ProviderTypeSelect({
       }}
     >
       <SelectTrigger className="h-10 rounded-lg">
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>
+          {value && (
+            <div className="flex min-w-0 items-center gap-2">
+              <ProviderIcon type={value} size={16} />
+              <span className="min-w-0 truncate">{getUILabel(value)}</span>
+            </div>
+          )}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {types.map((type) => {
@@ -598,17 +618,102 @@ function ProviderTypeSelect({
                 <span className="min-w-0 flex-1 truncate">
                   {getUILabel(type)}
                 </span>
-                {configuredLabel && missingLabel && (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {configured ? configuredLabel : missingLabel}
-                  </span>
-                )}
+                <ProviderStatusBadge configured={configured} />
               </div>
             </SelectItem>
           );
         })}
       </SelectContent>
     </Select>
+  );
+}
+
+function ProviderConfiguredHint({ onEdit }: { onEdit: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/15" />
+      <span>Ready</span>
+      <span aria-hidden="true">·</span>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="text-foreground/80 underline underline-offset-2 decoration-border hover:decoration-foreground/40"
+      >
+        Edit key
+      </button>
+    </div>
+  );
+}
+
+function ApiKeyProviderSection({
+  selectedProviderType,
+  apiTypes,
+  providers,
+  routeProvider,
+  onChange,
+  onAddKey,
+  onEditKey,
+}: {
+  selectedProviderType: ModelProviderType | null;
+  apiTypes: ModelProviderType[];
+  providers: ModelProviderResponse[];
+  routeProvider: ModelProviderResponse | null;
+  onChange: (type: ModelProviderType) => void;
+  onAddKey: () => void;
+  onEditKey: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium text-foreground">Provider</label>
+      <ProviderTypeSelect
+        value={selectedProviderType}
+        types={apiTypes}
+        providers={providers}
+        placeholder="Select a provider"
+        onChange={onChange}
+      />
+      {selectedProviderType && !routeProvider && (
+        <ProviderKeyNotice
+          providerType={selectedProviderType}
+          onAddKey={onAddKey}
+        />
+      )}
+      {routeProvider && <ProviderConfiguredHint onEdit={onEditKey} />}
+    </div>
+  );
+}
+
+function ProviderKeyNotice({
+  providerType,
+  onAddKey,
+}: {
+  providerType: ModelProviderType;
+  onAddKey: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-2">
+      <IconAlertTriangle
+        size={14}
+        stroke={1.75}
+        className="mt-0.5 shrink-0 text-amber-600"
+      />
+      <div className="flex flex-1 flex-col gap-2">
+        <span className="text-xs leading-relaxed text-amber-900">
+          {getUILabel(providerType)} isn&apos;t connected yet. Add a key to use
+          this provider.
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 w-fit gap-1.5 rounded-md border-amber-300 bg-white text-xs text-amber-900 hover:bg-amber-50"
+          onClick={onAddKey}
+        >
+          <IconPlus size={12} stroke={1.75} />
+          Add {getUILabel(providerType)} key
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -662,17 +767,7 @@ function buildPolicyUpdate(params: {
 
 function getDialogPrimaryLabel(params: {
   mode: ModelPolicyDialogMode;
-  routeKind: ModelPolicyRouteKind;
-  providerType: ModelProviderType | null;
-  provider: ModelProviderResponse | null;
 }): string {
-  if (
-    params.routeKind === "api-key" &&
-    params.providerType &&
-    !params.provider
-  ) {
-    return `Add ${getUILabel(params.providerType)} API key`;
-  }
   return params.mode === "add" ? "Add model" : "Save changes";
 }
 
@@ -774,18 +869,6 @@ function ModelPolicyRouteDialog({
       return;
     }
 
-    if (
-      dialog.routeKind === "api-key" &&
-      selectedProviderType &&
-      !routeProvider
-    ) {
-      openAddProvider({
-        model: selectedModel,
-        providerType: selectedProviderType,
-      });
-      return;
-    }
-
     const update = buildPolicyUpdate({
       policies,
       model: selectedModel,
@@ -800,6 +883,16 @@ function ModelPolicyRouteDialog({
     close();
   };
 
+  const handleAddKey = () => {
+    if (!selectedModel || !selectedProviderType) {
+      return;
+    }
+    openAddProvider({
+      model: selectedModel,
+      providerType: selectedProviderType,
+    });
+  };
+
   const handleEditCredential = () => {
     if (!selectedModel || !selectedProviderType || !routeProvider) {
       return;
@@ -809,16 +902,13 @@ function ModelPolicyRouteDialog({
     }
   };
 
-  const primaryLabel = getDialogPrimaryLabel({
-    mode: dialog.mode,
-    routeKind: dialog.routeKind,
-    providerType: selectedProviderType,
-    provider: routeProvider,
-  });
+  const primaryLabel = getDialogPrimaryLabel({ mode: dialog.mode });
   const submitDisabled =
     !selectedModel ||
     saving ||
-    (dialog.routeKind !== "built-in" && !selectedProviderType);
+    (dialog.routeKind === "api-key" &&
+      (!selectedProviderType || !routeProvider)) ||
+    (dialog.routeKind === "oauth" && !selectedProviderType);
 
   return (
     <Dialog
@@ -835,8 +925,7 @@ function ModelPolicyRouteDialog({
             {dialog.mode === "add" ? "Add model" : "Edit model route"}
           </DialogTitle>
           <DialogDescription>
-            Choose the model members can select and decide whether it uses VM0
-            credits or your own provider credentials.
+            Decide how members access this model.
           </DialogDescription>
         </DialogHeader>
 
@@ -899,8 +988,8 @@ function ModelPolicyRouteDialog({
               active={dialog.routeKind === "api-key"}
               disabled={apiTypes.length === 0}
               icon={<IconKey size={18} stroke={1.6} />}
-              title="API Key"
-              description="Use an API key to access the model. API key routes are shared workspace credentials. They are best when the team should run through one billing account."
+              title="API key"
+              description="A shared workspace key. Best when the team bills through one account."
               onClick={() => {
                 chooseRoute("api-key");
               }}
@@ -919,34 +1008,17 @@ function ModelPolicyRouteDialog({
           </div>
 
           {dialog.routeKind === "api-key" && (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                API Provider
-              </label>
-              <ProviderTypeSelect
-                value={selectedProviderType}
-                types={apiTypes}
-                providers={providers}
-                placeholder="Select API provider"
-                configuredLabel="Configured"
-                missingLabel="Needs API key"
-                onChange={(providerType) => {
-                  setRoute({ routeKind: "api-key", providerType });
-                }}
-              />
-            </div>
-          )}
-
-          {routeProvider && dialog.routeKind === "api-key" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit gap-2 rounded-lg"
-              onClick={handleEditCredential}
-            >
-              <IconPencil size={14} stroke={1.5} />
-              Edit API key
-            </Button>
+            <ApiKeyProviderSection
+              selectedProviderType={selectedProviderType}
+              apiTypes={apiTypes}
+              providers={providers}
+              routeProvider={routeProvider}
+              onChange={(providerType) => {
+                setRoute({ routeKind: "api-key", providerType });
+              }}
+              onAddKey={handleAddKey}
+              onEditKey={handleEditCredential}
+            />
           )}
         </div>
 

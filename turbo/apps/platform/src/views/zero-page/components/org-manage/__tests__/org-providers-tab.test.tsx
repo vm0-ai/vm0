@@ -136,7 +136,7 @@ async function openModelPolicyDialog(row: HTMLElement): Promise<HTMLElement> {
 function getModelPolicyDialog(): HTMLElement {
   const dialog = screen.getAllByRole("dialog").find((item) => {
     return Boolean(
-      within(item).queryByText(/Choose the model members can select/i),
+      within(item).queryByText(/Decide how members access this model/i),
     );
   });
   expect(dialog).toBeDefined();
@@ -259,8 +259,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "API Key");
-    click(within(dialog).getByText("Edit API key"));
+    clickRouteChoice(dialog, "API key");
+    click(within(dialog).getByText("Edit key"));
 
     const providerDialog = getOrgProviderDialog();
     click(within(providerDialog).getByText("Cancel"));
@@ -273,7 +273,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       ).toBeInTheDocument();
       expect(
         within(getModelPolicyDialog()).getByText(
-          /Choose the model members can select/i,
+          /Decide how members access this model/i,
         ),
       ).toBeInTheDocument();
     });
@@ -286,8 +286,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "API Key");
-    clickDialogButton(dialog, "Add Anthropic API key");
+    clickRouteChoice(dialog, "API key");
+    clickDialogButton(dialog, "Add Anthropic key");
 
     const providerDialog = getOrgProviderDialog();
     click(within(providerDialog).getByText("Cancel"));
@@ -300,7 +300,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       ).toBeInTheDocument();
       expect(
         within(getModelPolicyDialog()).getByText(
-          /Choose the model members can select/i,
+          /Decide how members access this model/i,
         ),
       ).toBeInTheDocument();
     });
@@ -313,8 +313,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "API Key");
-    clickDialogButton(dialog, "Add Anthropic API key");
+    clickRouteChoice(dialog, "API key");
+    clickDialogButton(dialog, "Add Anthropic key");
 
     const providerDialog = getOrgProviderDialog();
     await fill(
@@ -325,7 +325,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText(/Choose the model members can select/i),
+        screen.queryByText(/Decide how members access this model/i),
       ).not.toBeInTheDocument();
     });
     await expect(
