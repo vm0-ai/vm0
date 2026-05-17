@@ -1016,6 +1016,61 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_control_response_message_id_marks_sink_failed() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, peer) = UnixStream::pair().unwrap();
+        sink.connect(stream);
+        let pending_slot = sink.reserve_pending_slot().unwrap();
+
+        let client = std::thread::spawn(move || {
+            let mut peer = peer;
+            let request = process_control_ipc::read_request(&mut peer).unwrap();
+            assert_eq!(request.message_id, "msg-original");
+            process_control_ipc::write_response(
+                &mut peer,
+                &process_control_ipc::ControlResponse {
+                    message_id: "msg-other".to_owned(),
+                    status: process_control_ipc::ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap();
+        });
+
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        forward_control_request(
+            Arc::clone(&sink),
+            pending_slot,
+            OwnedProcessControlRequest {
+                response_seq: 12,
+                target_seq: 8,
+                control_nonce: NONCE,
+                message_id: "msg-original".to_owned(),
+                payload: b"payload".to_vec(),
+            },
+            GuestWriter::new(guest),
+        );
+
+        client.join().unwrap();
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 12);
+        assert_eq!(status, ProcessControlStatus::SinkError);
+        assert_eq!(message_id, "msg-original");
+        assert_eq!(
+            diagnostic,
+            "process control sink message id mismatch: expected msg-original, got msg-other"
+        );
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Failed(_)
+        ));
+    }
+
+    #[test]
     fn timed_out_control_sink_is_marked_failed() {
         let sink = Arc::new(ControlSinkState::new());
         let (stream, _peer) = UnixStream::pair().unwrap();
