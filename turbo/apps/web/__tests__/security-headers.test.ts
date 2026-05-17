@@ -35,6 +35,12 @@ const GENERATE_IMAGE_NEXT_NEGATIVE_PATHS = [
   "/api/generate-image/extra",
   "/api/generate",
 ] as const;
+const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
+const GITHUB_OAUTH_INSTALL_PATH = "/api/github/oauth/install";
+const GITHUB_OAUTH_INSTALL_NEXT_NEGATIVE_PATHS = [
+  "/api/github/oauth/install/extra",
+  "/api/github/oauth",
+] as const;
 const LOGS_SEARCH_REWRITE_SOURCE = "/api/logs/search";
 const LOGS_SEARCH_PATH = "/api/logs/search";
 const LOGS_SEARCH_NEXT_NEGATIVE_PATHS = [
@@ -313,6 +319,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/generate-image",
         },
         {
+          source: GITHUB_OAUTH_INSTALL_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/github/oauth/install",
+        },
+        {
           source: LOGS_SEARCH_REWRITE_SOURCE,
           destination: "https://api.example.test/api/logs/search",
         },
@@ -546,6 +556,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GENERATE_IMAGE_PATH)).toStrictEqual({});
     for (const pathname of GENERATE_IMAGE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact GitHub OAuth install rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === GITHUB_OAUTH_INSTALL_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: GITHUB_OAUTH_INSTALL_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/github/oauth/install",
+    });
+
+    const matcher = getPathMatch(GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(GITHUB_OAUTH_INSTALL_PATH)).toStrictEqual({});
+    for (const pathname of GITHUB_OAUTH_INSTALL_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

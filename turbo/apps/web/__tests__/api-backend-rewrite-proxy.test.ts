@@ -159,6 +159,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/generate")).toBe(false);
   });
 
+  it("matches the GitHub OAuth install rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/github/oauth/install")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/github/oauth/install/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/github/oauth")).toBe(false);
+  });
+
   it("matches the logs search rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/logs/search")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/logs/search/extra")).toBe(false);

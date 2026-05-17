@@ -24,6 +24,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/generate-image", "/api/generate-image"],
+  ["/api/github/oauth/install", "/api/github/oauth/install"],
   ["/api/integrations/github", "/api/integrations/github"],
   ["/api/logs/search", "/api/logs/search"],
   ["/api/usage", "/api/usage"],
