@@ -10,7 +10,8 @@ use tokio::time::Instant;
 
 use crate::{
     CompositeNormalOperation, ConnectionState, ExecResult, Shared,
-    normal_operation_transition_error, operation_tracker::NormalOperationToken,
+    normal_operation_transition_error,
+    operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 use vsock_proto::{
     ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL,
@@ -169,7 +170,7 @@ impl Default for Operations {
 }
 
 struct ExecOperation {
-    normal_operation: Option<NormalOperationToken>,
+    normal_operation: Option<ExecOperationNormalTracking>,
     diagnostic: ExecOperationDiagnostic,
     result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
     stream_tx: Option<mpsc::Sender<ExecOutputEvent>>,
@@ -181,15 +182,39 @@ struct ExecOperation {
     stream_overflowed: bool,
 }
 
-enum ExecOperationTracking<'a> {
-    Tracked,
-    Composite(&'a mut CompositeNormalOperation),
-    Untracked,
+enum ExecOperationNormalTracking {
+    Owned(NormalOperationToken),
+    Composite(NormalOperationTransitionHandle),
 }
 
-enum ExecFrameNormalOperation<'a> {
-    RegisteredSeq(u32),
-    Composite(&'a mut CompositeNormalOperation),
+impl ExecOperationNormalTracking {
+    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
+        match self {
+            ExecOperationNormalTracking::Owned(normal_operation) => normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(normal_operation_transition_error),
+            ExecOperationNormalTracking::Composite(normal_operation) => normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(normal_operation_transition_error),
+        }
+    }
+
+    fn complete(self) -> io::Result<()> {
+        match self {
+            ExecOperationNormalTracking::Owned(normal_operation) => normal_operation
+                .complete()
+                .map_err(normal_operation_transition_error),
+            ExecOperationNormalTracking::Composite(normal_operation) => normal_operation
+                .mark_possible_guest_write_completed()
+                .map_err(normal_operation_transition_error),
+        }
+    }
+}
+
+enum ExecOperationTracking<'a> {
+    Tracked,
+    Composite(&'a CompositeNormalOperation),
+    Untracked,
 }
 
 #[derive(Clone)]
@@ -904,9 +929,7 @@ pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
                     ..
                 } = operation;
                 if let Some(normal_operation) = normal_operation {
-                    normal_operation
-                        .complete()
-                        .map_err(normal_operation_transition_error)?;
+                    normal_operation.complete()?;
                 }
                 Some((diagnostic, result_tx, stream_overflowed, decoded))
             }
@@ -941,9 +964,7 @@ pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Resu
                     ..
                 } = operation;
                 if let Some(normal_operation) = normal_operation {
-                    normal_operation
-                        .complete()
-                        .map_err(normal_operation_transition_error)?;
+                    normal_operation.complete()?;
                 }
                 Some((diagnostic, result_tx, err))
             }
@@ -969,9 +990,7 @@ fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> i
                 ));
             };
             if let Some(normal_operation) = operation.normal_operation.as_mut() {
-                normal_operation
-                    .mark_possible_guest_write_started()
-                    .map_err(normal_operation_transition_error)
+                normal_operation.mark_possible_guest_write_started()
             } else {
                 Ok(())
             }
@@ -989,7 +1008,7 @@ async fn write_frame(
     seq: u32,
     payload: &[u8],
     diagnostic: Option<ExecOperationFrameDiagnostic>,
-    normal_operation: Option<ExecFrameNormalOperation<'_>>,
+    normal_operation_seq: Option<u32>,
 ) -> io::Result<()> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -999,15 +1018,8 @@ async fn write_frame(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
-    if let Some(normal_operation) = normal_operation {
-        match normal_operation {
-            ExecFrameNormalOperation::RegisteredSeq(seq) => {
-                mark_exec_operation_possible_guest_write(shared, seq)?;
-            }
-            ExecFrameNormalOperation::Composite(normal_operation) => {
-                normal_operation.mark_possible_guest_write_started()?;
-            }
-        }
+    if let Some(normal_operation_seq) = normal_operation_seq {
+        mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
     }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
@@ -1203,16 +1215,16 @@ async fn start_exec_operation_on_shared_with_tracking(
     let (result_tx, result_rx) = oneshot::channel();
     let seq = shared.next_seq();
     let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
-    let tracks_self = matches!(tracking, ExecOperationTracking::Tracked);
-    let composite_operation = match tracking {
-        ExecOperationTracking::Composite(normal_operation) => Some(normal_operation),
-        ExecOperationTracking::Tracked | ExecOperationTracking::Untracked => None,
+    let normal_operation = match tracking {
+        ExecOperationTracking::Tracked => Some(ExecOperationNormalTracking::Owned(
+            shared.reserve_normal_operation()?,
+        )),
+        ExecOperationTracking::Composite(normal_operation) => Some(
+            ExecOperationNormalTracking::Composite(normal_operation.transition_handle()?),
+        ),
+        ExecOperationTracking::Untracked => None,
     };
-    let normal_operation = if tracks_self {
-        Some(shared.reserve_normal_operation()?)
-    } else {
-        None
-    };
+    let tracks_normal_operation = normal_operation.is_some();
     let operation = ExecOperation {
         normal_operation,
         diagnostic: diagnostic.clone(),
@@ -1242,18 +1254,13 @@ async fn start_exec_operation_on_shared_with_tracking(
     }
 
     let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
-    let normal_operation = if tracks_self {
-        Some(ExecFrameNormalOperation::RegisteredSeq(seq))
-    } else {
-        composite_operation.map(ExecFrameNormalOperation::Composite)
-    };
     write_frame(
         shared,
         MSG_EXEC_START,
         seq,
         &payload,
         Some(diagnostic.frame("start")),
-        normal_operation,
+        tracks_normal_operation.then_some(seq),
     )
     .await?;
     registration_guard.disarm();
@@ -1498,7 +1505,9 @@ mod tests {
         let (result_tx, _result_rx) = oneshot::channel();
         let normal_operations = crate::operation_tracker::NormalOperationTracker::new();
         ExecOperation {
-            normal_operation: Some(normal_operations.reserve().unwrap()),
+            normal_operation: Some(ExecOperationNormalTracking::Owned(
+                normal_operations.reserve().unwrap(),
+            )),
             diagnostic: ExecOperationDiagnostic::new(seq, label, &[]),
             result_tx,
             stream_tx: None,

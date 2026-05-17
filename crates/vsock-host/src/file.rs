@@ -723,6 +723,7 @@ impl VsockHost {
                     &self.shared,
                     MSG_WRITE_FILE,
                     &payload,
+                    WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
                     normal_operation,
                 )

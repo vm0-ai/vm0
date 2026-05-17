@@ -491,6 +491,68 @@ async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_resul
 }
 
 #[tokio::test]
+async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed_not_not_parkable() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "vsock-host-copy-terminal-close-{}-{unique}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let host_path = dir.join("system.log");
+    let copy_path = host_path.clone();
+
+    let copy_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/vm0-system-run.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    send_exec_output(
+        &mut guest,
+        msg.seq,
+        0,
+        ExecOutputStream::Stdout,
+        b"complete\n",
+        false,
+    )
+    .await;
+    send_stream_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+    )
+    .await;
+    drop(guest);
+
+    let result = copy_task.await.unwrap().unwrap();
+    assert_eq!(result.bytes_copied, 9);
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"complete\n");
+    assert_ne!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output() {
     let (host, mut guest) = setup_host_and_guest().await;
     let unique = std::time::SystemTime::now()

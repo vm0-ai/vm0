@@ -147,6 +147,7 @@ pub(crate) struct NormalOperationFenceId(u64);
 pub(crate) enum OperationPhase {
     ReservedBeforeWrite,
     PossibleGuestWrite,
+    GuestWriteCompleted,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,28 +186,17 @@ pub(crate) struct NormalOperationToken {
 }
 
 impl NormalOperationToken {
+    pub(crate) fn transition_handle(&self) -> NormalOperationTransitionHandle {
+        NormalOperationTransitionHandle {
+            id: self.id,
+            inner: Arc::clone(&self.inner),
+        }
+    }
+
     pub(crate) fn mark_possible_guest_write_started(
         &mut self,
     ) -> Result<(), NormalOperationTransitionError> {
-        let mut inner = lock_inner(&self.inner);
-        let Some(phase) = inner.operations.get_mut(&self.id) else {
-            return Err(NormalOperationTransitionError::UnknownOperation {
-                operation_id: self.id,
-            });
-        };
-        match *phase {
-            OperationPhase::ReservedBeforeWrite => {
-                *phase = OperationPhase::PossibleGuestWrite;
-                Ok(())
-            }
-            OperationPhase::PossibleGuestWrite => {
-                Err(NormalOperationTransitionError::InvalidTransition {
-                    operation_id: self.id,
-                    from: OperationPhase::PossibleGuestWrite,
-                    to: OperationPhase::PossibleGuestWrite,
-                })
-            }
-        }
+        self.transition_handle().mark_possible_guest_write_started()
     }
 
     pub(crate) fn complete(mut self) -> Result<(), NormalOperationTransitionError> {
@@ -221,6 +211,62 @@ impl NormalOperationToken {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct NormalOperationTransitionHandle {
+    id: NormalOperationId,
+    inner: Arc<Mutex<Inner>>,
+}
+
+impl NormalOperationTransitionHandle {
+    pub(crate) fn mark_possible_guest_write_started(
+        &self,
+    ) -> Result<(), NormalOperationTransitionError> {
+        let mut inner = lock_inner(&self.inner);
+        let Some(phase) = inner.operations.get_mut(&self.id) else {
+            return Err(NormalOperationTransitionError::UnknownOperation {
+                operation_id: self.id,
+            });
+        };
+        match *phase {
+            OperationPhase::ReservedBeforeWrite | OperationPhase::GuestWriteCompleted => {
+                *phase = OperationPhase::PossibleGuestWrite;
+                Ok(())
+            }
+            OperationPhase::PossibleGuestWrite => {
+                Err(NormalOperationTransitionError::InvalidTransition {
+                    operation_id: self.id,
+                    from: OperationPhase::PossibleGuestWrite,
+                    to: OperationPhase::PossibleGuestWrite,
+                })
+            }
+        }
+    }
+
+    pub(crate) fn mark_possible_guest_write_completed(
+        &self,
+    ) -> Result<(), NormalOperationTransitionError> {
+        let mut inner = lock_inner(&self.inner);
+        let Some(phase) = inner.operations.get_mut(&self.id) else {
+            return Err(NormalOperationTransitionError::UnknownOperation {
+                operation_id: self.id,
+            });
+        };
+        match *phase {
+            OperationPhase::PossibleGuestWrite => {
+                *phase = OperationPhase::GuestWriteCompleted;
+                Ok(())
+            }
+            OperationPhase::ReservedBeforeWrite | OperationPhase::GuestWriteCompleted => {
+                Err(NormalOperationTransitionError::InvalidTransition {
+                    operation_id: self.id,
+                    from: *phase,
+                    to: OperationPhase::GuestWriteCompleted,
+                })
+            }
+        }
+    }
+}
+
 impl Drop for NormalOperationToken {
     fn drop(&mut self) {
         if self.released {
@@ -229,7 +275,7 @@ impl Drop for NormalOperationToken {
         let mut inner = lock_inner(&self.inner);
         match inner.operations.remove(&self.id) {
             Some(OperationPhase::ReservedBeforeWrite) | None => {}
-            Some(OperationPhase::PossibleGuestWrite) => {
+            Some(OperationPhase::PossibleGuestWrite | OperationPhase::GuestWriteCompleted) => {
                 if !matches!(inner.state, TrackerState::Closed) {
                     inner.state = TrackerState::NotParkable;
                     inner.operations.clear();
@@ -323,6 +369,80 @@ mod tests {
             tracker.reserve(),
             Err(NormalOperationRejection::NotParkable)
         ));
+    }
+
+    #[test]
+    fn completed_guest_write_remains_busy_until_operation_complete() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        let handle = token.transition_handle();
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+
+        handle
+            .mark_possible_guest_write_completed()
+            .expect("mark write completed");
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Busy);
+        token.complete().expect("operation should complete");
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Idle);
+    }
+
+    #[test]
+    fn completed_guest_write_can_start_another_guest_write() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        let handle = token.transition_handle();
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark first write started");
+        handle
+            .mark_possible_guest_write_completed()
+            .expect("mark first write completed");
+
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark second write started");
+
+        drop(token);
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
+    }
+
+    #[test]
+    fn close_after_guest_write_completed_is_closed_not_not_parkable() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        let handle = token.transition_handle();
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+        handle
+            .mark_possible_guest_write_completed()
+            .expect("mark write completed");
+
+        tracker.mark_closed();
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+        drop(token);
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::Closed);
+    }
+
+    #[test]
+    fn drop_after_guest_write_completed_without_complete_is_not_parkable() {
+        let tracker = NormalOperationTracker::new();
+        let mut token = reserve(&tracker);
+        let handle = token.transition_handle();
+        token
+            .mark_possible_guest_write_started()
+            .expect("mark write started");
+        handle
+            .mark_possible_guest_write_completed()
+            .expect("mark write completed");
+
+        drop(token);
+
+        assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
     }
 
     #[test]

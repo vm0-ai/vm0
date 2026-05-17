@@ -40,7 +40,7 @@ use tokio::time::{self, Instant};
 
 use operation_tracker::{
     NormalOperationRejection, NormalOperationToken, NormalOperationTracker,
-    NormalOperationTransitionError,
+    NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
@@ -143,8 +143,13 @@ struct PendingRequestGuard {
 
 struct PendingResponse {
     response_tx: oneshot::Sender<RawMessage>,
-    normal_operation: Option<NormalOperationToken>,
+    normal_operation: Option<PendingNormalOperation>,
     normal_terminal_msg_types: &'static [u8],
+}
+
+enum PendingNormalOperation {
+    Owned(NormalOperationToken),
+    Composite(NormalOperationTransitionHandle),
 }
 
 struct PendingNormalRequestWriteGuard {
@@ -287,22 +292,28 @@ impl Shared {
 
 pub(crate) struct CompositeNormalOperation {
     normal_operation: Option<NormalOperationToken>,
-    possible_guest_write_started: bool,
 }
 
 impl CompositeNormalOperation {
     fn reserve(shared: &Arc<Shared>) -> io::Result<Self> {
         Ok(Self {
             normal_operation: Some(shared.reserve_normal_operation()?),
-            possible_guest_write_started: false,
         })
     }
 
-    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
-        if self.possible_guest_write_started {
-            return Ok(());
-        }
+    fn transition_handle(&self) -> io::Result<NormalOperationTransitionHandle> {
+        self.normal_operation
+            .as_ref()
+            .map(NormalOperationToken::transition_handle)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "composite normal operation already completed",
+                )
+            })
+    }
 
+    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
         let normal_operation = self.normal_operation.as_mut().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -312,7 +323,6 @@ impl CompositeNormalOperation {
         normal_operation
             .mark_possible_guest_write_started()
             .map_err(normal_operation_transition_error)?;
-        self.possible_guest_write_started = true;
         Ok(())
     }
 
@@ -451,10 +461,7 @@ async fn reader_loop(
                                     .contains(&msg.msg_type)
                                     && let Some(normal_operation) =
                                         pending_response.normal_operation.take()
-                                    && normal_operation
-                                        .complete()
-                                        .map_err(normal_operation_transition_error)
-                                        .is_err()
+                                    && complete_pending_normal_operation(normal_operation).is_err()
                                 {
                                     normal_operation_transition_failed = true;
                                 }
@@ -569,6 +576,7 @@ async fn request_on_shared_with_composite_operation(
     shared: &Arc<Shared>,
     msg_type: u8,
     payload: &[u8],
+    terminal_msg_types: &'static [u8],
     timeout: Duration,
     normal_operation: &mut CompositeNormalOperation,
 ) -> io::Result<RawMessage> {
@@ -578,6 +586,7 @@ async fn request_on_shared_with_composite_operation(
         msg_type,
         seq,
         payload,
+        terminal_msg_types,
         timeout,
         normal_operation,
     )
@@ -589,6 +598,7 @@ async fn request_raw_on_shared_with_composite_operation(
     msg_type: u8,
     seq: u32,
     payload: &[u8],
+    terminal_msg_types: &'static [u8],
     timeout: Duration,
     normal_operation: &mut CompositeNormalOperation,
 ) -> io::Result<RawMessage> {
@@ -610,8 +620,10 @@ async fn request_raw_on_shared_with_composite_operation(
                     seq,
                     PendingResponse {
                         response_tx: tx,
-                        normal_operation: None,
-                        normal_terminal_msg_types: &[],
+                        normal_operation: Some(PendingNormalOperation::Composite(
+                            normal_operation.transition_handle()?,
+                        )),
+                        normal_terminal_msg_types: terminal_msg_types,
                     },
                 );
             }
@@ -673,7 +685,7 @@ async fn normal_request_raw_on_shared(
                     seq,
                     PendingResponse {
                         response_tx: tx,
-                        normal_operation: Some(normal_operation),
+                        normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
                         normal_terminal_msg_types: terminal_msg_types,
                     },
                 );
@@ -728,14 +740,36 @@ fn mark_pending_normal_operation_possible_guest_write(
                     "normal request missing operation token",
                 ));
             };
-            normal_operation
-                .mark_possible_guest_write_started()
-                .map_err(normal_operation_transition_error)
+            mark_pending_normal_operation_possible_guest_write_started(normal_operation)
         }
         ConnectionState::Closed { .. } => Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
             "connection closed",
         )),
+    }
+}
+
+fn mark_pending_normal_operation_possible_guest_write_started(
+    normal_operation: &mut PendingNormalOperation,
+) -> io::Result<()> {
+    match normal_operation {
+        PendingNormalOperation::Owned(normal_operation) => normal_operation
+            .mark_possible_guest_write_started()
+            .map_err(normal_operation_transition_error),
+        PendingNormalOperation::Composite(normal_operation) => normal_operation
+            .mark_possible_guest_write_started()
+            .map_err(normal_operation_transition_error),
+    }
+}
+
+fn complete_pending_normal_operation(normal_operation: PendingNormalOperation) -> io::Result<()> {
+    match normal_operation {
+        PendingNormalOperation::Owned(normal_operation) => normal_operation
+            .complete()
+            .map_err(normal_operation_transition_error),
+        PendingNormalOperation::Composite(normal_operation) => normal_operation
+            .mark_possible_guest_write_completed()
+            .map_err(normal_operation_transition_error),
     }
 }
 
