@@ -129,6 +129,7 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
         assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
         let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
         assert_eq!(decoded_control.target_seq, spawn.seq);
+        assert_eq!(decoded_control.request_timeout_ms, 5000);
         assert_eq!(decoded_control.control_nonce, control_nonce);
         assert_eq!(decoded_control.message_id, "message-1");
         assert_eq!(decoded_control.payload, b"payload");
@@ -714,6 +715,8 @@ async fn test_spawn_process_control_timeout_cleans_pending_without_poisoning() {
 
         let control = read_guest_message(&mut guest).await;
         assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        assert_eq!(decoded_control.request_timeout_ms, 0);
 
         let exec = read_guest_message(&mut guest).await;
         assert_eq!(exec.msg_type, MSG_EXEC_START);

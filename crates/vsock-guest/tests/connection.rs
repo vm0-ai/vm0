@@ -1510,9 +1510,14 @@ fn send_process_control(
     control_nonce: vsock_proto::ProcessControlNonce,
     message_id: &str,
 ) {
-    let payload =
-        vsock_proto::encode_process_control(target_seq, control_nonce, message_id, b"payload")
-            .unwrap();
+    let payload = vsock_proto::encode_process_control(
+        target_seq,
+        control_nonce,
+        message_id,
+        b"payload",
+        5000,
+    )
+    .unwrap();
     let msg = vsock_proto::encode(MSG_PROCESS_CONTROL, request_seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
 }

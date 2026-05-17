@@ -269,11 +269,13 @@ impl GuestProcessControlHandle {
         payload: &[u8],
         timeout: Duration,
     ) -> io::Result<ProcessControlAck> {
+        let request_timeout_ms = duration_to_request_timeout_ms(timeout);
         let request = vsock_proto::encode_process_control(
             self.target_seq,
             self.control_nonce,
             message_id,
             payload,
+            request_timeout_ms,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let response =
@@ -385,6 +387,16 @@ impl GuestProcessControlHandle {
             )),
         }
     }
+}
+
+fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
+    if timeout.is_zero() {
+        return 0;
+    }
+
+    u32::try_from(timeout.as_millis())
+        .unwrap_or(u32::MAX)
+        .max(1)
 }
 
 impl Drop for GuestProcessHandle {

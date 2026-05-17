@@ -15,9 +15,10 @@ use crate::writer::GuestWriter;
 
 const THREAD_PROCESS_CONTROL_ACCEPT: &str = "vsock-process-control-accept";
 const THREAD_PROCESS_CONTROL_FORWARD: &str = "vsock-process-control-forward";
-const CONTROL_ACCEPT_TIMEOUT: Duration = Duration::from_secs(30);
-const CONTROL_IO_TIMEOUT: Duration = Duration::from_secs(5);
+const CONTROL_ACCEPT_POLL_TIMEOUT: Duration = Duration::from_millis(100);
+const CONTROL_SINK_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING_CONTROL_REQUESTS: usize = 8;
+const REQUEST_TIMEOUT_DIAGNOSTIC: &str = "process control request timed out";
 
 #[derive(Clone, Default)]
 pub(crate) struct ProcessControlRegistry {
@@ -69,6 +70,7 @@ enum ControlSinkInner {
 struct OwnedProcessControlRequest {
     response_seq: u32,
     target_seq: u32,
+    request_timeout_ms: u32,
     control_nonce: ProcessControlNonce,
     message_id: String,
     payload: Vec<u8>,
@@ -310,11 +312,8 @@ impl ControlSinkState {
 
     fn wait_for_stream(
         &self,
-        timeout: Duration,
+        deadline: Instant,
     ) -> Result<Arc<Mutex<UnixStream>>, (ProcessControlStatus, String)> {
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .unwrap_or_else(Instant::now);
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             if !self.active.load(Ordering::Acquire) {
@@ -326,14 +325,12 @@ impl ControlSinkState {
             match &*guard {
                 ControlSinkInner::Connected(connected) => return Ok(Arc::clone(&connected.stream)),
                 ControlSinkInner::Waiting => {
-                    let now = Instant::now();
-                    if now >= deadline {
+                    let Some(wait) = duration_until(deadline) else {
                         return Err((
                             ProcessControlStatus::SinkUnavailable,
                             "process control sink is not connected".to_owned(),
                         ));
-                    }
-                    let wait = deadline.duration_since(now);
+                    };
                     let (next_guard, wait_result) = self
                         .ready
                         .wait_timeout(guard, wait)
@@ -420,26 +417,15 @@ impl ConnectedControlSink {
 }
 
 fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<ControlSinkState>) {
-    let deadline = Instant::now()
-        .checked_add(CONTROL_ACCEPT_TIMEOUT)
-        .unwrap_or_else(Instant::now);
     let result = loop {
         if !sink.active.load(Ordering::Acquire) {
             return;
         }
-        let now = Instant::now();
-        if now >= deadline {
-            break Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "control endpoint accept timed out",
-            ));
-        }
-        let poll_timeout = deadline.duration_since(now).min(Duration::from_millis(100));
-        match process_control_ipc::accept_with_timeout(&listener, poll_timeout) {
+        match process_control_ipc::accept_with_timeout(&listener, CONTROL_ACCEPT_POLL_TIMEOUT) {
             Ok(mut stream) => {
                 break stream
-                    .set_read_timeout(Some(CONTROL_IO_TIMEOUT))
-                    .and_then(|()| stream.set_write_timeout(Some(CONTROL_IO_TIMEOUT)))
+                    .set_read_timeout(Some(CONTROL_SINK_IO_TIMEOUT))
+                    .and_then(|()| stream.set_write_timeout(Some(CONTROL_SINK_IO_TIMEOUT)))
                     .and_then(|()| process_control_ipc::read_hello(&mut stream))
                     .map(|()| stream);
             }
@@ -471,12 +457,14 @@ fn forward_control_request(
     let OwnedProcessControlRequest {
         response_seq,
         target_seq,
+        request_timeout_ms,
         control_nonce,
         message_id,
         payload,
     } = request;
+    let deadline = request_deadline(request_timeout_ms);
     let (status, diagnostic, mark_failed) = {
-        match sink.wait_for_stream(CONTROL_IO_TIMEOUT) {
+        match sink.wait_for_stream(deadline) {
             Ok(stream) => {
                 let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
                 if !sink.active.load(Ordering::Acquire) {
@@ -485,38 +473,14 @@ fn forward_control_request(
                         "process operation is not active".to_owned(),
                         false,
                     )
+                } else if request_expired(deadline) {
+                    (
+                        ProcessControlStatus::SinkTimeout,
+                        REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                        false,
+                    )
                 } else {
-                    let request_frame = ControlRequest {
-                        message_id: message_id.clone(),
-                        payload,
-                    };
-                    match process_control_ipc::write_request(&mut stream, &request_frame)
-                        .and_then(|()| process_control_ipc::read_response(&mut stream))
-                    {
-                        Ok(response) if response.message_id != message_id => (
-                            ProcessControlStatus::SinkError,
-                            format!(
-                                "process control sink message id mismatch: expected {}, got {}",
-                                message_id, response.message_id
-                            ),
-                            true,
-                        ),
-                        Ok(response) => match response.status {
-                            ControlResponseStatus::Accepted => {
-                                (ProcessControlStatus::Delivered, response.diagnostic, false)
-                            }
-                            ControlResponseStatus::Rejected => {
-                                (ProcessControlStatus::Rejected, response.diagnostic, false)
-                            }
-                            ControlResponseStatus::Error => {
-                                (ProcessControlStatus::SinkError, response.diagnostic, false)
-                            }
-                        },
-                        Err(error) if is_timeout(&error) => {
-                            (ProcessControlStatus::SinkTimeout, error.to_string(), true)
-                        }
-                        Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
-                    }
+                    forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
                 }
             }
             Err((status, diagnostic)) => (status, diagnostic, false),
@@ -555,6 +519,112 @@ fn forward_control_request(
     }
 }
 
+fn forward_to_connected_sink(
+    stream: &mut UnixStream,
+    message_id: &str,
+    payload: Vec<u8>,
+    deadline: Instant,
+) -> (ProcessControlStatus, String, bool) {
+    let request_frame = ControlRequest {
+        message_id: message_id.to_owned(),
+        payload,
+    };
+    let write_timeout = match control_sink_io_timeout(deadline) {
+        Ok(timeout) => timeout,
+        Err(error) if is_timeout(&error) => {
+            return return_control_result(ProcessControlStatus::SinkTimeout, error, false);
+        }
+        Err(error) => return return_control_result(ProcessControlStatus::SinkError, error, false),
+    };
+    if let Err(error) = write_control_request(stream, &request_frame, write_timeout) {
+        return if is_timeout(&error) {
+            return_control_result(ProcessControlStatus::SinkTimeout, error, true)
+        } else {
+            return_control_result(ProcessControlStatus::SinkError, error, true)
+        };
+    }
+
+    let read_timeout = match control_sink_io_timeout(deadline) {
+        Ok(timeout) => timeout,
+        Err(error) if is_timeout(&error) => {
+            return return_control_result(ProcessControlStatus::SinkTimeout, error, true);
+        }
+        Err(error) => return return_control_result(ProcessControlStatus::SinkError, error, true),
+    };
+    match read_control_response(stream, read_timeout) {
+        Ok(response) if response.message_id != message_id => (
+            ProcessControlStatus::SinkError,
+            format!(
+                "process control sink message id mismatch: expected {}, got {}",
+                message_id, response.message_id
+            ),
+            true,
+        ),
+        Ok(response) => match response.status {
+            ControlResponseStatus::Accepted => {
+                (ProcessControlStatus::Delivered, response.diagnostic, false)
+            }
+            ControlResponseStatus::Rejected => {
+                (ProcessControlStatus::Rejected, response.diagnostic, false)
+            }
+            ControlResponseStatus::Error => {
+                (ProcessControlStatus::SinkError, response.diagnostic, false)
+            }
+        },
+        Err(error) if is_timeout(&error) => {
+            (ProcessControlStatus::SinkTimeout, error.to_string(), true)
+        }
+        Err(error) => (ProcessControlStatus::SinkError, error.to_string(), true),
+    }
+}
+
+fn return_control_result(
+    status: ProcessControlStatus,
+    error: io::Error,
+    mark_failed: bool,
+) -> (ProcessControlStatus, String, bool) {
+    (status, error.to_string(), mark_failed)
+}
+
+fn request_deadline(request_timeout_ms: u32) -> Instant {
+    Instant::now()
+        .checked_add(Duration::from_millis(u64::from(request_timeout_ms)))
+        .unwrap_or_else(Instant::now)
+}
+
+fn request_expired(deadline: Instant) -> bool {
+    duration_until(deadline).is_none()
+}
+
+fn duration_until(deadline: Instant) -> Option<Duration> {
+    let now = Instant::now();
+    (now < deadline).then(|| deadline.duration_since(now))
+}
+
+fn control_sink_io_timeout(deadline: Instant) -> io::Result<Duration> {
+    duration_until(deadline)
+        .map(|remaining| remaining.min(CONTROL_SINK_IO_TIMEOUT))
+        .filter(|timeout| !timeout.is_zero())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, REQUEST_TIMEOUT_DIAGNOSTIC))
+}
+
+fn write_control_request(
+    stream: &mut UnixStream,
+    request: &ControlRequest,
+    timeout: Duration,
+) -> io::Result<()> {
+    stream.set_write_timeout(Some(timeout))?;
+    process_control_ipc::write_request(stream, request)
+}
+
+fn read_control_response(
+    stream: &mut UnixStream,
+    timeout: Duration,
+) -> io::Result<process_control_ipc::ControlResponse> {
+    stream.set_read_timeout(Some(timeout))?;
+    process_control_ipc::read_response(stream)
+}
+
 fn is_timeout(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -572,6 +642,7 @@ pub(crate) fn handle_process_control(
     let owned = OwnedProcessControlRequest {
         response_seq: seq,
         target_seq: request.target_seq,
+        request_timeout_ms: request.request_timeout_ms,
         control_nonce: request.control_nonce,
         message_id: request.message_id.to_owned(),
         payload: request.payload.to_vec(),
@@ -765,7 +836,8 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(8, FORWARD_NONCE, "msg-1", b"payload").unwrap();
+            vsock_proto::encode_process_control(8, FORWARD_NONCE, "msg-1", b"payload", 5000)
+                .unwrap();
 
         handle_process_control(11, &payload, &registry, &writer).unwrap();
 
@@ -789,7 +861,8 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(9, FORWARD_NONCE, "msg-1", b"payload").unwrap();
+            vsock_proto::encode_process_control(9, FORWARD_NONCE, "msg-1", b"payload", 5000)
+                .unwrap();
 
         handle_process_control(11, &payload, &registry, &writer).unwrap();
 
@@ -813,6 +886,34 @@ mod tests {
         assert_eq!(seq, 11);
         assert_eq!(status, ProcessControlStatus::Delivered);
         assert_eq!(message_id, "msg-1");
+    }
+
+    #[test]
+    fn pending_process_control_timeout_before_sink_connection_releases_slot() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"4433221100ffeedd";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(19, Some(FORWARD_NONCE), true).unwrap();
+        let sink = registry.resolve(19, FORWARD_NONCE).unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload =
+            vsock_proto::encode_process_control(19, FORWARD_NONCE, "msg-timeout", b"payload", 0)
+                .unwrap();
+
+        handle_process_control(29, &payload, &registry, &writer).unwrap();
+
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 29);
+        assert_eq!(status, ProcessControlStatus::SinkUnavailable);
+        assert_eq!(message_id, "msg-timeout");
+        assert_eq!(diagnostic, "process control sink is not connected");
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+
+        registration.guard.release();
     }
 
     #[test]
@@ -867,9 +968,14 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
 
-        let payload =
-            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-rejected", b"payload")
-                .unwrap();
+        let payload = vsock_proto::encode_process_control(
+            11,
+            FORWARD_NONCE,
+            "msg-rejected",
+            b"payload",
+            5000,
+        )
+        .unwrap();
         handle_process_control(21, &payload, &registry, &writer).unwrap();
         let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
         assert_eq!(seq, 21);
@@ -878,7 +984,7 @@ mod tests {
         assert_eq!(diagnostic, "denied");
 
         let payload =
-            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-error", b"payload")
+            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-error", b"payload", 5000)
                 .unwrap();
         handle_process_control(22, &payload, &registry, &writer).unwrap();
         let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
@@ -887,9 +993,14 @@ mod tests {
         assert_eq!(message_id, "msg-error");
         assert_eq!(diagnostic, "temporary error");
 
-        let payload =
-            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-after-error", b"payload")
-                .unwrap();
+        let payload = vsock_proto::encode_process_control(
+            11,
+            FORWARD_NONCE,
+            "msg-after-error",
+            b"payload",
+            5000,
+        )
+        .unwrap();
         handle_process_control(23, &payload, &registry, &writer).unwrap();
         let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
         assert_eq!(seq, 23);
@@ -910,7 +1021,7 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(10, FORWARD_NONCE, "msg-release", b"payload")
+            vsock_proto::encode_process_control(10, FORWARD_NONCE, "msg-release", b"payload", 5000)
                 .unwrap();
 
         handle_process_control(13, &payload, &registry, &writer).unwrap();
@@ -945,6 +1056,7 @@ mod tests {
                 OwnedProcessControlRequest {
                     response_seq: 199,
                     target_seq: 12,
+                    request_timeout_ms: 5000,
                     control_nonce: NONCE,
                     message_id: "msg-overflow".to_owned(),
                     payload: b"payload".to_vec(),
@@ -1004,6 +1116,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
+                request_timeout_ms: 5000,
                 control_nonce: NONCE,
                 message_id: "msg-send-fails".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1045,6 +1158,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
+                request_timeout_ms: 5000,
                 control_nonce: NONCE,
                 message_id: "msg-original".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1091,6 +1205,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
+                request_timeout_ms: 1,
                 control_nonce: NONCE,
                 message_id: "msg-timeout".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1148,6 +1263,7 @@ mod tests {
             FORWARD_NONCE,
             "msg-handshake-failed",
             b"payload",
+            5000,
         )
         .unwrap();
 
@@ -1245,6 +1361,7 @@ mod tests {
                 OwnedProcessControlRequest {
                     response_seq: 17,
                     target_seq: 9,
+                    request_timeout_ms: 5000,
                     control_nonce: NONCE,
                     message_id: "msg-after-close".to_owned(),
                     payload: b"payload".to_vec(),
@@ -1300,6 +1417,7 @@ mod tests {
                     OwnedProcessControlRequest {
                         response_seq: 18,
                         target_seq: 9,
+                        request_timeout_ms: 5000,
                         control_nonce: NONCE,
                         message_id: "msg-inflight-close".to_owned(),
                         payload: b"payload".to_vec(),
