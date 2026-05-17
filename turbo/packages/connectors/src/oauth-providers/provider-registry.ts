@@ -107,6 +107,7 @@ import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { manusHandler } from "./providers/manus-handler";
 import { mem0Handler } from "./providers/mem0-handler";
+import { supermemoryHandler } from "./providers/supermemory-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
@@ -305,6 +306,7 @@ export const PROVIDER_HANDLERS: Record<
   make: makeHandler,
   manus: manusHandler,
   mem0: mem0Handler,
+  supermemory: supermemoryHandler,
   metabase: metabaseHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,

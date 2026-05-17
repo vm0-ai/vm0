@@ -171,6 +171,7 @@
     "generate:stripe": "tsx src/index.ts stripe",
     "generate:supabase": "tsx src/index.ts supabase",
     "generate:supadata": "tsx src/index.ts supadata",
+    "generate:supermemory": "tsx src/index.ts supermemory",
     "generate:tavily": "tsx src/index.ts tavily",
     "generate:test-oauth": "tsx src/index.ts test-oauth",
     "generate:tldv": "tsx src/index.ts tldv",

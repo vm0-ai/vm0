@@ -188,6 +188,7 @@ import { streakFirewall } from "./streak.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
+import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
@@ -396,6 +397,7 @@ const CONNECTOR_FIREWALLS = {
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
   supadata: supadataFirewall,
+  supermemory: supermemoryFirewall,
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
   tldv: tldvFirewall,

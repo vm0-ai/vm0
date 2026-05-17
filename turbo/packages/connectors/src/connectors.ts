@@ -77,6 +77,7 @@ import { canva } from "./connectors/canva";
 import { calCom } from "./connectors/cal-com";
 import { xero } from "./connectors/xero";
 import { supabase } from "./connectors/supabase";
+import { supermemory } from "./connectors/supermemory";
 import { todoist } from "./connectors/todoist";
 import { webflow } from "./connectors/webflow";
 import { workos } from "./connectors/workos";
@@ -509,6 +510,7 @@ const CONNECTOR_TYPES_DEF = {
   ...calCom,
   ...xero,
   ...supabase,
+  ...supermemory,
   ...todoist,
   ...webflow,
   ...workos,

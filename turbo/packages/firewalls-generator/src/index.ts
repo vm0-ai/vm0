@@ -157,6 +157,7 @@ import { generate as generateStrapi } from "./strapi";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
+import { generate as generateSupermemory } from "./supermemory";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
@@ -345,6 +346,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   stripe: generateStripe,
   supabase: generateSupabase,
   supadata: generateSupadata,
+  supermemory: generateSupermemory,
   tavily: generateTavily,
   "test-oauth": generateTestOauth,
   tldv: generateTldv,
