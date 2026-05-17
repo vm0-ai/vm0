@@ -130,7 +130,9 @@ impl ChunkedWriteCleanupGuard {
         } else {
             Ok(())
         };
-        self.disarm();
+        if result.is_ok() {
+            self.disarm();
+        }
         result
     }
 }
