@@ -53,7 +53,7 @@ export const VERCEL_SANDBOX_SMOKE_TIMEOUT_MS = 60 * 1000;
 
 const VERCEL_SANDBOX_ACCESS_TOKEN_ENV_NAMES = [
   "VERCEL_TEAM_ID",
-  "VERCEL_PROJECT_ID",
+  "VERCEL_PROJECT_ID_API",
   "VERCEL_TOKEN",
 ] as const;
 
@@ -83,11 +83,11 @@ export function getVercelSandboxCredentials():
   }
 
   const teamId = optionalEnv("VERCEL_TEAM_ID");
-  const projectId = optionalEnv("VERCEL_PROJECT_ID");
+  const projectId = optionalEnv("VERCEL_PROJECT_ID_API");
   const token = optionalEnv("VERCEL_TOKEN");
   const values = {
     VERCEL_TEAM_ID: teamId,
-    VERCEL_PROJECT_ID: projectId,
+    VERCEL_PROJECT_ID_API: projectId,
     VERCEL_TOKEN: token,
   };
   const missing = VERCEL_SANDBOX_ACCESS_TOKEN_ENV_NAMES.filter((name) => {

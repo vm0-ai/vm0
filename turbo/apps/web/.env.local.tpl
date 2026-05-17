@@ -11,7 +11,7 @@ E2B_TEMPLATE_NAME=vm0-claude-code-dev
 
 # Optional: Sandbox Runtime (Vercel Sandbox access-token auth)
 VERCEL_TEAM_ID=op://Development/vercel/VERCEL_TEAM_ID
-VERCEL_PROJECT_ID=op://Development/vercel/VERCEL_PROJECT_ID_API
+VERCEL_PROJECT_ID_API=op://Development/vercel/VERCEL_PROJECT_ID_API
 VERCEL_TOKEN=op://Development/vercel/VERCEL_TOKEN
 
 # Required: Object Storage (Cloudflare R2)

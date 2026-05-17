@@ -195,9 +195,9 @@ describe("sandbox utilities", () => {
 });
 
 describe("Vercel sandbox client test override", () => {
-  it("uses access-token credentials outside Vercel when all local env vars exist", () => {
+  it("uses access-token credentials outside Vercel when API project env var exists", () => {
     mockOptionalEnv("VERCEL_TEAM_ID", "team_test");
-    mockOptionalEnv("VERCEL_PROJECT_ID", "project_test");
+    mockOptionalEnv("VERCEL_PROJECT_ID_API", "project_test");
     mockOptionalEnv("VERCEL_TOKEN", "token_test");
 
     expect(getVercelSandboxCredentials()).toStrictEqual({
@@ -231,7 +231,7 @@ describe("Vercel sandbox client test override", () => {
     expect(() => {
       getVercelSandboxCredentials();
     }).toThrow(
-      "Missing Vercel Sandbox access-token environment variables: VERCEL_TEAM_ID, VERCEL_PROJECT_ID",
+      "Missing Vercel Sandbox access-token environment variables: VERCEL_TEAM_ID, VERCEL_PROJECT_ID_API",
     );
   });
 
