@@ -135,6 +135,7 @@ import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
+import { mossFirewall } from "./moss.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
 import { mixpanelFirewall } from "./mixpanel.generated";
@@ -343,6 +344,7 @@ const CONNECTOR_FIREWALLS = {
   mercury: mercuryFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
+  moss: mossFirewall,
   minimax: minimaxFirewall,
   miro: miroFirewall,
   mixpanel: mixpanelFirewall,

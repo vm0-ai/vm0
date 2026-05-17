@@ -42,6 +42,7 @@ import { loops } from "./connectors/loops";
 import { make } from "./connectors/make";
 import { mem0 } from "./connectors/mem0";
 import { metabase } from "./connectors/metabase";
+import { moss } from "./connectors/moss";
 import { deel } from "./connectors/deel";
 import { deepseek } from "./connectors/deepseek";
 import { clickup } from "./connectors/clickup";
@@ -475,6 +476,7 @@ const CONNECTOR_TYPES_DEF = {
   ...make,
   ...mem0,
   ...metabase,
+  ...moss,
   ...deel,
   ...deepseek,
   ...clickup,

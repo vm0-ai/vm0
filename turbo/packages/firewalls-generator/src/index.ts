@@ -106,6 +106,7 @@ import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
+import { generate as generateMoss } from "./moss";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
@@ -295,6 +296,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   miro: generateMiro,
   mixpanel: generateMixpanel,
   monday: generateMonday,
+  moss: generateMoss,
   msg9: generateMsg9,
   n8n: generateN8n,
   neon: generateNeon,

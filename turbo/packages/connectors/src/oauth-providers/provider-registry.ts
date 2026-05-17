@@ -109,6 +109,7 @@ import { manusHandler } from "./providers/manus-handler";
 import { mem0Handler } from "./providers/mem0-handler";
 import { supermemoryHandler } from "./providers/supermemory-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
+import { mossHandler } from "./providers/moss-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
@@ -308,6 +309,7 @@ export const PROVIDER_HANDLERS: Record<
   mem0: mem0Handler,
   supermemory: supermemoryHandler,
   metabase: metabaseHandler,
+  moss: mossHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
   minio: minioHandler,
