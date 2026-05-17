@@ -315,10 +315,10 @@ install_packages() {
 
   # Step 2: Add external APT repositories (needs curl and gpg from step 1).
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
-  # NodeSource repository (Node.js 24)
+  # NodeSource repository (Node.js 26)
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
-  echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+  echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_26.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   printf "Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n" \
     > /etc/apt/preferences.d/nodesource

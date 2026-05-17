@@ -190,7 +190,7 @@ else
   errors+=("gh CLI not found at /usr/bin/gh")
 fi
 
-# npm-global bins land in /usr/bin (NodeSource Node 24 sets npm prefix to /usr).
+# npm-global bins land in /usr/bin (NodeSource Node sets npm prefix to /usr).
 if [[ -f "${MOUNT_DIR}/usr/bin/codex" ]]; then
   echo "  codex CLI: found"
 else
