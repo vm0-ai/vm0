@@ -91,6 +91,7 @@ import { firefliesFirewall } from "./fireflies.generated";
 import { freshdeskFirewall } from "./freshdesk.generated";
 import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
+import { geminiFirewall } from "./gemini.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
@@ -300,6 +301,7 @@ const CONNECTOR_FIREWALLS = {
   freshdesk: freshdeskFirewall,
   gamma: gammaFirewall,
   "garmin-connect": garminConnectFirewall,
+  gemini: geminiFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,

@@ -67,6 +67,7 @@ import { x } from "./connectors/x";
 import { neon } from "./connectors/neon";
 import { gamma } from "./connectors/gamma";
 import { garminConnect } from "./connectors/garmin-connect";
+import { gemini } from "./connectors/gemini";
 import { vercel } from "./connectors/vercel";
 import { sentry } from "./connectors/sentry";
 import { posthog } from "./connectors/posthog";
@@ -502,6 +503,7 @@ const CONNECTOR_TYPES_DEF = {
   ...neon,
   ...gamma,
   ...garminConnect,
+  ...gemini,
   ...vercel,
   ...sentry,
   ...posthog,

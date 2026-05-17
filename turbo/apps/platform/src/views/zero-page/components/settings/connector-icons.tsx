@@ -109,6 +109,7 @@ const CONNECTOR_ICON_COLORFUL = {
   freshdesk: true,
   gamma: true,
   "garmin-connect": true,
+  gemini: true,
   gitlab: true,
   gmail: true,
   "google-ads": true,

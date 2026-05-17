@@ -66,6 +66,7 @@ import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { freshdeskHandler } from "./providers/freshdesk-handler";
 import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
+import { geminiHandler } from "./providers/gemini-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
@@ -274,6 +275,7 @@ export const PROVIDER_HANDLERS: Record<
   freshdesk: freshdeskHandler,
   gamma: gammaHandler,
   "garmin-connect": garminConnectHandler,
+  gemini: geminiHandler,
   gitlab: gitlabHandler,
   granola: granolaHandler,
   greenhouse: greenhouseHandler,

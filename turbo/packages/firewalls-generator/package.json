@@ -76,6 +76,7 @@
     "generate:freshdesk": "tsx src/index.ts freshdesk",
     "generate:gamma": "tsx src/index.ts gamma",
     "generate:garmin-connect": "tsx src/index.ts garmin-connect",
+    "generate:gemini": "tsx src/index.ts gemini",
     "generate:github": "tsx src/index.ts github",
     "generate:gitlab": "tsx src/index.ts gitlab",
     "generate:gmail": "tsx src/index.ts gmail",

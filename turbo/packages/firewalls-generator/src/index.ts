@@ -63,6 +63,7 @@ import { generate as generateFireflies } from "./fireflies";
 import { generate as generateFreshdesk } from "./freshdesk";
 import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
+import { generate as generateGemini } from "./gemini";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
@@ -253,6 +254,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   freshdesk: generateFreshdesk,
   gamma: generateGamma,
   "garmin-connect": generateGarminConnect,
+  gemini: generateGemini,
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
