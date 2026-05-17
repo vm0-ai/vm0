@@ -12,7 +12,7 @@ use vsock_proto::{
 
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOutputEvent,
-    ExecOwnedCapturedOutput, ExecStreamRequest, Shared, VsockHost, exec_operation,
+    ExecOwnedCapturedOutput, ExecResult, ExecStreamRequest, Shared, VsockHost, exec_operation,
     normal_request_on_shared, request_on_shared_with_composite_operation,
 };
 
@@ -126,7 +126,7 @@ impl ChunkedWriteCleanupGuard {
                 normal_operation,
             )
             .await
-            .map(|_| ())
+            .and_then(validate_cleanup_result)
         } else {
             Ok(())
         };
@@ -135,6 +135,18 @@ impl ChunkedWriteCleanupGuard {
         }
         result
     }
+}
+
+fn validate_cleanup_result(result: ExecResult) -> io::Result<()> {
+    if result.exit_code == 0 {
+        return Ok(());
+    }
+
+    Err(io::Error::other(format!(
+        "cleanup command failed with exit code {}: {}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stderr)
+    )))
 }
 
 impl Drop for ChunkedWriteCleanupGuard {

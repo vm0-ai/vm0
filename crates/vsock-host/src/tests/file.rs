@@ -1404,6 +1404,71 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(false, "disk full");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    send_exec_result(
+        &mut guest,
+        cleanup.seq,
+        ExecTermination::Exited { exit_code: 1 },
+        &[],
+        b"permission denied",
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+        .await
+        .expect("cleanup retry was not sent after nonzero cleanup exit");
+    assert_eq!(retry.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert!(decoded.command.contains("rm -f --"));
+    send_exec_result(
+        &mut guest,
+        retry.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn test_write_file_at_chunk_limit_uses_single_message() {
     let (host_stream, mut guest) = make_pair();
 
