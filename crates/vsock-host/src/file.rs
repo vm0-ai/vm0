@@ -81,6 +81,14 @@ impl CopyFileToTempError {
         }
     }
 
+    fn from_exec_wait(error: io::Error) -> Self {
+        if file_operation_error_is_terminal(&error) {
+            Self::terminal(error)
+        } else {
+            Self::unproven(error)
+        }
+    }
+
     fn after_cancel(error: io::Error, cancel_result: io::Result<ExecOperationResult>) -> Self {
         Self {
             error,
@@ -612,7 +620,7 @@ impl VsockHost {
         let result = handle
             .wait(Duration::from_secs(5))
             .await
-            .map_err(CopyFileToTempError::unproven)?;
+            .map_err(CopyFileToTempError::from_exec_wait)?;
         if let Some(cancel_on_drop) = &mut cancel_on_drop {
             cancel_on_drop.disarm();
         }
@@ -719,7 +727,11 @@ impl VsockHost {
             }
             Err(e) => {
                 // Connection likely broken — short timeout to avoid blocking.
-                let _ = cleanup_guard.cleanup_now(&mut normal_operation).await;
+                let terminal_error = file_operation_error_is_terminal(&e);
+                let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
+                if terminal_error && cleanup_result.is_ok() {
+                    normal_operation.complete()?;
+                }
                 Err(e)
             }
         }

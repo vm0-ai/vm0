@@ -491,6 +491,70 @@ async fn copy_file_stream_error_releases_tracker_when_cancel_sees_terminal_resul
 }
 
 #[tokio::test]
+async fn copy_file_error_response_releases_tracker_after_temp_cleanup() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "vsock-host-copy-error-response-{}-{unique}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let host_path = dir.join("system.log");
+    std::fs::write(&host_path, b"old host log").unwrap();
+    let copy_path = host_path.clone();
+
+    let copy_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.copy_file(
+                "/tmp/vm0-system-run.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
+        })
+    };
+
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let payload = vsock_proto::encode_error("guest copy failed");
+    guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, msg.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let err = copy_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest copy failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_eq!(std::fs::read(&host_path).unwrap(), b"old host log");
+    assert!(
+        std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("vm0tmp")),
+        "failed copy temp file should be removed"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn copy_file_terminal_result_before_connection_close_keeps_tracker_closed_not_not_parkable() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -1335,6 +1399,122 @@ async fn write_file_chunked_failure_remains_busy_until_cleanup_result() {
 
     let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("disk full"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_chunked_error_response_cleans_up_and_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_error("guest write failed");
+    guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    send_exec_result(
+        &mut guest,
+        cleanup.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest write failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_chunked_rename_error_response_cleans_up_and_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let rename = read_guest_message(&mut guest).await;
+    assert_eq!(rename.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
+    assert_eq!(decoded.label, "write-file-rename");
+    let payload = vsock_proto::encode_error("rename unavailable");
+    guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, rename.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    send_exec_result(
+        &mut guest,
+        cleanup.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("rename unavailable"));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
