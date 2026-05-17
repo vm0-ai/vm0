@@ -179,6 +179,7 @@ import { resendHandler } from "./providers/resend-handler";
 import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
+import { spongeHandler } from "./providers/sponge-handler";
 import { spotifyHandler } from "./providers/spotify-handler";
 import { workosHandler } from "./providers/workos-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
@@ -368,6 +369,7 @@ export const PROVIDER_HANDLERS: Record<
   revenuecat: revenuecatHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
+  sponge: spongeHandler,
   spotify: spotifyHandler,
   workos: workosHandler,
   wrike: wrikeHandler,

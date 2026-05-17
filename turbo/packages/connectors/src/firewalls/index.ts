@@ -181,6 +181,7 @@ import { shortioFirewall } from "./shortio.generated";
 import { stabilityAiFirewall } from "./stability-ai.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
+import { spongeFirewall } from "./sponge.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { strapiFirewall } from "./strapi.generated";
@@ -390,6 +391,7 @@ const CONNECTOR_FIREWALLS = {
   similarweb: similarwebFirewall,
   slack: slackFirewall,
   "slack-webhook": slackWebhookFirewall,
+  sponge: spongeFirewall,
   spotify: spotifyFirewall,
   strava: stravaFirewall,
   strapi: strapiFirewall,
