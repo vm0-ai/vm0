@@ -194,6 +194,13 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the queue position rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/queue-position")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/queue-position/extra")).toBe(
+      false,
+    );
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),
