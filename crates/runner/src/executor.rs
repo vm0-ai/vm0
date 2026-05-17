@@ -47,7 +47,10 @@ const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_env::RUNNER_CONCURRENCY_FACTOR_ENV;
+use crate::host_env::{
+    RUNNER_CONCURRENCY_FACTOR_ENV, RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV, RUNNER_DISK_IOPS_ENV,
+    RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
+};
 use crate::http::HttpClient;
 use crate::idle_pool::ReusableIdleSandbox;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -1654,6 +1657,10 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_SECRET_VALUES",
     "VM0_FEATURE_FLAGS",
     RUNNER_CONCURRENCY_FACTOR_ENV,
+    RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
+    RUNNER_DISK_IOPS_ENV,
+    RUNNER_NET_RX_MIB_PER_SEC_ENV,
+    RUNNER_NET_TX_MIB_PER_SEC_ENV,
     "USE_MOCK_CLAUDE",
     "USE_MOCK_CODEX",
     "VM0_MOCK_CLAUDE_PATH",
@@ -1992,6 +1999,10 @@ mod tests {
             ("VM0_API_TOKEN".into(), "stolen".into()),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
+            (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
+            (RUNNER_DISK_IOPS_ENV.into(), "999".into()),
+            (RUNNER_NET_RX_MIB_PER_SEC_ENV.into(), "999".into()),
+            (RUNNER_NET_TX_MIB_PER_SEC_ENV.into(), "999".into()),
             ("CLI_AGENT_TYPE".into(), "claude-code".into()),
             ("USE_MOCK_CLAUDE".into(), "true".into()),
             ("USE_MOCK_CODEX".into(), "1".into()),
@@ -2011,6 +2022,10 @@ mod tests {
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
         assert!(!env.contains_key(RUNNER_CONCURRENCY_FACTOR_ENV));
+        assert!(!env.contains_key(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
+        assert!(!env.contains_key(RUNNER_DISK_IOPS_ENV));
+        assert!(!env.contains_key(RUNNER_NET_RX_MIB_PER_SEC_ENV));
+        assert!(!env.contains_key(RUNNER_NET_TX_MIB_PER_SEC_ENV));
         assert!(!env.contains_key("USE_MOCK_CLAUDE"));
         assert!(!env.contains_key("USE_MOCK_CODEX"));
         assert!(!env.contains_key("VERCEL_PROTECTION_BYPASS"));

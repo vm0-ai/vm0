@@ -1957,8 +1957,8 @@ async fn run_with_firecracker(
     tokio::try_join!(
         client.configure_machine(config.vcpu_count, config.memory_mb),
         client.configure_boot_source(&kernel_path, &inv.boot_args),
-        client.configure_drive("rootfs", &drive_bind_str, true, false),
-        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name),
+        client.configure_drive("rootfs", &drive_bind_str, true, false, None),
+        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
         client.configure_vsock(inv.guest_cid, &vsock_uds_str),
         client.configure_balloon(
             inv.balloon.amount_mib,

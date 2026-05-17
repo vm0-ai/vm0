@@ -522,6 +522,7 @@ mod tests {
             proxy_port: None,
             dns_port: None,
             snapshot: None,
+            device_rate_limits: None,
         }
     }
 

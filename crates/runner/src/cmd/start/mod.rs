@@ -365,6 +365,30 @@ pub async fn run_start(
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
     );
+    let io_limit_resolution =
+        crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget)?;
+    let device_rate_limits = io_limit_resolution.device_rate_limits();
+    match &io_limit_resolution {
+        crate::io_limits::IoLimitResolution::Disabled => {
+            info!("I/O limiters disabled");
+        }
+        crate::io_limits::IoLimitResolution::Misconfigured { reason } => {
+            warn!(%reason, "I/O limiter host env config invalid; disabling I/O limiters");
+        }
+        crate::io_limits::IoLimitResolution::Enabled {
+            limits,
+            denominator,
+        } => {
+            info!(
+                denominator,
+                disk_bandwidth_bytes_per_sec = limits.block.bandwidth_bytes_per_sec,
+                disk_ops_per_sec = limits.block.ops_per_sec,
+                net_rx_bytes_per_sec = limits.network.rx_bytes_per_sec,
+                net_tx_bytes_per_sec = limits.network.tx_bytes_per_sec,
+                "I/O limiters enabled"
+            );
+        }
+    }
 
     // Idle sandbox pool for VM reuse across conversation turns.
     let parking_gate = ParkingGate::new_open();
@@ -463,6 +487,7 @@ pub async fn run_start(
         runtime,
         home,
         budget,
+        device_rate_limits,
         idle_pool,
         parking_gate,
         status,
@@ -498,6 +523,7 @@ struct RunConfig {
     runtime: Box<dyn SandboxRuntime>,
     home: HomePaths,
     budget: Arc<ResourceBudget>,
+    device_rate_limits: Option<sandbox::DeviceRateLimits>,
     idle_pool: SharedIdlePool,
     parking_gate: ParkingGate,
     status: Arc<StatusTracker>,
@@ -803,6 +829,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut runtime,
         home,
         budget,
+        device_rate_limits,
         idle_pool,
         parking_gate,
         status,
@@ -827,8 +854,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         test_observer,
     } = config;
 
-    let mut factories =
-        start_factories(&profiles, &firecracker, &base_dir, &home, runtime.as_mut()).await?;
+    let mut factories = start_factories(
+        &profiles,
+        &firecracker,
+        &base_dir,
+        &home,
+        runtime.as_mut(),
+        device_rate_limits,
+    )
+    .await?;
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight

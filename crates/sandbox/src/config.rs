@@ -54,11 +54,45 @@ impl From<uuid::Uuid> for SandboxId {
 ///
 /// Providers use these values when creating a sandbox. The exact enforcement
 /// mechanism is provider-specific, but the units are shared across providers.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResourceLimits {
     /// Requested number of guest vCPUs.
     pub cpu_count: u32,
     /// Requested guest memory in MiB.
     pub memory_mb: u32,
+}
+
+/// Provider-neutral block device I/O limits for one sandbox instance.
+///
+/// Rates are positive when a limiter is enabled. Use `None` at the factory
+/// level to disable device limiting; do not encode disabled limiters as zeros.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockRateLimits {
+    /// Sustained block-device bandwidth in bytes per second.
+    pub bandwidth_bytes_per_sec: u64,
+    /// Sustained block-device operations per second.
+    pub ops_per_sec: u64,
+}
+
+/// Provider-neutral network I/O limits for one sandbox instance.
+///
+/// Rates are positive when a limiter is enabled. Use `None` at the factory
+/// level to disable device limiting; do not encode disabled limiters as zeros.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetworkRateLimits {
+    /// Sustained receive bandwidth in bytes per second.
+    pub rx_bytes_per_sec: u64,
+    /// Sustained transmit bandwidth in bytes per second.
+    pub tx_bytes_per_sec: u64,
+}
+
+/// Provider-neutral device I/O limits for one sandbox instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceRateLimits {
+    /// Block-device rate limits.
+    pub block: BlockRateLimits,
+    /// Network-interface rate limits.
+    pub network: NetworkRateLimits,
 }
 
 /// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].
@@ -98,6 +132,8 @@ pub struct FactoryConfig {
     pub base_dir: PathBuf,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore.
     pub snapshot: Option<SnapshotRef>,
+    /// Optional provider-neutral I/O limits to apply to every sandbox created by this factory.
+    pub device_rate_limits: Option<DeviceRateLimits>,
 }
 
 /// Runtime-wide configuration used to initialize shared backend resources.

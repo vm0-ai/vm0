@@ -161,6 +161,23 @@ sandbox:
   max_concurrent: 1
 ```
 
+**Host-local runner overrides**:
+- Host-specific capacity belongs in `/etc/vm0-runner/host.env`, not
+  `runner.yaml`. The file is parsed with an allowlist so accidental secrets or
+  unrelated environment values fail visibly.
+- `VM0_RUNNER_CONCURRENCY_FACTOR` can override the YAML concurrency factor.
+- Firecracker I/O limiters are disabled unless all four capacity values are
+  present: `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` (MiB/s),
+  `VM0_RUNNER_DISK_IOPS` (positive integer IOPS),
+  `VM0_RUNNER_NET_RX_MIB_PER_SEC` (MiB/s), and
+  `VM0_RUNNER_NET_TX_MIB_PER_SEC` (MiB/s).
+- If only some I/O values are present, or any I/O value is invalid, the runner
+  logs a warning and disables all I/O limiters. Valid I/O capacity keeps a fixed
+  20% host reserve and splits the remainder evenly across admitted sandboxes.
+- I/O capacity is resolved per runner process. If multiple runner services share
+  one host, split the host capacity across those services in their host env
+  values; the runner does not coordinate I/O budgets across processes.
+
 #### Storage Architecture
 
 **Shared Read-Only Base**:

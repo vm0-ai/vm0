@@ -485,6 +485,7 @@ mod tests {
             rootfs_path: PathBuf::from("/rootfs.ext4"),
             base_dir: PathBuf::from("/tmp/vm0-test"),
             snapshot: None,
+            device_rate_limits: None,
         }
     }
 }

@@ -60,6 +60,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
             rootfs_path: PathBuf::new(),
             base_dir: PathBuf::new(),
             snapshot: None,
+            device_rate_limits: None,
         })
         .await
         .expect("create factory");

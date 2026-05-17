@@ -7,6 +7,8 @@ use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
+use crate::config::RateLimiterConfig;
+
 /// Error from Firecracker API calls.
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -127,8 +129,13 @@ impl<'a> ApiClient<'a> {
         }
     }
 
-    /// Load a snapshot and resume the VM via PUT /snapshot/load.
-    pub async fn load_snapshot(&self, snapshot_path: &str, mem_path: &str) -> Result<(), ApiError> {
+    /// Load a snapshot via PUT /snapshot/load.
+    pub async fn load_snapshot(
+        &self,
+        snapshot_path: &str,
+        mem_path: &str,
+        resume_vm: bool,
+    ) -> Result<(), ApiError> {
         self.send_json(
             "PUT",
             "/snapshot/load",
@@ -138,7 +145,7 @@ impl<'a> ApiClient<'a> {
                     "backend_type": "File",
                     "backend_path": mem_path,
                 },
-                "resume_vm": true,
+                "resume_vm": resume_vm,
             }),
             REQUEST_TIMEOUT,
         )
@@ -239,16 +246,47 @@ impl<'a> ApiClient<'a> {
         path_on_host: &str,
         is_root_device: bool,
         is_read_only: bool,
+        rate_limiter: Option<&RateLimiterConfig>,
     ) -> Result<(), ApiError> {
         let path = format!("/drives/{drive_id}");
+        let mut body = serde_json::Map::from_iter([
+            ("drive_id".to_string(), serde_json::json!(drive_id)),
+            ("path_on_host".to_string(), serde_json::json!(path_on_host)),
+            (
+                "is_root_device".to_string(),
+                serde_json::json!(is_root_device),
+            ),
+            ("is_read_only".to_string(), serde_json::json!(is_read_only)),
+        ]);
+        if let Some(rate_limiter) = rate_limiter {
+            body.insert(
+                "rate_limiter".to_string(),
+                serde_json::to_value(rate_limiter)
+                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
+            );
+        }
         self.send_json(
             "PUT",
             &path,
+            &serde_json::Value::Object(body),
+            REQUEST_TIMEOUT,
+        )
+        .await
+    }
+
+    /// Update a drive rate limiter via PATCH /drives/{drive_id}.
+    pub async fn patch_drive_rate_limiter(
+        &self,
+        drive_id: &str,
+        rate_limiter: &RateLimiterConfig,
+    ) -> Result<(), ApiError> {
+        let path = format!("/drives/{drive_id}");
+        self.send_json(
+            "PATCH",
+            &path,
             &serde_json::json!({
                 "drive_id": drive_id,
-                "path_on_host": path_on_host,
-                "is_root_device": is_root_device,
-                "is_read_only": is_read_only,
+                "rate_limiter": rate_limiter,
             }),
             REQUEST_TIMEOUT,
         )
@@ -261,15 +299,56 @@ impl<'a> ApiClient<'a> {
         iface_id: &str,
         guest_mac: &str,
         host_dev_name: &str,
+        rx_rate_limiter: Option<&RateLimiterConfig>,
+        tx_rate_limiter: Option<&RateLimiterConfig>,
     ) -> Result<(), ApiError> {
         let path = format!("/network-interfaces/{iface_id}");
+        let mut body = serde_json::Map::from_iter([
+            ("iface_id".to_string(), serde_json::json!(iface_id)),
+            ("guest_mac".to_string(), serde_json::json!(guest_mac)),
+            (
+                "host_dev_name".to_string(),
+                serde_json::json!(host_dev_name),
+            ),
+        ]);
+        if let Some(rx_rate_limiter) = rx_rate_limiter {
+            body.insert(
+                "rx_rate_limiter".to_string(),
+                serde_json::to_value(rx_rate_limiter)
+                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
+            );
+        }
+        if let Some(tx_rate_limiter) = tx_rate_limiter {
+            body.insert(
+                "tx_rate_limiter".to_string(),
+                serde_json::to_value(tx_rate_limiter)
+                    .map_err(|e| ApiError::Other(format!("json: {e}")))?,
+            );
+        }
         self.send_json(
             "PUT",
             &path,
+            &serde_json::Value::Object(body),
+            REQUEST_TIMEOUT,
+        )
+        .await
+    }
+
+    /// Update network interface rate limiters via PATCH /network-interfaces/{iface_id}.
+    pub async fn patch_network_rate_limiters(
+        &self,
+        iface_id: &str,
+        rx_rate_limiter: &RateLimiterConfig,
+        tx_rate_limiter: &RateLimiterConfig,
+    ) -> Result<(), ApiError> {
+        let path = format!("/network-interfaces/{iface_id}");
+        self.send_json(
+            "PATCH",
+            &path,
             &serde_json::json!({
                 "iface_id": iface_id,
-                "guest_mac": guest_mac,
-                "host_dev_name": host_dev_name,
+                "rx_rate_limiter": rx_rate_limiter,
+                "tx_rate_limiter": tx_rate_limiter,
             }),
             REQUEST_TIMEOUT,
         )
@@ -873,6 +952,16 @@ mod tests {
         })
     }
 
+    fn test_rate_limiter(size: u64) -> RateLimiterConfig {
+        RateLimiterConfig {
+            bandwidth: Some(crate::config::TokenBucketConfig {
+                size,
+                refill_time: crate::config::RATE_LIMITER_REFILL_TIME_MS,
+            }),
+            ops: None,
+        }
+    }
+
     async fn run_with_split_response<T, Fut>(
         response: MockResponse,
         call: impl FnOnce(PathBuf) -> Fut,
@@ -1022,7 +1111,9 @@ mod tests {
         let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
-        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
+        let result = client
+            .load_snapshot("/snap/state", "/snap/memory", true)
+            .await;
         assert!(result.is_ok());
 
         let request = api.next_request().await;
@@ -1032,6 +1123,22 @@ mod tests {
         assert_eq!(body["mem_backend"]["backend_type"], "File");
         assert_eq!(body["mem_backend"]["backend_path"], "/snap/memory");
         assert_eq!(body["resume_vm"], true);
+    }
+
+    #[tokio::test]
+    async fn load_snapshot_can_leave_vm_paused() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let result = client
+            .load_snapshot("/snap/state", "/snap/memory", false)
+            .await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/snapshot/load");
+        let body = request_body_json(&request);
+        assert_eq!(body["resume_vm"], false);
     }
 
     #[tokio::test]
@@ -1077,7 +1184,9 @@ mod tests {
         )]);
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
-        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
+        let result = client
+            .load_snapshot("/snap/state", "/snap/memory", true)
+            .await;
         let ApiError::Http { status, body } = result.unwrap_err() else {
             panic!("expected Http error");
         };
@@ -1095,7 +1204,9 @@ mod tests {
             MockFirecrackerApi::with_responses([MockResponse::bad_request_fault(fault_message)]);
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
-        let result = client.load_snapshot("/snap/state", "/snap/memory").await;
+        let result = client
+            .load_snapshot("/snap/state", "/snap/memory", true)
+            .await;
         let ApiError::Http { status, body } = result.unwrap_err() else {
             panic!("expected Http error");
         };
@@ -1205,7 +1316,7 @@ mod tests {
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client
-            .configure_drive("rootfs", "/path/to/rootfs", true, true)
+            .configure_drive("rootfs", "/path/to/rootfs", true, true, None)
             .await;
         assert!(result.is_ok());
 
@@ -1216,6 +1327,56 @@ mod tests {
         assert_eq!(body["path_on_host"], "/path/to/rootfs");
         assert_eq!(body["is_root_device"], true);
         assert_eq!(body["is_read_only"], true);
+        assert!(body.get("rate_limiter").is_none());
+    }
+
+    #[tokio::test]
+    async fn configure_drive_with_rate_limiter_serializes_limiter() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let limiter = RateLimiterConfig {
+            bandwidth: Some(crate::config::TokenBucketConfig {
+                size: 1024,
+                refill_time: 100,
+            }),
+            ops: Some(crate::config::TokenBucketConfig {
+                size: 10,
+                refill_time: 100,
+            }),
+        };
+        let result = client
+            .configure_drive("rootfs", "/path/to/rootfs", true, true, Some(&limiter))
+            .await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/drives/rootfs");
+        let body = request_body_json(&request);
+        assert_eq!(body["drive_id"], "rootfs");
+        assert_eq!(body["path_on_host"], "/path/to/rootfs");
+        assert_eq!(body["is_root_device"], true);
+        assert_eq!(body["is_read_only"], true);
+        assert_eq!(body["rate_limiter"]["bandwidth"]["size"], 1024);
+        assert_eq!(body["rate_limiter"]["bandwidth"]["refill_time"], 100);
+        assert_eq!(body["rate_limiter"]["ops"]["size"], 10);
+    }
+
+    #[tokio::test]
+    async fn patch_drive_rate_limiter_serializes_partial_drive() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let limiter = test_rate_limiter(2048);
+
+        let result = client.patch_drive_rate_limiter("rootfs", &limiter).await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/drives/rootfs");
+        let body = request_body_json(&request);
+        assert_eq!(body["drive_id"], "rootfs");
+        assert_eq!(body["rate_limiter"]["bandwidth"]["size"], 2048);
     }
 
     #[tokio::test]
@@ -1224,7 +1385,7 @@ mod tests {
         let sock_path = api.socket_path().to_path_buf();
         let client = ApiClient::new(&sock_path);
         let result = client
-            .configure_network_interface("eth0", "02:00:00:00:00:01", "vm0-tap")
+            .configure_network_interface("eth0", "02:00:00:00:00:01", "vm0-tap", None, None)
             .await;
         assert!(result.is_ok());
 
@@ -1234,6 +1395,55 @@ mod tests {
         assert_eq!(body["iface_id"], "eth0");
         assert_eq!(body["guest_mac"], "02:00:00:00:00:01");
         assert_eq!(body["host_dev_name"], "vm0-tap");
+        assert!(body.get("rx_rate_limiter").is_none());
+        assert!(body.get("tx_rate_limiter").is_none());
+    }
+
+    #[tokio::test]
+    async fn configure_network_interface_with_rate_limiters_serializes_limiters() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let rx = test_rate_limiter(4096);
+        let tx = test_rate_limiter(8192);
+        let result = client
+            .configure_network_interface(
+                "eth0",
+                "02:00:00:00:00:01",
+                "vm0-tap",
+                Some(&rx),
+                Some(&tx),
+            )
+            .await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PUT", "/network-interfaces/eth0");
+        let body = request_body_json(&request);
+        assert_eq!(body["iface_id"], "eth0");
+        assert_eq!(body["guest_mac"], "02:00:00:00:00:01");
+        assert_eq!(body["host_dev_name"], "vm0-tap");
+        assert_eq!(body["rx_rate_limiter"]["bandwidth"]["size"], 4096);
+        assert_eq!(body["tx_rate_limiter"]["bandwidth"]["size"], 8192);
+    }
+
+    #[tokio::test]
+    async fn patch_network_rate_limiters_serializes_partial_network_interface() {
+        let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
+        let sock_path = api.socket_path().to_path_buf();
+        let client = ApiClient::new(&sock_path);
+        let rx = test_rate_limiter(4096);
+        let tx = test_rate_limiter(8192);
+
+        let result = client.patch_network_rate_limiters("eth0", &rx, &tx).await;
+        assert!(result.is_ok());
+
+        let request = api.next_request().await;
+        assert_request(&request, "PATCH", "/network-interfaces/eth0");
+        let body = request_body_json(&request);
+        assert_eq!(body["iface_id"], "eth0");
+        assert_eq!(body["rx_rate_limiter"]["bandwidth"]["size"], 4096);
+        assert_eq!(body["tx_rate_limiter"]["bandwidth"]["size"], 8192);
     }
 
     #[tokio::test]
@@ -1328,7 +1538,9 @@ mod tests {
             MockResponse::bad_request_fault(fault_message),
             |sock_path| async move {
                 let client = ApiClient::new(&sock_path);
-                client.load_snapshot("/snap/state", "/snap/memory").await
+                client
+                    .load_snapshot("/snap/state", "/snap/memory", true)
+                    .await
             },
         )
         .await;

@@ -13,6 +13,7 @@ mod http;
 mod idle_pool;
 mod ids;
 mod image_hash;
+mod io_limits;
 mod kmsg_log;
 mod lock;
 mod network_log_drain;

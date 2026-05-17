@@ -25,7 +25,7 @@ use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
 use crate::balloon;
-use crate::config::FirecrackerConfig;
+use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::control;
 use crate::factory::InvariantConfig;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
@@ -57,6 +57,108 @@ const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Positional args are documented at the spawn site.
 const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
 const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
+
+async fn load_snapshot_and_apply_rate_limits(
+    client: &ApiClient<'_>,
+    snapshot_path: &str,
+    memory_path: &str,
+    rate_limits: Option<&FirecrackerDeviceRateLimits>,
+) -> sandbox::Result<()> {
+    // Keep the default restore path unchanged. Only hold the VM paused
+    // when rate limiters must be patched before guest execution resumes.
+    client
+        .load_snapshot(snapshot_path, memory_path, rate_limits.is_none())
+        .await
+        .map_err(|e| SandboxError::Start {
+            message: format!("snapshot load failed: {e}"),
+        })?;
+    if let Some(rate_limits) = rate_limits {
+        client
+            .patch_drive_rate_limiter("rootfs", &rate_limits.drive)
+            .await
+            .map_err(|e| SandboxError::Start {
+                message: format!("snapshot drive rate limiter patch failed: {e}"),
+            })?;
+        let inv = InvariantConfig::new();
+        client
+            .patch_network_rate_limiters(inv.iface_id, &rate_limits.net_rx, &rate_limits.net_tx)
+            .await
+            .map_err(|e| SandboxError::Start {
+                message: format!("snapshot network rate limiter patch failed: {e}"),
+            })?;
+        client.resume().await.map_err(|e| SandboxError::Start {
+            message: format!("snapshot resume failed: {e}"),
+        })?;
+    }
+
+    Ok(())
+}
+
+fn build_firecracker_config(
+    resources: &sandbox::ResourceLimits,
+    kernel_path: String,
+    cow_device_path: String,
+    vsock_path: String,
+    device_rate_limits: Option<&FirecrackerDeviceRateLimits>,
+) -> sandbox::Result<serde_json::Value> {
+    let inv = InvariantConfig::new();
+    let mut drive = serde_json::Map::from_iter([
+        ("drive_id".to_string(), serde_json::json!("rootfs")),
+        (
+            "path_on_host".to_string(),
+            serde_json::json!(cow_device_path),
+        ),
+        ("is_root_device".to_string(), serde_json::json!(true)),
+        ("is_read_only".to_string(), serde_json::json!(false)),
+    ]);
+    let mut network_interface = serde_json::Map::from_iter([
+        ("iface_id".to_string(), serde_json::json!(inv.iface_id)),
+        ("guest_mac".to_string(), serde_json::json!(inv.guest_mac)),
+        ("host_dev_name".to_string(), serde_json::json!(inv.tap_name)),
+    ]);
+    if let Some(rate_limits) = device_rate_limits {
+        drive.insert(
+            "rate_limiter".to_string(),
+            serde_json::to_value(&rate_limits.drive).map_err(|e| SandboxError::Start {
+                message: format!("serialize drive rate limiter: {e}"),
+            })?,
+        );
+        network_interface.insert(
+            "rx_rate_limiter".to_string(),
+            serde_json::to_value(&rate_limits.net_rx).map_err(|e| SandboxError::Start {
+                message: format!("serialize network rx rate limiter: {e}"),
+            })?,
+        );
+        network_interface.insert(
+            "tx_rate_limiter".to_string(),
+            serde_json::to_value(&rate_limits.net_tx).map_err(|e| SandboxError::Start {
+                message: format!("serialize network tx rate limiter: {e}"),
+            })?,
+        );
+    }
+
+    Ok(serde_json::json!({
+        "boot-source": {
+            "kernel_image_path": kernel_path,
+            "boot_args": inv.boot_args,
+        },
+        "drives": [serde_json::Value::Object(drive)],
+        "machine-config": {
+            "vcpu_count": resources.cpu_count,
+            "mem_size_mib": resources.memory_mb,
+        },
+        "network-interfaces": [serde_json::Value::Object(network_interface)],
+        "vsock": {
+            "guest_cid": inv.guest_cid,
+            "uds_path": vsock_path,
+        },
+        "balloon": {
+            "amount_mib": inv.balloon.amount_mib,
+            "deflate_on_oom": inv.balloon.deflate_on_oom,
+            "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
+        },
+    }))
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -830,45 +932,17 @@ impl FirecrackerSandbox {
 
     /// Build the Firecracker JSON configuration for fresh boot.
     fn build_config(&self) -> sandbox::Result<serde_json::Value> {
-        let inv = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        Ok(serde_json::json!({
-            "boot-source": {
-                "kernel_image_path": kernel_path,
-                "boot_args": inv.boot_args,
-            },
-            "drives": [
-                {
-                    "drive_id": "rootfs",
-                    "path_on_host": cow_device_path,
-                    "is_root_device": true,
-                    "is_read_only": false,
-                },
-            ],
-            "machine-config": {
-                "vcpu_count": self.config.resources.cpu_count,
-                "mem_size_mib": self.config.resources.memory_mb,
-            },
-            "network-interfaces": [
-                {
-                    "iface_id": inv.iface_id,
-                    "guest_mac": inv.guest_mac,
-                    "host_dev_name": inv.tap_name,
-                },
-            ],
-            "vsock": {
-                "guest_cid": inv.guest_cid,
-                "uds_path": vsock_path,
-            },
-            "balloon": {
-                "amount_mib": inv.balloon.amount_mib,
-                "deflate_on_oom": inv.balloon.deflate_on_oom,
-                "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
-            },
-        }))
+        build_firecracker_config(
+            &self.config.resources,
+            kernel_path,
+            cow_device_path,
+            vsock_path,
+            self.factory_config.device_rate_limits.as_ref(),
+        )
     }
 
     /// Start using a fresh boot with `--config-file --api-sock`.
@@ -1059,15 +1133,15 @@ impl FirecrackerSandbox {
             }
         }
 
-        // Load snapshot and resume VM.
         let snapshot_str = snapshot.snapshot_path.display().to_string();
         let memory_str = snapshot.memory_path.display().to_string();
-        client
-            .load_snapshot(&snapshot_str, &memory_str)
-            .await
-            .map_err(|e| SandboxError::Start {
-                message: format!("snapshot load failed: {e}"),
-            })?;
+        load_snapshot_and_apply_rate_limits(
+            &client,
+            &snapshot_str,
+            &memory_str,
+            self.factory_config.device_rate_limits.as_ref(),
+        )
+        .await?;
 
         info!(id = %self.id, "snapshot loaded and resumed");
         Ok(())
@@ -2626,6 +2700,7 @@ async fn unpark_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{RateLimiterConfig, TokenBucketConfig};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;
     use tokio::time::Instant;
@@ -2972,6 +3047,99 @@ mod tests {
             std::future::pending::<()>().await;
         });
         (handle, started_rx, dropped_rx)
+    }
+
+    fn test_resources() -> sandbox::ResourceLimits {
+        sandbox::ResourceLimits {
+            cpu_count: 2,
+            memory_mb: 4096,
+        }
+    }
+
+    fn test_rate_limits() -> FirecrackerDeviceRateLimits {
+        FirecrackerDeviceRateLimits {
+            drive: RateLimiterConfig {
+                bandwidth: Some(TokenBucketConfig {
+                    size: 1024,
+                    refill_time: 100,
+                }),
+                ops: Some(TokenBucketConfig {
+                    size: 10,
+                    refill_time: 100,
+                }),
+            },
+            net_rx: RateLimiterConfig {
+                bandwidth: Some(TokenBucketConfig {
+                    size: 2048,
+                    refill_time: 100,
+                }),
+                ops: None,
+            },
+            net_tx: RateLimiterConfig {
+                bandwidth: Some(TokenBucketConfig {
+                    size: 4096,
+                    refill_time: 100,
+                }),
+                ops: None,
+            },
+        }
+    }
+
+    #[test]
+    fn fresh_boot_config_omits_rate_limiters_when_disabled() {
+        let config = build_firecracker_config(
+            &test_resources(),
+            "/kernel".to_string(),
+            "/dev/nbd0".to_string(),
+            "/run/vsock.sock".to_string(),
+            None,
+        )
+        .unwrap();
+
+        assert!(config["drives"][0].get("rate_limiter").is_none());
+        assert!(
+            config["network-interfaces"][0]
+                .get("rx_rate_limiter")
+                .is_none()
+        );
+        assert!(
+            config["network-interfaces"][0]
+                .get("tx_rate_limiter")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn fresh_boot_config_includes_rate_limiters_when_enabled() {
+        let rate_limits = test_rate_limits();
+        let config = build_firecracker_config(
+            &test_resources(),
+            "/kernel".to_string(),
+            "/dev/nbd0".to_string(),
+            "/run/vsock.sock".to_string(),
+            Some(&rate_limits),
+        )
+        .unwrap();
+
+        assert_eq!(
+            config["drives"][0]["rate_limiter"],
+            serde_json::json!({
+                "bandwidth": { "size": 1024, "refill_time": 100 },
+                "ops": { "size": 10, "refill_time": 100 },
+            })
+        );
+        assert_eq!(
+            config["network-interfaces"][0]["rx_rate_limiter"],
+            serde_json::json!({
+                "bandwidth": { "size": 2048, "refill_time": 100 },
+            })
+        );
+        assert_eq!(
+            config["network-interfaces"][0]["tx_rate_limiter"],
+            serde_json::json!({
+                "bandwidth": { "size": 4096, "refill_time": 100 },
+            })
+        );
     }
 
     fn stdout_eof_notifying_log_reader_for_test<R>(
@@ -5157,11 +5325,11 @@ mod tests {
         );
     }
 
-    // -- idle transition tests --
+    // -- Firecracker API-backed lifecycle tests --
     //
-    // These exercise `park_inner` / `unpark_inner` against a mock Firecracker
-    // API socket. We assert on:
-    //   1. the correct sequence of PATCH requests (method, path, body);
+    // These exercise snapshot restore and `park_inner` / `unpark_inner`
+    // against a mock Firecracker API socket. We assert on:
+    //   1. the correct sequence of HTTP requests (method, path, body);
     //   2. whether the reactive controller handle is present / absent;
     //   3. the is_parked flag state; and
     //   4. idempotency on repeat calls.
@@ -5282,6 +5450,131 @@ mod tests {
     /// polls from `wait_for_balloon` and the reactive balloon controller).
     fn patches(reqs: &[MockRequest]) -> Vec<&MockRequest> {
         reqs.iter().filter(|r| r.method == "PATCH").collect()
+    }
+
+    fn mock_request_body_json(request: &MockRequest) -> serde_json::Value {
+        serde_json::from_str(&request.body)
+            .unwrap_or_else(|error| panic!("invalid JSON body: {error}; request: {request:?}"))
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_with_limiters_loads_paused_patches_then_resumes() {
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 204, 204]), None).await;
+        let client = ApiClient::new(&sock);
+        let rate_limits = test_rate_limits();
+
+        load_snapshot_and_apply_rate_limits(
+            &client,
+            "/snap/state",
+            "/snap/memory",
+            Some(&rate_limits),
+        )
+        .await
+        .unwrap();
+
+        let reqs = reqs.lock().await;
+        assert_eq!(
+            reqs.len(),
+            4,
+            "expected load, drive patch, network patch, resume"
+        );
+        assert_eq!(reqs[0].method, "PUT");
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
+
+        assert_eq!(reqs[1].method, "PATCH");
+        assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert_eq!(
+            mock_request_body_json(&reqs[1])["rate_limiter"]["bandwidth"]["size"],
+            1024
+        );
+
+        assert_eq!(reqs[2].method, "PATCH");
+        assert_eq!(reqs[2].path, "/network-interfaces/eth0");
+        assert_eq!(
+            mock_request_body_json(&reqs[2])["rx_rate_limiter"]["bandwidth"]["size"],
+            2048
+        );
+        assert_eq!(
+            mock_request_body_json(&reqs[2])["tx_rate_limiter"]["bandwidth"]["size"],
+            4096
+        );
+
+        assert_eq!(reqs[3].method, "PATCH");
+        assert_eq!(reqs[3].path, "/vm");
+        assert!(reqs[3].body.contains("Resumed"));
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_without_limiters_loads_and_resumes_without_patching() {
+        let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
+        let client = ApiClient::new(&sock);
+
+        load_snapshot_and_apply_rate_limits(&client, "/snap/state", "/snap/memory", None)
+            .await
+            .unwrap();
+
+        let reqs = reqs.lock().await;
+        assert_eq!(reqs.len(), 1, "expected only snapshot load");
+        assert_eq!(reqs[0].method, "PUT");
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], true);
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_limiter_patch_failure_does_not_resume() {
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
+        let client = ApiClient::new(&sock);
+        let rate_limits = test_rate_limits();
+
+        let err = load_snapshot_and_apply_rate_limits(
+            &client,
+            "/snap/state",
+            "/snap/memory",
+            Some(&rate_limits),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("snapshot drive rate limiter patch failed"));
+        let reqs = reqs.lock().await;
+        assert_eq!(reqs.len(), 2, "resume must not be attempted");
+        assert_eq!(reqs[0].method, "PUT");
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
+        assert_eq!(reqs[1].method, "PATCH");
+        assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert!(reqs.iter().all(|request| request.path != "/vm"));
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_network_limiter_patch_failure_does_not_resume() {
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
+        let client = ApiClient::new(&sock);
+        let rate_limits = test_rate_limits();
+
+        let err = load_snapshot_and_apply_rate_limits(
+            &client,
+            "/snap/state",
+            "/snap/memory",
+            Some(&rate_limits),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("snapshot network rate limiter patch failed"));
+        let reqs = reqs.lock().await;
+        assert_eq!(reqs.len(), 3, "resume must not be attempted");
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
+        assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert_eq!(reqs[2].path, "/network-interfaces/eth0");
+        assert!(reqs.iter().all(|request| request.path != "/vm"));
     }
 
     fn test_balloon_controller() -> balloon::ControllerHandle {

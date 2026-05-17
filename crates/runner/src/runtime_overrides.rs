@@ -23,7 +23,7 @@ impl ConcurrencyFactorSource {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::RunnerYaml => RUNNER_YAML_SOURCE,
-            Self::HostEnv(source) => source.label(),
+            Self::HostEnv(source) => source.label_for(host_env::RUNNER_CONCURRENCY_FACTOR_ENV),
         }
     }
 }

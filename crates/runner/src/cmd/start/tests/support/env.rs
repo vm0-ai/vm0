@@ -185,6 +185,7 @@ fn build_mock_run_config_with_runtime(
             1.0,
             max_concurrent,
         )),
+        device_rate_limits: None,
         idle_pool: Arc::clone(&idle_pool),
         parking_gate: parking_gate.clone(),
         status: Arc::new(StatusTracker::new(

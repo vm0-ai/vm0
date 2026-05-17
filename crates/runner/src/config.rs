@@ -346,6 +346,7 @@ impl RunnerConfig {
             profile_name,
             profile,
             home,
+            None,
         )
     }
 
@@ -359,6 +360,7 @@ impl RunnerConfig {
         profile_name: &str,
         profile: &ProfileConfig,
         home: &HomePaths,
+        device_rate_limits: Option<sandbox::DeviceRateLimits>,
     ) -> sandbox::FactoryConfig {
         let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
         let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
@@ -372,6 +374,7 @@ impl RunnerConfig {
                 output_dir: snapshot_paths.dir().to_path_buf(),
                 hash: profile.snapshot_hash.clone(),
             }),
+            device_rate_limits,
         }
     }
 }

@@ -27,6 +27,7 @@ pub(super) async fn start_factories(
     base_dir: &Path,
     home: &HomePaths,
     runtime: &mut dyn SandboxRuntime,
+    device_rate_limits: Option<sandbox::DeviceRateLimits>,
 ) -> RunnerResult<BTreeMap<String, (SharedFactory, bool)>> {
     let mut factories: BTreeMap<String, (SharedFactory, bool)> = BTreeMap::new();
     for (profile_name, profile_config) in profiles {
@@ -36,6 +37,7 @@ pub(super) async fn start_factories(
             profile_name,
             profile_config,
             home,
+            device_rate_limits.clone(),
         );
         let restore_guest_state = factory_config.snapshot.is_some();
         let factory_result = runtime.create_factory(factory_config).await;
@@ -99,6 +101,7 @@ pub(super) async fn shutdown_factories(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use async_trait::async_trait;
@@ -107,6 +110,7 @@ mod tests {
     struct RecordingRuntime {
         create_calls: AtomicUsize,
         factory_shutdowns: Arc<AtomicUsize>,
+        factory_configs: Mutex<Vec<sandbox::FactoryConfig>>,
         runtime_shutdowns: AtomicUsize,
         fail_at: usize,
     }
@@ -116,6 +120,7 @@ mod tests {
             Self {
                 create_calls: AtomicUsize::new(0),
                 factory_shutdowns: Arc::new(AtomicUsize::new(0)),
+                factory_configs: Mutex::new(Vec::new()),
                 runtime_shutdowns: AtomicUsize::new(0),
                 fail_at,
             }
@@ -126,7 +131,7 @@ mod tests {
     impl SandboxRuntime for RecordingRuntime {
         async fn create_factory(
             &self,
-            _config: sandbox::FactoryConfig,
+            config: sandbox::FactoryConfig,
         ) -> sandbox::Result<Box<dyn SandboxFactory>> {
             let call = self.create_calls.fetch_add(1, Ordering::SeqCst) + 1;
             if call == self.fail_at {
@@ -135,6 +140,10 @@ mod tests {
                     message: "factory failed".into(),
                 });
             }
+            self.factory_configs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(config);
             Ok(Box::new(RecordingFactory {
                 shutdowns: Arc::clone(&self.factory_shutdowns),
             }))
@@ -183,6 +192,19 @@ mod tests {
         }
     }
 
+    fn device_rate_limits() -> sandbox::DeviceRateLimits {
+        sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+                ops_per_sec: 10_000,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 50 * 1024 * 1024,
+                tx_bytes_per_sec: 25 * 1024 * 1024,
+            },
+        }
+    }
+
     #[tokio::test]
     async fn start_factories_shuts_down_started_factories_after_create_error() {
         let temp = tempfile::tempdir().unwrap();
@@ -197,7 +219,15 @@ mod tests {
         profiles.insert("vm0/second".into(), profile("rootfs-2", "snapshot-2"));
         let mut runtime = RecordingRuntime::new(2);
 
-        let result = start_factories(&profiles, &firecracker, &base_dir, &home, &mut runtime).await;
+        let result = start_factories(
+            &profiles,
+            &firecracker,
+            &base_dir,
+            &home,
+            &mut runtime,
+            None,
+        )
+        .await;
 
         assert!(result.is_err());
         assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 2);
@@ -219,11 +249,62 @@ mod tests {
         profiles.insert("vm0/second".into(), profile("rootfs-2", "snapshot-2"));
         let mut runtime = RecordingRuntime::new(1);
 
-        let result = start_factories(&profiles, &firecracker, &base_dir, &home, &mut runtime).await;
+        let result = start_factories(
+            &profiles,
+            &firecracker,
+            &base_dir,
+            &home,
+            &mut runtime,
+            None,
+        )
+        .await;
 
         assert!(result.is_err());
         assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 1);
         assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 0);
+        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn start_factories_passes_device_rate_limits_to_each_profile_factory() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(temp.path().join("home"));
+        let base_dir = temp.path().join("base");
+        let firecracker = config::FirecrackerConfig {
+            binary: temp.path().join("firecracker"),
+            kernel: temp.path().join("vmlinux"),
+        };
+        let mut profiles = BTreeMap::new();
+        profiles.insert("vm0/first".into(), profile("rootfs-1", "snapshot-1"));
+        profiles.insert("vm0/second".into(), profile("rootfs-2", "snapshot-2"));
+        let mut runtime = RecordingRuntime::new(usize::MAX);
+        let limits = device_rate_limits();
+
+        let mut factories = start_factories(
+            &profiles,
+            &firecracker,
+            &base_dir,
+            &home,
+            &mut runtime,
+            Some(limits.clone()),
+        )
+        .await
+        .unwrap();
+
+        {
+            let configs = runtime
+                .factory_configs
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            assert_eq!(configs.len(), 2);
+            assert!(
+                configs
+                    .iter()
+                    .all(|config| config.device_rate_limits == Some(limits.clone()))
+            );
+        }
+        shutdown_factories(&mut factories, &mut runtime, None).await;
+        assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 2);
         assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
     }
 

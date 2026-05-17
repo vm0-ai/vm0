@@ -711,10 +711,44 @@ fn factory_config_resolves_paths() {
     let rootfs_paths = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
     assert_eq!(fc.rootfs_path, rootfs_paths.rootfs());
     assert_eq!(fc.profile, "vm0/default");
+    assert_eq!(fc.device_rate_limits, None);
     let snap = fc.snapshot.unwrap();
     assert_eq!(snap.hash, TEST_SNAPSHOT_HASH);
     let snapshot_paths = RootfsPaths::new(&home, TEST_ROOTFS_HASH).snapshot(TEST_SNAPSHOT_HASH);
     assert_eq!(snap.output_dir, snapshot_paths.dir().to_path_buf());
+}
+
+#[test]
+fn build_factory_config_preserves_device_rate_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = HomePaths::with_root(dir.path().to_path_buf());
+    let firecracker = FirecrackerConfig {
+        binary: dir.path().join("firecracker"),
+        kernel: dir.path().join("vmlinux"),
+    };
+    let profiles = make_profiles();
+    let profile = &profiles["vm0/default"];
+    let limits = sandbox::DeviceRateLimits {
+        block: sandbox::BlockRateLimits {
+            bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+            ops_per_sec: 10_000,
+        },
+        network: sandbox::NetworkRateLimits {
+            rx_bytes_per_sec: 50 * 1024 * 1024,
+            tx_bytes_per_sec: 25 * 1024 * 1024,
+        },
+    };
+
+    let fc = RunnerConfig::build_factory_config(
+        &firecracker,
+        dir.path(),
+        "vm0/default",
+        profile,
+        &home,
+        Some(limits.clone()),
+    );
+
+    assert_eq!(fc.device_rate_limits, Some(limits));
 }
 
 #[tokio::test]
