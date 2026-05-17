@@ -25,6 +25,7 @@ export const SEED_SKILLS: readonly string[] = [
   "kb-authoring",
   "legal-briefing",
   "legal-risk-scoring",
+  "local-agent",
   "marketing-analytics",
   "nda-screening",
   "period-close",
