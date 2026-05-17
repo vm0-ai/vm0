@@ -1394,6 +1394,65 @@ mod tests {
     }
 
     #[test]
+    fn expired_connected_control_request_is_not_delivered() {
+        let sink = Arc::new(ControlSinkState::new());
+        let (stream, mut peer) = UnixStream::pair().unwrap();
+        peer.set_nonblocking(true).unwrap();
+        sink.connect(stream);
+        let stream = match &*sink.inner.lock().unwrap_or_else(|e| e.into_inner()) {
+            ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
+            _ => panic!("sink should be connected"),
+        };
+        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let pending_slot = sink.reserve_pending_slot().unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+        let worker = std::thread::spawn({
+            let sink = Arc::clone(&sink);
+            move || {
+                forward_control_request(
+                    sink,
+                    pending_slot,
+                    OwnedProcessControlRequest {
+                        response_seq: 19,
+                        target_seq: 9,
+                        deadline: request_deadline(0),
+                        control_nonce: NONCE,
+                        message_id: "msg-expired-behind-lock".to_owned(),
+                        payload: b"payload".to_vec(),
+                    },
+                    GuestWriter::new(guest),
+                );
+            }
+        });
+
+        drop(stream_guard);
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        worker.join().unwrap();
+
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 19);
+        assert_eq!(status, ProcessControlStatus::SinkTimeout);
+        assert_eq!(message_id, "msg-expired-behind-lock");
+        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+        assert!(matches!(
+            *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),
+            ControlSinkInner::Connected(_)
+        ));
+
+        let err = process_control_ipc::read_request(&mut peer).unwrap_err();
+        assert!(matches!(
+            err.kind(),
+            io::ErrorKind::WouldBlock
+                | io::ErrorKind::UnexpectedEof
+                | io::ErrorKind::ConnectionReset
+        ));
+    }
+
+    #[test]
     fn close_interrupts_inflight_control_request() {
         let sink = Arc::new(ControlSinkState::new());
         let (stream, mut peer) = UnixStream::pair().unwrap();
