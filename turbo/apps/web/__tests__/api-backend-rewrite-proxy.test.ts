@@ -165,6 +165,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/logs")).toBe(false);
   });
 
+  it("matches the GitHub integration rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/integrations/github")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/integrations/github/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/integrations")).toBe(false);
+  });
+
   it("matches the usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/usage")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/usage/extra")).toBe(false);

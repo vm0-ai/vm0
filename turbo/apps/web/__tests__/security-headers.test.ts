@@ -41,6 +41,12 @@ const LOGS_SEARCH_NEXT_NEGATIVE_PATHS = [
   "/api/logs/search/extra",
   "/api/logs",
 ] as const;
+const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
+const INTEGRATIONS_GITHUB_PATH = "/api/integrations/github";
+const INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS = [
+  "/api/integrations/github/extra",
+  "/api/integrations",
+] as const;
 const USAGE_REWRITE_SOURCE = "/api/usage";
 const USAGE_PATH = "/api/usage";
 const USAGE_NEXT_NEGATIVE_PATHS = ["/api/usage/extra", "/api/usages"] as const;
@@ -311,6 +317,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/logs/search",
         },
         {
+          source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/integrations/github",
+        },
+        {
           source: USAGE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/usage",
         },
@@ -559,6 +569,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(LOGS_SEARCH_PATH)).toStrictEqual({});
     for (const pathname of LOGS_SEARCH_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact GitHub integration rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === INTEGRATIONS_GITHUB_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/integrations/github",
+    });
+
+    const matcher = getPathMatch(INTEGRATIONS_GITHUB_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(INTEGRATIONS_GITHUB_PATH)).toStrictEqual({});
+    for (const pathname of INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

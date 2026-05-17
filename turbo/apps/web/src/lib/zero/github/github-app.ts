@@ -134,41 +134,6 @@ export async function getInstallationInfo(
   };
 }
 
-/**
- * Delete (uninstall) a GitHub App installation.
- *
- * Uses the App JWT to authenticate. This removes the app from the
- * user/org on GitHub's side so reinstallation triggers a fresh callback.
- *
- * @see https://docs.github.com/en/rest/apps/installations#delete-an-installation-for-the-authenticated-app
- */
-export async function deleteInstallation(
-  appId: string,
-  privateKeyBase64: string,
-  installationId: string,
-): Promise<void> {
-  const safeId = validateInstallationId(installationId);
-  const jwt = createAppJWT(appId, privateKeyBase64);
-
-  const res = await fetch(
-    `https://api.github.com/app/installations/${safeId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    },
-  );
-
-  // 404 means already uninstalled — treat as success
-  if (!res.ok && res.status !== 404) {
-    const body = await res.text();
-    throw new Error(`Failed to delete installation: ${res.status} ${body}`);
-  }
-}
-
 interface AppInstallation {
   id: number;
   account: { id: number; login: string; type: string };
