@@ -160,6 +160,7 @@ async fn read_file_quotes_guest_path_with_single_quote() {
 #[tokio::test]
 async fn copy_file_streams_to_temp_then_renames() {
     let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -169,21 +170,27 @@ async fn copy_file_streams_to_temp_then_renames() {
     let host_path = dir.join("system.log");
     let copy_path = host_path.clone();
 
+    let task_host = Arc::clone(&host);
     let copy_task = tokio::spawn(async move {
-        host.copy_file(
-            "/tmp/vm0-system-run.log",
-            &copy_path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout_ms: 5000,
-                missing_ok: false,
-            },
-        )
-        .await
+        task_host
+            .copy_file(
+                "/tmp/vm0-system-run.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: false,
+                },
+            )
+            .await
     });
 
     let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.label, "copy-file");
     assert_eq!(
@@ -225,6 +232,10 @@ async fn copy_file_streams_to_temp_then_renames() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 14);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert_eq!(std::fs::read(&host_path).unwrap(), b"line 1\nline 2\n");
     assert!(
         std::fs::read_dir(&dir).unwrap().all(|entry| !entry
@@ -465,6 +476,7 @@ async fn copy_file_nonzero_exit_removes_temp_without_publishing_partial_output()
 #[tokio::test]
 async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
     let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -477,21 +489,27 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
     let host_path = dir.join("system.log");
     let copy_path = host_path.clone();
 
+    let task_host = Arc::clone(&host);
     let copy_task = tokio::spawn(async move {
-        host.copy_file(
-            "/tmp/missing.log",
-            &copy_path,
-            CopyFileOptions {
-                max_bytes: 1024,
-                timeout_ms: 5000,
-                missing_ok: true,
-            },
-        )
-        .await
+        task_host
+            .copy_file(
+                "/tmp/missing.log",
+                &copy_path,
+                CopyFileOptions {
+                    max_bytes: 1024,
+                    timeout_ms: 5000,
+                    missing_ok: true,
+                },
+            )
+            .await
     });
 
     let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
     assert_eq!(decoded.expected_exit_codes, vec![66]);
     send_stream_exec_result(
@@ -504,6 +522,10 @@ async fn copy_file_missing_ok_leaves_no_final_or_temp_file() {
 
     let result = copy_task.await.unwrap().unwrap();
     assert_eq!(result.bytes_copied, 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
     assert!(!host_path.exists());
     assert!(
         std::fs::read_dir(&dir).unwrap().all(|entry| !entry
@@ -604,6 +626,10 @@ async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() 
 
     let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
     let temp_paths: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -617,6 +643,10 @@ async fn copy_file_cancellation_cancels_guest_exec_operation_and_removes_temp() 
 
     copy_task.abort();
     assert!(copy_task.await.unwrap_err().is_cancelled());
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 
     let cancel = read_guest_message(&mut guest).await;
     assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
@@ -938,6 +968,121 @@ async fn test_write_file_chunked() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_tracks_one_operation_until_rename_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let rename = read_guest_message(&mut guest).await;
+    assert_eq!(rename.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&rename.payload).unwrap();
+    assert_eq!(decoded.label, "write-file-rename");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_exec_result(
+        &mut guest,
+        rename.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_chunked_failure_remains_busy_until_cleanup_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/big.bin", &content, false).await })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(false, "disk full");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_exec_result(
+        &mut guest,
+        cleanup.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn test_write_file_at_chunk_limit_uses_single_message() {
     let (host_stream, mut guest) = make_pair();
 
@@ -1196,6 +1341,10 @@ async fn test_write_file_chunked_cleans_up_when_cancelled() {
         result = first_chunk_rx => result.unwrap(),
     }
     drop(write);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 
     let cleanup_command = tokio::time::timeout(Duration::from_secs(2), cleanup_rx)
         .await

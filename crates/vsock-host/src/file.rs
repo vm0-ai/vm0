@@ -11,8 +11,9 @@ use vsock_proto::{
 };
 
 use crate::{
-    ExecCaptureRequest, ExecOperationResult, ExecOutputEvent, ExecOwnedCapturedOutput,
-    ExecStreamRequest, Shared, VsockHost, exec_operation, normal_request_on_shared,
+    CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOutputEvent,
+    ExecOwnedCapturedOutput, ExecStreamRequest, Shared, VsockHost, exec_operation,
+    normal_request_on_shared, request_on_shared_with_composite_operation,
 };
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
@@ -59,6 +60,39 @@ enum CopyFileOutcome {
     Missing,
 }
 
+struct CopyFileToTempError {
+    error: io::Error,
+    terminal_proven: bool,
+}
+
+impl CopyFileToTempError {
+    fn unproven(error: io::Error) -> Self {
+        Self {
+            error,
+            terminal_proven: false,
+        }
+    }
+
+    fn terminal(error: io::Error) -> Self {
+        Self {
+            error,
+            terminal_proven: true,
+        }
+    }
+
+    fn after_cancel(error: io::Error, cancel_result: io::Result<ExecOperationResult>) -> Self {
+        Self {
+            error,
+            terminal_proven: cancel_result.is_ok(),
+        }
+    }
+}
+
+enum WriteFileChunkTracking<'a> {
+    Tracked,
+    Composite(&'a mut CompositeNormalOperation),
+}
+
 struct ChunkedWriteCleanupGuard {
     shared: Option<Arc<Shared>>,
     command: String,
@@ -78,18 +112,26 @@ impl ChunkedWriteCleanupGuard {
         self.shared = None;
     }
 
-    async fn cleanup_now(&mut self) {
-        if let Some(shared) = self.shared.as_ref() {
-            let _ = exec_operation::exec_cleanup_on_shared(
+    async fn cleanup_now(
+        &mut self,
+        normal_operation: &mut CompositeNormalOperation,
+    ) -> io::Result<()> {
+        let result = if let Some(shared) = self.shared.as_ref() {
+            exec_operation::exec_cleanup_with_composite_on_shared(
                 shared,
                 &self.command,
                 CLEANUP_EXEC_TIMEOUT_MS,
                 &[],
                 self.sudo,
+                normal_operation,
             )
-            .await;
-        }
+            .await
+            .map(|_| ())
+        } else {
+            Ok(())
+        };
         self.disarm();
+        result
     }
 }
 
@@ -103,7 +145,7 @@ impl Drop for ChunkedWriteCleanupGuard {
         let sudo = self.sudo;
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                let _ = exec_operation::exec_cleanup_on_shared(
+                let _ = exec_operation::exec_cleanup_untracked_on_shared(
                     &shared,
                     &command,
                     CLEANUP_EXEC_TIMEOUT_MS,
@@ -160,6 +202,17 @@ fn copy_temp_path(host_path: &Path, process_id: u32, seq: u32, nonce: u64) -> Pa
         .map(|name| name.to_string_lossy())
         .unwrap_or_else(|| "copy".into());
     host_path.with_file_name(format!(".{file_name}.vm0tmp-{process_id}-{seq}-{nonce}"))
+}
+
+fn file_operation_error_is_terminal(error: &io::Error) -> bool {
+    !matches!(
+        error.kind(),
+        io::ErrorKind::TimedOut
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::UnexpectedEof
+            | io::ErrorKind::InvalidData
+    )
 }
 
 async fn remove_temp_file(path: &Path) {
@@ -393,6 +446,7 @@ impl VsockHost {
         let (temp_path, temp_file) =
             create_copy_temp_file(host_path, self.shared.next_seq()).await?;
         let mut temp_guard = HostTempFileGuard::new(temp_path);
+        let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let copy_result = self
             .copy_file_to_temp(
                 path,
@@ -400,6 +454,7 @@ impl VsockHost {
                 stream_limit_bytes,
                 options.timeout_ms,
                 options.missing_ok,
+                &mut normal_operation,
             )
             .await;
         match copy_result {
@@ -407,21 +462,27 @@ impl VsockHost {
                 match tokio::fs::rename(temp_guard.path(), host_path).await {
                     Ok(()) => {
                         temp_guard.disarm();
+                        normal_operation.complete()?;
                         Ok(CopyFileResult { bytes_copied })
                     }
                     Err(err) => {
                         temp_guard.remove_now().await;
+                        normal_operation.complete()?;
                         Err(err)
                     }
                 }
             }
             Ok(CopyFileOutcome::Missing) => {
                 temp_guard.remove_now().await;
+                normal_operation.complete()?;
                 Ok(CopyFileResult { bytes_copied: 0 })
             }
             Err(err) => {
                 temp_guard.remove_now().await;
-                Err(err)
+                if err.terminal_proven {
+                    normal_operation.complete()?;
+                }
+                Err(err.error)
             }
         }
     }
@@ -433,7 +494,8 @@ impl VsockHost {
         stream_limit_bytes: u32,
         timeout_ms: u32,
         missing_ok: bool,
-    ) -> io::Result<CopyFileOutcome> {
+        normal_operation: &mut CompositeNormalOperation,
+    ) -> Result<CopyFileOutcome, CopyFileToTempError> {
         const MISSING_FILE_EXIT_CODE: i32 = 66;
         let command = format!(
             "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
@@ -444,8 +506,9 @@ impl VsockHost {
         } else {
             &[]
         };
-        let mut handle = self
-            .exec_operation_stream(ExecStreamRequest {
+        let mut handle = exec_operation::exec_operation_stream_with_composite_on_shared(
+            &self.shared,
+            ExecStreamRequest {
                 timeout_ms,
                 command: &command,
                 env: &[],
@@ -460,14 +523,17 @@ impl VsockHost {
                 },
                 expected_exit_codes,
                 stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
-            })
-            .await?;
+            },
+            normal_operation,
+        )
+        .await
+        .map_err(CopyFileToTempError::unproven)?;
         let mut cancel_on_drop = exec_operation::ExecOperationCancelOnDropGuard::new(&handle);
         let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
-            io::Error::new(
+            CopyFileToTempError::unproven(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "copy_file exec operation did not create a stream receiver",
-            )
+            ))
         })?;
         let wait_timeout = Duration::from_millis(timeout_ms as u64 + 5000);
         let mut bytes_copied = 0u64;
@@ -488,33 +554,44 @@ impl VsockHost {
         match drain_result {
             Ok(Ok(())) => {}
             Ok(Err(err)) => {
-                let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                let cancel_result = handle.cancel_and_wait(Duration::from_secs(1)).await;
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }
-                return Err(err);
+                return Err(CopyFileToTempError::after_cancel(err, cancel_result));
             }
             Err(_) => {
-                let _ = handle.cancel_and_wait(Duration::from_secs(1)).await;
+                let cancel_result = handle.cancel_and_wait(Duration::from_secs(1)).await;
                 if let Some(cancel_on_drop) = &mut cancel_on_drop {
                     cancel_on_drop.disarm();
                 }
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("copy_file stream drain timed out for {path}"),
+                return Err(CopyFileToTempError::after_cancel(
+                    io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("copy_file stream drain timed out for {path}"),
+                    ),
+                    cancel_result,
                 ));
             }
         };
 
-        let result = handle.wait(Duration::from_secs(5)).await?;
+        let result = handle
+            .wait(Duration::from_secs(5))
+            .await
+            .map_err(CopyFileToTempError::unproven)?;
         if let Some(cancel_on_drop) = &mut cancel_on_drop {
             cancel_on_drop.disarm();
         }
-        match validate_copy_exec_result(path, result, missing_ok)? {
+        match validate_copy_exec_result(path, result, missing_ok)
+            .map_err(CopyFileToTempError::terminal)?
+        {
             CopyFileExecStatus::Present => {}
             CopyFileExecStatus::Missing => return Ok(CopyFileOutcome::Missing),
         }
-        temp_file.flush().await?;
+        temp_file
+            .flush()
+            .await
+            .map_err(CopyFileToTempError::terminal)?;
 
         Ok(CopyFileOutcome::Copied { bytes_copied })
     }
@@ -531,9 +608,11 @@ impl VsockHost {
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
             return self
-                .write_file_chunk(path, content, sudo, false, true)
+                .write_file_chunk(path, content, sudo, false, WriteFileChunkTracking::Tracked)
                 .await;
         }
+
+        let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
 
         // Write chunks to a per-call temp file, then atomic rename. The
         // suffix prevents concurrent large writes to the same destination
@@ -546,23 +625,34 @@ impl VsockHost {
 
         let result = async {
             for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
-                self.write_file_chunk(&tmp, chunk, sudo, i > 0, false)
-                    .await?;
+                self.write_file_chunk(
+                    &tmp,
+                    chunk,
+                    sudo,
+                    i > 0,
+                    WriteFileChunkTracking::Composite(&mut normal_operation),
+                )
+                .await?;
             }
             io::Result::Ok(())
         }
         .await;
 
-        if result.is_err() {
+        if let Err(error) = result {
             // Best-effort cleanup of the temp file.
-            cleanup_guard.cleanup_now().await;
-            return result;
+            let terminal_error = file_operation_error_is_terminal(&error);
+            let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
+            if terminal_error && cleanup_result.is_ok() {
+                normal_operation.complete()?;
+            }
+            return Err(error);
         }
 
         // Atomic rename temp → target.
         let mv_cmd = format!("mv -f -- {quoted_tmp} {}", shell_quote(path));
-        match self
-            .exec_capture(ExecCaptureRequest {
+        match exec_operation::exec_capture_with_composite_on_shared(
+            &self.shared,
+            ExecCaptureRequest {
                 command: &mv_cmd,
                 timeout_ms: HELPER_EXEC_TIMEOUT_MS,
                 env: &[],
@@ -572,23 +662,30 @@ impl VsockHost {
                 stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
                 expected_exit_codes: &[],
                 wait_timeout: Duration::from_millis(HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
-            })
-            .await
+            },
+            &mut normal_operation,
+        )
+        .await
         {
             Ok(r) if r.exit_code == 0 => {
                 cleanup_guard.disarm();
+                normal_operation.complete()?;
                 Ok(())
             }
             Ok(r) => {
-                cleanup_guard.cleanup_now().await;
-                Err(io::Error::other(format!(
+                let cleanup_result = cleanup_guard.cleanup_now(&mut normal_operation).await;
+                let error = io::Error::other(format!(
                     "failed to rename temp file to {path}: {}",
                     String::from_utf8_lossy(&r.stderr),
-                )))
+                ));
+                if cleanup_result.is_ok() {
+                    normal_operation.complete()?;
+                }
+                Err(error)
             }
             Err(e) => {
                 // Connection likely broken — short timeout to avoid blocking.
-                cleanup_guard.cleanup_now().await;
+                let _ = cleanup_guard.cleanup_now(&mut normal_operation).await;
                 Err(e)
             }
         }
@@ -601,22 +698,32 @@ impl VsockHost {
         content: &[u8],
         sudo: bool,
         append: bool,
-        tracked: bool,
+        tracking: WriteFileChunkTracking<'_>,
     ) -> io::Result<()> {
         let payload = vsock_proto::encode_write_file(path, content, sudo, append)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
-        let resp = if tracked {
-            normal_request_on_shared(
-                &self.shared,
-                MSG_WRITE_FILE,
-                &payload,
-                WRITE_FILE_TERMINAL_MSG_TYPES,
-                timeout,
-            )
-            .await?
-        } else {
-            self.request(MSG_WRITE_FILE, &payload, timeout).await?
+        let resp = match tracking {
+            WriteFileChunkTracking::Tracked => {
+                normal_request_on_shared(
+                    &self.shared,
+                    MSG_WRITE_FILE,
+                    &payload,
+                    WRITE_FILE_TERMINAL_MSG_TYPES,
+                    timeout,
+                )
+                .await?
+            }
+            WriteFileChunkTracking::Composite(normal_operation) => {
+                request_on_shared_with_composite_operation(
+                    &self.shared,
+                    MSG_WRITE_FILE,
+                    &payload,
+                    timeout,
+                    normal_operation,
+                )
+                .await?
+            }
         };
 
         if resp.msg_type == MSG_ERROR {

@@ -9,8 +9,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 use crate::{
-    ConnectionState, ExecResult, Shared, normal_operation_transition_error,
-    operation_tracker::NormalOperationToken,
+    CompositeNormalOperation, ConnectionState, ExecResult, Shared,
+    normal_operation_transition_error, operation_tracker::NormalOperationToken,
 };
 use vsock_proto::{
     ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL,
@@ -169,7 +169,7 @@ impl Default for Operations {
 }
 
 struct ExecOperation {
-    normal_operation: NormalOperationToken,
+    normal_operation: Option<NormalOperationToken>,
     diagnostic: ExecOperationDiagnostic,
     result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
     stream_tx: Option<mpsc::Sender<ExecOutputEvent>>,
@@ -179,6 +179,17 @@ struct ExecOperation {
     stderr_stream: Option<ExecStreamState>,
     expected_output_seq: u32,
     stream_overflowed: bool,
+}
+
+enum ExecOperationTracking<'a> {
+    Tracked,
+    Composite(&'a mut CompositeNormalOperation),
+    Untracked,
+}
+
+enum ExecFrameNormalOperation<'a> {
+    RegisteredSeq(u32),
+    Composite(&'a mut CompositeNormalOperation),
 }
 
 #[derive(Clone)]
@@ -860,9 +871,11 @@ pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
                     stream_overflowed,
                     ..
                 } = operation;
-                normal_operation
-                    .complete()
-                    .map_err(normal_operation_transition_error)?;
+                if let Some(normal_operation) = normal_operation {
+                    normal_operation
+                        .complete()
+                        .map_err(normal_operation_transition_error)?;
+                }
                 Some((diagnostic, result_tx, stream_overflowed, decoded))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
@@ -895,9 +908,11 @@ pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Resu
                     result_tx,
                     ..
                 } = operation;
-                normal_operation
-                    .complete()
-                    .map_err(normal_operation_transition_error)?;
+                if let Some(normal_operation) = normal_operation {
+                    normal_operation
+                        .complete()
+                        .map_err(normal_operation_transition_error)?;
+                }
                 Some((diagnostic, result_tx, err))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
@@ -921,10 +936,13 @@ fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> i
                     "exec operation closed before frame write",
                 ));
             };
-            operation
-                .normal_operation
-                .mark_possible_guest_write_started()
-                .map_err(normal_operation_transition_error)
+            if let Some(normal_operation) = operation.normal_operation.as_mut() {
+                normal_operation
+                    .mark_possible_guest_write_started()
+                    .map_err(normal_operation_transition_error)
+            } else {
+                Ok(())
+            }
         }
         ConnectionState::Closed { .. } => Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
@@ -939,7 +957,7 @@ async fn write_frame(
     seq: u32,
     payload: &[u8],
     diagnostic: Option<ExecOperationFrameDiagnostic>,
-    normal_operation_seq: Option<u32>,
+    normal_operation: Option<ExecFrameNormalOperation<'_>>,
 ) -> io::Result<()> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -949,8 +967,15 @@ async fn write_frame(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
-    if let Some(normal_operation_seq) = normal_operation_seq {
-        mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
+    if let Some(normal_operation) = normal_operation {
+        match normal_operation {
+            ExecFrameNormalOperation::RegisteredSeq(seq) => {
+                mark_exec_operation_possible_guest_write(shared, seq)?;
+            }
+            ExecFrameNormalOperation::Composite(normal_operation) => {
+                normal_operation.mark_possible_guest_write_started()?;
+            }
+        }
     }
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
@@ -1075,6 +1100,15 @@ pub(crate) async fn start_exec_operation_on_shared(
     shared: &Arc<Shared>,
     request: ExecOperationRequest<'_>,
 ) -> io::Result<ExecOperationHandle> {
+    start_exec_operation_on_shared_with_tracking(shared, request, ExecOperationTracking::Tracked)
+        .await
+}
+
+async fn start_exec_operation_on_shared_with_tracking(
+    shared: &Arc<Shared>,
+    request: ExecOperationRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
+) -> io::Result<ExecOperationHandle> {
     if request.timeout_ms == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -1137,7 +1171,16 @@ pub(crate) async fn start_exec_operation_on_shared(
     let (result_tx, result_rx) = oneshot::channel();
     let seq = shared.next_seq();
     let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
-    let normal_operation = shared.reserve_normal_operation()?;
+    let tracks_self = matches!(tracking, ExecOperationTracking::Tracked);
+    let composite_operation = match tracking {
+        ExecOperationTracking::Composite(normal_operation) => Some(normal_operation),
+        ExecOperationTracking::Tracked | ExecOperationTracking::Untracked => None,
+    };
+    let normal_operation = if tracks_self {
+        Some(shared.reserve_normal_operation()?)
+    } else {
+        None
+    };
     let operation = ExecOperation {
         normal_operation,
         diagnostic: diagnostic.clone(),
@@ -1167,13 +1210,18 @@ pub(crate) async fn start_exec_operation_on_shared(
     }
 
     let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    let normal_operation = if tracks_self {
+        Some(ExecFrameNormalOperation::RegisteredSeq(seq))
+    } else {
+        composite_operation.map(ExecFrameNormalOperation::Composite)
+    };
     write_frame(
         shared,
         MSG_EXEC_START,
         seq,
         &payload,
         Some(diagnostic.frame("start")),
-        Some(seq),
+        normal_operation,
     )
     .await?;
     registration_guard.disarm();
@@ -1213,9 +1261,46 @@ pub(crate) async fn exec_operation_capture_on_shared(
     handle.wait(request.wait_timeout).await
 }
 
+async fn exec_operation_capture_on_shared_with_tracking(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
+) -> io::Result<ExecOperationResult> {
+    let handle = start_exec_operation_on_shared_with_tracking(
+        shared,
+        ExecOperationRequest {
+            timeout_ms: request.timeout_ms,
+            command: request.command,
+            env: request.env,
+            sudo: request.sudo,
+            label: request.label,
+            stdout: ExecOutputPolicy::Capture {
+                limit_bytes: request.stdout_limit_bytes,
+            },
+            stderr: ExecOutputPolicy::Capture {
+                limit_bytes: request.stderr_limit_bytes,
+            },
+            expected_exit_codes: request.expected_exit_codes,
+            stream_queue_capacity: None,
+        },
+        tracking,
+    )
+    .await?;
+    handle.wait(request.wait_timeout).await
+}
+
 pub(crate) async fn exec_operation_stream_on_shared(
     shared: &Arc<Shared>,
     request: ExecStreamRequest<'_>,
+) -> io::Result<ExecOperationHandle> {
+    exec_operation_stream_on_shared_with_tracking(shared, request, ExecOperationTracking::Tracked)
+        .await
+}
+
+async fn exec_operation_stream_on_shared_with_tracking(
+    shared: &Arc<Shared>,
+    request: ExecStreamRequest<'_>,
+    tracking: ExecOperationTracking<'_>,
 ) -> io::Result<ExecOperationHandle> {
     if !output_policy_streams(request.stdout) && !output_policy_streams(request.stderr) {
         return Err(io::Error::new(
@@ -1224,7 +1309,7 @@ pub(crate) async fn exec_operation_stream_on_shared(
         ));
     }
 
-    start_exec_operation_on_shared(
+    start_exec_operation_on_shared_with_tracking(
         shared,
         ExecOperationRequest {
             timeout_ms: request.timeout_ms,
@@ -1237,6 +1322,20 @@ pub(crate) async fn exec_operation_stream_on_shared(
             expected_exit_codes: request.expected_exit_codes,
             stream_queue_capacity: request.stream_queue_capacity,
         },
+        tracking,
+    )
+    .await
+}
+
+pub(crate) async fn exec_operation_stream_with_composite_on_shared(
+    shared: &Arc<Shared>,
+    request: ExecStreamRequest<'_>,
+    normal_operation: &mut CompositeNormalOperation,
+) -> io::Result<ExecOperationHandle> {
+    exec_operation_stream_on_shared_with_tracking(
+        shared,
+        request,
+        ExecOperationTracking::Composite(normal_operation),
     )
     .await
 }
@@ -1266,14 +1365,14 @@ pub(crate) async fn exec_on_shared(
     .await
 }
 
-pub(crate) async fn exec_cleanup_on_shared(
+pub(crate) async fn exec_cleanup_untracked_on_shared(
     shared: &Arc<Shared>,
     command: &str,
     timeout_ms: u32,
     env: &[(&str, &str)],
     sudo: bool,
 ) -> io::Result<ExecResult> {
-    exec_capture_on_shared(
+    let result = exec_operation_capture_on_shared_with_tracking(
         shared,
         ExecCaptureRequest {
             timeout_ms,
@@ -1286,8 +1385,51 @@ pub(crate) async fn exec_cleanup_on_shared(
             expected_exit_codes: &[],
             wait_timeout: Duration::from_millis(timeout_ms as u64),
         },
+        ExecOperationTracking::Untracked,
     )
-    .await
+    .await?;
+    result_to_exec_result(result)
+}
+
+pub(crate) async fn exec_cleanup_with_composite_on_shared(
+    shared: &Arc<Shared>,
+    command: &str,
+    timeout_ms: u32,
+    env: &[(&str, &str)],
+    sudo: bool,
+    normal_operation: &mut CompositeNormalOperation,
+) -> io::Result<ExecResult> {
+    let result = exec_operation_capture_on_shared_with_tracking(
+        shared,
+        ExecCaptureRequest {
+            timeout_ms,
+            command,
+            env,
+            sudo,
+            label: "exec-cleanup",
+            stdout_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
+            wait_timeout: Duration::from_millis(timeout_ms as u64),
+        },
+        ExecOperationTracking::Composite(normal_operation),
+    )
+    .await?;
+    result_to_exec_result(result)
+}
+
+pub(crate) async fn exec_capture_with_composite_on_shared(
+    shared: &Arc<Shared>,
+    request: ExecCaptureRequest<'_>,
+    normal_operation: &mut CompositeNormalOperation,
+) -> io::Result<ExecResult> {
+    let result = exec_operation_capture_on_shared_with_tracking(
+        shared,
+        request,
+        ExecOperationTracking::Composite(normal_operation),
+    )
+    .await?;
+    result_to_exec_result(result)
 }
 
 pub(crate) async fn exec_capture_on_shared(
@@ -1324,7 +1466,7 @@ mod tests {
         let (result_tx, _result_rx) = oneshot::channel();
         let normal_operations = crate::operation_tracker::NormalOperationTracker::new();
         ExecOperation {
-            normal_operation: normal_operations.reserve().unwrap(),
+            normal_operation: Some(normal_operations.reserve().unwrap()),
             diagnostic: ExecOperationDiagnostic::new(seq, label, &[]),
             result_tx,
             stream_tx: None,
