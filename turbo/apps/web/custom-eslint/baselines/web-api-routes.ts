@@ -103,7 +103,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/test/slack-state/route.ts",
   "app/api/test/telegram-mock/[botToken]/[method]/route.ts",
   "app/api/test/telegram-state/route.ts",
-  "app/api/usage/route.ts",
   "app/api/v1/chat-threads/[threadId]/messages/route.ts",
   "app/api/v1/chat-threads/[threadId]/route.ts",
   "app/api/v1/chat-threads/messages/route.ts",
@@ -238,7 +237,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "9155a9fa87c5df4cde6b98c09b1f686ae5bc41942d8541201a2e2a8c4c917093";
+  "98d3ec0828be1fa7b00ae04ca4e5e97e6c0d48fae2b353ff7aa6e79189abfe74";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,
