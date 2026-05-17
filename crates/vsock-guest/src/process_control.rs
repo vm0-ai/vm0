@@ -70,7 +70,7 @@ enum ControlSinkInner {
 struct OwnedProcessControlRequest {
     response_seq: u32,
     target_seq: u32,
-    request_timeout_ms: u32,
+    deadline: Instant,
     control_nonce: ProcessControlNonce,
     message_id: String,
     payload: Vec<u8>,
@@ -327,8 +327,8 @@ impl ControlSinkState {
                 ControlSinkInner::Waiting => {
                     let Some(wait) = duration_until(deadline) else {
                         return Err((
-                            ProcessControlStatus::SinkUnavailable,
-                            "process control sink is not connected".to_owned(),
+                            ProcessControlStatus::SinkTimeout,
+                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
                         ));
                     };
                     let (next_guard, wait_result) = self
@@ -338,8 +338,8 @@ impl ControlSinkState {
                     guard = next_guard;
                     if wait_result.timed_out() {
                         return Err((
-                            ProcessControlStatus::SinkUnavailable,
-                            "process control sink is not connected".to_owned(),
+                            ProcessControlStatus::SinkTimeout,
+                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
                         ));
                     }
                 }
@@ -457,12 +457,11 @@ fn forward_control_request(
     let OwnedProcessControlRequest {
         response_seq,
         target_seq,
-        request_timeout_ms,
+        deadline,
         control_nonce,
         message_id,
         payload,
     } = request;
-    let deadline = request_deadline(request_timeout_ms);
     let (status, diagnostic, mark_failed) = {
         match sink.wait_for_stream(deadline) {
             Ok(stream) => {
@@ -642,7 +641,7 @@ pub(crate) fn handle_process_control(
     let owned = OwnedProcessControlRequest {
         response_seq: seq,
         target_seq: request.target_seq,
-        request_timeout_ms: request.request_timeout_ms,
+        deadline: request_deadline(request.request_timeout_ms),
         control_nonce: request.control_nonce,
         message_id: request.message_id.to_owned(),
         payload: request.payload.to_vec(),
@@ -890,30 +889,33 @@ mod tests {
 
     #[test]
     fn pending_process_control_timeout_before_sink_connection_releases_slot() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"4433221100ffeedd";
-
-        let registry = ProcessControlRegistry::default();
-        let registration = registry.register(19, Some(FORWARD_NONCE), true).unwrap();
-        let sink = registry.resolve(19, FORWARD_NONCE).unwrap();
+        let sink = Arc::new(ControlSinkState::new());
+        let pending_slot = sink.reserve_pending_slot().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-        let writer = GuestWriter::new(guest);
-        let payload =
-            vsock_proto::encode_process_control(19, FORWARD_NONCE, "msg-timeout", b"payload", 0)
-                .unwrap();
 
-        handle_process_control(29, &payload, &registry, &writer).unwrap();
+        forward_control_request(
+            Arc::clone(&sink),
+            pending_slot,
+            OwnedProcessControlRequest {
+                response_seq: 29,
+                target_seq: 19,
+                deadline: request_deadline(0),
+                control_nonce: NONCE,
+                message_id: "msg-timeout".to_owned(),
+                payload: b"payload".to_vec(),
+            },
+            GuestWriter::new(guest),
+        );
 
         let (msg_type, seq, status, message_id, diagnostic) =
             read_process_control_result(&mut host);
         assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
         assert_eq!(seq, 29);
-        assert_eq!(status, ProcessControlStatus::SinkUnavailable);
+        assert_eq!(status, ProcessControlStatus::SinkTimeout);
         assert_eq!(message_id, "msg-timeout");
-        assert_eq!(diagnostic, "process control sink is not connected");
+        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
         assert_eq!(sink.pending.load(Ordering::Acquire), 0);
-
-        registration.guard.release();
     }
 
     #[test]
@@ -1056,7 +1058,7 @@ mod tests {
                 OwnedProcessControlRequest {
                     response_seq: 199,
                     target_seq: 12,
-                    request_timeout_ms: 5000,
+                    deadline: request_deadline(5000),
                     control_nonce: NONCE,
                     message_id: "msg-overflow".to_owned(),
                     payload: b"payload".to_vec(),
@@ -1116,7 +1118,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
-                request_timeout_ms: 5000,
+                deadline: request_deadline(5000),
                 control_nonce: NONCE,
                 message_id: "msg-send-fails".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1158,7 +1160,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
-                request_timeout_ms: 5000,
+                deadline: request_deadline(5000),
                 control_nonce: NONCE,
                 message_id: "msg-original".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1205,7 +1207,7 @@ mod tests {
             OwnedProcessControlRequest {
                 response_seq: 12,
                 target_seq: 8,
-                request_timeout_ms: 1,
+                deadline: request_deadline(1),
                 control_nonce: NONCE,
                 message_id: "msg-timeout".to_owned(),
                 payload: b"payload".to_vec(),
@@ -1361,7 +1363,7 @@ mod tests {
                 OwnedProcessControlRequest {
                     response_seq: 17,
                     target_seq: 9,
-                    request_timeout_ms: 5000,
+                    deadline: request_deadline(5000),
                     control_nonce: NONCE,
                     message_id: "msg-after-close".to_owned(),
                     payload: b"payload".to_vec(),
@@ -1417,7 +1419,7 @@ mod tests {
                     OwnedProcessControlRequest {
                         response_seq: 18,
                         target_seq: 9,
-                        request_timeout_ms: 5000,
+                        deadline: request_deadline(5000),
                         control_nonce: NONCE,
                         message_id: "msg-inflight-close".to_owned(),
                         payload: b"payload".to_vec(),
