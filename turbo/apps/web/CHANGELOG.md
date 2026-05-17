@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.372.0](https://github.com/vm0-ai/vm0/compare/web-v12.371.3...web-v12.372.0) (2026-05-17)
+
+
+### Features
+
+* add supermemory connector ([#13605](https://github.com/vm0-ai/vm0/issues/13605)) ([eee2113](https://github.com/vm0-ai/vm0/commit/eee21132e2d1b6635d7ae31ff0300191c3de1e6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.3
+    * @vm0/connectors bumped to 1.16.0
+    * @vm0/core bumped to 8.281.1
+    * @vm0/db bumped to 1.14.8
+
 ## [12.371.3](https://github.com/vm0-ai/vm0/compare/web-v12.371.2...web-v12.371.3) (2026-05-17)
 
 
