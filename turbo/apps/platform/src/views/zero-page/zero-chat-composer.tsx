@@ -414,7 +414,7 @@ function QueuedMessagesStrip({
   const count = items.length;
   const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
-    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm">
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50">
       <div className="flex items-center gap-2 px-5 pt-3 pb-2">
         <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
           <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
@@ -435,13 +435,13 @@ function QueuedMessagesStrip({
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
                 type="button"
-                className="shrink-0 rounded p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-lg p-2 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   onRemove?.(item.id);
                 }}
                 aria-label="Remove queued message"
               >
-                <IconX size={14} stroke={1.5} />
+                <IconX size={18} stroke={1.5} />
               </button>
             </div>
           );
