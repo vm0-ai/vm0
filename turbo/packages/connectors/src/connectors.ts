@@ -195,6 +195,8 @@ import { square } from "./connectors/square";
 import { gong } from "./connectors/gong";
 import { ironclad } from "./connectors/ironclad";
 import { snowflake } from "./connectors/snowflake";
+import { railway } from "./connectors/railway";
+import { railwayProject } from "./connectors/railway-project";
 
 /**
  * Secret field configuration for connector auth methods
@@ -625,6 +627,8 @@ const CONNECTOR_TYPES_DEF = {
   ...gong,
   ...ironclad,
   ...snowflake,
+  ...railway,
+  ...railwayProject,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;

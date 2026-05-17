@@ -163,6 +163,8 @@ import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qdrantFirewall } from "./qdrant.generated";
 import { qiitaFirewall } from "./qiita.generated";
+import { railwayFirewall } from "./railway.generated";
+import { railwayProjectFirewall } from "./railway-project.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reapFirewall } from "./reap.generated";
 import { reporteiFirewall } from "./reportei.generated";
@@ -368,6 +370,8 @@ const CONNECTOR_FIREWALLS = {
   pushinator: pushinatorFirewall,
   qdrant: qdrantFirewall,
   qiita: qiitaFirewall,
+  railway: railwayFirewall,
+  "railway-project": railwayProjectFirewall,
   reddit: redditFirewall,
   reap: reapFirewall,
   reportei: reporteiFirewall,

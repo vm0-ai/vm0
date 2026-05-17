@@ -120,6 +120,8 @@ import { notionHandler } from "./providers/notion-handler";
 import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { codexOauthHandler } from "./providers/codex-oauth-handler";
+import { railwayHandler } from "./providers/railway-handler";
+import { railwayProjectHandler } from "./providers/railway-project-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reapHandler } from "./providers/reap-handler";
 import { localAgentHandler } from "./providers/local-agent-handler";
@@ -319,6 +321,8 @@ export const PROVIDER_HANDLERS: Record<
   "codex-oauth": codexOauthHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
+  railway: railwayHandler,
+  "railway-project": railwayProjectHandler,
   reddit: redditHandler,
   reap: reapHandler,
   "local-browser": localBrowserHandler,
