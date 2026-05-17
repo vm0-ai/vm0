@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.371.1](https://github.com/vm0-ai/vm0/compare/web-v12.371.0...web-v12.371.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* proxy stripe cli auth session start ([#13551](https://github.com/vm0-ai/vm0/issues/13551)) ([f424506](https://github.com/vm0-ai/vm0/commit/f424506f5e501bf5452e810ab08376d6ee5520e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.1
+    * @vm0/connectors bumped to 1.14.1
+    * @vm0/core bumped to 8.280.1
+    * @vm0/db bumped to 1.14.6
+
 ## [12.371.0](https://github.com/vm0-ai/vm0/compare/web-v12.370.0...web-v12.371.0) (2026-05-16)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.54.1](https://github.com/vm0-ai/vm0/compare/api-v1.54.0...api-v1.54.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* **api:** route v1 chat send through createZeroRun$ ([#13557](https://github.com/vm0-ai/vm0/issues/13557)) ([0732f67](https://github.com/vm0-ai/vm0/commit/0732f67bd65bfa5028ab21279f04544e4983d82b))
+
+
+### Performance Improvements
+
+* **api:** cut apps/api tsc memory ~20% via barrel + phantom-inference cleanup ([#13553](https://github.com/vm0-ai/vm0/issues/13553)) ([447e0af](https://github.com/vm0-ai/vm0/commit/447e0af1870b3ca7262f6cd4345b4485c984b046))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.1
+    * @vm0/connectors bumped to 1.14.1
+    * @vm0/core bumped to 8.280.1
+    * @vm0/db bumped to 1.14.6
+
 ## [1.54.0](https://github.com/vm0-ai/vm0/compare/api-v1.53.0...api-v1.54.0) (2026-05-16)
 
 

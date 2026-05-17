@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.360.1](https://github.com/vm0-ai/vm0/compare/app-v0.360.0...app-v0.360.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* redirect to / when switching accounts ([#13559](https://github.com/vm0-ai/vm0/issues/13559)) ([ea8327a](https://github.com/vm0-ai/vm0/commit/ea8327ac3ea893be9f83f0d37ad955c06099e06d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.1
+    * @vm0/connectors bumped to 1.14.1
+    * @vm0/core bumped to 8.280.1
+
 ## [0.360.0](https://github.com/vm0-ai/vm0/compare/app-v0.359.0...app-v0.360.0) (2026-05-16)
 
 
