@@ -43,6 +43,7 @@ import { deelHandler } from "./providers/deel-handler";
 import { discordHandler } from "./providers/discord-handler";
 import { discordWebhookHandler } from "./providers/discord-webhook-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
+import { doubaoHandler } from "./providers/doubao-handler";
 import { difyHandler } from "./providers/dify-handler";
 import { devtoHandler } from "./providers/devto-handler";
 import { dopplerHandler } from "./providers/doppler-handler";
@@ -245,6 +246,7 @@ export const PROVIDER_HANDLERS: Record<
   discord: discordHandler,
   "discord-webhook": discordWebhookHandler,
   deepseek: deepseekHandler,
+  doubao: doubaoHandler,
   dify: difyHandler,
   devto: devtoHandler,
   doppler: dopplerHandler,

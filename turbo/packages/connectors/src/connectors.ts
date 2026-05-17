@@ -7,6 +7,7 @@ import { agentmail } from "./connectors/agentmail";
 import { airtable } from "./connectors/airtable";
 import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
 import { bentoml } from "./connectors/bentoml";
+import { doubao } from "./connectors/doubao";
 import { github } from "./connectors/github";
 import { notion } from "./connectors/notion";
 import { gmail } from "./connectors/gmail";
@@ -436,6 +437,7 @@ const CONNECTOR_TYPES_DEF = {
   ...airtable,
   ...anthropicManagedAgents,
   ...bentoml,
+  ...doubao,
   ...github,
   ...notion,
   ...gmail,

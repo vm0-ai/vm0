@@ -162,6 +162,39 @@ describe("connectors — auth method feature flags", () => {
     expect(bentoml?.availableAuthMethods).toContain("api-token");
   });
 
+  it("hides doubao when DoubaoConnector feature switch is disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.DoubaoConnector]: false },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const doubao = connectorTypes.find((c) => {
+      return c.type === "doubao";
+    });
+
+    expect(doubao).toBeUndefined();
+  });
+
+  it("shows doubao when DoubaoConnector feature switch is enabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.DoubaoConnector]: true },
+      withoutRender: true,
+    });
+
+    const connectorTypes = await context.store.get(allConnectorTypes$);
+    const doubao = connectorTypes.find((c) => {
+      return c.type === "doubao";
+    });
+
+    expect(doubao).toBeDefined();
+    expect(doubao?.availableAuthMethods).toContain("api-token");
+  });
+
   it("hides zapier when ZapierConnector feature switch is disabled", async () => {
     detachedSetupPage({
       context,

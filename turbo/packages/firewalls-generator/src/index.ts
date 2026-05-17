@@ -38,6 +38,7 @@ import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
+import { generate as generateDoubao } from "./doubao";
 import { generate as generateDeel } from "./deel";
 import { generate as generateDevto } from "./devto";
 import { generate as generateDify } from "./dify";
@@ -223,6 +224,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "customer-io": generateCustomerIo,
   deel: generateDeel,
   deepseek: generateDeepseek,
+  doubao: generateDoubao,
   devto: generateDevto,
   dify: generateDify,
   doppler: generateDoppler,

@@ -56,6 +56,7 @@
     "generate:cronlytic": "tsx src/index.ts cronlytic",
     "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
+    "generate:doubao": "tsx src/index.ts doubao",
     "generate:deel": "tsx src/index.ts deel",
     "generate:devto": "tsx src/index.ts devto",
     "generate:dify": "tsx src/index.ts dify",
