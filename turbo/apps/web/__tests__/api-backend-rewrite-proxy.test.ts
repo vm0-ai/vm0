@@ -143,6 +143,14 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
   });
 
+  it("matches the email unsubscribe rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/email/unsubscribe")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/email/unsubscribe/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/email")).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(

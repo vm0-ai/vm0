@@ -22,6 +22,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
+  ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [

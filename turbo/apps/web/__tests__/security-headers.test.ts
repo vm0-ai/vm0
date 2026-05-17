@@ -23,6 +23,12 @@ const { getPathMatch } =
   };
 
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
+const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
+const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
+  "/api/email/unsubscribe/extra",
+  "/api/email",
+] as const;
 const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
@@ -278,6 +284,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/device-token/poll",
         },
         {
+          source: EMAIL_UNSUBSCRIBE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/email/unsubscribe",
+        },
+        {
           source: "/api/agentphone/:path*",
           destination: "https://api.example.test/api/agentphone/:path*",
         },
@@ -455,6 +465,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_PATH)).toStrictEqual({});
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH)).toBe(false);
+  });
+
+  it("should match only the exact email unsubscribe rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === EMAIL_UNSUBSCRIBE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: EMAIL_UNSUBSCRIBE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/email/unsubscribe",
+    });
+
+    const matcher = getPathMatch(EMAIL_UNSUBSCRIBE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(EMAIL_UNSUBSCRIBE_PATH)).toStrictEqual({});
+    for (const pathname of EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact push subscriptions rewrite", async () => {
