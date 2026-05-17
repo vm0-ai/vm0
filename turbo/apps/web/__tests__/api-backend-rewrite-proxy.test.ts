@@ -151,6 +151,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/email")).toBe(false);
   });
 
+  it("matches the generate image rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/generate-image")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/generate-image/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/generate")).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(

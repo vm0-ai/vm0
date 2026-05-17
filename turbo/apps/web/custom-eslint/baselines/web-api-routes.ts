@@ -53,7 +53,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/cron/sync-skills/route.ts",
   "app/api/cron/telegram-cleanup/route.ts",
   "app/api/cron/voice-chat-cleanup/route.ts",
-  "app/api/generate-image/route.ts",
   "app/api/github/oauth/callback/route.ts",
   "app/api/github/oauth/install/route.ts",
   "app/api/integrations/github/route.ts",
@@ -239,7 +238,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "7026650e98acd2b057c59663ef487b0db412a6e91173b64f6849c5631437b9ff";
+  "9155a9fa87c5df4cde6b98c09b1f686ae5bc41942d8541201a2e2a8c4c917093";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,
