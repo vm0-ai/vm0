@@ -26,6 +26,8 @@ export function createTestRequest(
 export interface ComposeConfigOptions {
   /** Override agent properties (merged with defaults) */
   overrides?: Partial<AgentComposeYaml["agents"][string]>;
+  /** Optional top-level compose volume definitions */
+  composeVolumes?: AgentComposeYaml["volumes"];
   /** Skip adding default ANTHROPIC_API_KEY (creates empty environment: {}) */
   skipDefaultApiKey?: boolean;
   /** Skip adding environment block entirely (for testing auto-injection) */
@@ -49,6 +51,7 @@ export function createDefaultComposeConfig(
     options &&
     ("skipDefaultApiKey" in options ||
       "noEnvironmentBlock" in options ||
+      "composeVolumes" in options ||
       "overrides" in options)
       ? options
       : { overrides: options as Partial<AgentComposeYaml["agents"][string]> };
@@ -65,7 +68,7 @@ export function createDefaultComposeConfig(
       : { ANTHROPIC_API_KEY: "test-api-key" };
   }
 
-  return {
+  const config: AgentComposeYaml = {
     version: "1.0",
     agents: {
       [agentName]: {
@@ -74,6 +77,12 @@ export function createDefaultComposeConfig(
       } as AgentComposeYaml["agents"][string],
     },
   };
+
+  if (opts.composeVolumes) {
+    config.volumes = opts.composeVolumes;
+  }
+
+  return config;
 }
 
 /**

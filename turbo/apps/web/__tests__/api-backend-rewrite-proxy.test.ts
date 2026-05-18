@@ -249,6 +249,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
   });
 
+  it("matches the agent composes collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/composes/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/agent/compose")).toBe(false);
+  });
+
   it("matches the agent composes versions rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/agent/composes/versions")).toBe(
       true,
@@ -256,7 +264,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/agent/composes/versions/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/agent/composes/version")).toBe(
       false,
     );
@@ -270,7 +277,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/composes/lists")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(false);
   });
 
   it("matches only UUID-shaped agent compose by-id paths", () => {
@@ -280,7 +286,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/composes/not-a-uuid")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         `/api/agent/composes/${AGENT_COMPOSE_ID}/extra`,
@@ -289,6 +294,7 @@ describe("API backend rewrite proxy behavior", () => {
   });
 
   it("keeps agent compose sibling rewrites explicitly matched", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/agent/composes/list")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/agent/composes/versions")).toBe(
       true,

@@ -36,6 +36,7 @@ const AGENT_COMPOSES_BY_ID_REWRITE_SOURCE = `/api/agent/composes/:id(${UUID_PATH
 const AGENT_COMPOSES_BY_ID_PATH_RE = new RegExp(
   `^/api/agent/composes/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const AGENT_COMPOSES_REWRITE_SOURCE = "/api/agent/composes";
 const AGENT_COMPOSES_LIST_REWRITE_SOURCE = "/api/agent/composes/list";
 const AGENT_COMPOSES_INSTRUCTIONS_REWRITE_SOURCE = `/api/agent/composes/:id(${UUID_PATH_SEGMENT_PATTERN})/instructions`;
 const AGENT_COMPOSES_INSTRUCTIONS_PATH_RE = new RegExp(
@@ -101,6 +102,7 @@ export const API_BACKEND_REWRITES = [
     "/api/agent/composes/:id",
     AGENT_COMPOSES_BY_ID_PATH_RE,
   ],
+  [AGENT_COMPOSES_REWRITE_SOURCE, "/api/agent/composes"],
   [AGENT_COMPOSES_LIST_REWRITE_SOURCE, "/api/agent/composes/list"],
   [
     AGENT_COMPOSES_INSTRUCTIONS_REWRITE_SOURCE,

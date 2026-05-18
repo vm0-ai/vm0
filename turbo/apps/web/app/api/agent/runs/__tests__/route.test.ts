@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "../route";
-import { POST as createComposeRoute } from "../../composes/route";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
@@ -1332,33 +1331,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   describe("Volume Resolution", () => {
     it("should fail run when volume references non-existent storage", async () => {
       // Create compose with volume that references a storage that doesn't exist
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: {
-              version: "1.0",
-              agents: {
-                "test-agent": {
-                  framework: "claude-code",
-                  environment: { ANTHROPIC_API_KEY: "test-key" },
-                  volumes: ["data:/mnt/data"],
-                },
-              },
-              volumes: {
-                data: {
-                  name: `nonexistent-storage-${Date.now()}`,
-                  version: "latest",
-                },
-              },
-            },
-          }),
+      const compose = await createTestCompose(uniqueId("missing-volume"), {
+        overrides: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "test-key" },
+          volumes: ["data:/mnt/data"],
         },
-      );
-      const composeResponse = await createComposeRoute(request);
-      const compose = await composeResponse.json();
+        composeVolumes: {
+          data: {
+            name: `nonexistent-storage-${Date.now()}`,
+            version: "latest",
+          },
+        },
+      });
 
       // Create run - should fail during storage resolution
       const data = await createTestRun(
@@ -1379,28 +1364,11 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // across tests (different users sharing the same version ID would
       // cause prepareForExecution to resolve the wrong compose's orgId).
       const agentName = uniqueId("vol-agent");
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: {
-              version: "1.0",
-              agents: {
-                [agentName]: {
-                  framework: "claude-code",
-                  environment: { ANTHROPIC_API_KEY: "test-key" },
-                  volumes: ["undefined-vol:/mnt/data"],
-                },
-              },
-              // No volumes section - undefined-vol is not defined
-            },
-          }),
-        },
-      );
-      const composeResponse = await createComposeRoute(request);
-      const compose = await composeResponse.json();
+      const compose = await createTestCompose(agentName, {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "test-key" },
+        volumes: ["undefined-vol:/mnt/data"],
+      });
 
       // Create run - should fail during volume resolution
       const data = await createTestRun(
@@ -1781,37 +1749,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       volumes: AgentComposeYaml["volumes"],
       agentVolumes: string[],
     ) {
-      const config: AgentComposeYaml = {
-        version: "1.0",
-        agents: {
-          [agentName]: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-api-key" },
-            volumes: agentVolumes,
-          },
+      return createTestCompose(agentName, {
+        overrides: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "test-api-key" },
+          volumes: agentVolumes,
         },
-        volumes,
-      };
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: config }),
-        },
-      );
-      const response = await createComposeRoute(request);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(
-          `Failed to create compose: ${error.error?.message || response.status}`,
-        );
-      }
-      return response.json() as Promise<{
-        composeId: string;
-        versionId: string;
-      }>;
+        composeVolumes: volumes,
+      });
     }
 
     it("should succeed when optional volume exists", async () => {

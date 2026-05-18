@@ -1,5 +1,4 @@
 import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
-import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Test setup uses production model-provider services after legacy web route removal.
 import {
   upsertOrgModelProvider,
@@ -8,7 +7,6 @@ import {
   upsertUserMultiAuthModelProvider,
 } from "../../lib/zero/model-provider/model-provider-service";
 import {
-  createTestRequest,
   createDefaultComposeConfig,
   getTestAuthContext,
   type ComposeConfigOptions,
@@ -18,7 +16,10 @@ import {
   modelProviderTypeSchema,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { ensureZeroAgentRow } from "../db-test-seeders/agents";
+import {
+  ensureZeroAgentRow,
+  seedApiCompatibleCompose,
+} from "../db-test-seeders/agents";
 
 // ---------------------------------------------------------------------------
 // Re-exports: DB-direct seeders and assertion helpers.
@@ -62,7 +63,7 @@ export {
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------
-// Route/service-backed helpers.
+// Production-compatible helpers.
 //
 // These call production route handlers or service entry points, not raw DB.
 // ---------------------------------------------------------------------------
@@ -84,23 +85,12 @@ export async function createTestCompose(
   agentId: string;
 }> {
   const config = createDefaultComposeConfig(agentName, options);
-  const request = createTestRequest(
-    "http://localhost:3000/api/agent/composes",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: config }),
-    },
-  );
-  const response = await createComposeRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create compose: ${error.error?.message || response.status}`,
-    );
-  }
-  const result: { composeId: string; versionId: string; name: string } =
-    await response.json();
+  const authContext = await getTestAuthContext();
+  const result = await seedApiCompatibleCompose({
+    userId: authContext.userId,
+    orgId: authContext.orgId,
+    content: config,
+  });
 
   // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
   await ensureZeroAgentRow(result.composeId);
