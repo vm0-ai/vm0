@@ -116,6 +116,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/team", "/api/zero/team"],
+  ["/api/zero/model-policies", "/api/zero/model-policies"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/org/list", "/api/zero/org/list"],

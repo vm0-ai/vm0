@@ -7,11 +7,6 @@ import { createHash } from "node:crypto";
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries; the no-new-api-routes rule checks
  * that this baseline only shrinks relative to the branch's git base.
- *
- * Intentional exception: model policy routes live in apps/web while the rest of
- * Zero's bearer-token web API still authenticates through requireAuth/resolveOrg
- * in the Next.js runtime.
- *
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/checkpoints/[id]/route.ts",
@@ -181,7 +176,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",
   "app/api/zero/me/model-providers/route.ts",
-  "app/api/zero/model-policies/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
   "app/api/zero/model-providers/route.ts",
   "app/api/zero/onboarding/setup/route.ts",
@@ -227,7 +221,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "f5f434477c4134d58b3550fc2c4e0fb94b447df2fdec984d902e7a7ea5208d47";
+  "64d99e1ce6afa0f347884527326be914bf43b3ecaf969c4c9a079f2d398e4b38";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

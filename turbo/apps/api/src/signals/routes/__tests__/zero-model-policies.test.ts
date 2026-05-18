@@ -15,6 +15,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
@@ -33,6 +34,7 @@ const ORG_SENTINEL_USER_ID = "__org__";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const MODEL_POLICIES_PATH = "/api/zero/model-policies";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -150,6 +152,26 @@ function apiClient() {
   return setupApp({ context })(zeroModelPoliciesMainContract);
 }
 
+async function putRawModelPolicies(body: string): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(MODEL_POLICIES_PATH, {
+    method: "PUT",
+    headers: {
+      authorization: "Bearer clerk-session",
+      "content-type": "application/json",
+    },
+    body,
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
 function seedFixture(
   switches: Record<string, boolean>,
 ): Promise<ModelPolicyFixture> {
@@ -161,6 +183,48 @@ const track = createFixtureTracker<ModelPolicyFixture>((fixture) => {
 });
 
 describe("GET/PUT /api/zero/model-policies", () => {
+  it("returns 401 for unauthenticated reads and writes", async () => {
+    const client = apiClient();
+
+    const listResponse = await client.list({ headers: {} });
+    const updateResponse = await client.update({
+      headers: {},
+      body: { policies: [] },
+    });
+
+    expect(listResponse.status).toBe(401);
+    expect(listResponse.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(updateResponse.status).toBe(401);
+    expect(updateResponse.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 for sessions without an active organization", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, null);
+    const client = apiClient();
+
+    const listResponse = await client.list({
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    const updateResponse = await client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { policies: [] },
+    });
+
+    expect(listResponse.status).toBe(401);
+    expect(listResponse.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+    expect(updateResponse.status).toBe(401);
+    expect(updateResponse.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("lists model policy controls without a feature switch", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -265,6 +329,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     expect(response.status).toBe(403);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only admins can manage model policies",
+        code: "FORBIDDEN",
+      },
+    });
   });
 
   it("updates the explicit workspace default", async () => {
@@ -303,6 +373,43 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_MODELS[1],
     );
+  });
+
+  it("removes supported models omitted from an update", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const removedModel = "deepseek-v4-pro";
+    const updates = toUpdate(listResponse.body).filter((policy) => {
+      return policy.model !== removedModel;
+    });
+
+    const updateResponse = await accept(
+      client.update({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { policies: updates },
+      }),
+      [200],
+    );
+    const secondListResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(
+      updateResponse.body.policies.some((policy) => {
+        return policy.model === removedModel;
+      }),
+    ).toBeFalsy();
+    expect(
+      secondListResponse.body.policies.some((policy) => {
+        return policy.model === removedModel;
+      }),
+    ).toBeFalsy();
   });
 
   it("allows adding a supported model that was not seeded by default", async () => {
@@ -493,6 +600,123 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("rejects org provider routes without a provider id", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = [
+      ...toUpdate(listResponse.body),
+      {
+        model: "glm-5.1",
+        isDefault: false,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: null,
+      } satisfies UpdateOrgModelPolicy,
+    ];
+
+    const response = await client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Org provider routes require a provider ID",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects duplicate model updates", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body);
+    const duplicatedPolicy = updates[0]!;
+
+    const response = await client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        policies: [
+          duplicatedPolicy,
+          { ...duplicatedPolicy, isDefault: false },
+          ...updates.slice(1),
+        ],
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Duplicate model "${duplicatedPolicy.model}"`,
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects updates without exactly one default model", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      return { ...policy, isDefault: false };
+    });
+
+    const response = await client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { policies: updates },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Request must include exactly one default model",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects update bodies that are not valid JSON", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await putRawModelPolicies("not-json");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid JSON in request body",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("rejects malformed update bodies", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await putRawModelPolicies("{}");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
   it("rejects incomplete update payloads", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -503,8 +727,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Request must include at least one model",
+        code: "BAD_REQUEST",
+      },
     });
   });
 });
