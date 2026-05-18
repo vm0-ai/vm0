@@ -26,6 +26,7 @@ const internalModelPolicyDialogState$ = state<ModelPolicyDialogState>({
 
 const internalModelPolicyApiKey$ = state<string>("");
 const internalModelPolicyApiKeyError$ = state<string | null>(null);
+const internalModelPolicyApiKeyTouched$ = state<boolean>(false);
 
 export const modelPolicyApiKey$ = computed((get) => {
   return get(internalModelPolicyApiKey$);
@@ -35,9 +36,18 @@ export const modelPolicyApiKeyError$ = computed((get) => {
   return get(internalModelPolicyApiKeyError$);
 });
 
+export const modelPolicyApiKeyTouched$ = computed((get) => {
+  return get(internalModelPolicyApiKeyTouched$);
+});
+
 export const setModelPolicyApiKey$ = command(({ set }, value: string) => {
   set(internalModelPolicyApiKey$, value);
+  set(internalModelPolicyApiKeyTouched$, true);
   set(internalModelPolicyApiKeyError$, null);
+});
+
+export const markModelPolicyApiKeyTouched$ = command(({ set }) => {
+  set(internalModelPolicyApiKeyTouched$, true);
 });
 
 export const setModelPolicyApiKeyError$ = command(
@@ -74,6 +84,7 @@ export const openAddModelPolicyDialog$ = command(
       providerType: null,
     });
     set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyTouched$, false);
     set(internalModelPolicyApiKeyError$, null);
   },
 );
@@ -90,6 +101,7 @@ export const openEditModelPolicyDialog$ = command(
         routeKind === "built-in" ? null : policy.defaultProviderType,
     });
     set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyTouched$, false);
     set(internalModelPolicyApiKeyError$, null);
   },
 );
@@ -103,6 +115,7 @@ export const closeModelPolicyDialog$ = command(({ set }) => {
     providerType: null,
   });
   set(internalModelPolicyApiKey$, "");
+  set(internalModelPolicyApiKeyTouched$, false);
   set(internalModelPolicyApiKeyError$, null);
 });
 
@@ -117,6 +130,7 @@ export const updateModelPolicyDialogModel$ = command(
       };
     });
     set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyTouched$, false);
     set(internalModelPolicyApiKeyError$, null);
   },
 );
@@ -133,6 +147,7 @@ export const updateModelPolicyDialogRoute$ = command(
       return { ...prev, ...params };
     });
     set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyTouched$, false);
     set(internalModelPolicyApiKeyError$, null);
   },
 );

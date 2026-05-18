@@ -143,16 +143,6 @@ function getModelPolicyDialog(): HTMLElement {
   return dialog!;
 }
 
-function getOrgProviderDialog(): HTMLElement {
-  const dialog = screen.getAllByRole("dialog").find((item) => {
-    return Boolean(
-      within(item).queryByText(/(?:Add|Edit) workspace Anthropic/i),
-    );
-  });
-  expect(dialog).toBeDefined();
-  return dialog!;
-}
-
 function openLabeledSelect(dialog: HTMLElement, labelText: string): HTMLElement {
   const label = within(dialog).getByText(labelText);
   const container = label.parentElement;
@@ -163,9 +153,9 @@ function openLabeledSelect(dialog: HTMLElement, labelText: string): HTMLElement 
 }
 
 function clickRouteChoice(dialog: HTMLElement, label: string): void {
-  openLabeledSelect(dialog, "Route");
-  const listbox = screen.getByRole("listbox");
-  click(within(listbox).getByText(label));
+  const button = within(dialog).getByText(label).closest("button");
+  expect(button).toBeDefined();
+  click(button!);
 }
 
 function clickDialogButton(dialog: HTMLElement, label: string): void {
@@ -260,7 +250,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("keeps the add model dialog open after closing nested API key edit", async () => {
+  it("shows a masked api key when editing a model whose key is already configured", async () => {
     setMockFeatureSwitches({});
     setMockOrgModelProviders([makeAnthropicProvider()]);
 
@@ -269,23 +259,10 @@ describe("org-providers-tab — stale banner reconnect", () => {
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
     clickRouteChoice(dialog, "API key");
-    click(within(dialog).getByText("Edit key"));
 
-    const providerDialog = getOrgProviderDialog();
-    click(within(providerDialog).getByText("Cancel"));
-
-    await waitFor(() => {
-      expect(
-        within(getModelPolicyDialog()).getByRole("heading", {
-          name: "Add model",
-        }),
-      ).toBeInTheDocument();
-      expect(
-        within(getModelPolicyDialog()).getByText(
-          /Decide how members access this model/i,
-        ),
-      ).toBeInTheDocument();
-    });
+    const input = within(dialog).getByPlaceholderText("Enter your API key");
+    expect((input as HTMLInputElement).value).not.toBe("");
+    expect((input as HTMLInputElement).value).not.toBe("sk-ant-test");
   });
 
   it("closes the add model dialog after inline API key save succeeds", async () => {
