@@ -36,6 +36,12 @@ const AUTH_ME_NEXT_NEGATIVE_PATHS = [
   "/api/auth/me/extra",
   "/api/auth",
 ] as const;
+const CLI_AUTH_DEVICE_REWRITE_SOURCE = "/api/cli/auth/device";
+const CLI_AUTH_DEVICE_PATH = "/api/cli/auth/device";
+const CLI_AUTH_DEVICE_NEXT_NEGATIVE_PATHS = [
+  "/api/cli/auth/device/extra",
+  "/api/cli/auth",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -515,6 +521,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/auth/me",
         },
         {
+          source: CLI_AUTH_DEVICE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cli/auth/device",
+        },
+        {
           source: "/api/device-token",
           destination: "https://api.example.test/api/device-token",
         },
@@ -879,6 +889,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AUTH_ME_PATH)).toStrictEqual({});
     for (const pathname of AUTH_ME_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact CLI auth device rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CLI_AUTH_DEVICE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CLI_AUTH_DEVICE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cli/auth/device",
+    });
+
+    const matcher = getPathMatch(CLI_AUTH_DEVICE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CLI_AUTH_DEVICE_PATH)).toStrictEqual({});
+    for (const pathname of CLI_AUTH_DEVICE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

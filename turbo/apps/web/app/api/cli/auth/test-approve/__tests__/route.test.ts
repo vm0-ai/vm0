@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as createDeviceRoute } from "../../device/route";
 import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import { createTestDeviceCode } from "../../../../../../src/__tests__/db-test-seeders/auth";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
@@ -22,19 +22,6 @@ vi.mock("@clerk/nextjs/server", () => {
 });
 
 const context = testContext();
-
-/**
- * Create a device code via the device endpoint
- */
-async function createTestDeviceCode(): Promise<string> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/cli/auth/device",
-    { method: "POST" },
-  );
-  const response = await createDeviceRoute(request);
-  const data = await response.json();
-  return data.device_code;
-}
 
 describe("/api/cli/auth/test-approve", () => {
   beforeEach(() => {

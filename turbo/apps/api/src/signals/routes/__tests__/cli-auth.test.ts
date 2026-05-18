@@ -357,6 +357,25 @@ describe("CLI auth routes", () => {
       const row = await fetchDeviceCode(response.body.device_code);
       expect(row).toMatchObject({ purpose: "cli", status: "pending" });
     });
+
+    it("generates unique CLI device codes on repeated calls", async () => {
+      const client = setupApp({ context })(cliAuthDeviceContract);
+
+      const first = await acceptResponse<DeviceAuthResponseBody>(
+        client.create({ body: {} }),
+        200,
+      );
+      const second = await acceptResponse<DeviceAuthResponseBody>(
+        client.create({ body: {} }),
+        200,
+      );
+      cleanupState.deviceCodes.push(
+        first.body.device_code,
+        second.body.device_code,
+      );
+
+      expect(first.body.device_code).not.toBe(second.body.device_code);
+    });
   });
 
   describe("POST /api/cli/auth/token", () => {

@@ -153,6 +153,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/auth")).toBe(false);
   });
 
+  it("matches the CLI auth device rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cli/auth/device")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/cli/auth/device/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
