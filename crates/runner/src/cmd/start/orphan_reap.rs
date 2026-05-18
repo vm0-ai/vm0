@@ -469,22 +469,22 @@ mod tests {
 
         async fn assert_status(
             &self,
-            expected_idle_sessions: &[&str],
-            expected_active_runs: &[RunId],
+            expected_idle_vms: &[(&str, SandboxId)],
+            expected_active_runs: &[(RunId, SandboxId)],
         ) {
-            let (idle_sessions, active_runs) = self.status_idle_sessions_and_active_runs().await;
-            let mut expected_idle_sessions = expected_idle_sessions
+            let (idle_vms, active_runs) = self.status_idle_vms_and_active_runs().await;
+            let mut expected_idle_vms = expected_idle_vms
                 .iter()
-                .map(|session_id| (*session_id).to_string())
+                .map(|(session_id, sandbox_id)| ((*session_id).to_string(), sandbox_id.to_string()))
                 .collect::<Vec<_>>();
-            expected_idle_sessions.sort_unstable();
+            expected_idle_vms.sort_unstable();
             let mut expected_active_runs = expected_active_runs
                 .iter()
-                .map(RunId::to_string)
+                .map(|(run_id, sandbox_id)| (run_id.to_string(), sandbox_id.to_string()))
                 .collect::<Vec<_>>();
             expected_active_runs.sort_unstable();
 
-            assert_eq!(idle_sessions, expected_idle_sessions);
+            assert_eq!(idle_vms, expected_idle_vms);
             assert_eq!(active_runs, expected_active_runs);
         }
 
@@ -503,36 +503,40 @@ mod tests {
             assert_eq!(self.orphans.len().await, expected);
         }
 
-        async fn status_idle_sessions_and_active_runs(&self) -> (Vec<String>, Vec<String>) {
+        async fn status_idle_vms_and_active_runs(
+            &self,
+        ) -> (Vec<(String, String)>, Vec<(String, String)>) {
             let raw = tokio::fs::read_to_string(&self.status_path).await.unwrap();
             let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
-            let mut sessions: Vec<String> = status
+            let mut idle_vms: Vec<(String, String)> = status
                 .get("idle_vms")
                 .and_then(|v| v.as_array())
                 .map(|idle_vms| {
                     idle_vms
                         .iter()
                         .filter_map(|vm| {
-                            vm.get("session_id")
-                                .and_then(|session| session.as_str())
-                                .map(str::to_string)
+                            let session_id =
+                                vm.get("session_id").and_then(|session| session.as_str())?;
+                            let sandbox_id =
+                                vm.get("sandbox_id").and_then(|sandbox| sandbox.as_str())?;
+                            Some((session_id.to_string(), sandbox_id.to_string()))
                         })
                         .collect()
                 })
                 .unwrap_or_default();
-            sessions.sort_unstable();
-            let mut run_ids: Vec<String> = status["active_runs"]
+            idle_vms.sort_unstable();
+            let mut active_runs: Vec<(String, String)> = status["active_runs"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .filter_map(|run| {
-                    run.get("run_id")
-                        .and_then(|run_id| run_id.as_str())
-                        .map(str::to_string)
+                    let run_id = run.get("run_id").and_then(|run_id| run_id.as_str())?;
+                    let sandbox_id = run.get("sandbox_id").and_then(|sandbox| sandbox.as_str())?;
+                    Some((run_id.to_string(), sandbox_id.to_string()))
                 })
                 .collect();
-            run_ids.sort_unstable();
-            (sessions, run_ids)
+            active_runs.sort_unstable();
+            (idle_vms, active_runs)
         }
     }
 
@@ -556,7 +560,9 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture
+            .assert_status(&[], &[(run_id, current_sandbox_id)])
+            .await;
         fixture
             .assert_orphans(&[(run_id, current_sandbox_id)])
             .await;
@@ -584,7 +590,9 @@ mod tests {
             .reap_records(stale_records, OrphanReapMode::Immediate)
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture
+            .assert_status(&[], &[(run_id, current_sandbox_id)])
+            .await;
         fixture
             .assert_orphans(&[(run_id, current_sandbox_id)])
             .await;
@@ -603,7 +611,7 @@ mod tests {
         fixture.reap(OrphanReapMode::Immediate).await;
 
         fixture
-            .assert_status(&["sess-idle-owned-reaper"], &[])
+            .assert_status(&[("sess-idle-owned-reaper", sandbox_id)], &[])
             .await;
         fixture.assert_orphan_count(0).await;
     }
@@ -618,7 +626,7 @@ mod tests {
         fixture.reap(OrphanReapMode::Immediate).await;
         fixture.reap(OrphanReapMode::ConfirmAbsent).await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
     }
 
@@ -637,7 +645,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
 
         fixture
@@ -699,7 +707,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
 
         fixture
@@ -709,7 +717,7 @@ mod tests {
                 ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
             )
             .await;
-        let (_idle_sessions, active_runs) = fixture.status_idle_sessions_and_active_runs().await;
+        let (_idle_vms, active_runs) = fixture.status_idle_vms_and_active_runs().await;
         assert!(
             active_runs.is_empty(),
             "incomplete discovery should not count as absent, but should not globally reset prior conclusive absence"
@@ -732,7 +740,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
 
         let firecracker = process::FirecrackerProcessInfo {
@@ -749,7 +757,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
 
         fixture
@@ -760,7 +768,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
 
         fixture
@@ -796,7 +804,7 @@ mod tests {
             )
             .await;
 
-        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_status(&[], &[(run_id, sandbox_id)]).await;
         fixture.assert_orphan_count(1).await;
     }
 }
