@@ -1033,6 +1033,71 @@ mod tests {
     }
 
     #[test]
+    fn timeout_before_sink_connection_does_not_poison_later_delivery() {
+        const FORWARD_NONCE: ProcessControlNonce = *b"77889900aabbccdd";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(16, Some(FORWARD_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let payload = vsock_proto::encode_process_control(
+            16,
+            FORWARD_NONCE,
+            "msg-before-connect",
+            b"payload",
+            0,
+        )
+        .unwrap();
+
+        handle_process_control(41, &payload, &registry, &writer).unwrap();
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 41);
+        assert_eq!(status, ProcessControlStatus::SinkTimeout);
+        assert_eq!(message_id, "msg-before-connect");
+        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
+
+        let client = std::thread::spawn(move || {
+            let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+            process_control_ipc::write_hello(&mut stream).unwrap();
+            let request = process_control_ipc::read_request(&mut stream).unwrap();
+            assert_eq!(request.message_id, "msg-after-timeout");
+            assert_eq!(request.payload, b"payload");
+            process_control_ipc::write_response(
+                &mut stream,
+                &process_control_ipc::ControlResponse {
+                    message_id: request.message_id,
+                    status: process_control_ipc::ControlResponseStatus::Accepted,
+                    diagnostic: String::new(),
+                },
+            )
+            .unwrap();
+        });
+
+        let payload = vsock_proto::encode_process_control(
+            16,
+            FORWARD_NONCE,
+            "msg-after-timeout",
+            b"payload",
+            5000,
+        )
+        .unwrap();
+        handle_process_control(42, &payload, &registry, &writer).unwrap();
+        let (msg_type, seq, status, message_id, diagnostic) =
+            read_process_control_result(&mut host);
+        assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
+        assert_eq!(seq, 42);
+        assert_eq!(status, ProcessControlStatus::Delivered);
+        assert_eq!(message_id, "msg-after-timeout");
+        assert_eq!(diagnostic, "");
+
+        client.join().unwrap();
+    }
+
+    #[test]
     fn non_terminal_control_responses_do_not_close_sink() {
         const FORWARD_NONCE: ProcessControlNonce = *b"aa22cc44ee66ff88";
 
