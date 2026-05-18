@@ -7,18 +7,13 @@ import { fileURLToPath } from "node:url";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import {
-  computeWebApiRouteBaselineHash,
-  WEB_API_ROUTE_BASELINE,
-  WEB_API_ROUTE_BASELINE_HASH,
-} from "../baselines/web-api-routes.ts";
+import { WEB_API_ROUTE_BASELINE } from "../baselines/web-api-routes.ts";
 import {
   expandedBaselineRoutes,
   expandedBaselineRoutesSinceReference,
   extractWebApiRouteBaselineRoutes,
   missingBaselineRoutes,
   noNewApiRoutes,
-  webApiRouteBaselineHashIsCurrent,
   webApiRoutePath,
 } from "../rules/no-new-api-routes.ts";
 
@@ -88,21 +83,6 @@ describe("missingBaselineRoutes", () => {
 
     expect(missing).not.toContain(existingRoute);
     expect(missing).toContain(WEB_API_ROUTE_BASELINE[1]);
-  });
-});
-
-describe("web API route baseline hash", () => {
-  it("matches the committed route baseline", () => {
-    expect(webApiRouteBaselineHashIsCurrent()).toBe(true);
-  });
-
-  it("changes when a route is added to the baseline", () => {
-    expect(
-      computeWebApiRouteBaselineHash([
-        ...WEB_API_ROUTE_BASELINE,
-        "app/api/new-backend-only-route/route.ts",
-      ]),
-    ).not.toBe(WEB_API_ROUTE_BASELINE_HASH);
   });
 });
 

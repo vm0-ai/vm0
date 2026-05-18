@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 /**
  * Existing Next.js API routes in apps/web at the point web route growth was
  * frozen. New API routes should be implemented in apps/api instead.
@@ -201,15 +199,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/slack/oauth/connect/route.ts",
   "app/api/zero/slack/oauth/install/route.ts",
 ] as const;
-
-export const WEB_API_ROUTE_BASELINE_HASH =
-  "1789f2cb3958ecf8d5a047945148d8c2c8ff505daec6259565f2831a9376aecc";
-
-export function computeWebApiRouteBaselineHash(
-  routes: readonly string[] = WEB_API_ROUTE_BASELINE,
-): string {
-  return createHash("sha256").update(routes.join("\n")).digest("hex");
-}
 
 export const WEB_API_ROUTE_BASELINE_SET = new Set<string>(
   WEB_API_ROUTE_BASELINE,

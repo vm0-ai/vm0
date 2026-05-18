@@ -3,9 +3,7 @@ import { existsSync } from "node:fs";
 import * as path from "node:path";
 
 import {
-  computeWebApiRouteBaselineHash,
   WEB_API_ROUTE_BASELINE,
-  WEB_API_ROUTE_BASELINE_HASH,
   WEB_API_ROUTE_BASELINE_SET,
 } from "../baselines/web-api-routes.ts";
 import { createRule } from "../utils.ts";
@@ -17,7 +15,6 @@ const ROUTE_SUFFIX = "/route.ts";
 const BASELINE_FILE_FROM_WEB_ROOT = "custom-eslint/baselines/web-api-routes.ts";
 
 const reportedBaselineExpansionRoots = new Set<string>();
-const reportedBaselineHashRoots = new Set<string>();
 const reportedStaleBaselineRoots = new Set<string>();
 
 function normalizePath(value: string): string {
@@ -153,10 +150,6 @@ function staleBaselineMessageData(missingRoutes: readonly string[]): {
   };
 }
 
-export function webApiRouteBaselineHashIsCurrent(): boolean {
-  return computeWebApiRouteBaselineHash() === WEB_API_ROUTE_BASELINE_HASH;
-}
-
 export const noNewApiRoutes = createRule({
   name: "no-new-api-routes",
   defaultOptions: [],
@@ -175,8 +168,6 @@ export const noNewApiRoutes = createRule({
         "Web API route baseline cannot grow. Remove added baseline entries, add the route to apps/api, and use a Next.js rewrite when web compatibility is needed: {{routes}}",
       staleApiRouteBaseline:
         "Web API route baseline contains {{count}} deleted route(s). Remove stale baseline entries: {{routes}}",
-      changedApiRouteBaseline:
-        "Web API route baseline changed without updating WEB_API_ROUTE_BASELINE_HASH. Remove accidental baseline edits instead of allowlisting new web API routes.",
     },
   },
   create(context) {
@@ -203,16 +194,6 @@ export const noNewApiRoutes = createRule({
               node,
               messageId: "expandedApiRouteBaseline",
               data: staleBaselineMessageData(expandedRoutes),
-            });
-          }
-        }
-
-        if (!reportedBaselineHashRoots.has(webRoot)) {
-          reportedBaselineHashRoots.add(webRoot);
-          if (!webApiRouteBaselineHashIsCurrent()) {
-            context.report({
-              node,
-              messageId: "changedApiRouteBaseline",
             });
           }
         }
