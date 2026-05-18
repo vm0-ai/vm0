@@ -532,15 +532,10 @@ export async function generateCliToken(
  * @param token - The full prefixed token (without "Bearer " prefix)
  */
 export function verifyCliToken(token: string): CliAuth | null {
-  let rawJwt: string;
-  if (token.startsWith(PAT_TOKEN_PREFIX)) {
-    rawJwt = token.slice(PAT_TOKEN_PREFIX.length);
-  } else if (token.startsWith(SANDBOX_TOKEN_PREFIX)) {
-    // Backward compat: accept old vm0_sandbox_ prefix for CLI tokens during transition
-    rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
-  } else {
+  if (!token.startsWith(PAT_TOKEN_PREFIX)) {
     return null;
   }
+  const rawJwt = token.slice(PAT_TOKEN_PREFIX.length);
   const payload = verifyJwtPayload(rawJwt);
   if (!payload) {
     return null;

@@ -25,7 +25,7 @@ function buildFakeCliJwt(payload: Record<string, unknown>): string {
   ).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = Buffer.from("fake-signature").toString("base64url");
-  return `vm0_sandbox_${header}.${body}.${sig}`;
+  return `vm0_pat_${header}.${body}.${sig}`;
 }
 
 describe("zero org set command", () => {

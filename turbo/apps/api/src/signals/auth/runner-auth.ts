@@ -9,7 +9,7 @@ import {
   cliTokenRecord,
   updateCliTokenLastUsedAt$,
 } from "../services/auth.service";
-import { isPatToken, isSandboxToken, verifyCliToken } from "./tokens";
+import { isPatToken, verifyCliToken } from "./tokens";
 
 const L = logger("RunnerAuth");
 
@@ -46,12 +46,9 @@ export const runnerAuth$ = command(
 
     const token = authHeader.slice("Bearer ".length);
 
-    if (isPatToken(token) || isSandboxToken(token)) {
+    if (isPatToken(token)) {
       const cliAuth = verifyCliToken(token);
       if (!cliAuth) {
-        if (isSandboxToken(token)) {
-          L.debug("Rejected non-CLI sandbox JWT token on runner endpoint");
-        }
         return null;
       }
 

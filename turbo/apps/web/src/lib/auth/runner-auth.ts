@@ -6,7 +6,7 @@
  */
 
 import { initServices } from "../init-services";
-import { isSandboxToken, isPatToken, verifyCliToken } from "./sandbox-token";
+import { isPatToken, verifyCliToken } from "./sandbox-token";
 import { resolveCliTokenFromDb } from "./get-auth-context";
 import { logger } from "../shared/logger";
 import { timingSafeEqual } from "crypto";
@@ -67,7 +67,7 @@ function validateOfficialRunnerSecret(providedSecret: string): boolean {
  *    - Validated against OFFICIAL_RUNNER_SECRET env var
  *    - Returns { type: 'official-runner' }
  *
- * 2. User runner: Uses CLI JWT token (`vm0_sandbox_` prefix with scope "cli")
+ * 2. User runner: Uses CLI JWT token (`vm0_pat_` prefix with scope "cli")
  *    - Validated via JWT signature + cli_tokens table revocation check
  *    - Returns { type: 'user', userId }
  *
@@ -94,25 +94,6 @@ export async function getRunnerAuth(
       }
       return { type: "user", userId: resolved.userId };
     }
-    return null;
-  }
-
-  // Handle sandbox-prefixed JWT tokens
-  if (isSandboxToken(token)) {
-    // TODO: Remove vm0_sandbox_ CLI backward compat after transition (~June 2026)
-    // Backward compat: accept old vm0_sandbox_ prefix with scope "cli"
-    const cliAuth = verifyCliToken(token);
-    if (cliAuth) {
-      initServices();
-      const resolved = await resolveCliTokenFromDb(cliAuth);
-      if (!resolved) {
-        return null;
-      }
-      return { type: "user", userId: resolved.userId };
-    }
-
-    // Reject other sandbox JWT tokens (sandbox, zero, compose-job)
-    log.debug("Rejected non-CLI sandbox JWT token on runner endpoint");
     return null;
   }
 

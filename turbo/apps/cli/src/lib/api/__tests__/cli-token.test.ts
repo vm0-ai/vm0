@@ -38,7 +38,7 @@ describe("decodeCliTokenPayload", () => {
     expect(decodeCliTokenPayload("vm0_live_abc123")).toBeUndefined();
   });
 
-  it("should decode CLI JWT with legacy vm0_sandbox_ prefix (backward compat)", () => {
+  it("should return undefined for CLI JWT with legacy vm0_sandbox_ prefix", () => {
     const token = buildCliJwt(
       {
         userId: "user-1",
@@ -51,14 +51,7 @@ describe("decodeCliTokenPayload", () => {
       "vm0_sandbox_",
     );
     const result = decodeCliTokenPayload(token);
-    expect(result).toEqual({
-      userId: "user-1",
-      orgId: "org-1",
-      tokenId: "tok-1",
-      scope: "cli",
-      iat: 1000,
-      exp: 2000,
-    });
+    expect(result).toBeUndefined();
   });
 
   it("should return undefined for zero-scoped tokens", () => {
