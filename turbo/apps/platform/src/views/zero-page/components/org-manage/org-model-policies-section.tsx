@@ -25,6 +25,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -37,6 +38,7 @@ import {
   cn,
 } from "@vm0/ui";
 import {
+  MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
@@ -52,14 +54,18 @@ import {
 } from "../../../../signals/external/org-model-policies.ts";
 import {
   orgConfiguredProviders$,
-  orgOpenAddDialogForModelPolicyRoute$,
   orgOpenEditDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { createOrgModelProvider$ } from "../../../../signals/external/org-model-providers.ts";
 import {
   closeModelPolicyDialog$,
+  modelPolicyApiKey$,
+  modelPolicyApiKeyError$,
   modelPolicyDialogState$,
   openAddModelPolicyDialog$,
   openEditModelPolicyDialog$,
+  setModelPolicyApiKey$,
+  setModelPolicyApiKeyError$,
   updateModelPolicyDialogModel$,
   updateModelPolicyDialogRoute$,
   type ModelPolicyDialogMode,
@@ -100,16 +106,38 @@ function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
 } {
   if (oauthTypes.includes("codex-oauth-token")) {
     return {
-      title: "Codex Subscription",
-      description:
-        "Lets members use their own Codex Pro/Team subscription. Each member opens their Preferences, switches to Personal Models, and connects ChatGPT (Codex). The token only launches the Codex CLI inside a secure sandbox and is sent directly to OpenAI.",
+      title: "Codex subscription",
+      description: "Each member connects their own Pro or Team plan.",
     };
   }
   return {
-    title: "Claude Subscription",
-    description:
-      "Lets members use their own Claude Pro/Max/Team subscription. Each member opens their Preferences, switches to Personal Models, and sets a Claude Code OAuth Token. The token only launches the Claude Code CLI inside a secure sandbox and is sent directly to Anthropic.",
+    title: "Claude subscription",
+    description: "Each member connects their own Pro, Max, or Team plan.",
   };
+}
+
+function getProviderConfig(type: ModelProviderType) {
+  return MODEL_PROVIDER_TYPES[type] as
+    | { secretLabel?: string; helpText?: string }
+    | undefined;
+}
+
+function getProviderSecretLabel(type: ModelProviderType): string {
+  const config = getProviderConfig(type);
+  return config?.secretLabel ?? "API key";
+}
+
+function getProviderSecretPlaceholder(type: ModelProviderType): string {
+  return `Enter your ${getProviderSecretLabel(type)}`;
+}
+
+function getProviderSignupUrl(type: ModelProviderType): string | null {
+  const helpText = getProviderConfig(type)?.helpText;
+  if (!helpText) {
+    return null;
+  }
+  const match = /https?:\/\/[^\s)]+/.exec(helpText);
+  return match ? match[0] : null;
 }
 
 function findProviderByType(
@@ -650,18 +678,28 @@ function ApiKeyProviderSection({
   apiTypes,
   providers,
   routeProvider,
+  apiKeyValue,
+  apiKeyError,
   onChange,
-  onAddKey,
+  onApiKeyChange,
   onEditKey,
 }: {
   selectedProviderType: ModelProviderType | null;
   apiTypes: ModelProviderType[];
   providers: ModelProviderResponse[];
   routeProvider: ModelProviderResponse | null;
+  apiKeyValue: string;
+  apiKeyError: string | null;
   onChange: (type: ModelProviderType) => void;
-  onAddKey: () => void;
+  onApiKeyChange: (value: string) => void;
   onEditKey: () => void;
 }) {
+  const secretLabel = selectedProviderType
+    ? getProviderSecretLabel(selectedProviderType)
+    : "API key";
+  const secretSignupUrl = selectedProviderType
+    ? getProviderSignupUrl(selectedProviderType)
+    : null;
   return (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-foreground">Provider</label>
@@ -673,10 +711,41 @@ function ApiKeyProviderSection({
         onChange={onChange}
       />
       {selectedProviderType && !routeProvider && (
-        <ProviderKeyNotice
-          providerType={selectedProviderType}
-          onAddKey={onAddKey}
-        />
+        <>
+          <ProviderKeyNotice providerType={selectedProviderType} />
+          <div className="flex flex-col gap-1.5 pt-1">
+            <label className="text-sm font-medium text-foreground">
+              {getUILabel(selectedProviderType)} {secretLabel}
+            </label>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={apiKeyValue}
+              placeholder={getProviderSecretPlaceholder(selectedProviderType)}
+              onChange={(e) => {
+                onApiKeyChange(e.target.value);
+              }}
+              className={apiKeyError ? "border-destructive" : ""}
+            />
+            {apiKeyError ? (
+              <p className="text-xs text-destructive">{apiKeyError}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Stored in workspace secrets.{" "}
+                {secretSignupUrl ? (
+                  <a
+                    href={secretSignupUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 decoration-border hover:decoration-foreground/40"
+                  >
+                    Get a key
+                  </a>
+                ) : null}
+              </p>
+            )}
+          </div>
+        </>
       )}
       {routeProvider && <ProviderConfiguredHint onEdit={onEditKey} />}
     </div>
@@ -685,10 +754,8 @@ function ApiKeyProviderSection({
 
 function ProviderKeyNotice({
   providerType,
-  onAddKey,
 }: {
   providerType: ModelProviderType;
-  onAddKey: () => void;
 }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-2">
@@ -697,22 +764,10 @@ function ProviderKeyNotice({
         stroke={1.75}
         className="mt-0.5 shrink-0 text-amber-600"
       />
-      <div className="flex flex-1 flex-col gap-2">
-        <span className="text-xs leading-relaxed text-amber-900">
-          {getUILabel(providerType)} isn&apos;t connected yet. Add a key to use
-          this provider.
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 w-fit gap-1.5 rounded-md border-amber-300 bg-white text-xs text-amber-900 hover:bg-amber-50"
-          onClick={onAddKey}
-        >
-          <IconPlus size={12} stroke={1.75} />
-          Add {getUILabel(providerType)} key
-        </Button>
-      </div>
+      <span className="text-xs leading-relaxed text-amber-900">
+        {getUILabel(providerType)} isn&apos;t connected yet. Add a key below to
+        use it.
+      </span>
     </div>
   );
 }
@@ -769,6 +824,53 @@ function getDialogPrimaryLabel(params: {
   mode: ModelPolicyDialogMode;
 }): string {
   return params.mode === "add" ? "Add model" : "Save changes";
+}
+
+function isSubmitDisabled(params: {
+  selectedModel: SupportedRunModel | null;
+  saving: boolean;
+  creatingProvider: boolean;
+  routeKind: ModelPolicyRouteKind;
+  selectedProviderType: ModelProviderType | null;
+}): boolean {
+  if (!params.selectedModel || params.saving || params.creatingProvider) {
+    return true;
+  }
+  if (params.routeKind === "built-in") {
+    return false;
+  }
+  return params.selectedProviderType === null;
+}
+
+async function runInlineApiKeySave(params: {
+  selectedModel: SupportedRunModel;
+  selectedProviderType: ModelProviderType;
+  apiKey: string;
+  policies: OrgModelPolicy[];
+  pageSignal: AbortSignal;
+  createProvider: (
+    request: { type: ModelProviderType; secret: string },
+    signal: AbortSignal,
+  ) => Promise<{ provider: ModelProviderResponse }>;
+  onSubmit: (next: UpdateOrgModelPolicy[]) => void;
+  close: () => void;
+}) {
+  const result = await params.createProvider(
+    { type: params.selectedProviderType, secret: params.apiKey },
+    params.pageSignal,
+  );
+  const update = buildPolicyUpdate({
+    policies: params.policies,
+    model: params.selectedModel,
+    routeKind: "api-key",
+    providerType: params.selectedProviderType,
+    provider: result.provider,
+  });
+  if (!update) {
+    return;
+  }
+  params.onSubmit(upsertPolicy(params.policies, update));
+  params.close();
 }
 
 function getDefaultProviderTypeForRoute(params: {
@@ -833,8 +935,16 @@ function ModelPolicyRouteDialog({
   const close = useSet(closeModelPolicyDialog$);
   const setModel = useSet(updateModelPolicyDialogModel$);
   const setRoute = useSet(updateModelPolicyDialogRoute$);
-  const openAddProvider = useSet(orgOpenAddDialogForModelPolicyRoute$);
   const openEditProvider = useSet(orgOpenEditDialog$);
+  const apiKeyValue = useGet(modelPolicyApiKey$);
+  const apiKeyError = useGet(modelPolicyApiKeyError$);
+  const setApiKey = useSet(setModelPolicyApiKey$);
+  const setApiKeyError = useSet(setModelPolicyApiKeyError$);
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createProvider] = useLoadableSet(
+    createOrgModelProvider$,
+  );
+  const creatingProvider = createLoadable.state === "loading";
   const selectedModel = dialog.model ?? addableModels[0] ?? null;
   const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
   const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
@@ -852,6 +962,10 @@ function ModelPolicyRouteDialog({
   const selectedModelIcon = selectedModel
     ? getModelIconType(selectedModel)
     : null;
+  const requiresInlineKey =
+    dialog.routeKind === "api-key" &&
+    selectedProviderType !== null &&
+    routeProvider === null;
 
   const chooseRoute = (routeKind: ModelPolicyRouteKind) => {
     setRoute({
@@ -865,7 +979,31 @@ function ModelPolicyRouteDialog({
   };
 
   const handleSubmit = () => {
-    if (!selectedModel || saving) {
+    if (!selectedModel || saving || creatingProvider) {
+      return;
+    }
+
+    if (requiresInlineKey && selectedProviderType) {
+      const trimmed = apiKeyValue.trim();
+      if (!trimmed) {
+        setApiKeyError(
+          `${getProviderSecretLabel(selectedProviderType)} is required`,
+        );
+        return;
+      }
+      detach(
+        runInlineApiKeySave({
+          selectedModel,
+          selectedProviderType,
+          apiKey: trimmed,
+          policies,
+          pageSignal,
+          createProvider,
+          onSubmit,
+          close,
+        }),
+        Reason.DomCallback,
+      );
       return;
     }
 
@@ -883,16 +1021,6 @@ function ModelPolicyRouteDialog({
     close();
   };
 
-  const handleAddKey = () => {
-    if (!selectedModel || !selectedProviderType) {
-      return;
-    }
-    openAddProvider({
-      model: selectedModel,
-      providerType: selectedProviderType,
-    });
-  };
-
   const handleEditCredential = () => {
     if (!selectedModel || !selectedProviderType || !routeProvider) {
       return;
@@ -903,12 +1031,13 @@ function ModelPolicyRouteDialog({
   };
 
   const primaryLabel = getDialogPrimaryLabel({ mode: dialog.mode });
-  const submitDisabled =
-    !selectedModel ||
-    saving ||
-    (dialog.routeKind === "api-key" &&
-      (!selectedProviderType || !routeProvider)) ||
-    (dialog.routeKind === "oauth" && !selectedProviderType);
+  const submitDisabled = isSubmitDisabled({
+    selectedModel,
+    saving,
+    creatingProvider,
+    routeKind: dialog.routeKind,
+    selectedProviderType,
+  });
 
   return (
     <Dialog
@@ -979,7 +1108,7 @@ function ModelPolicyRouteDialog({
               active={dialog.routeKind === "built-in"}
               icon={<ProviderIcon type="vm0" size={18} />}
               title="Built-in"
-              description="Use workspace credits to access the model."
+              description="Workspace credits cover usage."
               onClick={() => {
                 chooseRoute("built-in");
               }}
@@ -1013,10 +1142,12 @@ function ModelPolicyRouteDialog({
               apiTypes={apiTypes}
               providers={providers}
               routeProvider={routeProvider}
+              apiKeyValue={apiKeyValue}
+              apiKeyError={apiKeyError}
               onChange={(providerType) => {
                 setRoute({ routeKind: "api-key", providerType });
               }}
-              onAddKey={handleAddKey}
+              onApiKeyChange={setApiKey}
               onEditKey={handleEditCredential}
             />
           )}

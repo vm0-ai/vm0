@@ -279,7 +279,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     });
   });
 
-  it("keeps the add model dialog open after closing nested API key add", async () => {
+  it("closes the add model dialog after inline API key save succeeds", async () => {
     setMockFeatureSwitches({});
 
     await openProvidersPage();
@@ -287,41 +287,11 @@ describe("org-providers-tab — stale banner reconnect", () => {
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
     clickRouteChoice(dialog, "API key");
-    clickDialogButton(dialog, "Add Anthropic key");
-
-    const providerDialog = getOrgProviderDialog();
-    click(within(providerDialog).getByText("Cancel"));
-
-    await waitFor(() => {
-      expect(
-        within(getModelPolicyDialog()).getByRole("heading", {
-          name: "Add model",
-        }),
-      ).toBeInTheDocument();
-      expect(
-        within(getModelPolicyDialog()).getByText(
-          /Decide how members access this model/i,
-        ),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("closes the add model dialog after nested API key add succeeds", async () => {
-    setMockFeatureSwitches({});
-
-    await openProvidersPage();
-
-    click(await screen.findByText("Add model"));
-    const dialog = getModelPolicyDialog();
-    clickRouteChoice(dialog, "API key");
-    clickDialogButton(dialog, "Add Anthropic key");
-
-    const providerDialog = getOrgProviderDialog();
     await fill(
-      within(providerDialog).getByPlaceholderText("Enter your API key"),
+      within(dialog).getByPlaceholderText("Enter your API key"),
       "sk-ant-test",
     );
-    click(within(providerDialog).getByText("Add"));
+    clickDialogButton(dialog, "Add model");
 
     await waitFor(() => {
       expect(
@@ -360,7 +330,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
       "org-model-policy-row-claude-opus-4-7",
     );
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "Claude Subscription");
+    clickRouteChoice(dialog, "Claude subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();
@@ -394,7 +364,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     const row = await screen.findByTestId("org-model-policy-row-gpt-5.5");
     const dialog = await openModelPolicyDialog(row);
-    clickRouteChoice(dialog, "Codex Subscription");
+    clickRouteChoice(dialog, "Codex subscription");
     expect(
       within(dialog).queryByText("OAuth provider"),
     ).not.toBeInTheDocument();

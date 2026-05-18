@@ -24,6 +24,28 @@ const internalModelPolicyDialogState$ = state<ModelPolicyDialogState>({
   providerType: null,
 });
 
+const internalModelPolicyApiKey$ = state<string>("");
+const internalModelPolicyApiKeyError$ = state<string | null>(null);
+
+export const modelPolicyApiKey$ = computed((get) => {
+  return get(internalModelPolicyApiKey$);
+});
+
+export const modelPolicyApiKeyError$ = computed((get) => {
+  return get(internalModelPolicyApiKeyError$);
+});
+
+export const setModelPolicyApiKey$ = command(({ set }, value: string) => {
+  set(internalModelPolicyApiKey$, value);
+  set(internalModelPolicyApiKeyError$, null);
+});
+
+export const setModelPolicyApiKeyError$ = command(
+  ({ set }, error: string | null) => {
+    set(internalModelPolicyApiKeyError$, error);
+  },
+);
+
 function isOAuthMemberType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";
 }
@@ -51,6 +73,8 @@ export const openAddModelPolicyDialog$ = command(
       routeKind: "built-in",
       providerType: null,
     });
+    set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyError$, null);
   },
 );
 
@@ -65,6 +89,8 @@ export const openEditModelPolicyDialog$ = command(
       providerType:
         routeKind === "built-in" ? null : policy.defaultProviderType,
     });
+    set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyError$, null);
   },
 );
 
@@ -76,6 +102,8 @@ export const closeModelPolicyDialog$ = command(({ set }) => {
     routeKind: "built-in",
     providerType: null,
   });
+  set(internalModelPolicyApiKey$, "");
+  set(internalModelPolicyApiKeyError$, null);
 });
 
 export const updateModelPolicyDialogModel$ = command(
@@ -88,6 +116,8 @@ export const updateModelPolicyDialogModel$ = command(
         providerType: null,
       };
     });
+    set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyError$, null);
   },
 );
 
@@ -102,5 +132,7 @@ export const updateModelPolicyDialogRoute$ = command(
     set(internalModelPolicyDialogState$, (prev) => {
       return { ...prev, ...params };
     });
+    set(internalModelPolicyApiKey$, "");
+    set(internalModelPolicyApiKeyError$, null);
   },
 );
