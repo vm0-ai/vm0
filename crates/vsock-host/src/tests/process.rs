@@ -1270,6 +1270,79 @@ async fn test_spawn_process_response_timeout_cleans_registration() {
 }
 
 #[tokio::test]
+async fn test_late_spawn_process_frames_after_response_timeout_are_ignored() {
+    let (host_stream, mut guest) = make_pair();
+    let (spawn_seq_tx, spawn_seq_rx) = oneshot::channel();
+    let release_guest = Arc::new(Notify::new());
+
+    {
+        let release_guest = Arc::clone(&release_guest);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let spawn = read_guest_message(&mut guest).await;
+            assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+            spawn_seq_tx.send(spawn.seq).unwrap();
+
+            release_guest.notified().await;
+            let result_payload = vsock_proto::encode_spawn_process_result(123);
+            let result =
+                vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &result_payload).unwrap();
+            let chunk_payload = vsock_proto::encode_stdout_chunk(123, b"late output");
+            let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn.seq, &chunk_payload).unwrap();
+            let exit_payload = vsock_proto::encode_process_exit(123, 0, b"", b"");
+            let exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+
+            let mut frames = result;
+            frames.extend_from_slice(&chunk);
+            frames.extend_from_slice(&exit);
+            guest.write_all(&frames).await.unwrap();
+        });
+    }
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = process_impl::test_support::spawn_process_with_response_timeout(
+        &host.shared,
+        "late-result-after-timeout",
+        true,
+        Duration::ZERO,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "spawn_process response timeout must remove pending process registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    let spawn_seq = tokio::time::timeout(Duration::from_secs(5), spawn_seq_rx)
+        .await
+        .expect("guest should receive spawn_process request")
+        .unwrap();
+    assert_ne!(spawn_seq, 0);
+
+    release_guest.notify_one();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .expect("guest close should close host");
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "late process frames after timeout must not recreate registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn test_malformed_unsolicited_process_frames_are_ignored() {
     let (host_stream, mut guest) = make_pair();
 
