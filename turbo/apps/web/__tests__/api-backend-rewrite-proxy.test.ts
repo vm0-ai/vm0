@@ -597,6 +597,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/member")).toBe(false);
   });
 
+  it("matches the zero org delete rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/delete")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/delete/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/deleted")).toBe(false);
+  });
+
   it("matches the zero variables rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
     expect(

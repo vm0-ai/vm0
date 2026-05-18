@@ -209,6 +209,12 @@ const ZERO_ORG_DOMAINS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/org/domains/extra",
   "/api/zero/org/domain",
 ] as const;
+const ZERO_ORG_DELETE_REWRITE_SOURCE = "/api/zero/org/delete";
+const ZERO_ORG_DELETE_PATH = "/api/zero/org/delete";
+const ZERO_ORG_DELETE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/org/delete/extra",
+  "/api/zero/org/deleted",
+] as const;
 const ZERO_ORG_INVITE_REWRITE_SOURCE = "/api/zero/org/invite";
 const ZERO_ORG_INVITE_PATH = "/api/zero/org/invite";
 const ZERO_ORG_INVITE_NEXT_NEGATIVE_PATHS = [
@@ -739,6 +745,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_ORG_DOMAINS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/org/domains",
+        },
+        {
+          source: ZERO_ORG_DELETE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/org/delete",
         },
         {
           source: ZERO_ORG_INVITE_REWRITE_SOURCE,
@@ -1448,6 +1458,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_ORG_MEMBERS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_ORG_MEMBERS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero org delete rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ORG_DELETE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ORG_DELETE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/org/delete",
+    });
+
+    const matcher = getPathMatch(ZERO_ORG_DELETE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ORG_DELETE_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ORG_DELETE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
