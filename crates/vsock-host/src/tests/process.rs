@@ -1429,6 +1429,72 @@ async fn test_spawn_process_cancel_after_frame_keeps_tracker_busy_until_close() 
 }
 
 #[tokio::test]
+async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let payload = vsock_proto::encode_spawn_process_result(123);
+        let response = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+
+        let exit_payload = vsock_proto::encode_process_exit(123, 0, b"", b"");
+        let exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+        guest.write_all(&exit).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let writer_guard = host.shared.writer.lock().await;
+    let spawn_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.spawn_process("cancel-before-write", 0, &[], false, true, None)
+                .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while registration_counts(&host) == (0, 0, 0) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("spawn_process should register before waiting for writer lock");
+    assert_eq!(registration_counts(&host), (1, 1, 1));
+
+    spawn_task.abort();
+    let _ = spawn_task.await;
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "spawn_process cancelled before frame write must clean pending registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    let handle = host
+        .spawn_process("next-spawn", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    let event = wait_spawn(handle).await.unwrap();
+    assert_eq!(event.pid, 123);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn test_spawn_process_frame_write_guard_started_drop_poisons_connection() {
     let (host_stream, mut guest) = make_pair();
 
