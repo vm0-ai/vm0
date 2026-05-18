@@ -487,6 +487,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/internal/event-consumers/axiom",
         },
         {
+          source: "/api/internal/event-consumers/chat-assistant",
+          destination:
+            "https://api.example.test/api/internal/event-consumers/chat-assistant",
+        },
+        {
           source: "/api/user/export",
           destination: "https://api.example.test/api/user/export",
         },

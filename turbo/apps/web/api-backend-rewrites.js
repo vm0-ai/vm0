@@ -64,6 +64,10 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/event-consumers/axiom",
     "/api/internal/event-consumers/axiom",
   ],
+  [
+    "/api/internal/event-consumers/chat-assistant",
+    "/api/internal/event-consumers/chat-assistant",
+  ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],

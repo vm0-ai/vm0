@@ -9,7 +9,6 @@ import {
 import { http, HttpResponse } from "msw";
 import type { NextRequest } from "next/server";
 import { POST } from "../route";
-import { POST as chatAssistantConsumerPOST } from "../../../../internal/event-consumers/chat-assistant/route";
 import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
 import {
   createTestRequest,
@@ -91,6 +90,18 @@ async function handleAxiomApiConsumer(request: Request): Promise<Response> {
   return HttpResponse.json({ received: body.events.length });
 }
 
+async function handleChatAssistantApiConsumer(
+  request: Request,
+): Promise<Response> {
+  const body = (await request.json()) as {
+    readonly events?: readonly unknown[];
+  };
+
+  return HttpResponse.json({
+    processed: Array.isArray(body.events) ? body.events.length : 0,
+  });
+}
+
 const context = testContext();
 
 /**
@@ -146,7 +157,7 @@ describe("POST /api/webhooks/agent/events", () => {
       http.post(
         "http://localhost:3000/api/internal/event-consumers/chat-assistant",
         ({ request }) => {
-          return forwardToConsumer(request, chatAssistantConsumerPOST);
+          return handleChatAssistantApiConsumer(request);
         },
       ),
       http.post(
