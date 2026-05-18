@@ -422,6 +422,21 @@ mod tests {
                 .await;
         }
 
+        async fn reap_with_discovery(
+            &self,
+            mode: OrphanReapMode,
+            discovery: &OrphanReapProcessDiscovery,
+        ) {
+            reap_orphaned_active_runs(
+                &self.orphans,
+                &self.idle_pool,
+                &self.status,
+                mode,
+                Some(discovery),
+            )
+            .await;
+        }
+
         async fn reap_records(&self, records: Vec<OrphanedActiveRun>, mode: OrphanReapMode) {
             reap_orphaned_active_run_records(
                 &self.orphans,
@@ -614,6 +629,42 @@ mod tests {
 
         fixture
             .assert_status(&[("sess-idle-owned-reaper", sandbox_id)], &[])
+            .await;
+        fixture.assert_orphan_count(0).await;
+        fixture.destroy_all_idle_entries().await;
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_reconciles_mixed_idle_owned_and_absent_records() {
+        let fixture = OrphanReapFixture::new();
+        let idle_run_id = RunId::new_v4();
+        let idle_sandbox_id = SandboxId::new_v4();
+        let absent_run_id = RunId::new_v4();
+        let absent_sandbox_id = SandboxId::new_v4();
+        fixture
+            .park_idle_candidate(
+                "sess-mixed-idle",
+                idle_sandbox_id,
+                "mixed-idle-owned-reaper",
+            )
+            .await;
+        fixture
+            .add_active_orphan(idle_run_id, idle_sandbox_id)
+            .await;
+        fixture
+            .add_active_orphan(absent_run_id, absent_sandbox_id)
+            .await;
+        let discovery = OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(Vec::new()),
+            incomplete_for_current_runner: false,
+        };
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ShutdownFinal, &discovery)
+            .await;
+
+        fixture
+            .assert_status(&[("sess-mixed-idle", idle_sandbox_id)], &[])
             .await;
         fixture.assert_orphan_count(0).await;
         fixture.destroy_all_idle_entries().await;
