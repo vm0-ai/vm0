@@ -14,3 +14,4 @@ mod quiesce;
 mod shutdown;
 mod spawn_buffered;
 mod spawn_streaming;
+mod write_file;
