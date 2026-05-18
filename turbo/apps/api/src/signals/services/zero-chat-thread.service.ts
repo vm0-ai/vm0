@@ -224,6 +224,40 @@ function isActionableRunError(errorMessage: string): boolean {
   });
 }
 
+function preferredActionableRunErrorForStoredTransient(params: {
+  readonly sequenceNumber: number | null;
+  readonly storedError: string | null;
+  readonly runError: string | null;
+}): string | null {
+  const storedError = params.storedError?.trim();
+  const runError = params.runError?.trim();
+  if (
+    params.sequenceNumber !== null ||
+    storedError !== CHAT_RUN_TRANSIENT_ERROR_MESSAGE ||
+    !runError ||
+    !isActionableRunError(runError)
+  ) {
+    return null;
+  }
+  return params.runError;
+}
+
+function effectiveChatErrorContent(params: {
+  readonly content: string | null;
+  readonly storedError: string | null;
+  readonly preferredRunError: string | null;
+  readonly effectiveError: string | undefined;
+}): string | null {
+  if (
+    params.preferredRunError !== null &&
+    params.effectiveError !== undefined &&
+    params.content === params.storedError
+  ) {
+    return params.effectiveError;
+  }
+  return params.content;
+}
+
 function buildReportableErrorMessage(runId: string): string {
   return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
 }
@@ -451,11 +485,19 @@ function toStoredMessage(
   return computed(
     async (get): Promise<ChatThreadDetail["chatMessages"][number]> => {
       const isPlaceholder = row.sequenceNumber === null;
+      const preferredRunError = preferredActionableRunErrorForStoredTransient({
+        sequenceNumber: row.sequenceNumber,
+        storedError: row.error,
+        runError: row.runError,
+      });
       const rawEffectiveError = isPlaceholder
-        ? (row.error ?? row.runError ?? undefined)
+        ? (preferredRunError ?? row.error ?? row.runError ?? undefined)
         : (row.error ?? undefined);
       const effectiveError =
-        rawEffectiveError && isPlaceholder && !row.error && row.runId
+        rawEffectiveError &&
+        isPlaceholder &&
+        (row.error === null || preferredRunError !== null) &&
+        row.runId
           ? await get(
               formatChatRunErrorMessage({
                 chatThreadId: threadId,
@@ -473,7 +515,12 @@ function toStoredMessage(
       const message = {
         id: row.id,
         role,
-        content: row.content,
+        content: effectiveChatErrorContent({
+          content: row.content,
+          storedError: row.error,
+          preferredRunError,
+          effectiveError,
+        }),
         runId: row.runId ?? undefined,
         revokesMessageId: row.revokesMessageId ?? undefined,
         interruptsRunId: row.interruptsRunId ?? undefined,
@@ -502,13 +549,21 @@ function toPagedMessage(
   row: ChatMessageRow,
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
+    const preferredRunError = preferredActionableRunErrorForStoredTransient({
+      sequenceNumber: row.sequenceNumber,
+      storedError: row.error,
+      runError: row.runError,
+    });
     const isLegacyPlaceholder =
       row.sequenceNumber === null && row.content === null && !row.error;
-    const rawEffectiveError = isLegacyPlaceholder
-      ? (row.runError ?? undefined)
-      : (row.error ?? undefined);
+    const rawEffectiveError =
+      preferredRunError !== null || isLegacyPlaceholder
+        ? (preferredRunError ?? row.runError ?? undefined)
+        : (row.error ?? undefined);
     const effectiveError =
-      rawEffectiveError && isLegacyPlaceholder && row.runId
+      rawEffectiveError &&
+      (preferredRunError !== null || isLegacyPlaceholder) &&
+      row.runId
         ? await get(
             formatChatRunErrorMessage({
               chatThreadId: threadId,
@@ -526,7 +581,12 @@ function toPagedMessage(
     const message = {
       id: row.id,
       role,
-      content: row.content,
+      content: effectiveChatErrorContent({
+        content: row.content,
+        storedError: row.error,
+        preferredRunError,
+        effectiveError,
+      }),
       runId: row.runId ?? undefined,
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,

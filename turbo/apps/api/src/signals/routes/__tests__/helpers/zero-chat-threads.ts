@@ -155,6 +155,7 @@ export const deleteZeroChatThread$ = command(
 interface SeedChatMessageOptions {
   readonly role: "user" | "assistant";
   readonly content: string | null;
+  readonly error?: string | null;
   readonly attachFiles?: readonly string[];
   readonly createdAt?: Date;
   readonly sequenceNumber?: number | null;
@@ -176,6 +177,7 @@ export const seedZeroChatMessage$ = command(
       chatThreadId: fixture.threadId,
       role: options.role,
       content: options.content,
+      ...(options.error !== undefined ? { error: options.error } : {}),
       attachFiles: options.attachFiles ? [...options.attachFiles] : null,
       sequenceNumber: options.sequenceNumber ?? null,
       runId: options.runId ?? null,

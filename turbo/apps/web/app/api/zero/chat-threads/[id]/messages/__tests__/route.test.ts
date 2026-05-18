@@ -358,6 +358,57 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     );
   });
 
+  it("should use actionable run error over stored transient paged assistant error", async () => {
+    const transientError =
+      "Oops, something went wrong. Please try again later.";
+    const usageLimitError = "You've hit your usage limit.";
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "running",
+      prompt: "hit limit",
+    });
+    await addTestRunToThread(threadId, runId, testUserId, "hit limit");
+    await transitionRunStatus(
+      runId,
+      {
+        status: "failed",
+        completedAt: new Date(),
+        error: usageLimitError,
+      },
+      ["pending", "running"],
+    );
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "assistant",
+      content: transientError,
+      error: transientError,
+      runId,
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}/messages`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const assistantMsg = data.messages.find((m: { role: string }) => {
+      return m.role === "assistant";
+    });
+    expect(assistantMsg.error).toBe(usageLimitError);
+    expect(assistantMsg.content).toBe(usageLimitError);
+  });
+
   it("should not expose run-level error on event-backed assistant rows", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {

@@ -21,7 +21,11 @@ import {
   getLatestSessionIdForThread,
   publishThreadListChanged,
 } from "./chat-message-service";
-import { formatChatRunErrorMessage } from "./chat-run-error-message";
+import {
+  effectiveChatErrorContent,
+  formatChatRunErrorMessage,
+  preferredActionableRunErrorForStoredTransient,
+} from "./chat-run-error-message";
 import {
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -631,12 +635,22 @@ export async function getChatThreadMessages(
       // The placeholder row (sequence_number IS NULL) is the only row that
       // falls back to agent_runs.error, covering the case where the terminal
       // callback failed to deliver and chat_messages.error was never written.
+      // If an older row already stored the transient generic message, prefer an
+      // actionable run-level error so the user can see the concrete cause.
       const isPlaceholder = row.sequenceNumber === null;
+      const preferredRunError = preferredActionableRunErrorForStoredTransient({
+        sequenceNumber: row.sequenceNumber,
+        storedError: row.error,
+        runError: row.runError,
+      });
       const rawEffectiveError = isPlaceholder
-        ? (row.error ?? row.runError ?? undefined)
+        ? (preferredRunError ?? row.error ?? row.runError ?? undefined)
         : (row.error ?? undefined);
       const effectiveError =
-        rawEffectiveError && isPlaceholder && !row.error && row.runId
+        rawEffectiveError &&
+        isPlaceholder &&
+        (row.error === null || preferredRunError !== null) &&
+        row.runId
           ? await formatChatRunErrorMessage({
               chatThreadId: threadId,
               runId: row.runId,
@@ -653,7 +667,12 @@ export async function getChatThreadMessages(
       const message = {
         id: row.id,
         role,
-        content: row.content,
+        content: effectiveChatErrorContent({
+          content: row.content,
+          storedError: row.error,
+          preferredRunError,
+          effectiveError,
+        }),
         runId: row.runId ?? undefined,
         revokesMessageId: row.revokesMessageId ?? undefined,
         interruptsRunId: row.interruptsRunId ?? undefined,

@@ -372,6 +372,60 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     );
   });
 
+  it("uses actionable run error over stored transient paged assistant error", async () => {
+    const transientError =
+      "Oops, something went wrong. Please try again later.";
+    const usageLimitError = "You've hit your usage limit.";
+    const thread = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: thread.orgId,
+        userId: thread.userId,
+        composeId: thread.composeId,
+        status: "failed",
+        error: usageLimitError,
+      },
+      context.signal,
+    );
+    await store.set(
+      addRunToThread$,
+      { threadId: thread.threadId, runId, prompt: "hit limit" },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      thread,
+      {
+        role: "assistant",
+        content: transientError,
+        error: transientError,
+        runId,
+      },
+      context.signal,
+    );
+
+    mocks.clerk.session(thread.userId, thread.orgId);
+
+    const client = setupApp({ context })(chatThreadMessagesContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: thread.threadId },
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const assistantMsg = response.body.messages.find((message) => {
+      return message.role === "assistant";
+    });
+    expect(assistantMsg?.error).toBe(usageLimitError);
+    expect(assistantMsg?.content).toBe(usageLimitError);
+  });
+
   it("does not expose run-level error on event-backed assistant rows", async () => {
     const thread = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),

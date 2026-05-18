@@ -588,6 +588,7 @@ export async function insertTestChatMessage(params: {
   userId?: string;
   role: "user" | "assistant";
   content: string | null;
+  error?: string | null;
   runId?: string | null;
   interruptsRunId?: string | null;
   archivedAt?: Date | null;
@@ -601,6 +602,7 @@ export async function insertTestChatMessage(params: {
       chatThreadId: params.chatThreadId,
       role: params.role,
       content: params.content,
+      error: params.error ?? null,
       runId: params.runId ?? null,
       interruptsRunId: params.interruptsRunId ?? null,
       archivedAt: params.archivedAt ?? null,

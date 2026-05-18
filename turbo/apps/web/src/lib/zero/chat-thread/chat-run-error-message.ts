@@ -29,6 +29,40 @@ function isActionableRunError(errorMessage: string): boolean {
   });
 }
 
+export function preferredActionableRunErrorForStoredTransient(params: {
+  readonly sequenceNumber: number | null;
+  readonly storedError: string | null;
+  readonly runError: string | null;
+}): string | null {
+  const storedError = params.storedError?.trim();
+  const runError = params.runError?.trim();
+  if (
+    params.sequenceNumber !== null ||
+    storedError !== CHAT_RUN_TRANSIENT_ERROR_MESSAGE ||
+    !runError ||
+    !isActionableRunError(runError)
+  ) {
+    return null;
+  }
+  return params.runError;
+}
+
+export function effectiveChatErrorContent(params: {
+  readonly content: string | null;
+  readonly storedError: string | null;
+  readonly preferredRunError: string | null;
+  readonly effectiveError: string | undefined;
+}): string | null {
+  if (
+    params.preferredRunError !== null &&
+    params.effectiveError !== undefined &&
+    params.content === params.storedError
+  ) {
+    return params.effectiveError;
+  }
+  return params.content;
+}
+
 function buildReportableErrorMessage(runId: string): string {
   return `${CHAT_RUN_REPORTABLE_ERROR_MESSAGE} [Report this issue](/runs/${encodeURIComponent(runId)}/report-error)`;
 }

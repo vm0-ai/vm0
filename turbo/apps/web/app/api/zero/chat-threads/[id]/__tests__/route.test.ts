@@ -596,6 +596,59 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     }
   });
 
+  it("should use actionable run error over stored transient assistant error", async () => {
+    const transientError =
+      "Oops, something went wrong. Please try again later.";
+    const usageLimitError = "You've hit your usage limit.";
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Usage limit thread",
+        }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    const { runId } = await seedTestRun(testUserId, testComposeId, {
+      status: "running",
+      prompt: "hit limit",
+    });
+    await addTestRunToThread(threadId, runId, testUserId, "hit limit");
+    await transitionRunStatus(
+      runId,
+      {
+        status: "failed",
+        completedAt: new Date(),
+        error: usageLimitError,
+      },
+      ["pending", "running"],
+    );
+    await insertTestChatMessage({
+      chatThreadId: threadId,
+      userId: testUserId,
+      role: "assistant",
+      content: transientError,
+      error: transientError,
+      runId,
+    });
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    const assistantMsg = data.chatMessages.find((m: { role: string }) => {
+      return m.role === "assistant";
+    });
+    expect(assistantMsg.error).toBe(usageLimitError);
+    expect(assistantMsg.content).toBe(usageLimitError);
+  });
+
   it("returns activeRuns with live status for non-terminal runs", async () => {
     // Setup: a thread with one queued run and one running run.
     // A completed run on the same thread is expected to be excluded.

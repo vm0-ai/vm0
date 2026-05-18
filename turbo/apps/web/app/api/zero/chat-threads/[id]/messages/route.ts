@@ -7,7 +7,11 @@ import {
   getPagedMessages,
   resolveAttachFileUrls,
 } from "../../../../../../src/lib/zero/chat-thread";
-import { formatChatRunErrorMessage } from "../../../../../../src/lib/zero/chat-thread/chat-run-error-message";
+import {
+  effectiveChatErrorContent,
+  formatChatRunErrorMessage,
+  preferredActionableRunErrorForStoredTransient,
+} from "../../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import { isNotFound } from "@vm0/api-services/errors";
 
 const router = tsr.router(chatThreadMessagesContract, {
@@ -37,15 +41,25 @@ const router = tsr.router(chatThreadMessagesContract, {
 
       const messages = await Promise.all(
         page.messages.map(async (row) => {
-          // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError;
-          // event-backed rows and error rows use their own error field.
+          // Legacy placeholder rows (sequenceNumber IS NULL) fall back to runError.
+          // Older transient error rows can also use an actionable runError so the
+          // user sees the concrete cause instead of the generic fallback.
+          const preferredRunError =
+            preferredActionableRunErrorForStoredTransient({
+              sequenceNumber: row.sequenceNumber,
+              storedError: row.error,
+              runError: row.runError,
+            });
           const isLegacyPlaceholder =
             row.sequenceNumber === null && row.content === null && !row.error;
-          const rawEffectiveError = isLegacyPlaceholder
-            ? (row.runError ?? undefined)
-            : (row.error ?? undefined);
+          const rawEffectiveError =
+            preferredRunError !== null || isLegacyPlaceholder
+              ? (preferredRunError ?? row.runError ?? undefined)
+              : (row.error ?? undefined);
           const effectiveError =
-            rawEffectiveError && isLegacyPlaceholder && row.runId
+            rawEffectiveError &&
+            (preferredRunError !== null || isLegacyPlaceholder) &&
+            row.runId
               ? await formatChatRunErrorMessage({
                   chatThreadId: params.threadId,
                   runId: row.runId,
@@ -60,7 +74,12 @@ const router = tsr.router(chatThreadMessagesContract, {
           const message = {
             id: row.id,
             role,
-            content: row.content,
+            content: effectiveChatErrorContent({
+              content: row.content,
+              storedError: row.error,
+              preferredRunError,
+              effectiveError,
+            }),
             runId: row.runId ?? undefined,
             revokesMessageId: row.revokesMessageId ?? undefined,
             interruptsRunId: row.interruptsRunId ?? undefined,

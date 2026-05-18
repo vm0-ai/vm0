@@ -508,6 +508,66 @@ describe("GET /api/zero/chat-threads/:id", () => {
     }
   });
 
+  it("uses actionable run error over stored transient assistant error", async () => {
+    const transientError =
+      "Oops, something went wrong. Please try again later.";
+    const usageLimitError = "You've hit your usage limit.";
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { title: "Usage limit thread" },
+        context.signal,
+      ),
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        status: "failed",
+        error: usageLimitError,
+      },
+      context.signal,
+    );
+    await store.set(
+      addRunToThread$,
+      {
+        threadId: fixture.threadId,
+        runId,
+        prompt: "hit limit",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "assistant",
+        content: transientError,
+        error: transientError,
+        runId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(chatThreadByIdContract);
+
+    const response = await accept(
+      client.get({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const assistantMsg = response.body.chatMessages.find((message) => {
+      return message.role === "assistant";
+    });
+    expect(assistantMsg?.error).toBe(usageLimitError);
+    expect(assistantMsg?.content).toBe(usageLimitError);
+  });
+
   it("returns activeRuns with live status for non-terminal runs", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, { title: "Active runs" }, context.signal),
