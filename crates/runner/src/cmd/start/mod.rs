@@ -291,12 +291,12 @@ pub async fn run_start(
         })?;
 
     // Start background prefetch of snapshot memory for all profiles.
-    for profile in runner_config.profiles.values() {
-        let path = crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
-            .snapshot(&profile.snapshot_hash)
-            .memory_bin();
-        tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path));
-    }
+    let memory_prefetch =
+        prefetch::MemoryPrefetchTasks::spawn(runner_config.profiles.values().map(|profile| {
+            crate::paths::RootfsPaths::new(&home, &profile.rootfs_hash)
+                .snapshot(&profile.snapshot_hash)
+                .memory_bin()
+        }));
 
     // Compute the smallest profile resources for budget pre-check.
     // When budget is exhausted for all profiles, we wait instead of polling.
@@ -478,6 +478,7 @@ pub async fn run_start(
         min_memory_mb,
         kmsg_handle,
         dns_handle,
+        memory_prefetch,
         signal_source: SignalSource::Real(signals),
         orphan_reap_process_discovery: None,
         #[cfg(test)]
@@ -514,6 +515,7 @@ struct RunConfig {
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
+    memory_prefetch: prefetch::MemoryPrefetchTasks,
     /// Deterministic process snapshot for orphan-reaper tests. Production leaves
     /// this unset and scans `/proc`.
     orphan_reap_process_discovery: Option<OrphanReapProcessDiscovery>,
@@ -816,6 +818,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_memory_mb,
         kmsg_handle,
         dns_handle,
+        mut memory_prefetch,
         orphan_reap_process_discovery,
         signal_source,
         #[cfg(test)]
@@ -1131,6 +1134,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
     let teardown = TeardownTimer::start();
+    memory_prefetch.cancel();
+    teardown.event("memory_prefetch_cancelled");
 
     // Drop the pinned discover future before provider shutdown so any
     // provider-local discovery resources are released first. This also keeps
@@ -1288,6 +1293,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let phase = teardown.phase_start("dns_stop");
     dns_handle.stop().await;
     teardown.phase_complete("dns_stop", phase);
+
+    let phase = teardown.phase_start("memory_prefetch_drain");
+    memory_prefetch.drain().await;
+    teardown.phase_complete("memory_prefetch_drain", phase);
 
     let phase = teardown.phase_start("status_stopped");
     status.set_mode(RunnerMode::Stopped).await;

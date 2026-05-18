@@ -216,6 +216,7 @@ fn build_mock_run_config_with_runtime(
         min_memory_mb,
         kmsg_handle: kmsg_log::KmsgHandle::noop(),
         dns_handle: crate::dns::DnsProxy::noop(),
+        memory_prefetch: prefetch::MemoryPrefetchTasks::empty(),
         orphan_reap_process_discovery: None,
         signal_source: SignalSource::Override(SignalController {
             mode_rx,
