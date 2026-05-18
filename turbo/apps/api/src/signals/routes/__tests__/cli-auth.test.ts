@@ -160,6 +160,25 @@ async function postCliAuthTestApproveRaw(args: {
   };
 }
 
+async function postCliAuthTestConnectorRaw(args: {
+  readonly query?: string;
+  readonly body: string;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    `/api/cli/auth/test-connector${args.query ?? ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: args.body,
+    },
+  );
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
 async function postCliAuthTestCodexOauthRaw(args: {
   readonly query?: string;
   readonly body: string;
@@ -390,6 +409,65 @@ describe("CLI auth routes", () => {
       .limit(1);
 
     return row ? decryptSecretValue(row.encryptedValue) : undefined;
+  }
+
+  async function findConnectorSecret(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly name: string;
+  }): Promise<string | undefined> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, args.orgId),
+          eq(secrets.userId, args.userId),
+          eq(secrets.name, args.name),
+          eq(secrets.type, "connector"),
+        ),
+      )
+      .limit(1);
+
+    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+  }
+
+  async function readConnectorState(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: string;
+  }): Promise<{
+    readonly authMethod: string;
+    readonly externalId: string | null;
+    readonly externalUsername: string | null;
+    readonly externalEmail: string | null;
+    readonly oauthScopes: string | null;
+    readonly tokenExpiresAt: Date | null;
+    readonly needsReconnect: boolean;
+  } | null> {
+    const writeDb = store.set(writeDb$);
+    const [connector] = await writeDb
+      .select({
+        authMethod: connectors.authMethod,
+        externalId: connectors.externalId,
+        externalUsername: connectors.externalUsername,
+        externalEmail: connectors.externalEmail,
+        oauthScopes: connectors.oauthScopes,
+        tokenExpiresAt: connectors.tokenExpiresAt,
+        needsReconnect: connectors.needsReconnect,
+      })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.orgId, args.orgId),
+          eq(connectors.userId, args.userId),
+          eq(connectors.type, args.type),
+        ),
+      )
+      .limit(1);
+
+    return connector ?? null;
   }
 
   async function readOrgCodexOauthProviderState(orgId: string): Promise<{
@@ -1100,7 +1178,106 @@ describe("CLI auth routes", () => {
   });
 
   describe("POST /api/cli/auth/test-connector", () => {
-    it("seeds an OAuth connector for the test user org", async () => {
+    it("returns 404 outside allowed test environments", async () => {
+      mockEnv("ENV", "production");
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<string>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "github",
+            accessToken: "github-access-token",
+          },
+        }),
+        404,
+      );
+
+      expect(response.body).toBe("Not found");
+    });
+
+    it("rejects invalid JSON bodies with the legacy error", async () => {
+      const response = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestConnectorRaw({ body: "{ not json" }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({ error: "Invalid JSON body" });
+    });
+
+    it("rejects invalid body shapes with the legacy error", async () => {
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const missingFields = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestConnectorRaw({
+          body: JSON.stringify({ connectorName: "github" }),
+        }),
+        400,
+      );
+      expect(missingFields.body).toStrictEqual({
+        error: "connectorName and accessToken are required",
+      });
+
+      const emptyRefreshToken = await acceptResponse<{
+        readonly error: string;
+      }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "github",
+            accessToken: "github-access-token",
+            refreshToken: "",
+          },
+        }),
+        400,
+      );
+      expect(emptyRefreshToken.body).toStrictEqual({
+        error: "connectorName and accessToken are required",
+      });
+    });
+
+    it("rejects unknown connector types", async () => {
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "unknown-connector",
+            accessToken: "unknown-access-token",
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: 'Unknown connector type: "unknown-connector"',
+      });
+    });
+
+    it("requires the test user to have cached org membership", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = `org_${randomUUID()}`;
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "github",
+            accessToken: "github-access-token",
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Test user has no org — run test-token first",
+      });
+    });
+
+    it("seeds OAuth connector token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-org" });
@@ -1111,10 +1288,10 @@ describe("CLI auth routes", () => {
         client.create({
           query: {},
           body: {
-            connectorName: "github",
-            accessToken: "github-access-token",
-            refreshToken: "github-refresh-token",
-            expiresIn: 3600,
+            connectorName: "test-oauth",
+            accessToken: "test-oauth-access-token",
+            refreshToken: "test-oauth-refresh-token",
+            expiresIn: -60,
           },
         }),
         200,
@@ -1122,24 +1299,41 @@ describe("CLI auth routes", () => {
 
       expect(response.body).toStrictEqual({
         ok: true,
-        connectorType: "github",
+        connectorType: "test-oauth",
         orgId,
       });
 
-      const writeDb = store.set(writeDb$);
       await expect(
-        writeDb
-          .select()
-          .from(connectors)
-          .where(
-            and(
-              eq(connectors.orgId, orgId),
-              eq(connectors.userId, userId),
-              eq(connectors.type, "github"),
-            ),
-          )
-          .limit(1),
-      ).resolves.toHaveLength(1);
+        readConnectorState({ orgId, userId, type: "test-oauth" }),
+      ).resolves.toMatchObject({
+        authMethod: "oauth",
+        externalId: "e2e-test-test-oauth",
+        externalUsername: "e2e-test-oauth",
+        externalEmail: "e2e-test-oauth@test.vm0.ai",
+        oauthScopes: "[]",
+        needsReconnect: false,
+      });
+      const oauthConnector = await readConnectorState({
+        orgId,
+        userId,
+        type: "test-oauth",
+      });
+      expect(oauthConnector?.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(oauthConnector!.tokenExpiresAt!.getTime()).toBeLessThan(now());
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_ACCESS_TOKEN",
+        }),
+      ).resolves.toBe("test-oauth-access-token");
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "TEST_OAUTH_REFRESH_TOKEN",
+        }),
+      ).resolves.toBe("test-oauth-refresh-token");
 
       const computerResponse = await acceptResponse<TestConnectorResponseBody>(
         client.create({
@@ -1158,18 +1352,48 @@ describe("CLI auth routes", () => {
         orgId,
       });
       await expect(
-        writeDb
-          .select()
-          .from(connectors)
-          .where(
-            and(
-              eq(connectors.orgId, orgId),
-              eq(connectors.userId, userId),
-              eq(connectors.type, "computer"),
-            ),
-          )
-          .limit(1),
-      ).resolves.toHaveLength(1);
+        readConnectorState({ orgId, userId, type: "computer" }),
+      ).resolves.toMatchObject({
+        authMethod: "oauth",
+        externalId: "e2e-test-computer",
+        externalUsername: "e2e-computer",
+        externalEmail: "e2e-computer@test.vm0.ai",
+        tokenExpiresAt: null,
+      });
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "COMPUTER_CONNECTOR_AUTHTOKEN",
+        }),
+      ).resolves.toBe("computer-access-token");
+    });
+
+    it("resolves a custom test user email through Clerk", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "connector-custom-email",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      await acceptResponse<TestConnectorResponseBody>(
+        client.create({
+          query: { email: "custom@test.com" },
+          body: {
+            connectorName: "github",
+            accessToken: "github-access-token",
+          },
+        }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
+      });
     });
   });
 

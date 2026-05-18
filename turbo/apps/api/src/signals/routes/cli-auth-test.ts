@@ -179,6 +179,12 @@ const createTestConnector$ = command(
     const bodyResult = await get(testConnectorBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
+      if (
+        bodyResult.response.body.error.message ===
+        "Invalid JSON in request body"
+      ) {
+        return stringError(400, "Invalid JSON body");
+      }
       return stringError(400, "connectorName and accessToken are required");
     }
 
