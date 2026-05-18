@@ -36,6 +36,10 @@ const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
 const ZERO_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/model-providers\/[^/]+$/;
+const ZERO_AGENT_CUSTOM_CONNECTORS_REWRITE_SOURCE =
+  "/api/zero/agents/:id/custom-connectors";
+const ZERO_AGENT_CUSTOM_CONNECTORS_PATH_RE =
+  /^\/api\/zero\/agents\/[^/]+\/custom-connectors$/;
 
 export const API_BACKEND_REWRITES = [
   [
@@ -132,6 +136,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
     "/api/zero/model-providers/:type",
     ZERO_MODEL_PROVIDER_TYPE_PATH_RE,
+  ],
+  [
+    ZERO_AGENT_CUSTOM_CONNECTORS_REWRITE_SOURCE,
+    "/api/zero/agents/:id/custom-connectors",
+    ZERO_AGENT_CUSTOM_CONNECTORS_PATH_RE,
   ],
   [
     "/api/zero/built-in-generations/:path*",

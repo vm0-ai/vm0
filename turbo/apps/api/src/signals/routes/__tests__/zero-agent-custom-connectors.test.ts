@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteCustomConnectorOrg$,
@@ -30,6 +32,37 @@ const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+async function cliAuthHeaders(fixture: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<{ readonly authorization: string }> {
+  const tokenId = randomUUID();
+  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
+  const writeDb = store.set(writeDb$);
+
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: fixture.userId,
+    name: "test token",
+    expiresAt: new Date(now() + 60 * 60 * 1000),
+  });
+  await writeDb
+    .insert(orgMembersCache)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role: "admin",
+      cachedAt: new Date(now()),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role: "admin", cachedAt: new Date(now()) },
+    });
+
+  return { authorization: `Bearer ${token}` };
 }
 
 describe("GET /api/zero/agents/:id/custom-connectors", () => {
@@ -82,6 +115,28 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
       client.get({
         params: { id: agentId },
         headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ enabledIds: [] });
+  });
+
+  it("accepts a CLI token for the agent owner", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        { composes: [{ displayName: "CLI Agent" }] },
+        context.signal,
+      ),
+    );
+    const agentId = fixture.composeIds[0]!;
+
+    const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+    const response = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: await cliAuthHeaders(fixture),
       }),
       [200],
     );
