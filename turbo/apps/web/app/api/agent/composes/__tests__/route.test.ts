@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { GET as getByIdGET, DELETE as deleteDELETE } from "../[id]/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -355,17 +354,16 @@ describe("Agent Compose Upsert Behavior", () => {
       );
 
       const response = await POST(request);
-      const data = await response.json();
 
       expect(response.status).toBe(201);
 
       // Get the created compose to verify no deprecated fields
       const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         { method: "GET" },
       );
 
-      const getResponse = await getByIdGET(getRequest);
+      const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
       const agent = composeData.content.agents[agentName];
@@ -422,17 +420,16 @@ describe("Agent Compose Upsert Behavior", () => {
       );
 
       const response = await POST(request);
-      const data = await response.json();
 
       expect(response.status).toBe(201);
 
       // Get the created compose to verify unknown fields were stripped
       const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         { method: "GET" },
       );
 
-      const getResponse = await getByIdGET(getRequest);
+      const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
       const agent = composeData.content.agents[agentName];
@@ -465,16 +462,15 @@ describe("Agent Compose Upsert Behavior", () => {
       );
 
       const response = await POST(request);
-      const data = await response.json();
 
       expect(response.status).toBe(201);
 
       const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${data.composeId}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         { method: "GET" },
       );
 
-      const getResponse = await getByIdGET(getRequest);
+      const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
       const agent = composeData.content.agents[agentName];
@@ -542,11 +538,11 @@ describe("Agent Compose Upsert Behavior", () => {
 
       // Verify the compose was actually updated
       const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         { method: "GET" },
       );
 
-      const getResponse = await getByIdGET(getRequest);
+      const getResponse = await GET(getRequest);
       const composeData = await getResponse.json();
 
       expect(composeData.content.agents[agentName].description).toBe(
@@ -742,28 +738,6 @@ describe("Agent Compose Upsert Behavior", () => {
       expect(response.status).toBe(201);
     });
   });
-
-  describe("GET /api/agent/composes/:id", () => {
-    it("should return compose with name field", async () => {
-      // Use the helper to create a compose
-      const agentName = `test-get-compose-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      // Get compose
-      const getRequest = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        { method: "GET" },
-      );
-
-      const getResponse = await getByIdGET(getRequest);
-
-      expect(getResponse.status).toBe(200);
-      const getData = await getResponse.json();
-
-      expect(getData.name).toBe(agentName);
-      expect(getData.content.agents[agentName]).toBeDefined();
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -819,11 +793,11 @@ describe("Instructions Volume Case Sensitivity Bug", () => {
 
     // Get the compose to verify stored content
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes/${data.composeId}`,
+      `http://localhost:3000/api/agent/composes?name=${data.name}`,
       { method: "GET" },
     );
 
-    const getResponse = await getByIdGET(getRequest);
+    const getResponse = await GET(getRequest);
     const composeData = await getResponse.json();
 
     // Verify the stored agents key is lowercase
@@ -1138,72 +1112,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       const response = await POST(request);
       expect(response.status).toBe(201);
-    });
-  });
-
-  describe("GET /api/agent/composes/:id", () => {
-    it("sandbox token with agent:read can get compose by id", async () => {
-      const agentName = `test-sandbox-getid-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await getByIdGET(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.name).toBe(agentName);
-    });
-  });
-
-  describe("DELETE /api/agent/composes/:id", () => {
-    it("sandbox token with agent:write cannot delete compose", async () => {
-      const agentName = `test-sandbox-delete-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await deleteDELETE(request);
-      expect(response.status).toBe(403);
-
-      const data = await response.json();
-      expect(data.error.message).toContain("sandbox");
-    });
-
-    it("sandbox token with all capabilities cannot delete compose", async () => {
-      const agentName = `test-sandbox-delete-all-caps-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await deleteDELETE(request);
-      expect(response.status).toBe(403);
     });
   });
 });

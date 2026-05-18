@@ -40,6 +40,23 @@ const AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
   "/api/agent/composes",
   "/api/agent/composes/versions",
 ] as const;
+const AGENT_COMPOSES_BY_ID_REWRITE_SOURCE =
+  "/api/agent/composes/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const AGENT_COMPOSES_BY_ID_PATH = `/api/agent/composes/${AGENT_COMPOSE_ID}`;
+const AGENT_COMPOSES_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/composes",
+  "/api/agent/composes/not-a-uuid",
+  "/api/agent/composes/list",
+  "/api/agent/composes/versions",
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/metadata`,
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions`,
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/extra`,
+] as const;
+const AGENT_COMPOSES_BY_ID_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/composes",
+  "/api/agent/composes/not-a-uuid",
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/extra`,
+] as const;
 const AGENT_COMPOSES_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/agent/composes/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/instructions";
 const AGENT_COMPOSES_INSTRUCTIONS_PATH = `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions`;
@@ -48,6 +65,12 @@ const AGENT_COMPOSES_INSTRUCTIONS_NEXT_NEGATIVE_PATHS = [
   "/api/agent/composes/list/instructions",
   "/api/agent/composes/versions/instructions",
   `/api/agent/composes/${AGENT_COMPOSE_ID}`,
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions/extra`,
+] as const;
+const AGENT_COMPOSES_INSTRUCTIONS_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/composes/not-a-uuid/instructions",
+  "/api/agent/composes/list/instructions",
+  "/api/agent/composes/versions/instructions",
   `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions/extra`,
 ] as const;
 const AGENT_COMPOSES_METADATA_REWRITE_SOURCE =
@@ -1187,6 +1210,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_COMPOSES_LIST_PATH)).toStrictEqual({});
     for (const pathname of AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent compose by-id rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_COMPOSES_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_COMPOSES_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/composes/:id",
+    });
+
+    const matcher = getPathMatch(AGENT_COMPOSES_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_COMPOSES_BY_ID_PATH)).toStrictEqual({
+      id: AGENT_COMPOSE_ID,
+    });
+    for (const pathname of AGENT_COMPOSES_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2902,7 +2950,14 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath(AGENT_COMPOSES_INSTRUCTIONS_PATH)).toBe(
       true,
     );
-    for (const pathname of AGENT_COMPOSES_INSTRUCTIONS_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of AGENT_COMPOSES_INSTRUCTIONS_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped agent compose by-id paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_COMPOSES_BY_ID_PATH)).toBe(true);
+    for (const pathname of AGENT_COMPOSES_BY_ID_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

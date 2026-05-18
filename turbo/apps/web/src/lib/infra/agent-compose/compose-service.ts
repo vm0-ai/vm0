@@ -13,23 +13,6 @@ import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import type { AgentComposeYaml } from "./types";
 
 /**
- * Get a compose's orgId by compose ID.
- * Used by sandbox auth path where org context is unavailable.
- *
- * Throws notFound if compose doesn't exist.
- */
-export async function getComposeOrgId(composeId: string): Promise<string> {
-  const [result] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!result) throw notFound("Agent compose not found");
-  return result.orgId;
-}
-
-/**
  * Get a compose by name within an org, returning the API response shape.
  * Returns null if not found.
  */
