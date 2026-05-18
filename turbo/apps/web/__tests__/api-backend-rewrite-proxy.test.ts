@@ -368,11 +368,33 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid/cancel"),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/events`),
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
+      ),
+    ).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent run events paths", () => {
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/events`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/queue/events")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid/events"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/events/extra`,
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
       ),
     ).toBe(false);
   });
