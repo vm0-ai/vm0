@@ -1038,6 +1038,41 @@ async fn test_spawn_process_error_response_cleans_up() {
 }
 
 #[tokio::test]
+async fn test_malformed_spawn_process_error_response_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let err_resp = vsock_proto::encode(MSG_ERROR, spawn.seq, b"\x00").unwrap();
+        guest.write_all(&err_resp).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+
+    let err = host
+        .spawn_process("malformed-error", 0, &[], false, true, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "malformed spawn_process error must clean operation registration",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn test_spawn_process_malformed_result_cleans_up() {
     let (host_stream, mut guest) = make_pair();
 
@@ -1068,6 +1103,84 @@ async fn test_spawn_process_malformed_result_cleans_up() {
         registration_counts(&host),
         (0, 0, 0),
         "malformed streaming spawn_process result must clean operation registration",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn test_unexpected_spawn_process_response_type_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let response = vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, spawn.seq, &[]).unwrap();
+        guest.write_all(&response).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+
+    let err = host
+        .spawn_process("unexpected-response", 0, &[], false, true, None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "unexpected spawn_process response must clean operation registration",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn test_error_after_spawn_process_result_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let result_payload = vsock_proto::encode_spawn_process_result(123);
+        let result =
+            vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &result_payload).unwrap();
+        guest.write_all(&result).await.unwrap();
+
+        let err_payload = vsock_proto::encode_error("late process error");
+        let err_resp = vsock_proto::encode(MSG_ERROR, spawn.seq, &err_payload).unwrap();
+        guest.write_all(&err_resp).await.unwrap();
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("late-error", 0, &[], false, false, None)
+        .await
+        .unwrap();
+    assert_eq!(handle.pid(), 123);
+
+    let err = wait_spawn(handle).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "late spawn_process error must close and clean registrations",
     );
     assert_eq!(
         normal_operation_readiness(&host),
