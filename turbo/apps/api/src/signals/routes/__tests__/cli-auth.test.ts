@@ -198,6 +198,25 @@ async function postCliAuthTestEnableConnectorRaw(args: {
   };
 }
 
+async function postCliAuthTestTokenRaw(args: {
+  readonly query?: string;
+  readonly headers?: Record<string, string>;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    `/api/cli/auth/test-token${args.query ?? ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", ...args.headers },
+      body: JSON.stringify({}),
+    },
+  );
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
 async function postCliAuthTestCodexOauthRaw(args: {
   readonly query?: string;
   readonly body: string;
@@ -953,6 +972,61 @@ describe("CLI auth routes", () => {
       expect(response.body).toBe("Not found");
     });
 
+    it("rejects direct preview requests without the Vercel bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const missingHeader = await acceptResponse<string>(
+        postCliAuthTestTokenRaw({}),
+        404,
+      );
+      expect(missingHeader.body).toBe("Not found");
+
+      const invalidHeader = await acceptResponse<string>(
+        postCliAuthTestTokenRaw({
+          headers: { "x-vercel-protection-bypass": "wrong-secret" },
+        }),
+        404,
+      );
+      expect(invalidHeader.body).toBe("Not found");
+    });
+
+    it("allows direct preview requests with the Vercel bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId, slug: "test-token-preview-header" });
+
+      const response = await acceptResponse<TestTokenResponseBody>(
+        postCliAuthTestTokenRaw({
+          headers: { "x-vercel-protection-bypass": "preview-secret" },
+        }),
+        200,
+      );
+
+      expect(response.body.user_id).toBe(userId);
+      expect(response.body.access_token).toMatch(/^vm0_pat_/);
+    });
+
+    it("allows protected preview rewrites after Vercel consumes the bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId, slug: "test-token-preview-rewrite" });
+      const client = setupApp({ context })(cliAuthTestTokenContract);
+
+      const response = await acceptResponse<TestTokenResponseBody>(
+        client.create({ query: {}, body: {} }),
+        200,
+      );
+
+      expect(response.body.user_id).toBe(userId);
+      expect(response.body.access_token).toMatch(/^vm0_pat_/);
+    });
+
     it("creates a test PAT and seeds org lookup state in development", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
@@ -970,6 +1044,7 @@ describe("CLI auth routes", () => {
         user_id: userId,
       });
       expect(response.body.access_token).toMatch(/^vm0_pat_/);
+      expect(response.body).not.toHaveProperty("org_slug");
       await expect(
         fetchCliToken(response.body.access_token),
       ).resolves.toMatchObject({
@@ -1004,6 +1079,46 @@ describe("CLI auth routes", () => {
           .where(eq(orgMetadata.orgId, orgId))
           .limit(1),
       ).resolves.toHaveLength(1);
+    });
+
+    it("returns 500 when the test user cannot be resolved", async () => {
+      context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+
+      const response = await postCliAuthTestTokenRaw({});
+
+      expect(response.status).toBe(500);
+    });
+
+    it("resolves the default test user email through Clerk", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId, slug: "test-token-default-email" });
+      const client = setupApp({ context })(cliAuthTestTokenContract);
+
+      await acceptResponse<TestTokenResponseBody>(
+        client.create({ query: {}, body: {} }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: [DEFAULT_TEST_EMAIL],
+      });
+    });
+
+    it("resolves a custom test user email through Clerk", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId, slug: "test-token-custom-email" });
+      const client = setupApp({ context })(cliAuthTestTokenContract);
+
+      await acceptResponse<TestTokenResponseBody>(
+        client.create({ query: { email: "custom@test.com" }, body: {} }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
+      });
     });
   });
 
