@@ -1,0 +1,102 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+
+concurrency:
+  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: build-macos-${{ matrix.arch }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - arm64
+          - x64
+    defaults:
+      run:
+        working-directory: turbo
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Type check desktop
+        run: pnpm -F @vm0/desktop check-types
+
+      - name: Lint desktop
+        run: pnpm -F @vm0/desktop lint
+
+      - name: Test desktop
+        run: pnpm -F @vm0/desktop test
+
+      - name: Build unsigned macOS artifact
+        run: |
+          pnpm -F @vm0/desktop build
+          cd apps/desktop
+          pnpm exec electron-forge make --platform darwin --arch=${{ matrix.arch }}
+
+      - name: Verify artifact
+        id: artifact
+        run: |
+          artifact_dir=apps/desktop/out/make/zip/darwin/${{ matrix.arch }}
+          if [ ! -d "$artifact_dir" ]; then
+            echo "Electron Forge artifact directory does not exist: $artifact_dir"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+
+          artifact_path=$(find "$artifact_dir" -maxdepth 1 -name "*.zip" -print -quit)
+          if [ -z "$artifact_path" ]; then
+            echo "No Electron Forge zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload unsigned macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: zero-desktop-macos-${{ matrix.arch }}-unsigned
+          path: turbo/${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14

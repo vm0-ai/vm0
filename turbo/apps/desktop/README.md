@@ -24,3 +24,20 @@ VM0_DESKTOP_PLATFORM_URL=http://localhost:3002 pnpm -F @vm0/desktop dev
 The desktop app does not start platform/web/api/proxy services itself. Start the
 target platform surface separately, then pass its URL through
 `VM0_DESKTOP_PLATFORM_URL`.
+
+## Internal macOS artifacts
+
+The `Desktop` GitHub Actions workflow builds unsigned macOS artifacts for
+internal testing. Run the workflow manually from GitHub Actions, then download
+the `zero-desktop-macos-arm64-unsigned` or `zero-desktop-macos-x64-unsigned`
+artifact.
+
+The downloaded GitHub artifact contains the Electron Forge zip. Unzip both
+layers, then open `Zero.app`.
+
+These artifacts are intentionally unsigned and unnotarized. macOS Gatekeeper may
+require right-clicking the app and choosing Open, or removing quarantine locally:
+
+```bash
+xattr -dr com.apple.quarantine Zero.app
+```
