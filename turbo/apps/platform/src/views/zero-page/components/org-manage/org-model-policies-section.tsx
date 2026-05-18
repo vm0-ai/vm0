@@ -32,7 +32,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
 } from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,
@@ -97,20 +96,15 @@ function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
   });
 }
 
-function getOAuthRouteCopy(oauthTypes: ModelProviderType[]): {
-  title: string;
-  description: string;
-} {
+const ZERO_BORDER = {
+  border: "0.7px solid hsl(var(--gray-400))",
+} as const;
+
+function getOAuthRouteLabel(oauthTypes: ModelProviderType[]): string {
   if (oauthTypes.includes("codex-oauth-token")) {
-    return {
-      title: "Codex subscription",
-      description: "Each member connects their own Pro or Team plan.",
-    };
+    return "Codex subscription";
   }
-  return {
-    title: "Claude subscription",
-    description: "Each member connects their own Pro, Max, or Team plan.",
-  };
+  return "Claude subscription";
 }
 
 function getProviderConfig(type: ModelProviderType) {
@@ -538,51 +532,6 @@ function PolicyRow({
   );
 }
 
-function RouteChoiceButton({
-  active,
-  disabled = false,
-  title,
-  description,
-  onClick,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "flex items-start gap-3 rounded-xl border bg-card px-5 py-4 text-left transition-colors",
-        active
-          ? "border-primary bg-primary/5"
-          : "border-border hover:bg-muted/40",
-        disabled && "cursor-not-allowed opacity-50 hover:bg-card",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-          active ? "border-primary" : "border-input",
-        )}
-      >
-        {active && <span className="h-2 w-2 rounded-full bg-primary" />}
-      </span>
-      <span className="min-w-0">
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
-      </span>
-    </button>
-  );
-}
-
 function ProviderTypeSelect({
   value,
   types,
@@ -605,7 +554,7 @@ function ProviderTypeSelect({
         onChange(next as ModelProviderType);
       }}
     >
-      <SelectTrigger className="h-10 rounded-lg">
+      <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
         <SelectValue placeholder={placeholder}>
           {value && (
             <div className="flex min-w-0 items-center gap-2">
@@ -674,16 +623,19 @@ function ApiKeyProviderSection({
     ? getProviderSignupUrl(selectedProviderType)
     : null;
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-foreground">Provider</label>
-      <ProviderTypeSelect
-        value={selectedProviderType}
-        types={apiTypes}
-        placeholder="Select a provider"
-        onChange={onChange}
-      />
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <label className="text-sm font-medium text-foreground">Provider</label>
+        <ProviderTypeSelect
+          value={selectedProviderType}
+          types={apiTypes}
+          placeholder="Select a provider"
+          onChange={onChange}
+        />
+        {routeProvider && <ProviderConfiguredHint onEdit={onEditKey} />}
+      </div>
       {selectedProviderType && !routeProvider && (
-        <div className="flex flex-col gap-1.5 pt-1">
+        <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-foreground">
             {getUILabel(selectedProviderType)} {secretLabel}
           </label>
@@ -695,7 +647,7 @@ function ApiKeyProviderSection({
             onChange={(e) => {
               onApiKeyChange(e.target.value);
             }}
-            className={apiKeyError ? "border-destructive" : ""}
+            className={apiKeyError ? "h-10 border-destructive" : "h-10"}
           />
           {apiKeyError ? (
             <p className="text-xs text-destructive">{apiKeyError}</p>
@@ -716,7 +668,6 @@ function ApiKeyProviderSection({
           )}
         </div>
       )}
-      {routeProvider && <ProviderConfiguredHint onEdit={onEditKey} />}
     </div>
   );
 }
@@ -1008,82 +959,77 @@ function ModelPolicyRouteDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-5">
-          {dialog.mode === "add" ? (
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">
-                Model
-              </label>
-              <Select
-                value={selectedModel ?? undefined}
-                onValueChange={(next) => {
-                  setModel(next as SupportedRunModel);
-                }}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-foreground">Model</label>
+            <Select
+              value={selectedModel ?? undefined}
+              onValueChange={(next) => {
+                setModel(next as SupportedRunModel);
+              }}
+              disabled={dialog.mode === "edit"}
+            >
+              <SelectTrigger
+                className="h-10 rounded-lg"
+                style={ZERO_BORDER}
               >
-                <SelectTrigger className="h-10 rounded-lg">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {addableModels.map((model) => {
-                    const iconType = getModelIconType(model);
-                    return (
-                      <SelectItem key={model} value={model}>
-                        <div className="flex items-center gap-2">
-                          {iconType && (
-                            <ProviderIcon type={iconType} size={16} />
-                          )}
-                          <span>{getCanonicalModelDisplayName(model)}</span>
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              {selectedModelIcon && (
-                <ProviderIcon type={selectedModelIcon} size={18} />
-              )}
-              <span className="text-sm font-medium text-foreground">
-                {selectedModel
-                  ? getCanonicalModelDisplayName(selectedModel)
-                  : "Unknown model"}
-              </span>
-            </div>
-          )}
+                <SelectValue placeholder="Select a model">
+                  {selectedModel && (
+                    <div className="flex items-center gap-2">
+                      {selectedModelIcon && (
+                        <ProviderIcon type={selectedModelIcon} size={16} />
+                      )}
+                      <span>{getCanonicalModelDisplayName(selectedModel)}</span>
+                    </div>
+                  )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {addableModels.map((model) => {
+                  const iconType = getModelIconType(model);
+                  return (
+                    <SelectItem key={model} value={model}>
+                      <div className="flex items-center gap-2">
+                        {iconType && (
+                          <ProviderIcon type={iconType} size={16} />
+                        )}
+                        <span>{getCanonicalModelDisplayName(model)}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <div
-            role="radiogroup"
-            aria-label="Route"
-            className="grid gap-3"
-          >
-            <RouteChoiceButton
-              active={dialog.routeKind === "built-in"}
-              title="Built-in"
-              description="Workspace credits cover usage."
-              onClick={() => {
-                chooseRoute("built-in");
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-foreground">Route</label>
+            <Select
+              value={dialog.routeKind}
+              onValueChange={(next) => {
+                chooseRoute(next as ModelPolicyRouteKind);
               }}
-            />
-            <RouteChoiceButton
-              active={dialog.routeKind === "api-key"}
-              disabled={apiTypes.length === 0}
-              title="API key"
-              description="A shared workspace key. Best when the team bills through one account."
-              onClick={() => {
-                chooseRoute("api-key");
-              }}
-            />
-            {oauthTypes.length > 0 && (
-              <RouteChoiceButton
-                active={dialog.routeKind === "oauth"}
-                title={getOAuthRouteCopy(oauthTypes).title}
-                description={getOAuthRouteCopy(oauthTypes).description}
-                onClick={() => {
-                  chooseRoute("oauth");
-                }}
-              />
-            )}
+            >
+              <SelectTrigger
+                className="h-10 rounded-lg"
+                style={ZERO_BORDER}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="built-in">Built-in</SelectItem>
+                <SelectItem
+                  value="api-key"
+                  disabled={apiTypes.length === 0}
+                >
+                  API key
+                </SelectItem>
+                {oauthTypes.length > 0 && (
+                  <SelectItem value="oauth">
+                    {getOAuthRouteLabel(oauthTypes)}
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           {dialog.routeKind === "api-key" && (

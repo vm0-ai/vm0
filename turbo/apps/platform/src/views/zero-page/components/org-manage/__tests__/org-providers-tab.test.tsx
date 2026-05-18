@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -153,10 +153,19 @@ function getOrgProviderDialog(): HTMLElement {
   return dialog!;
 }
 
+function openLabeledSelect(dialog: HTMLElement, labelText: string): HTMLElement {
+  const label = within(dialog).getByText(labelText);
+  const container = label.parentElement;
+  expect(container).toBeTruthy();
+  const trigger = within(container!).getByRole("combobox");
+  click(trigger);
+  return trigger;
+}
+
 function clickRouteChoice(dialog: HTMLElement, label: string): void {
-  const button = within(dialog).getByText(label).closest("button");
-  expect(button).toBeDefined();
-  click(button!);
+  openLabeledSelect(dialog, "Route");
+  const listbox = screen.getByRole("listbox");
+  click(within(listbox).getByText(label));
 }
 
 function clickDialogButton(dialog: HTMLElement, label: string): void {
@@ -231,7 +240,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
     expect(within(dialog).getByText("Claude Opus 4.6")).toBeInTheDocument();
-    click(within(dialog).getByRole("combobox"));
+    openLabeledSelect(dialog, "Model");
     const listbox = await screen.findByRole("listbox");
     expect(
       within(listbox).queryByText("Claude Opus 4.7"),
@@ -287,10 +296,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
     click(await screen.findByText("Add model"));
     const dialog = getModelPolicyDialog();
     clickRouteChoice(dialog, "API key");
-    await fill(
-      within(dialog).getByPlaceholderText("Enter your API key"),
-      "sk-ant-test",
-    );
+    const input = within(dialog).getByPlaceholderText("Enter your API key");
+    fireEvent.change(input, { target: { value: "sk-ant-test" } });
     clickDialogButton(dialog, "Add model");
 
     await waitFor(() => {
@@ -337,7 +344,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     expect(
       within(dialog).queryByText("Claude Code (OAuth token)"),
     ).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Provider")).not.toBeInTheDocument();
     expect(
       within(dialog).queryByText(/OAuth routes are personal/i),
     ).not.toBeInTheDocument();
@@ -371,7 +378,7 @@ describe("org-providers-tab — stale banner reconnect", () => {
     expect(
       within(dialog).queryByText("ChatGPT (Codex)"),
     ).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Provider")).not.toBeInTheDocument();
     clickDialogButton(dialog, "Save changes");
 
     await expect(
