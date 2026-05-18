@@ -31,15 +31,17 @@ function setupOpenTelemetry() {
 
 function setupSentry() {
   const dsn = env("SENTRY_DSN");
-  const release = env("GIT_COMMIT_SHA");
+  const environment = env("ENV");
 
-  if (!dsn) {
+  if (!dsn || environment !== "production") {
     return;
   }
 
+  const release = env("GIT_COMMIT_SHA");
+
   init({
     dsn,
-    environment: env("ENV"),
+    environment,
     initialScope: {
       tags: {
         app: "api",

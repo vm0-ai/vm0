@@ -42,6 +42,18 @@ describe("instrument", () => {
     expect(context.mocks.sentry.init).not.toHaveBeenCalled();
   });
 
+  it("does not initialize Sentry outside production", async () => {
+    await importInstrument((envModule) => {
+      envModule.mockEnv(
+        "SENTRY_DSN",
+        "https://examplePublicKey@o0.ingest.sentry.io/0",
+      );
+      envModule.mockEnv("ENV", "preview");
+    });
+
+    expect(context.mocks.sentry.init).not.toHaveBeenCalled();
+  });
+
   it("initializes Sentry with api metadata", async () => {
     await importInstrument((envModule) => {
       envModule.mockEnv(
