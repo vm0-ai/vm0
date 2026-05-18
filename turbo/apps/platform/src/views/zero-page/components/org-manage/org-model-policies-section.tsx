@@ -1042,10 +1042,12 @@ function ModelPolicyRouteDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground">Route</label>
+            <label className="text-sm font-medium text-foreground">
+              Provided by
+            </label>
             <div
               role="radiogroup"
-              aria-label="Route"
+              aria-label="Provided by"
               className="grid grid-cols-1 gap-3 sm:grid-cols-3"
             >
               <RouteChoiceButton
