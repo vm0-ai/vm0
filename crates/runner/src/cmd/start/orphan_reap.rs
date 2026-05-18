@@ -685,6 +685,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn orphan_reaper_reconciles_mixed_live_and_absent_records() {
+        let fixture = OrphanReapFixture::new();
+        let live_run_id = RunId::new_v4();
+        let live_sandbox_id = SandboxId::new_v4();
+        let absent_run_id = RunId::new_v4();
+        let absent_sandbox_id = SandboxId::new_v4();
+        fixture
+            .add_active_orphan(live_run_id, live_sandbox_id)
+            .await;
+        fixture
+            .add_active_orphan(absent_run_id, absent_sandbox_id)
+            .await;
+        let live_firecracker = process::FirecrackerProcessInfo {
+            pid: 1234,
+            ppid: Some(1),
+            sandbox_id: live_sandbox_id.to_string(),
+            base_dir: None,
+        };
+
+        fixture
+            .reap_current_orphans_with_firecrackers(
+                &[live_firecracker],
+                false,
+                OrphanReapMode::ShutdownFinal.absent_scans_before_remove(),
+            )
+            .await;
+
+        fixture
+            .assert_status(&[], &[(live_run_id, live_sandbox_id)])
+            .await;
+        fixture
+            .assert_orphans(&[(live_run_id, live_sandbox_id)])
+            .await;
+    }
+
+    #[tokio::test]
     async fn orphan_reaper_reconciles_idle_owned_records_when_discovery_is_incomplete() {
         let fixture = OrphanReapFixture::new();
         let idle_run_id = RunId::new_v4();
