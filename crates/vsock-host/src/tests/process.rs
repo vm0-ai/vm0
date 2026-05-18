@@ -1355,6 +1355,8 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
             let msgs = decoder.decode(&buf[..n]).unwrap();
             assert_eq!(msgs[0].msg_type, MSG_SPAWN_PROCESS);
             let spawn_seq = msgs[0].seq;
+            let decoded_spawn = vsock_proto::decode_spawn_process(&msgs[0].payload).unwrap();
+            let control_nonce = decoded_spawn.control_nonce.unwrap();
 
             let payload = vsock_proto::encode_spawn_process_result(555);
             let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn_seq, &payload).unwrap();
@@ -1364,6 +1366,23 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
             let chunk_payload = vsock_proto::encode_stdout_chunk(555, b"orphaned chunk");
             let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn_seq, &chunk_payload).unwrap();
             guest.write_all(&chunk).await.unwrap();
+
+            let control = read_guest_message(&mut guest).await;
+            assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+            let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+            assert_eq!(decoded_control.target_seq, spawn_seq);
+            assert_eq!(decoded_control.control_nonce, control_nonce);
+            assert_eq!(decoded_control.message_id, "after-orphaned-chunk");
+            send_process_control_result(
+                &mut guest,
+                control.seq,
+                decoded_control.target_seq,
+                decoded_control.control_nonce,
+                decoded_control.message_id,
+                ProcessControlStatus::Delivered,
+                "",
+            )
+            .await;
 
             send_exit.notified().await;
             let exit_payload = vsock_proto::encode_process_exit(555, 0, b"", b"");
@@ -1390,16 +1409,15 @@ async fn test_dropped_stdout_receiver_removes_stream_sender() {
     drop(handle.take_stdout_receiver());
     send_chunk.notify_one();
 
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if registration_counts(&host) == (0, 1, 0) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("dropped stdout receiver should remove stream sender");
+    handle
+        .control("after-orphaned-chunk", b"", Duration::from_secs(5))
+        .await
+        .expect("control response after stdout chunk should succeed");
+    assert_eq!(
+        registration_counts(&host),
+        (0, 1, 0),
+        "dropped stdout receiver should remove stream sender",
+    );
 
     send_exit.notify_one();
     let event = wait_spawn(handle).await.unwrap();
