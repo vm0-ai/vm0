@@ -82,6 +82,16 @@
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
     },
+    "apps/desktop": {
+      "entry": [
+        "forge.config.js",
+        "src/main.ts",
+        "src/preload.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts", "*.js"],
+      "ignoreDependencies": ["@electron-forge/maker-zip"]
+    },
     "packages/core": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
