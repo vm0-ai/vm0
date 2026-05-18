@@ -312,7 +312,8 @@ fn cli_failure_message(
         } else {
             Some(message)
         }
-    }) {
+    }) && (!is_generic_codex_failure_diagnostic(message) || stderr_lines.is_empty())
+    {
         return message.to_string();
     }
 
@@ -343,6 +344,10 @@ fn cli_failure_message(
         message_lines.push(line.into_owned());
     }
     message_lines.join(" ")
+}
+
+fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
+    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
 }
 
 fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
@@ -699,6 +704,21 @@ mod tests {
             msg,
             "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
         );
+    }
+
+    #[test]
+    fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
+        let stderr_lines = vec!["specific stderr failure".to_string()];
+        let msg = cli_failure_message(1, &stderr_lines, Some("turn failed"));
+
+        assert_eq!(msg, "specific stderr failure");
+    }
+
+    #[test]
+    fn cli_failure_message_uses_generic_codex_failure_diagnostic_without_stderr() {
+        let msg = cli_failure_message(1, &[], Some("turn failed"));
+
+        assert_eq!(msg, "turn failed");
     }
 
     #[test]
