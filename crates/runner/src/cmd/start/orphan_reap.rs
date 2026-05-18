@@ -566,8 +566,6 @@ mod tests {
         fixture
             .assert_orphans(&[(run_id, current_sandbox_id)])
             .await;
-
-        fixture.destroy_all_idle_entries().await;
     }
 
     #[tokio::test]
@@ -598,6 +596,8 @@ mod tests {
         fixture
             .assert_orphans(&[(run_id, current_sandbox_id)])
             .await;
+
+        fixture.destroy_all_idle_entries().await;
     }
 
     #[tokio::test]
