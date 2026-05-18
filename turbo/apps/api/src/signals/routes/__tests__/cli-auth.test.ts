@@ -108,6 +108,15 @@ async function acceptResponse<TBody>(
   return { status: response.status, body: response.body as TBody };
 }
 
+async function parseRawResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as unknown;
+  }
+
+  return await response.text();
+}
+
 async function postCliAuthOrgRaw(args: {
   readonly token?: string;
   readonly body: unknown;
@@ -127,7 +136,26 @@ async function postCliAuthOrgRaw(args: {
   });
   return {
     status: response.status,
-    body: (await response.json()) as unknown,
+    body: await parseRawResponseBody(response),
+  };
+}
+
+async function postCliAuthTestApproveRaw(args: {
+  readonly query?: string;
+  readonly body: unknown;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    `/api/cli/auth/test-approve${args.query ?? ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(args.body),
+    },
+  );
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
   };
 }
 
@@ -749,6 +777,84 @@ describe("CLI auth routes", () => {
   });
 
   describe("POST /api/cli/auth/test-approve", () => {
+    it("returns not found when mock Claude is not enabled", async () => {
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      const unsetResponse = await acceptResponse<string>(
+        client.approve({
+          query: {},
+          body: { device_code: "TEST-CODE" },
+        }),
+        404,
+      );
+      expect(unsetResponse.body).toBe("Not found");
+
+      mockOptionalEnv("USE_MOCK_CLAUDE", "false");
+      const falseResponse = await acceptResponse<string>(
+        client.approve({
+          query: {},
+          body: { device_code: "TEST-CODE" },
+        }),
+        404,
+      );
+      expect(falseResponse.body).toBe("Not found");
+    });
+
+    it("returns validation errors for missing and unknown device codes", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      const missingResponse = await acceptResponse<{ readonly error: string }>(
+        client.approve({ query: {}, body: {} }),
+        400,
+      );
+      expect(missingResponse.body).toStrictEqual({
+        error: "device_code required",
+      });
+
+      const unknownResponse = await acceptResponse<string>(
+        client.approve({
+          query: {},
+          body: { device_code: "XXXX-XXXX" },
+        }),
+        404,
+      );
+      expect(unknownResponse.body).toBe("Not found");
+    });
+
+    it("rejects device codes that are no longer pending", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const code = await seedDeviceCode({ status: "denied" });
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.approve({ query: {}, body: { device_code: code } }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Device code is not in pending status",
+      });
+    });
+
+    it("rejects expired device codes", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const code = await seedDeviceCode({
+        status: "pending",
+        expiresAt: new Date(nowDate().getTime() - 1000),
+      });
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.approve({ query: {}, body: { device_code: code } }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Device code has expired",
+      });
+    });
+
     it("approves a pending CLI device code when mock Claude is enabled", async () => {
       mockOptionalEnv("USE_MOCK_CLAUDE", "true");
       const userId = trackUser(`user_${randomUUID()}`);
@@ -765,7 +871,7 @@ describe("CLI auth routes", () => {
       const response = await acceptResponse<TestApproveResponseBody>(
         approveClient.approve({
           query: { email: DEFAULT_TEST_EMAIL },
-          body: { device_code: deviceResponse.body.device_code.toLowerCase() },
+          body: { device_code: deviceResponse.body.device_code },
         }),
         200,
       );
@@ -776,6 +882,85 @@ describe("CLI auth routes", () => {
       ).resolves.toMatchObject({
         status: "authenticated",
         userId,
+      });
+    });
+
+    it("handles case-insensitive device codes", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId });
+      const code = await seedDeviceCode({ status: "pending" });
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      const response = await acceptResponse<TestApproveResponseBody>(
+        client.approve({
+          query: {},
+          body: { device_code: code.toLowerCase() },
+        }),
+        200,
+      );
+
+      expect(response.body).toStrictEqual({ success: true, userId });
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "authenticated",
+        userId,
+      });
+    });
+
+    it("returns an internal error when the test user cannot be resolved", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+      const code = await seedDeviceCode({ status: "pending" });
+
+      const response = await postCliAuthTestApproveRaw({
+        body: { device_code: code },
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toStrictEqual({ error: "Internal server error" });
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "pending",
+        userId: null,
+      });
+    });
+
+    it("resolves the default test user email through Clerk", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId });
+      const code = await seedDeviceCode({ status: "pending" });
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      await acceptResponse<TestApproveResponseBody>(
+        client.approve({ query: {}, body: { device_code: code } }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: [DEFAULT_TEST_EMAIL],
+      });
+    });
+
+    it("resolves a custom test user email through Clerk", async () => {
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId });
+      const code = await seedDeviceCode({ status: "pending" });
+      const client = setupApp({ context })(cliAuthTestApproveContract);
+
+      await acceptResponse<TestApproveResponseBody>(
+        client.approve({
+          query: { email: "custom@test.com" },
+          body: { device_code: code },
+        }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
       });
     });
   });
