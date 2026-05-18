@@ -3,7 +3,8 @@ import {
   DecryptCommand,
   type DecryptCommandOutput,
   EncryptCommand,
-  type EncryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
@@ -18,11 +19,14 @@ import {
   inspectStoredSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
+  STORED_SECRET_ENVELOPE_PREFIX,
   type SecretKmsClient,
 } from "../crypto.utils";
 
-type MockKmsCommand = EncryptCommand | DecryptCommand;
-type MockKmsResponse = EncryptCommandOutput | DecryptCommandOutput;
+type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
+type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
+
+const DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 function createFakeKmsClient(): {
   readonly calls: readonly MockKmsCommand[];
@@ -30,22 +34,22 @@ function createFakeKmsClient(): {
 } {
   const calls: MockKmsCommand[] = [];
 
-  function send(command: EncryptCommand): Promise<EncryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
   function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
   function send(command: MockKmsCommand): Promise<MockKmsResponse> {
     calls.push(command);
 
-    if (command instanceof EncryptCommand) {
-      if (!command.input.Plaintext) {
-        throw new Error("EncryptCommand must include Plaintext");
-      }
+    if (command instanceof GenerateDataKeyCommand) {
       return Promise.resolve({
         $metadata: {},
         KeyId: command.input.KeyId,
         CiphertextBlob: Buffer.from(
-          `kms:${Buffer.from(command.input.Plaintext).toString("utf8")}`,
+          `encrypted-data-key:${command.input.KeyId}`,
           "utf8",
         ),
+        Plaintext: DATA_KEY,
       });
     }
 
@@ -56,6 +60,13 @@ function createFakeKmsClient(): {
       const encoded = Buffer.from(command.input.CiphertextBlob).toString(
         "utf8",
       );
+      if (encoded.startsWith("encrypted-data-key:")) {
+        return Promise.resolve({
+          $metadata: {},
+          Plaintext: DATA_KEY,
+        });
+      }
+
       return Promise.resolve({
         $metadata: {},
         Plaintext: Buffer.from(encoded.slice("kms:".length), "utf8"),
@@ -69,6 +80,20 @@ function createFakeKmsClient(): {
 }
 
 type FakeKmsClient = ReturnType<typeof createFakeKmsClient>;
+
+function directKmsEnvelope(plaintext: string): string {
+  return `${STORED_SECRET_ENVELOPE_PREFIX}${Buffer.from(
+    JSON.stringify({
+      v: 1,
+      kind: "stored-secret",
+      kms: {
+        keyId: "alias/vm0-secrets",
+        ciphertext: Buffer.from(`kms:${plaintext}`, "utf8").toString("base64"),
+      },
+    }),
+    "utf8",
+  ).toString("base64url")}`;
+}
 
 describe("stored secret encryption", () => {
   let fakeKmsClient: FakeKmsClient;
@@ -118,6 +143,7 @@ describe("stored secret encryption", () => {
       }),
     ).resolves.toBe("secret-value");
     expect(fakeKmsClient.calls).toHaveLength(2);
+    expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
   });
 
   it("can write and strictly read KMS-only ciphertext", async () => {
@@ -138,6 +164,28 @@ describe("stored secret encryption", () => {
     ).rejects.toThrow("Stored secret ciphertext does not include legacy data");
     await expect(
       decryptStoredSecretValueWithMode(encrypted, "kms-only"),
+    ).resolves.toBe("secret-value");
+  });
+
+  it("encrypts large stored secrets with data key envelope encryption", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const secret = "x".repeat(5000);
+    const encrypted = await encryptStoredSecretValueWithMode(secret, "kms");
+
+    expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
+    expect(fakeKmsClient.calls).not.toContainEqual(expect.any(EncryptCommand));
+    await expect(
+      decryptStoredSecretValueWithMode(encrypted, "kms-only"),
+    ).resolves.toBe(secret);
+  });
+
+  it("can read direct KMS ciphertext envelopes for compatibility", async () => {
+    await expect(
+      decryptStoredSecretValueWithMode(
+        directKmsEnvelope("secret-value"),
+        "kms-only",
+      ),
     ).resolves.toBe("secret-value");
   });
 

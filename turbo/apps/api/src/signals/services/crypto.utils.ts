@@ -3,8 +3,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import {
   DecryptCommand,
   type DecryptCommandOutput,
-  EncryptCommand,
-  type EncryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
   KMSClient,
 } from "@aws-sdk/client-kms";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -27,10 +27,23 @@ type StoredSecretReadMode =
   | "legacy-only"
   | "kms-only";
 
-const kmsCiphertextSchema = z.object({
+const directKmsCiphertextSchema = z.object({
   keyId: z.string().min(1),
   ciphertext: z.string().min(1),
 });
+
+const envelopeKmsCiphertextSchema = z.object({
+  keyId: z.string().min(1),
+  encryptedDataKey: z.string().min(1),
+  iv: z.string().min(1),
+  authTag: z.string().min(1),
+  ciphertext: z.string().min(1),
+});
+
+const kmsCiphertextSchema = z.union([
+  envelopeKmsCiphertextSchema,
+  directKmsCiphertextSchema,
+]);
 
 const storedSecretEnvelopeSchema = z
   .object({
@@ -58,18 +71,20 @@ interface StoredSecretCiphertextInfo {
 }
 
 export interface SecretKmsClient {
-  send(command: EncryptCommand): Promise<EncryptCommandOutput>;
+  send(command: GenerateDataKeyCommand): Promise<GenerateDataKeyCommandOutput>;
   send(command: DecryptCommand): Promise<DecryptCommandOutput>;
 }
 
 const secretKmsClient = singleton((): SecretKmsClient => {
   const client = new KMSClient({});
-  function send(command: EncryptCommand): Promise<EncryptCommandOutput>;
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
   function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
   function send(
-    command: EncryptCommand | DecryptCommand,
-  ): Promise<EncryptCommandOutput | DecryptCommandOutput> {
-    if (command instanceof EncryptCommand) {
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
       return client.send(command);
     }
     return client.send(command);
@@ -89,6 +104,7 @@ const {
 const KMS_ENCRYPTION_CONTEXT = {
   purpose: "vm0-stored-secret",
 } as const;
+const DATA_KEY_BYTE_LENGTH = 32;
 
 function getSecretKmsClient(): SecretKmsClient {
   return getSecretKmsClientOverride() ?? secretKmsClient();
@@ -138,34 +154,108 @@ function storedSecretReadMode(ctx: FeatureSwitchContext): StoredSecretReadMode {
     : "prefer-legacy";
 }
 
+function encryptSecretValueWithDataKey(
+  plaintext: string,
+  key: Buffer,
+): {
+  readonly iv: string;
+  readonly authTag: string;
+  readonly ciphertext: string;
+} {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
+  const data = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+  return {
+    iv: iv.toString("base64"),
+    authTag: authTag.toString("base64"),
+    ciphertext: data.toString("base64"),
+  };
+}
+
+function decryptSecretValueWithDataKey(
+  ciphertext: z.infer<typeof envelopeKmsCiphertextSchema>,
+  key: Buffer,
+): string {
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(ciphertext.iv, "base64"),
+    { authTagLength: 16 },
+  );
+  decipher.setAuthTag(Buffer.from(ciphertext.authTag, "base64"));
+
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(ciphertext.ciphertext, "base64")),
+    decipher.final(),
+  ]);
+
+  return decrypted.toString("utf8");
+}
+
 async function encryptSecretValueWithKms(
   plaintext: string,
 ): Promise<KmsCiphertext> {
   const keyId = requireSecretsKmsKeyId();
   const response = await getSecretKmsClient().send(
-    new EncryptCommand({
+    new GenerateDataKeyCommand({
       KeyId: keyId,
-      Plaintext: Buffer.from(plaintext, "utf8"),
+      KeySpec: "AES_256",
       EncryptionContext: KMS_ENCRYPTION_CONTEXT,
     }),
   );
+  if (!response.Plaintext) {
+    throw new Error(
+      "AWS KMS GenerateDataKey response did not include plaintext",
+    );
+  }
   if (!response.CiphertextBlob) {
-    throw new Error("AWS KMS encrypt response did not include ciphertext");
+    throw new Error(
+      "AWS KMS GenerateDataKey response did not include encrypted data key",
+    );
   }
 
+  const plaintextDataKey = Buffer.from(response.Plaintext);
+  if (plaintextDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
+    throw new Error(
+      "AWS KMS GenerateDataKey response used an invalid key size",
+    );
+  }
+
+  const encrypted = encryptSecretValueWithDataKey(plaintext, plaintextDataKey);
+  plaintextDataKey.fill(0);
   return {
     keyId: response.KeyId ?? keyId,
-    ciphertext: Buffer.from(response.CiphertextBlob).toString("base64"),
+    encryptedDataKey: Buffer.from(response.CiphertextBlob).toString("base64"),
+    ...encrypted,
   };
 }
 
 async function decryptSecretValueWithKms(
   ciphertext: KmsCiphertext,
 ): Promise<string> {
+  if (!("encryptedDataKey" in ciphertext)) {
+    const response = await getSecretKmsClient().send(
+      new DecryptCommand({
+        KeyId: ciphertext.keyId,
+        CiphertextBlob: Buffer.from(ciphertext.ciphertext, "base64"),
+        EncryptionContext: KMS_ENCRYPTION_CONTEXT,
+      }),
+    );
+    if (!response.Plaintext) {
+      throw new Error("AWS KMS decrypt response did not include plaintext");
+    }
+
+    return Buffer.from(response.Plaintext).toString("utf8");
+  }
+
   const response = await getSecretKmsClient().send(
     new DecryptCommand({
       KeyId: ciphertext.keyId,
-      CiphertextBlob: Buffer.from(ciphertext.ciphertext, "base64"),
+      CiphertextBlob: Buffer.from(ciphertext.encryptedDataKey, "base64"),
       EncryptionContext: KMS_ENCRYPTION_CONTEXT,
     }),
   );
@@ -173,7 +263,14 @@ async function decryptSecretValueWithKms(
     throw new Error("AWS KMS decrypt response did not include plaintext");
   }
 
-  return Buffer.from(response.Plaintext).toString("utf8");
+  const plaintextDataKey = Buffer.from(response.Plaintext);
+  if (plaintextDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
+    throw new Error("AWS KMS decrypt response used an invalid key size");
+  }
+
+  const plaintext = decryptSecretValueWithDataKey(ciphertext, plaintextDataKey);
+  plaintextDataKey.fill(0);
+  return plaintext;
 }
 
 export function resetSecretKmsClientForTests(): void {
