@@ -580,7 +580,9 @@ describe("CLI auth routes", () => {
         401,
       );
 
-      expect(response.body.error.code).toBe("UNAUTHORIZED");
+      expect(response.body).toStrictEqual({
+        error: { message: "Authentication required", code: "unauthorized" },
+      });
     });
 
     it("returns 404 when the org slug does not exist", async () => {
