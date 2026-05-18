@@ -98,7 +98,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/webhooks/stripe/route.ts",
   "app/api/zero/agents/[id]/instructions/route.ts",
   "app/api/zero/agents/[id]/route.ts",
-  "app/api/zero/agents/[id]/user-connectors/route.ts",
   "app/api/zero/agents/route.ts",
   "app/api/zero/api-keys/[id]/route.ts",
   "app/api/zero/api-keys/route.ts",

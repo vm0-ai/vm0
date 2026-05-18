@@ -10,27 +10,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
- * Read the headVersionId and updatedAt of a compose record.
- * Useful for verifying recompose behavior in tests.
- */
-export async function getComposeHeadVersion(
-  composeId: string,
-): Promise<
-  { headVersionId: string | null; updatedAt: Date | null } | undefined
-> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      headVersionId: agentComposes.headVersionId,
-      updatedAt: agentComposes.updatedAt,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row;
-}
-
-/**
  * Read the head compose version content for a compose record.
  * Returns the resolved compose content stored in the version.
  */

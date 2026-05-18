@@ -40,6 +40,10 @@ const ZERO_AGENT_CUSTOM_CONNECTORS_REWRITE_SOURCE =
   "/api/zero/agents/:id/custom-connectors";
 const ZERO_AGENT_CUSTOM_CONNECTORS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/custom-connectors$/;
+const ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE =
+  "/api/zero/agents/:id/user-connectors";
+const ZERO_AGENT_USER_CONNECTORS_PATH_RE =
+  /^\/api\/zero\/agents\/[^/]+\/user-connectors$/;
 
 export const API_BACKEND_REWRITES = [
   [
@@ -142,6 +146,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_AGENT_CUSTOM_CONNECTORS_REWRITE_SOURCE,
     "/api/zero/agents/:id/custom-connectors",
     ZERO_AGENT_CUSTOM_CONNECTORS_PATH_RE,
+  ],
+  [
+    ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE,
+    "/api/zero/agents/:id/user-connectors",
+    ZERO_AGENT_USER_CONNECTORS_PATH_RE,
   ],
   [
     "/api/zero/built-in-generations/:path*",

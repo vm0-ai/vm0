@@ -80,21 +80,6 @@ export async function seedOrphanCompose(opts: {
 }
 
 /**
- * @why-db-direct Sets HEAD to an arbitrary version — API always sets HEAD to
- * the latest created version. Tests stale-version handling in recompose flows.
- */
-export async function setComposeHeadVersion(
-  composeId: string,
-  headVersionId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ headVersionId })
-    .where(eq(agentComposes.id, composeId));
-}
-
-/**
  * @why-db-direct Sets HEAD to null — API never creates a versionless compose.
  * Tests pre-run failure when no version exists (e.g., executeSchedule).
  */

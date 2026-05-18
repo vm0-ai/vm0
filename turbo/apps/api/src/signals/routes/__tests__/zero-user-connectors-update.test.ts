@@ -3,16 +3,19 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteSkillsForFixture$,
@@ -38,8 +41,43 @@ function apiClient() {
   return setupApp({ context })(zeroUserConnectorsContract);
 }
 
+function agentsClient() {
+  return setupApp({ context })(zeroAgentsMainContract);
+}
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+async function cliAuthHeaders(fixture: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<{ readonly authorization: string }> {
+  const tokenId = randomUUID();
+  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
+  const writeDb = store.set(writeDb$);
+
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: fixture.userId,
+    name: "test token",
+    expiresAt: new Date(now() + 60 * 60 * 1000),
+  });
+  await writeDb
+    .insert(orgMembersCache)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role: "admin",
+      cachedAt: new Date(now()),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role: "admin", cachedAt: new Date(now()) },
+    });
+
+  return { authorization: `Bearer ${token}` };
 }
 
 describe("PUT /api/zero/agents/:id/user-connectors", () => {
@@ -106,6 +144,31 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
     await expect(
       getEnabledTypes(fixture.orgId, fixture.userId, agentId),
     ).resolves.toStrictEqual(expect.arrayContaining(["github", "slack"]));
+  });
+
+  it("accepts a CLI token when updating connector permissions", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+
+    const response = await accept(
+      apiClient().update({
+        params: { id: agentId },
+        headers: await cliAuthHeaders(fixture),
+        body: { enabledTypes: ["github"] },
+      }),
+      [200],
+    );
+
+    expect(response.body.enabledTypes).toStrictEqual(["github"]);
+    await expect(
+      getEnabledTypes(fixture.orgId, fixture.userId, agentId),
+    ).resolves.toStrictEqual(["github"]);
   });
 
   it("replaces existing permissions atomically", async () => {
@@ -230,6 +293,34 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
     });
   });
 
+  it("returns 400 for invalid connector types", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().update({
+        params: { id: agentId },
+        headers: authHeaders(),
+        body: { enabledTypes: ["github", "not-a-connector"] },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Invalid connector types: not-a-connector",
+        code: "VALIDATION_ERROR",
+      },
+    });
+  });
+
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       apiClient().update({
@@ -282,6 +373,37 @@ describe("PUT /api/zero/agents/:id/user-connectors", () => {
       .from(agentComposeVersions)
       .where(eq(agentComposeVersions.id, after!));
     expect(versionRow?.id).toBe(after);
+  });
+
+  it("skips recomposition when the compose head version is current", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const createResponse = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: {},
+      }),
+      [201],
+    );
+    const agentId = createResponse.body.agentId;
+    const before = await getAgentHeadVersion(agentId);
+    if (!before) {
+      throw new Error("Expected created agent to have a compose head version");
+    }
+
+    await accept(
+      apiClient().update({
+        params: { id: agentId },
+        headers: authHeaders(),
+        body: { enabledTypes: ["github"] },
+      }),
+      [200],
+    );
+
+    await expect(getAgentHeadVersion(agentId)).resolves.toBe(before);
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
