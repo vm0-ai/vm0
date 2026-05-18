@@ -22,6 +22,7 @@ const { getPathMatch } =
     readonly getPathMatch: GetPathMatch;
   };
 
+const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH = "/api/agent/checkpoints/checkpoint_123";
@@ -36,6 +37,15 @@ const AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/extra",
   "/api/agent/runs",
   "/api/agent/runs/queues",
+] as const;
+const AGENT_RUN_CANCEL_REWRITE_SOURCE =
+  "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/cancel";
+const AGENT_RUN_CANCEL_PATH = `/api/agent/runs/${AGENT_RUN_ID}/cancel`;
+const AGENT_RUN_CANCEL_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/cancel",
+  "/api/agent/runs/not-a-uuid/cancel",
+  `/api/agent/runs/${AGENT_RUN_ID}/events`,
+  `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
 ] as const;
 const AUTH_ME_REWRITE_SOURCE = "/api/auth/me";
 const AUTH_ME_PATH = "/api/auth/me";
@@ -558,6 +568,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/runs/queue",
         },
         {
+          source: AGENT_RUN_CANCEL_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs/:id/cancel",
+        },
+        {
           source: AUTH_ME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/auth/me",
         },
@@ -948,6 +962,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_RUNS_QUEUE_PATH)).toStrictEqual({});
     for (const pathname of AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent run cancel rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUN_CANCEL_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUN_CANCEL_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs/:id/cancel",
+    });
+
+    const matcher = getPathMatch(AGENT_RUN_CANCEL_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUN_CANCEL_PATH)).toStrictEqual({
+      id: AGENT_RUN_ID,
+    });
+    for (const pathname of AGENT_RUN_CANCEL_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2230,6 +2269,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact agent runs queue path", () => {
     expect(matchesApiBackendRewritePath(AGENT_RUNS_QUEUE_PATH)).toBe(true);
     for (const pathname of AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped agent run cancel paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUN_CANCEL_PATH)).toBe(true);
+    for (const pathname of AGENT_RUN_CANCEL_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

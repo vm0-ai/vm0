@@ -32,6 +32,7 @@ const { proxyRequest } =
   require("next/dist/server/lib/router-utils/proxy-request.js") as {
     readonly proxyRequest: ProxyRequest;
   };
+const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -189,6 +190,26 @@ describe("API backend rewrite proxy behavior", () => {
     );
     expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent run cancel paths", () => {
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/cancel`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/queue/cancel")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid/cancel"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/events`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
+      ),
+    ).toBe(false);
   });
 
   it("routes hosted-site deployment endpoints to the API backend", () => {

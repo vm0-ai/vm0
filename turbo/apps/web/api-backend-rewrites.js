@@ -44,6 +44,10 @@ const ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE =
   "/api/zero/agents/:id/user-connectors";
 const ZERO_AGENT_USER_CONNECTORS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/user-connectors$/;
+const AGENT_RUN_CANCEL_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/cancel`;
+const AGENT_RUN_CANCEL_PATH_RE = new RegExp(
+  `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/cancel$`,
+);
 
 export const API_BACKEND_REWRITES = [
   [
@@ -54,6 +58,11 @@ export const API_BACKEND_REWRITES = [
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
+  [
+    AGENT_RUN_CANCEL_REWRITE_SOURCE,
+    "/api/agent/runs/:id/cancel",
+    AGENT_RUN_CANCEL_PATH_RE,
+  ],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [
     AGENT_SESSION_ID_REWRITE_SOURCE,
