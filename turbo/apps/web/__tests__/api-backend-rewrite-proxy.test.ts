@@ -269,6 +269,12 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero team rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/team")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/team/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/teams")).toBe(false);
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

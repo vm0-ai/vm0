@@ -190,4 +190,47 @@ describe("GET /api/zero/team", () => {
       }),
     ).not.toContain(fixture.composeIds[1]);
   });
+
+  it("includes public agents and owned private agents only", async () => {
+    const otherOwnerId = "user_other_private_agent_owner";
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            { displayName: "public-agent" },
+            { displayName: "owned-private-agent", visibility: "private" },
+            {
+              displayName: "other-private-agent",
+              ownerId: otherOwnerId,
+              visibility: "private",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroTeamContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const displayNames = response.body.map((agent) => {
+      return agent.displayName;
+    });
+    expect(displayNames).toHaveLength(2);
+    expect(displayNames).toContain("public-agent");
+    expect(displayNames).toContain("owned-private-agent");
+
+    const ids = response.body.map((agent) => {
+      return agent.id;
+    });
+    expect(ids).not.toContain(fixture.composeIds[2]);
+  });
 });
