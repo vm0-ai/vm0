@@ -662,6 +662,14 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero org logo rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/logo")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/logo/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/logos")).toBe(false);
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,

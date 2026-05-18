@@ -221,6 +221,12 @@ const ZERO_ORG_LEAVE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/org/leave/extra",
   "/api/zero/org/leaves",
 ] as const;
+const ZERO_ORG_LOGO_REWRITE_SOURCE = "/api/zero/org/logo";
+const ZERO_ORG_LOGO_PATH = "/api/zero/org/logo";
+const ZERO_ORG_LOGO_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/org/logo/extra",
+  "/api/zero/org/logos",
+] as const;
 const ZERO_MEMBER_CREDIT_CAP_REWRITE_SOURCE =
   "/api/zero/org/members/credit-cap";
 const ZERO_MEMBER_CREDIT_CAP_PATH = "/api/zero/org/members/credit-cap";
@@ -726,6 +732,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_ORG_INVITE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/org/invite",
+        },
+        {
+          source: ZERO_ORG_LOGO_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/org/logo",
         },
         {
           source: ZERO_MEMBER_CREDIT_CAP_REWRITE_SOURCE,
@@ -1546,6 +1556,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero org logo rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ORG_LOGO_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ORG_LOGO_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/org/logo",
+    });
+
+    const matcher = getPathMatch(ZERO_ORG_LOGO_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ORG_LOGO_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ORG_LOGO_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact voice-io tts rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1947,6 +1980,13 @@ describe("API backend rewrites", () => {
   it("should match the zero org leave route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_ORG_LEAVE_PATH)).toBe(true);
     for (const pathname of ZERO_ORG_LEAVE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero org logo route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_ORG_LOGO_PATH)).toBe(true);
+    for (const pathname of ZERO_ORG_LOGO_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
