@@ -15,6 +15,12 @@ import type {
 import type { ConnectorType } from "../connectors";
 import { CONNECTOR_TYPES } from "../connectors";
 import {
+  clerkDefaultAllowed,
+  clerkCategories,
+  clerkCategoryOrder,
+  clerkFirewall,
+} from "./clerk.generated";
+import {
   gmailDefaultAllowed,
   gmailCategories,
   gmailCategoryOrder,
@@ -268,6 +274,7 @@ const CONNECTOR_FIREWALLS = {
   calendly: calendlyFirewall,
   canva: canvaFirewall,
   chatwoot: chatwootFirewall,
+  clerk: clerkFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
@@ -530,6 +537,7 @@ export type PermissionNamesOf<T extends FirewallConfig> =
 const CONNECTOR_CATEGORIES: Partial<
   Record<FirewallConnectorType, ConnectorCategories>
 > = {
+  clerk: { categories: clerkCategories, displayOrder: clerkCategoryOrder },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
@@ -648,6 +656,7 @@ export function getConnectorFirewall(
 const DEFAULT_ALLOWED: Partial<
   Record<FirewallConnectorType, ReadonlyArray<string>>
 > = {
+  clerk: clerkDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
 };

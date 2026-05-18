@@ -32,6 +32,7 @@ import { calComHandler } from "./providers/cal-com-handler";
 import { calendlyHandler } from "./providers/calendly-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
+import { clerkHandler } from "./providers/clerk-handler";
 import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
@@ -241,6 +242,7 @@ export const PROVIDER_HANDLERS: Record<
   calendly: calendlyHandler,
   canva: canvaHandler,
   chatwoot: chatwootHandler,
+  clerk: clerkHandler,
   clickup: clickupHandler,
   cloudflare: cloudflareHandler,
   cloudinary: cloudinaryHandler,

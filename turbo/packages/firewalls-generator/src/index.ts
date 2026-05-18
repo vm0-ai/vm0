@@ -33,6 +33,7 @@ import { generate as generateCanva } from "./canva";
 import { generate as generateChatwoot } from "./chatwoot";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
+import { generate as generateClerk } from "./clerk";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
@@ -222,6 +223,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   calendly: generateCalendly,
   canva: generateCanva,
   chatwoot: generateChatwoot,
+  clerk: generateClerk,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,

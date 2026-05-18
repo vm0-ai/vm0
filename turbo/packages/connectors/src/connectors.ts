@@ -50,6 +50,7 @@ import { calCom } from "./connectors/cal-com";
 import { calendly } from "./connectors/calendly";
 import { canva } from "./connectors/canva";
 import { chatwoot } from "./connectors/chatwoot";
+import { clerk } from "./connectors/clerk";
 import { clickup } from "./connectors/clickup";
 import { close } from "./connectors/close";
 import { cloudflare } from "./connectors/cloudflare";
@@ -486,6 +487,7 @@ const CONNECTOR_TYPES_DEF = {
   ...calendly,
   ...canva,
   ...chatwoot,
+  ...clerk,
   ...clickup,
   ...close,
   ...cloudflare,
