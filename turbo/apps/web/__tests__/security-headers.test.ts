@@ -88,6 +88,13 @@ const QUEUE_POSITION_NEXT_NEGATIVE_PATHS = [
   "/api/zero/queue-position/extra",
   "/api/zero/queue-positions",
 ] as const;
+const PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE =
+  "/api/zero/permission-access-requests";
+const PERMISSION_ACCESS_REQUESTS_PATH = "/api/zero/permission-access-requests";
+const PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/permission-access-requests/extra",
+  "/api/zero/permission-access-request",
+] as const;
 const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
@@ -451,6 +458,11 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/queue-position",
         },
         {
+          source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/permission-access-requests",
+        },
+        {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/user-model-preference",
@@ -762,6 +774,30 @@ describe("API backend rewrites", () => {
 
     expect(matcher(QUEUE_POSITION_PATH)).toStrictEqual({});
     for (const pathname of QUEUE_POSITION_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact permission access requests rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/permission-access-requests",
+    });
+
+    const matcher = getPathMatch(PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(PERMISSION_ACCESS_REQUESTS_PATH)).toStrictEqual({});
+    for (const pathname of PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

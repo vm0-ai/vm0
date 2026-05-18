@@ -275,6 +275,20 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/teams")).toBe(false);
   });
 
+  it("matches the permission access requests rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/permission-access-requests"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/permission-access-requests/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/permission-access-request"),
+    ).toBe(false);
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

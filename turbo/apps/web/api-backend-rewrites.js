@@ -99,6 +99,10 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
+  [
+    "/api/zero/permission-access-requests",
+    "/api/zero/permission-access-requests",
+  ],
   ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/team", "/api/zero/team"],

@@ -13,14 +13,18 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { permissionAccessRequests } from "@vm0/db/schema/permission-access-request";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearAllDetached } from "../../utils";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -33,6 +37,7 @@ interface PermissionAccessOrgFixture {
   readonly orgId: string;
   readonly ownerUserId: string;
   readonly agentId: string;
+  readonly slackWorkspaceId?: string;
 }
 
 interface SeedPermissionAccessOrgValues {
@@ -40,6 +45,7 @@ interface SeedPermissionAccessOrgValues {
   readonly ownerRole?: OrgRole;
   readonly visibility?: AgentVisibility;
   readonly permissionPolicies?: RawPermissionPolicies;
+  readonly ownerSlackUserId?: string;
 }
 
 interface SeedOrgMemberValues {
@@ -109,7 +115,29 @@ const seedPermissionAccessOrg$ = command(
     });
     signal.throwIfAborted();
 
-    return { orgId, ownerUserId, agentId };
+    const ownerSlackUserId = values.ownerSlackUserId;
+    const slackWorkspaceId = ownerSlackUserId
+      ? `T_${randomUUID().replaceAll("-", "").slice(0, 12)}`
+      : undefined;
+    if (ownerSlackUserId && slackWorkspaceId) {
+      await writeDb.insert(slackOrgInstallations).values({
+        slackWorkspaceId,
+        slackWorkspaceName: "Test Workspace",
+        orgId,
+        encryptedBotToken: encryptSecretForTests("xoxb-permission-test"),
+        botUserId: "U_BOT_PERMISSION",
+      });
+      signal.throwIfAborted();
+
+      await writeDb.insert(slackOrgConnections).values({
+        slackUserId: ownerSlackUserId,
+        slackWorkspaceId,
+        vm0UserId: ownerUserId,
+      });
+      signal.throwIfAborted();
+    }
+
+    return { orgId, ownerUserId, agentId, slackWorkspaceId };
   },
 );
 
@@ -159,6 +187,22 @@ const deletePermissionAccessOrg$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const writeDb = set(writeDb$);
+    if (fixture.slackWorkspaceId) {
+      await writeDb
+        .delete(slackOrgConnections)
+        .where(
+          eq(slackOrgConnections.slackWorkspaceId, fixture.slackWorkspaceId),
+        );
+      signal.throwIfAborted();
+
+      await writeDb
+        .delete(slackOrgInstallations)
+        .where(
+          eq(slackOrgInstallations.slackWorkspaceId, fixture.slackWorkspaceId),
+        );
+      signal.throwIfAborted();
+    }
+
     await writeDb
       .delete(permissionAccessRequests)
       .where(eq(permissionAccessRequests.orgId, fixture.orgId));
@@ -509,6 +553,52 @@ describe("POST /api/zero/permission-access-requests", () => {
     );
 
     expect(response.body.requesterUserId).toBe(memberUserId);
+  });
+
+  it("notifies the agent owner through Slack when creating a request", async () => {
+    const fixture = await track(
+      store.set(
+        seedPermissionAccessOrg$,
+        { ownerSlackUserId: "U_OWNER_PERMISSION" },
+        context.signal,
+      ),
+    );
+    context.mocks.slack.chat.postMessage.mockResolvedValue({
+      ok: true,
+      ts: "1700000000.000100",
+      channel: "U_OWNER_PERMISSION",
+    });
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+          reason: "Need issue context",
+        },
+      }),
+      [201],
+    );
+    await clearAllDetached();
+
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "U_OWNER_PERMISSION",
+        text: expect.stringContaining(
+          'requesting to allow "issues:read" on GitHub',
+        ),
+      }),
+    );
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          `/agents/${fixture.agentId}/permissions?request=${response.body.id}`,
+        ),
+      }),
+    );
   });
 });
 
@@ -1108,6 +1198,57 @@ describe("PUT /api/zero/permission-access-requests", () => {
       slack: { "channels:read": "allow" },
       github: { "issues:read": "allow" },
     });
+  });
+
+  it("notifies the requester through Slack when resolving a request", async () => {
+    const fixture = await track(
+      store.set(
+        seedPermissionAccessOrg$,
+        { ownerSlackUserId: "U_REQUESTER_PERMISSION" },
+        context.signal,
+      ),
+    );
+    const request = await store.set(
+      seedAccessRequest$,
+      {
+        orgId: fixture.orgId,
+        agentId: fixture.agentId,
+        requesterUserId: fixture.ownerUserId,
+        connectorRef: "github",
+        permission: "issues:read",
+      },
+      context.signal,
+    );
+    context.mocks.slack.chat.postMessage.mockResolvedValue({
+      ok: true,
+      ts: "1700000000.000200",
+      channel: "U_REQUESTER_PERMISSION",
+    });
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      resolveApiClient().resolve({
+        headers: authHeaders(),
+        body: { requestId: request.id, action: "approve" },
+      }),
+      [200],
+    );
+    await clearAllDetached();
+
+    expect(response.body.status).toBe("approved");
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "U_REQUESTER_PERMISSION",
+        text: expect.stringContaining(
+          'Your request to allow "issues:read" on GitHub',
+        ),
+      }),
+    );
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("has been approved"),
+      }),
+    );
   });
 
   it("returns 401 without auth", async () => {
