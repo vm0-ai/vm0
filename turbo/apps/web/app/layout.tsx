@@ -8,7 +8,7 @@ import {
   Fira_Mono,
   JetBrains_Mono,
 } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkProvider, GoogleOneTap } from "@clerk/nextjs";
 import {
   getClerkFrontendApiHost,
   getClerkPublishableKey,
@@ -151,6 +151,10 @@ export default async function RootLayout({
       signUpFallbackRedirectUrl={getAppUrl()}
       allowedRedirectOrigins={[getAppUrl()]}
     >
+      <GoogleOneTap
+        signInForceRedirectUrl={getAppUrl()}
+        signUpForceRedirectUrl={getAppUrl()}
+      />
       <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
         <head>
           <Script
