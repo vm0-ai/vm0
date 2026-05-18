@@ -13,8 +13,9 @@ use vsock_proto::{
 
 use super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
-    normal_operation_readiness, operation_count, read_guest_message, send_exec_output,
-    send_exec_result, send_raw_exec_result, send_stream_exec_result, setup_host_and_guest,
+    normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
+    send_exec_output, send_exec_result, send_raw_exec_result, send_stream_exec_result,
+    setup_host_and_guest,
 };
 use crate::file as file_impl;
 use crate::{CopyFileOptions, FrameWriteObserver, operation_tracker::NormalOperationReadiness};
@@ -1199,6 +1200,51 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
     write_task.abort();
     let _ = write_task.await;
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_chunked_cancelled_before_first_frame_write_does_not_cleanup() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let content = vec![0xABu8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big-blocked.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_request_count(&host) != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle

@@ -169,6 +169,33 @@ async fn exec_write_observer_fires_at_frame_write_boundary() {
 }
 
 #[tokio::test]
+async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .exec_capture_with_write_observer(
+            capture_request("observer-error"),
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send exec frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    assert!(is_connected(&host));
+}
+
+#[tokio::test]
 async fn exec_operation_handle_drop_after_full_write_marks_not_parkable() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

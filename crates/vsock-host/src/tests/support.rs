@@ -47,6 +47,14 @@ pub(crate) fn operation_count(host: &VsockHost) -> usize {
     }
 }
 
+pub(crate) fn pending_request_count(host: &VsockHost) -> usize {
+    let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        ConnectionState::Connected { pending, .. } => pending.len(),
+        ConnectionState::Closed { .. } => 0,
+    }
+}
+
 pub(crate) fn is_connected(host: &VsockHost) -> bool {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     matches!(&*guard, ConnectionState::Connected { .. })
