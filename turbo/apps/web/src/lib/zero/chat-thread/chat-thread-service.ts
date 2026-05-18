@@ -1,13 +1,4 @@
-import {
-  eq,
-  and,
-  desc,
-  inArray,
-  isNull,
-  asc,
-  sql,
-  isNotNull,
-} from "drizzle-orm";
+import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -195,42 +186,6 @@ export async function listChatThreads(
   return threads;
 }
 
-interface ChatThreadModelPin {
-  modelProviderId: string | null;
-  modelProviderType: string | null;
-  modelProviderCredentialScope: string | null;
-  selectedModel: string | null;
-}
-
-export async function getFirstRunModelPinForThread(
-  threadId: string,
-): Promise<ChatThreadModelPin | null> {
-  const [run] = await globalThis.services.db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
-        isNotNull(chatMessages.runId),
-        isNotNull(zeroRuns.selectedModel),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-    .limit(1);
-
-  if (!run?.selectedModel) {
-    return null;
-  }
-  return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel: run.selectedModel,
-  };
-}
-
 /**
  * Get a chat thread by ID with ownership check.
  */
@@ -295,76 +250,6 @@ export async function getChatThread(
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
-}
-
-/**
- * Mirrors the SQL `hasDraft` projection in `listChatThreads`: a thread "has a
- * draft" when its draft text is non-empty OR it has at least one attachment.
- */
-function hasDraftValue(
-  draftContent: string | null,
-  draftAttachments: PersistedAttachment[] | null,
-): boolean {
-  return (
-    (draftContent !== null && draftContent !== "") ||
-    (draftAttachments !== null && draftAttachments.length > 0)
-  );
-}
-
-/**
- * Update a chat thread's draft content and attachments.
- * Ownership check in WHERE clause ensures users can only update their own threads.
- *
- * Publishes `threadListChanged` only when the boolean `hasDraft` flag flips,
- * so that continued typing inside an already-drafting thread does not spam
- * sidebar reloads.
- */
-export async function updateChatThreadDraft(
-  threadId: string,
-  userId: string,
-  draftContent: string | null,
-  draftAttachments: PersistedAttachment[] | null,
-): Promise<void> {
-  const [before] = await globalThis.services.db
-    .select({
-      draftContent: chatThreads.draftContent,
-      draftAttachments: chatThreads.draftAttachments,
-    })
-    .from(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
-
-  if (!before) {
-    throw notFound("Chat thread not found");
-  }
-
-  await globalThis.services.db
-    .update(chatThreads)
-    .set({ draftContent, draftAttachments })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
-
-  const hadDraft = hasDraftValue(before.draftContent, before.draftAttachments);
-  const hasDraft = hasDraftValue(draftContent, draftAttachments);
-  if (hadDraft !== hasDraft) {
-    await publishThreadListChanged(userId);
-  }
-}
-
-/**
- * Delete a chat thread with ownership check.
- * Cascade deletes handle chat_messages cleanup.
- */
-export async function deleteChatThread(
-  threadId: string,
-  userId: string,
-): Promise<void> {
-  const deleted = await globalThis.services.db
-    .delete(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
-
-  if (deleted.length === 0) {
-    throw notFound("Chat thread not found");
-  }
 }
 
 /**
@@ -507,24 +392,4 @@ export async function getChatThreadMessages(
     chatMessages,
     latestSessionId: latestSessionId ?? null,
   };
-}
-
-/**
- * Return non-terminal runs for this thread with live status. The UI uses
- * `status` to distinguish queued from running so it can show "Waiting in
- * queue" without a second API round-trip.
- */
-export async function getActiveRunsForThread(
-  threadId: string,
-): Promise<{ id: string; status: string }[]> {
-  return globalThis.services.db
-    .select({ id: zeroRuns.id, status: agentRuns.status })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-      ),
-    );
 }

@@ -572,6 +572,25 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat/searches")).toBe(false);
   });
 
+  it("matches the zero chat thread detail rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero chat thread artifacts rewrite path with one dynamic segment", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -582,9 +601,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath(
         "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/artifacts/extra",
       ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/chat-threads/artifacts"),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
@@ -605,9 +621,6 @@ describe("API backend rewrite proxy behavior", () => {
       ),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/zero/chat-threads/mark-read"),
-    ).toBe(false);
-    expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
       ),
@@ -625,9 +638,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/pin/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/chat-threads/pin")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/pin",
@@ -646,9 +656,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/rename/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/chat-threads/rename")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/rename",
@@ -667,9 +674,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/unpin/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/chat-threads/unpin")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/unpin",

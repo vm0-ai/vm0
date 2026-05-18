@@ -48,7 +48,6 @@ import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import { http } from "../../../../../../src/__tests__/msw";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
-import { GET as getChatThreadById } from "../../../chat-threads/[id]/route";
 import { GET as getChatThreadMessages } from "../../../chat-threads/[id]/messages/route";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -474,10 +473,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(404);
     });
 
-    it("should associate run with thread via GET thread detail", async () => {
-      // Import the thread detail handler to verify association
-      const { GET } = await import("../../../chat-threads/[id]/route");
-
+    it("should associate run with thread via persisted user message", async () => {
       const response = await POST(
         createTestRequest(URL, {
           method: "POST",
@@ -495,21 +491,14 @@ describe("POST /api/zero/chat/messages", () => {
       // the thread detail so the user message row is visible.
       await context.mocks.flushAfter();
 
-      // Verify the thread contains the user message (no assistant placeholder
-      // is inserted at send time — only the user message is appended).
-      const threadResponse = await GET(
-        createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${data.threadId}`,
-          { method: "GET" },
-        ),
-      );
-      expect(threadResponse.status).toBe(200);
-      const threadData = await threadResponse.json();
-      const userMsgs = threadData.chatMessages.filter((m: { role: string }) => {
+      // Verify the thread contains the persisted user message. No assistant
+      // placeholder is inserted at send time — only the user message is appended.
+      const messages = await getTestChatMessagesByThread(data.threadId);
+      const userMsgs = messages.filter((m) => {
         return m.role === "user";
       });
       expect(userMsgs).toHaveLength(1);
-      expect(userMsgs[0].content).toBe("test association");
+      expect(userMsgs[0]?.content).toBe("test association");
     });
 
     it("should register a chat callback", async () => {
@@ -953,17 +942,16 @@ describe("POST /api/zero/chat/messages", () => {
         },
       );
 
-      // Fetch thread detail which resolves attach files
-      const threadResponse = await getChatThreadById(
+      const pageResponse = await getChatThreadMessages(
         createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${sendData.threadId}`,
+          `http://localhost:3000/api/zero/chat-threads/${sendData.threadId}/messages`,
           { method: "GET" },
         ),
       );
-      expect(threadResponse.status).toBe(200);
-      const threadData = await threadResponse.json();
+      expect(pageResponse.status).toBe(200);
+      const page = await pageResponse.json();
 
-      const userMsg = threadData.chatMessages.find((m: { role: string }) => {
+      const userMsg = page.messages.find((m: { role: string }) => {
         return m.role === "user";
       });
       expect(userMsg).toBeDefined();

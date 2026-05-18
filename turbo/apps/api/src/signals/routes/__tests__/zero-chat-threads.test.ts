@@ -6,6 +6,9 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -248,6 +251,97 @@ describe("GET /api/zero/chat-threads/:id", () => {
     expect(response.body.agentId).toBe(fixture.composeId);
     expect(response.body.chatMessages).toStrictEqual([]);
     expect(response.body.latestSessionId).toBeNull();
+    expect(response.body.createdAt).toStrictEqual(expect.any(String));
+    expect(response.body.updatedAt).toStrictEqual(expect.any(String));
+    expect(response.body.draftContent).toBeNull();
+    expect(response.body.draftAttachments).toBeNull();
+  });
+
+  it("returns the first run model without preserving its provider route", async () => {
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { title: "Historical model-first thread" },
+        context.signal,
+      ),
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        status: "completed",
+        prompt: "historical opus prompt",
+      },
+      context.signal,
+    );
+    await store.set(
+      addRunToThread$,
+      {
+        threadId: fixture.threadId,
+        runId,
+        prompt: "historical opus prompt",
+      },
+      context.signal,
+    );
+    await store
+      .set(writeDb$)
+      .update(zeroRuns)
+      .set({ modelProvider: "vm0", selectedModel: "claude-opus-4-7" })
+      .where(eq(zeroRuns.id, runId));
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(chatThreadByIdContract);
+
+    const response = await accept(
+      client.get({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.selectedModel).toBe("claude-opus-4-7");
+    expect(response.body.modelProviderId).toBeNull();
+    expect(response.body.modelProviderType).toBeNull();
+    expect(response.body.modelProviderCredentialScope).toBeNull();
+  });
+
+  it("ignores stale provider route columns stored on the thread row", async () => {
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { title: "Stale provider route" },
+        context.signal,
+      ),
+    );
+    await store
+      .set(writeDb$)
+      .update(chatThreads)
+      .set({
+        modelProviderId: "00000000-0000-4000-a000-000000000123",
+        modelProviderType: "vm0",
+        modelProviderCredentialScope: "org",
+        selectedModel: "claude-sonnet-4-6",
+      })
+      .where(eq(chatThreads.id, fixture.threadId));
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(chatThreadByIdContract);
+
+    const response = await accept(
+      client.get({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.selectedModel).toBe("claude-sonnet-4-6");
+    expect(response.body.modelProviderId).toBeNull();
+    expect(response.body.modelProviderType).toBeNull();
+    expect(response.body.modelProviderCredentialScope).toBeNull();
   });
 
   it("returns chat messages after run completes", async () => {

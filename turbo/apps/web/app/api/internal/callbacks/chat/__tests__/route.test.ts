@@ -37,6 +37,10 @@ import {
 } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
+import {
+  getChatThread,
+  getChatThreadMessages,
+} from "../../../../../../src/lib/zero/chat-thread";
 
 vi.mock("web-push", async (importActual) => {
   const actual = await importActual<{ WebPushError: typeof WebPushError }>();
@@ -180,28 +184,17 @@ describe("POST /api/internal/callbacks/chat", () => {
 
   /** Get thread detail and extract latestSessionId. */
   async function getThreadSessionId(threadId: string): Promise<string | null> {
-    const { GET } = await import("../../../../zero/chat-threads/[id]/route");
-    const response = await GET(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
-        { method: "GET" },
-      ),
+    const { latestSessionId } = await getChatThreadMessages(
+      threadId,
+      user.userId,
     );
-    const data = await response.json();
-    return data.latestSessionId ?? null;
+    return latestSessionId;
   }
 
   /** Get thread title via the API. */
   async function getThreadTitle(threadId: string): Promise<string | null> {
-    const { GET } = await import("../../../../zero/chat-threads/[id]/route");
-    const response = await GET(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
-        { method: "GET" },
-      ),
-    );
-    const data = await response.json();
-    return data.title ?? null;
+    const thread = await getChatThread(threadId, user.userId);
+    return thread.title ?? null;
   }
 
   it("should return 200 for progress status without updating sessionId", async () => {
