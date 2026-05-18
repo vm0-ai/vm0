@@ -685,6 +685,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn orphan_reaper_reconciles_idle_owned_records_when_discovery_is_incomplete() {
+        let fixture = OrphanReapFixture::new();
+        let idle_run_id = RunId::new_v4();
+        let idle_sandbox_id = SandboxId::new_v4();
+        let uncertain_run_id = RunId::new_v4();
+        let uncertain_sandbox_id = SandboxId::new_v4();
+        fixture
+            .park_idle_candidate(
+                "sess-incomplete-discovery-idle",
+                idle_sandbox_id,
+                "incomplete-discovery-idle-owned-reaper",
+            )
+            .await;
+        fixture
+            .add_active_orphan(idle_run_id, idle_sandbox_id)
+            .await;
+        fixture
+            .add_active_orphan(uncertain_run_id, uncertain_sandbox_id)
+            .await;
+        let unresolved_firecracker = process::FirecrackerProcessInfo {
+            pid: 1234,
+            ppid: Some(1),
+            sandbox_id: "pid-1234".to_string(),
+            base_dir: None,
+        };
+        let discovery = OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(vec![unresolved_firecracker]),
+            incomplete_for_current_runner: true,
+        };
+
+        fixture
+            .reap_with_discovery(OrphanReapMode::ShutdownFinal, &discovery)
+            .await;
+
+        fixture
+            .assert_status(
+                &[("sess-incomplete-discovery-idle", idle_sandbox_id)],
+                &[(uncertain_run_id, uncertain_sandbox_id)],
+            )
+            .await;
+        fixture
+            .assert_orphans(&[(uncertain_run_id, uncertain_sandbox_id)])
+            .await;
+        fixture.destroy_all_idle_entries().await;
+    }
+
+    #[tokio::test]
     async fn orphan_reaper_immediate_mode_does_not_count_absent_scan() {
         let fixture = OrphanReapFixture::new();
         let run_id = RunId::new_v4();
