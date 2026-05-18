@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { GET as getByIdGET, DELETE as deleteDELETE } from "../[id]/route";
-import { GET as instructionsGET } from "../[id]/instructions/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -1205,28 +1204,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       const response = await deleteDELETE(request);
       expect(response.status).toBe(403);
-    });
-  });
-
-  describe("GET /api/agent/composes/:id/instructions", () => {
-    it("sandbox token with agent:read can access instructions endpoint", async () => {
-      const agentName = `test-sandbox-instructions-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await instructionsGET(request);
-      // Should pass auth and reach compose lookup - returns 200 with null content
-      // (no storage volume exists for test compose)
-      expect(response.status).toBe(200);
     });
   });
 });

@@ -272,6 +272,33 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches only UUID-shaped agent composes instructions paths", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/composes/not-a-uuid/instructions",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/list/instructions"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/versions/instructions"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/composes/${AGENT_COMPOSE_ID}`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/composes/${AGENT_COMPOSE_ID}/instructions/extra`,
+      ),
+    ).toBe(false);
+  });
+
   it("matches only UUID-shaped agent run cancel paths", () => {
     expect(
       matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/cancel`),
