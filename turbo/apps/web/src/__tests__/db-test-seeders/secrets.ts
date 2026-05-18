@@ -193,6 +193,8 @@ export async function insertTestUserVariable(params: {
   updatedAt: Date;
 }> {
   initServices();
+  const description =
+    "description" in params ? (params.description ?? null) : "test seed";
   const [variable] = await globalThis.services.db
     .insert(variables)
     .values({
@@ -200,13 +202,13 @@ export async function insertTestUserVariable(params: {
       value: params.value ?? "test-variable-value",
       userId: params.userId,
       orgId: params.orgId,
-      description: params.description ?? "test seed",
+      description,
     })
     .onConflictDoUpdate({
       target: [variables.orgId, variables.userId, variables.name],
       set: {
         value: params.value ?? "test-variable-value",
-        description: params.description ?? "test seed",
+        description,
         updatedAt: new Date(),
       },
     })
