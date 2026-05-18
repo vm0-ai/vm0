@@ -35,7 +35,7 @@ import {
   updateCaptureNetworkBodies$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
 
-function AppearanceSettings() {
+export function AppearanceSettings() {
   const THEME_OPTIONS = [
     { value: "light" as ThemePreference, label: "Light", icon: IconSun },
     { value: "dark" as ThemePreference, label: "Dark", icon: IconMoon },
@@ -99,7 +99,7 @@ function AppearanceSettings() {
   );
 }
 
-function SendModeSettings() {
+export function SendModeSettings() {
   const SEND_OPTIONS = [
     { value: "enter" as SendMode, label: "Enter" },
     { value: "cmd-enter" as SendMode, label: "⌘ Enter" },
@@ -177,7 +177,7 @@ function SendModeSettings() {
 
 const CAPTURE_RUN_COUNT = 3;
 
-function CaptureNetworkBodiesSettings() {
+export function CaptureNetworkBodiesSettings() {
   const remainingLoadable = useLoadable(captureNetworkBodiesRemaining$);
   const remaining =
     remainingLoadable.state === "hasData" ? remainingLoadable.data : 0;

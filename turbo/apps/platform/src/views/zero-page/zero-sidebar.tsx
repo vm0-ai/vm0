@@ -19,6 +19,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconSparkles,
+  IconSettings,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -57,6 +58,11 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { BillingDialog } from "./billing-dialog.tsx";
 import { ManagePinnedAgentsDialog } from "./zero-sidebar-dialogs.tsx";
+import { UnifiedSettingsDialog } from "./components/settings/unified-settings-dialog.tsx";
+import {
+  unifiedSettingsOpen$,
+  setUnifiedSettingsOpen$,
+} from "../../signals/zero-page/settings/unified-settings-dialog.ts";
 
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { ChatThreadsSection } from "./sidebar-threads.tsx";
@@ -165,8 +171,12 @@ function ManagePinnedAgentsDialogContainer() {
   );
 }
 
+interface SidebarNavContentProps {
+  onOpenSettings: () => void;
+}
+
 // Nav content for both sidebars: subscribes to feature flags, default agent name, slack scope
-function SidebarNavContent() {
+function SidebarNavContent({ onOpenSettings }: SidebarNavContentProps) {
   const activeId = useGet(activeRoute$);
   const off = useGet(sidebarOff$);
   const toggleOff = useSet(toggleSidebarOff$);
@@ -302,6 +312,21 @@ function SidebarNavContent() {
 
           <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
             <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onOpenSettings}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent"
+                    aria-label="Settings"
+                  >
+                    <IconSettings size={16} className="shrink-0" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="text-xs">Settings</p>
+                </TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
@@ -512,6 +537,14 @@ function SidebarNavContent() {
                 );
               },
             )}
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent"
+            >
+              <IconSettings size={16} className="shrink-0" />
+              <span className="truncate flex-1">Settings</span>
+            </button>
             <div className="h-px bg-border/30 mx-1 my-1" />
             {/* Insights + Account */}
             <div className="flex items-center gap-1">
@@ -552,12 +585,24 @@ function SidebarNavContent() {
   );
 }
 
+function UnifiedSettingsDialogContainer() {
+  const open = useGet(unifiedSettingsOpen$);
+  const setOpen = useSet(setUnifiedSettingsOpen$);
+  return <UnifiedSettingsDialog open={open} onOpenChange={setOpen} />;
+}
+
 export function ZeroSidebar() {
+  const setSettingsOpen = useSet(setUnifiedSettingsOpen$);
   return (
     <>
-      <SidebarNavContent />
+      <SidebarNavContent
+        onOpenSettings={() => {
+          return setSettingsOpen(true);
+        }}
+      />
       <ManagePinnedAgentsDialogContainer />
       <BillingDialog />
+      <UnifiedSettingsDialogContainer />
     </>
   );
 }

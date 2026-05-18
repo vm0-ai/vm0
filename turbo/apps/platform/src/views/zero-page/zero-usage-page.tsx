@@ -1,6 +1,17 @@
 import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
 import { UsageInsightSelectors } from "../usage-page/components/usage-insight-selectors.tsx";
 
+export function UsageBody() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-end gap-4 flex-wrap">
+        <UsageInsightSelectors />
+      </div>
+      <UsageInsightView />
+    </div>
+  );
+}
+
 export function ZeroUsagePage() {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
