@@ -905,8 +905,7 @@ function ModelPolicyRouteDialog({
   const selectedModelIcon = selectedModel
     ? getModelIconType(selectedModel)
     : null;
-  const isReplacingKey =
-    dialog.routeKind === "api-key" && apiKeyTouched;
+  const isReplacingKey = dialog.routeKind === "api-key" && apiKeyTouched;
   const needsFreshKey =
     dialog.routeKind === "api-key" &&
     selectedProviderType !== null &&
@@ -1008,10 +1007,7 @@ function ModelPolicyRouteDialog({
               }}
               disabled={dialog.mode === "edit"}
             >
-              <SelectTrigger
-                className="h-10 rounded-lg"
-                style={ZERO_BORDER}
-              >
+              <SelectTrigger className="h-10 rounded-lg" style={ZERO_BORDER}>
                 <SelectValue placeholder="Select a model">
                   {selectedModel && (
                     <div className="flex items-center gap-2">
@@ -1029,9 +1025,7 @@ function ModelPolicyRouteDialog({
                   return (
                     <SelectItem key={model} value={model}>
                       <div className="flex items-center gap-2">
-                        {iconType && (
-                          <ProviderIcon type={iconType} size={16} />
-                        )}
+                        {iconType && <ProviderIcon type={iconType} size={16} />}
                         <span>{getCanonicalModelDisplayName(model)}</span>
                       </div>
                     </SelectItem>

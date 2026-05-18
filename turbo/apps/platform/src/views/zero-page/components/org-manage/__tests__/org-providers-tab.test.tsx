@@ -143,7 +143,10 @@ function getModelPolicyDialog(): HTMLElement {
   return dialog!;
 }
 
-function openLabeledSelect(dialog: HTMLElement, labelText: string): HTMLElement {
+function openLabeledSelect(
+  dialog: HTMLElement,
+  labelText: string,
+): HTMLElement {
   const label = within(dialog).getByText(labelText);
   const container = label.parentElement;
   expect(container).toBeTruthy();
