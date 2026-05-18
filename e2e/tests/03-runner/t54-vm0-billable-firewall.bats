@@ -25,10 +25,16 @@ setup_file() {
     export ANTHROPIC_PROVIDER_ID
     ANTHROPIC_PROVIDER_ID=$(zero_model_provider_id_by_type "anthropic-api-key")
 
-    # Create a fresh zero agent for this file
+    # Create a private zero agent for this file so CI does not consume the
+    # shared org's limited public-agent slots.
     local create_out
-    create_out=$($ZERO_CLI agent create --display-name "e2e-billable-${UNIQUE_ID}")
-    export AGENT_ID=$(echo "$create_out" | grep -oP 'Agent ID:\s+\K[a-f0-9-]{36}')
+    create_out=$(zero_curl "/api/zero/agents" \
+        -X POST \
+        --data "$(jq -nc \
+            --arg displayName "e2e-billable-${UNIQUE_ID}" \
+            '{displayName: $displayName, visibility: "private"}')")
+    export AGENT_ID
+    AGENT_ID=$(echo "$create_out" | jq -r '.agentId // empty')
     [ -n "$AGENT_ID" ] || {
         echo "# Failed to extract Agent ID from: $create_out" >&2
         return 1
