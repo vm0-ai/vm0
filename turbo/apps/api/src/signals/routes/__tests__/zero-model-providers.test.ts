@@ -659,7 +659,7 @@ describe("POST /api/zero/model-providers", () => {
     const response = await accept(
       client.upsert({
         headers: { authorization: "Bearer clerk-session" },
-        body: { type: "vm0", selectedModel: "claude-sonnet-4-6" },
+        body: { type: "vm0" },
       }),
       [201],
     );
