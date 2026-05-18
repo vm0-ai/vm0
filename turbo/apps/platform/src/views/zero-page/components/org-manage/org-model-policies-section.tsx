@@ -2,15 +2,12 @@
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { ReactNode } from "react";
 import {
   IconAlertTriangle,
   IconDotsVertical,
-  IconKey,
   IconPencil,
   IconPlus,
   IconTrash,
-  IconUsers,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -544,14 +541,12 @@ function PolicyRow({
 function RouteChoiceButton({
   active,
   disabled = false,
-  icon,
   title,
   description,
   onClick,
 }: {
   active: boolean;
   disabled?: boolean;
-  icon: ReactNode;
   title: string;
   description: string;
   onClick: () => void;
@@ -564,7 +559,7 @@ function RouteChoiceButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex min-h-[88px] items-start gap-3 rounded-xl border bg-card p-3 text-left transition-colors",
+        "flex items-start gap-3 rounded-xl border bg-card px-5 py-4 text-left transition-colors",
         active
           ? "border-primary bg-primary/5"
           : "border-border hover:bg-muted/40",
@@ -574,22 +569,15 @@ function RouteChoiceButton({
       <span
         aria-hidden="true"
         className={cn(
-          "mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
           active ? "border-primary" : "border-input",
         )}
       >
         {active && <span className="h-2 w-2 rounded-full bg-primary" />}
       </span>
-      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card">
-        {icon}
-      </span>
       <span className="min-w-0">
-        <span className="block text-sm font-medium text-foreground">
-          {title}
-        </span>
-        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-          {description}
-        </span>
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
       </span>
     </button>
   );
@@ -1071,7 +1059,6 @@ function ModelPolicyRouteDialog({
           >
             <RouteChoiceButton
               active={dialog.routeKind === "built-in"}
-              icon={<ProviderIcon type="vm0" size={18} />}
               title="Built-in"
               description="Workspace credits cover usage."
               onClick={() => {
@@ -1081,7 +1068,6 @@ function ModelPolicyRouteDialog({
             <RouteChoiceButton
               active={dialog.routeKind === "api-key"}
               disabled={apiTypes.length === 0}
-              icon={<IconKey size={18} stroke={1.6} />}
               title="API key"
               description="A shared workspace key. Best when the team bills through one account."
               onClick={() => {
@@ -1091,7 +1077,6 @@ function ModelPolicyRouteDialog({
             {oauthTypes.length > 0 && (
               <RouteChoiceButton
                 active={dialog.routeKind === "oauth"}
-                icon={<IconUsers size={18} stroke={1.6} />}
                 title={getOAuthRouteCopy(oauthTypes).title}
                 description={getOAuthRouteCopy(oauthTypes).description}
                 onClick={() => {
