@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { GET as getByIdGET, DELETE as deleteDELETE } from "../[id]/route";
-import { GET as listGET } from "../list/route";
 import { GET as instructionsGET } from "../[id]/instructions/route";
 import {
   createTestRequest,
@@ -1140,37 +1139,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       const response = await POST(request);
       expect(response.status).toBe(201);
-    });
-  });
-
-  describe("GET /api/agent/composes/list", () => {
-    it("sandbox token with agent:read can list composes", async () => {
-      const agentName = `test-sandbox-list-${Date.now()}`;
-      await createTestCompose(agentName);
-
-      // Seed org cache so resolveOrg works without Clerk session
-      await insertOrgMembersCacheEntry({
-        userId: user.userId,
-        orgId: user.orgId,
-        role: "admin",
-      });
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes/list",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await listGET(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.composes).toBeDefined();
-      expect(Array.isArray(data.composes)).toBe(true);
     });
   });
 

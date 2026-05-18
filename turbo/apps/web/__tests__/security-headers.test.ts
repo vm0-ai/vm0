@@ -31,6 +31,14 @@ const AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS = [
   "/api/agent/checkpoints/checkpoint_123/extra",
   "/api/agent/checkpoint/checkpoint_123",
 ] as const;
+const AGENT_COMPOSES_LIST_REWRITE_SOURCE = "/api/agent/composes/list";
+const AGENT_COMPOSES_LIST_PATH = "/api/agent/composes/list";
+const AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/composes/list/extra",
+  "/api/agent/composes/lists",
+  "/api/agent/composes",
+  "/api/agent/composes/versions",
+] as const;
 const AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE = "/api/agent/composes/versions";
 const AGENT_COMPOSES_VERSIONS_PATH = "/api/agent/composes/versions";
 const AGENT_COMPOSES_VERSIONS_NEXT_NEGATIVE_PATHS = [
@@ -602,6 +610,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/checkpoints/:id",
         },
         {
+          source: AGENT_COMPOSES_LIST_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/composes/list",
+        },
+        {
           source: AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/agent/composes/versions",
         },
@@ -1022,6 +1034,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_COMPOSES_VERSIONS_PATH)).toStrictEqual({});
     for (const pathname of AGENT_COMPOSES_VERSIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent composes list rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_COMPOSES_LIST_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_COMPOSES_LIST_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/composes/list",
+    });
+
+    const matcher = getPathMatch(AGENT_COMPOSES_LIST_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_COMPOSES_LIST_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

@@ -460,6 +460,23 @@ describe("GET /api/agent/composes/list", () => {
     });
   });
 
+  it("returns an empty list for an active org with no composes", async () => {
+    const fixture = await track(
+      store.set(seedAgentComposeReadFixture$, { composes: [] }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      listClient().list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ composes: [] });
+  });
+
   it("lists composes for the active org with metadata", async () => {
     const orgId = `org_${randomUUID()}`;
     const fixture = await track(
