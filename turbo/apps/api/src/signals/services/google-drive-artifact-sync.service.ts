@@ -288,10 +288,8 @@ export function applyGoogleDriveArtifactSyncStatuses(
 /**
  * Compute the Drive sync status lookup for a chat thread's artifacts.
  *
- * Mirrors `getGoogleDriveArtifactStatusLookup` in
- * `apps/web/src/lib/zero/chat-thread/artifact-google-drive-sync.ts` —
- * scoped to Google Drive only (no generic provider registry) since this
- * is the sole api consumer of OAuth refresh today.
+ * Scoped to Google Drive only (no generic provider registry) since this is the
+ * sole API consumer of OAuth refresh today.
  *
  * Token persistence is intentionally deferred. When the in-flight access
  * token is rejected and the refresh succeeds, the new token is used for
@@ -345,7 +343,6 @@ export function googleDriveArtifactStatusLookup(args: {
 
 // =====================================================================
 // Upload-side: sync a single artifact to the user's Google Drive.
-// Mirrors apps/web/src/lib/zero/chat-thread/artifact-google-drive-sync.ts.
 // =====================================================================
 
 const driveFolderSchema = z.object({ id: z.string(), name: z.string() });
@@ -676,9 +673,8 @@ type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 
 /**
  * Sync a chat-thread artifact file to the caller's connected Google Drive.
- * Mirrors apps/web's `syncArtifactToGoogleDrive`.
  *
- * Error mapping (matches web verbatim where applicable):
+ * Error mapping (preserves legacy web behavior where applicable):
  *  - 404 "Artifact file not found" — thread missing/cross-user, or no row.
  *  - 400 "Connect Google Drive before syncing artifacts" — connector
  *    absent or `needsReconnect`.

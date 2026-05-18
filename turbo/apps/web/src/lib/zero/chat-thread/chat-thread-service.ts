@@ -5,7 +5,6 @@ import {
   inArray,
   isNull,
   asc,
-  or,
   sql,
   isNotNull,
 } from "drizzle-orm";
@@ -14,7 +13,6 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { notFound } from "@vm0/api-services/errors";
 import {
   getMessagesByThreadId,
@@ -23,7 +21,6 @@ import {
 } from "./chat-message-service";
 import { formatChatRunErrorMessage } from "./chat-run-error-message";
 import {
-  type ChatThreadArtifactRun,
   type ChatThreadDetail,
   type PersistedAttachment,
   type ResolvedAttachFile,
@@ -439,69 +436,6 @@ export async function resolveAttachFileUrls(
   );
   return results.filter((r): r is ResolvedAttachFile => {
     return r !== null;
-  });
-}
-
-export async function getChatThreadArtifacts(
-  threadId: string,
-  userId: string,
-): Promise<ChatThreadArtifactRun[]> {
-  await getChatThread(threadId, userId);
-
-  const rows = await globalThis.services.db
-    .select({
-      runId: runUploadedFiles.runId,
-      externalId: runUploadedFiles.externalId,
-      filename: runUploadedFiles.filename,
-      contentType: runUploadedFiles.contentType,
-      sizeBytes: runUploadedFiles.sizeBytes,
-      url: runUploadedFiles.url,
-      createdAt: runUploadedFiles.createdAt,
-    })
-    .from(runUploadedFiles)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
-    .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
-    .where(
-      and(
-        eq(runUploadedFiles.userId, userId),
-        or(
-          eq(zeroRuns.chatThreadId, threadId),
-          sql`EXISTS (
-            SELECT 1
-            FROM ${chatMessages}
-            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
-              AND ${chatMessages.chatThreadId} = ${threadId}
-          )`,
-        ),
-      ),
-    )
-    .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
-
-  const byRun = new Map<string, ChatThreadArtifactRun>();
-
-  for (const row of rows) {
-    if (!row.url) {
-      continue;
-    }
-    const filename = row.filename ?? row.externalId;
-    const ext = filename.split(".").pop()?.toLowerCase();
-    const existing = byRun.get(row.runId) ?? { runId: row.runId, files: [] };
-    existing.files.push({
-      id: row.externalId,
-      filename,
-      contentType:
-        row.contentType ??
-        (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ??
-        "application/octet-stream",
-      size: row.sizeBytes ?? 0,
-      url: row.url,
-      createdAt: row.createdAt.toISOString(),
-    });
-    byRun.set(row.runId, existing);
-  }
-
-  return Array.from(byRun.values()).filter((run) => {
-    return run.files.length > 0;
   });
 }
 
