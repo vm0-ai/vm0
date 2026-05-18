@@ -110,7 +110,12 @@ const ONBOARDING_STATUS_PATH = "/api/zero/onboarding/status";
 const ONBOARDING_STATUS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/onboarding/status/extra",
   "/api/zero/onboarding",
-  "/api/zero/onboarding/setup",
+] as const;
+const ONBOARDING_SETUP_REWRITE_SOURCE = "/api/zero/onboarding/setup";
+const ONBOARDING_SETUP_PATH = "/api/zero/onboarding/setup";
+const ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/onboarding/setup/extra",
+  "/api/zero/onboarding",
 ] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
@@ -480,6 +485,10 @@ describe("API backend rewrites", () => {
         {
           source: "/api/zero/image-io/generate",
           destination: "https://api.example.test/api/zero/image-io/generate",
+        },
+        {
+          source: ONBOARDING_SETUP_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/onboarding/setup",
         },
         {
           source: ONBOARDING_STATUS_REWRITE_SOURCE,
@@ -1335,6 +1344,35 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact onboarding status path", () => {
     expect(matchesApiBackendRewritePath(ONBOARDING_STATUS_PATH)).toBe(true);
     for (const pathname of ONBOARDING_STATUS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact onboarding setup rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ONBOARDING_SETUP_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ONBOARDING_SETUP_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/onboarding/setup",
+    });
+
+    const matcher = getPathMatch(ONBOARDING_SETUP_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(ONBOARDING_SETUP_PATH)).toStrictEqual({});
+    for (const pathname of ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact onboarding setup path", () => {
+    expect(matchesApiBackendRewritePath(ONBOARDING_SETUP_PATH)).toBe(true);
+    for (const pathname of ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

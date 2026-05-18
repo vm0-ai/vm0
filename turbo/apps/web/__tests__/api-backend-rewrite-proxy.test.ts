@@ -440,9 +440,16 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/onboarding/status/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
+  });
+
+  it("matches the zero onboarding setup rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/onboarding/setup")).toBe(
-      false,
+      true,
     );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/onboarding/setup/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
   });
 
   it("matches the zero voice-chat token rewrite exactly", () => {

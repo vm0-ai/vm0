@@ -4,6 +4,8 @@ import {
   onboardingSetupContract,
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { createStore, command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -37,6 +39,14 @@ function apiClient() {
 
 function statusClient() {
   return setupApp({ context })(onboardingStatusContract);
+}
+
+function agentsClient() {
+  return setupApp({ context })(zeroAgentsMainContract);
+}
+
+function userConnectorsClient() {
+  return setupApp({ context })(zeroUserConnectorsContract);
 }
 
 function authHeaders() {
@@ -307,6 +317,20 @@ describe("POST /api/zero/onboarding/setup", () => {
       defaultAgentId: agentId,
       credits: 10_000,
     });
+    const agents = await accept(
+      agentsClient().list({ headers: authHeaders() }),
+      [200],
+    );
+    const listedAgent = agents.body.find((agent) => {
+      return agent.agentId === agentId;
+    });
+    expect(listedAgent).toMatchObject({
+      agentId,
+      ownerId: fixture.userId,
+      displayName: "My Assistant",
+      sound: "professional",
+      avatarUrl: "preset:0",
+    });
     await expect(
       readMemberMetadata(fixture.orgId, fixture.userId),
     ).resolves.toStrictEqual({
@@ -386,6 +410,17 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(
       readConnectorTypes(fixture.orgId, fixture.userId, response.body.agentId),
     ).resolves.toStrictEqual(["github", "slack"]);
+    const connectors = await accept(
+      userConnectorsClient().get({
+        params: { id: response.body.agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(connectors.body.enabledTypes.sort()).toStrictEqual([
+      "github",
+      "slack",
+    ]);
   });
 
   it("authorizes connectors on a repeated setup call to an existing default agent", async () => {
@@ -420,6 +455,17 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(
       readConnectorTypes(fixture.orgId, fixture.userId, agentId),
     ).resolves.toStrictEqual(["github", "slack"]);
+    const connectors = await accept(
+      userConnectorsClient().get({
+        params: { id: agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(connectors.body.enabledTypes.sort()).toStrictEqual([
+      "github",
+      "slack",
+    ]);
   });
 
   it("updates Clerk org name and slug for valid Latin workspace names", async () => {
