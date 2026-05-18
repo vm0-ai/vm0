@@ -559,17 +559,27 @@ function RouteChoiceButton({
   return (
     <button
       type="button"
-      aria-pressed={active}
+      role="radio"
+      aria-checked={active}
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex min-h-[88px] items-start gap-3 rounded-lg border p-3 text-left transition-colors",
+        "flex min-h-[88px] items-start gap-3 rounded-xl border bg-card p-3 text-left transition-colors",
         active
-          ? "border-primary/50 bg-primary/5"
-          : "border-border bg-background/40 hover:bg-muted/40",
-        disabled && "cursor-not-allowed opacity-50 hover:bg-background/40",
+          ? "border-primary bg-primary/5"
+          : "border-border hover:bg-muted/40",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-card",
       )}
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+          active ? "border-primary" : "border-input",
+        )}
+      >
+        {active && <span className="h-2 w-2 rounded-full bg-primary" />}
+      </span>
       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-card">
         {icon}
       </span>
@@ -1054,7 +1064,11 @@ function ModelPolicyRouteDialog({
             </div>
           )}
 
-          <div className="grid gap-3">
+          <div
+            role="radiogroup"
+            aria-label="Route"
+            className="grid gap-3"
+          >
             <RouteChoiceButton
               active={dialog.routeKind === "built-in"}
               icon={<ProviderIcon type="vm0" size={18} />}
