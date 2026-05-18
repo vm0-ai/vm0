@@ -991,7 +991,7 @@ function ModelPolicyRouteDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {dialog.mode === "add" ? "Add model" : "Edit model route"}
+            {dialog.mode === "add" ? "Add model" : "Edit model"}
           </DialogTitle>
           <DialogDescription>
             Decide how members access this model.
