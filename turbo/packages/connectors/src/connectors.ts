@@ -1,206 +1,206 @@
 import { z } from "zod";
 import { FeatureSwitchKey } from "./feature-switch-key";
-import { axiom } from "./connectors/axiom";
-import { ahrefs } from "./connectors/ahrefs";
-import { agora } from "./connectors/agora";
-import { agentmail } from "./connectors/agentmail";
-import { airtable } from "./connectors/airtable";
-import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
-import { bentoml } from "./connectors/bentoml";
-import { doubao } from "./connectors/doubao";
 import { github } from "./connectors/github";
-import { notion } from "./connectors/notion";
 import { gmail } from "./connectors/gmail";
-import { googleSheets } from "./connectors/google-sheets";
-import { googleDocs } from "./connectors/google-docs";
+import { notion } from "./connectors/notion";
+import { x } from "./connectors/x";
 import { googleDrive } from "./connectors/google-drive";
-import { googleAds } from "./connectors/google-ads";
-import { googleCalendar } from "./connectors/google-calendar";
-import { googleMeet } from "./connectors/google-meet";
-import { close } from "./connectors/close";
-import { huggingFace } from "./connectors/hugging-face";
-import { hume } from "./connectors/hume";
-import { heygen } from "./connectors/heygen";
-import { helicone } from "./connectors/helicone";
-import { hubspot } from "./connectors/hubspot";
-import { computer } from "./connectors/computer";
 import { slack } from "./connectors/slack";
+import { googleSheets } from "./connectors/google-sheets";
+import { googleCalendar } from "./connectors/google-calendar";
+import { googleDocs } from "./connectors/google-docs";
+import { linear } from "./connectors/linear";
+import { intervalsIcu } from "./connectors/intervals-icu";
+import { vercel } from "./connectors/vercel";
+import { strava } from "./connectors/strava";
+import { googleMeet } from "./connectors/google-meet";
+import { hubspot } from "./connectors/hubspot";
+import { localAgent } from "./connectors/local-agent";
+import { sentry } from "./connectors/sentry";
+import { todoist } from "./connectors/todoist";
+import { xero } from "./connectors/xero";
+import { airtable } from "./connectors/airtable";
 import { docusign } from "./connectors/docusign";
-import { duffel } from "./connectors/duffel";
+import { googleAds } from "./connectors/google-ads";
+import { gumroad } from "./connectors/gumroad";
+import { spotify } from "./connectors/spotify";
+import { agentmail } from "./connectors/agentmail";
+import { agora } from "./connectors/agora";
+import { ahrefs } from "./connectors/ahrefs";
+import { altium365 } from "./connectors/altium-365";
+import { amplitude } from "./connectors/amplitude";
+import { anthropicManagedAgents } from "./connectors/anthropic-managed-agents";
+import { apify } from "./connectors/apify";
+import { apollo } from "./connectors/apollo";
+import { asana } from "./connectors/asana";
+import { atlassian } from "./connectors/atlassian";
+import { attio } from "./connectors/attio";
+import { axiom } from "./connectors/axiom";
+import { bentoml } from "./connectors/bentoml";
+import { bitrix } from "./connectors/bitrix";
+import { braveSearch } from "./connectors/brave-search";
+import { brevo } from "./connectors/brevo";
+import { brightData } from "./connectors/bright-data";
+import { browserbase } from "./connectors/browserbase";
+import { browserless } from "./connectors/browserless";
+import { browserstack } from "./connectors/browserstack";
+import { browserUse } from "./connectors/browser-use";
+import { buffer } from "./connectors/buffer";
+import { calCom } from "./connectors/cal-com";
+import { calendly } from "./connectors/calendly";
+import { canva } from "./connectors/canva";
+import { chatwoot } from "./connectors/chatwoot";
+import { clickup } from "./connectors/clickup";
+import { close } from "./connectors/close";
+import { cloudflare } from "./connectors/cloudflare";
+import { cloudinary } from "./connectors/cloudinary";
+import { coda } from "./connectors/coda";
+import { codexOauth } from "./connectors/codex-oauth";
+import { computer } from "./connectors/computer";
+import { cronlytic } from "./connectors/cronlytic";
+import { customerIo } from "./connectors/customer-io";
+import { db9 } from "./connectors/db9";
+import { deel } from "./connectors/deel";
+import { deepseek } from "./connectors/deepseek";
+import { devto } from "./connectors/devto";
+import { dify } from "./connectors/dify";
+import { discord } from "./connectors/discord";
+import { discordWebhook } from "./connectors/discord-webhook";
+import { doppler } from "./connectors/doppler";
+import { doubao } from "./connectors/doubao";
+import { drive9 } from "./connectors/drive9";
 import { dropbox } from "./connectors/dropbox";
 import { dropboxSign } from "./connectors/dropbox-sign";
-import { linear } from "./connectors/linear";
-import { intercom } from "./connectors/intercom";
+import { duffel } from "./connectors/duffel";
+import { e2b } from "./connectors/e2b";
+import { elevenlabs } from "./connectors/elevenlabs";
+import { etsy } from "./connectors/etsy";
+import { exa } from "./connectors/exa";
+import { explorium } from "./connectors/explorium";
+import { fal } from "./connectors/fal";
+import { figma } from "./connectors/figma";
+import { firecrawl } from "./connectors/firecrawl";
+import { fireflies } from "./connectors/fireflies";
+import { freshdesk } from "./connectors/freshdesk";
+import { gamma } from "./connectors/gamma";
+import { garminConnect } from "./connectors/garmin-connect";
+import { gemini } from "./connectors/gemini";
+import { gitlab } from "./connectors/gitlab";
+import { gong } from "./connectors/gong";
+import { granola } from "./connectors/granola";
+import { greenhouse } from "./connectors/greenhouse";
+import { groq } from "./connectors/groq";
+import { helicone } from "./connectors/helicone";
+import { heygen } from "./connectors/heygen";
+import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
+import { huggingFace } from "./connectors/hugging-face";
+import { hume } from "./connectors/hume";
+import { imgur } from "./connectors/imgur";
+import { infisical } from "./connectors/infisical";
+import { instagram } from "./connectors/instagram";
 import { instantly } from "./connectors/instantly";
+import { intercom } from "./connectors/intercom";
+import { ironclad } from "./connectors/ironclad";
 import { jam } from "./connectors/jam";
 import { jira } from "./connectors/jira";
 import { jotform } from "./connectors/jotform";
 import { klaviyo } from "./connectors/klaviyo";
 import { kommo } from "./connectors/kommo";
+import { langfuse } from "./connectors/langfuse";
+import { langsmith } from "./connectors/langsmith";
+import { lark } from "./connectors/lark";
 import { line } from "./connectors/line";
-import { loops } from "./connectors/loops";
-import { make } from "./connectors/make";
-import { mem0 } from "./connectors/mem0";
-import { metabase } from "./connectors/metabase";
-import { moss } from "./connectors/moss";
-import { deel } from "./connectors/deel";
-import { deepseek } from "./connectors/deepseek";
-import { clickup } from "./connectors/clickup";
-import { cloudflare } from "./connectors/cloudflare";
-import { cloudinary } from "./connectors/cloudinary";
-import { cronlytic } from "./connectors/cronlytic";
-import { customerIo } from "./connectors/customer-io";
-import { dify } from "./connectors/dify";
-import { e2b } from "./connectors/e2b";
-import { figma } from "./connectors/figma";
-import { mercury } from "./connectors/mercury";
-import { minimax } from "./connectors/minimax";
-import { reportei } from "./connectors/reportei";
 import { localBrowser } from "./connectors/local-browser";
-import { localAgent } from "./connectors/local-agent";
-import { serpapi } from "./connectors/serpapi";
-import { salesforce } from "./connectors/salesforce";
-import { reddit } from "./connectors/reddit";
-import { reap } from "./connectors/reap";
-import { strava } from "./connectors/strava";
-import { x } from "./connectors/x";
-import { neon } from "./connectors/neon";
-import { gamma } from "./connectors/gamma";
-import { garminConnect } from "./connectors/garmin-connect";
-import { gemini } from "./connectors/gemini";
-import { vercel } from "./connectors/vercel";
-import { sentry } from "./connectors/sentry";
-import { posthog } from "./connectors/posthog";
-import { productlane } from "./connectors/productlane";
-import { intervalsIcu } from "./connectors/intervals-icu";
-import { monday } from "./connectors/monday";
-import { calendly } from "./connectors/calendly";
-import { canva } from "./connectors/canva";
-import { calCom } from "./connectors/cal-com";
-import { xero } from "./connectors/xero";
-import { supabase } from "./connectors/supabase";
-import { supermemory } from "./connectors/supermemory";
-import { todoist } from "./connectors/todoist";
-import { webflow } from "./connectors/webflow";
-import { workos } from "./connectors/workos";
-import { wrike } from "./connectors/wrike";
-import { outlookMail } from "./connectors/outlook-mail";
-import { outlookCalendar } from "./connectors/outlook-calendar";
-import { asana } from "./connectors/asana";
-import { atlassian } from "./connectors/atlassian";
+import { loops } from "./connectors/loops";
+import { luma } from "./connectors/luma";
+import { lumaAi } from "./connectors/luma-ai";
+import { mailchimp } from "./connectors/mailchimp";
+import { mailsac } from "./connectors/mailsac";
+import { make } from "./connectors/make";
+import { manus } from "./connectors/manus";
+import { mem0 } from "./connectors/mem0";
+import { mercury } from "./connectors/mercury";
 import { metaAds } from "./connectors/meta-ads";
-import { stripe } from "./connectors/stripe";
+import { metabase } from "./connectors/metabase";
+import { minimax } from "./connectors/minimax";
+import { minio } from "./connectors/minio";
+import { miro } from "./connectors/miro";
+import { mixpanel } from "./connectors/mixpanel";
+import { monday } from "./connectors/monday";
+import { moss } from "./connectors/moss";
+import { msg9 } from "./connectors/msg9";
+import { n8n } from "./connectors/n8n";
+import { neon } from "./connectors/neon";
 import { onyx } from "./connectors/onyx";
 import { openai } from "./connectors/openai";
-import { codexOauth } from "./connectors/codex-oauth";
-import { similarweb } from "./connectors/similarweb";
+import { outlookCalendar } from "./connectors/outlook-calendar";
+import { outlookMail } from "./connectors/outlook-mail";
+import { pandadoc } from "./connectors/pandadoc";
+import { pdf4me } from "./connectors/pdf4me";
+import { pdfco } from "./connectors/pdfco";
+import { pdforge } from "./connectors/pdforge";
 import { perplexity } from "./connectors/perplexity";
+import { pika } from "./connectors/pika";
+import { pinecone } from "./connectors/pinecone";
 import { pipedrive } from "./connectors/pipedrive";
 import { plain } from "./connectors/plain";
 import { plausible } from "./connectors/plausible";
-import { mailchimp } from "./connectors/mailchimp";
-import { chatwoot } from "./connectors/chatwoot";
-import { resend } from "./connectors/resend";
-import { revenuecat } from "./connectors/revenuecat";
-import { replicate } from "./connectors/replicate";
-import { pdf4me } from "./connectors/pdf4me";
-import { apify } from "./connectors/apify";
-import { doppler } from "./connectors/doppler";
-import { infisical } from "./connectors/infisical";
-import { apollo } from "./connectors/apollo";
-import { pinecone } from "./connectors/pinecone";
-import { pika } from "./connectors/pika";
-import { bitrix } from "./connectors/bitrix";
-import { brevo } from "./connectors/brevo";
-import { braveSearch } from "./connectors/brave-search";
-import { brightData } from "./connectors/bright-data";
-import { browserbase } from "./connectors/browserbase";
-import { browserUse } from "./connectors/browser-use";
-import { browserless } from "./connectors/browserless";
-import { fireflies } from "./connectors/fireflies";
-import { firecrawl } from "./connectors/firecrawl";
-import { scrapeninja } from "./connectors/scrapeninja";
-import { pdfco } from "./connectors/pdfco";
-import { elevenlabs } from "./connectors/elevenlabs";
-import { etsy } from "./connectors/etsy";
-import { exa } from "./connectors/exa";
-import { explorium } from "./connectors/explorium";
-import { devto } from "./connectors/devto";
-import { fal } from "./connectors/fal";
-import { granola } from "./connectors/granola";
 import { podchaser } from "./connectors/podchaser";
+import { posthog } from "./connectors/posthog";
+import { prismaPostgres } from "./connectors/prisma-postgres";
+import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
 import { qiita } from "./connectors/qiita";
-import { zep } from "./connectors/zep";
-import { zeptomail } from "./connectors/zeptomail";
+import { railway } from "./connectors/railway";
+import { railwayProject } from "./connectors/railway-project";
+import { reap } from "./connectors/reap";
+import { reddit } from "./connectors/reddit";
+import { replicate } from "./connectors/replicate";
+import { reportei } from "./connectors/reportei";
+import { resend } from "./connectors/resend";
+import { revenuecat } from "./connectors/revenuecat";
 import { runway } from "./connectors/runway";
+import { salesforce } from "./connectors/salesforce";
+import { scrapeninja } from "./connectors/scrapeninja";
+import { sendgrid } from "./connectors/sendgrid";
+import { serpapi } from "./connectors/serpapi";
+import { servicenow } from "./connectors/servicenow";
 import { shopify } from "./connectors/shopify";
 import { shortio } from "./connectors/shortio";
+import { similarweb } from "./connectors/similarweb";
+import { slackWebhook } from "./connectors/slack-webhook";
+import { snowflake } from "./connectors/snowflake";
+import { sponge } from "./connectors/sponge";
+import { square } from "./connectors/square";
 import { stabilityAi } from "./connectors/stability-ai";
-import { streak } from "./connectors/streak";
 import { strapi } from "./connectors/strapi";
+import { streak } from "./connectors/streak";
+import { stripe } from "./connectors/stripe";
+import { supabase } from "./connectors/supabase";
 import { supadata } from "./connectors/supadata";
+import { supermemory } from "./connectors/supermemory";
 import { tavily } from "./connectors/tavily";
+import { testOauth } from "./connectors/test-oauth";
+import { testrail } from "./connectors/testrail";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
 import { twenty } from "./connectors/twenty";
+import { twilio } from "./connectors/twilio";
+import { typeform } from "./connectors/typeform";
+import { v0 } from "./connectors/v0";
+import { wandb } from "./connectors/wandb";
+import { webflow } from "./connectors/webflow";
+import { wix } from "./connectors/wix";
+import { workos } from "./connectors/workos";
+import { wrike } from "./connectors/wrike";
 import { youtube } from "./connectors/youtube";
 import { zapier } from "./connectors/zapier";
 import { zapsign } from "./connectors/zapsign";
 import { zendesk } from "./connectors/zendesk";
-import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
-import { imgur } from "./connectors/imgur";
-import { instagram } from "./connectors/instagram";
-import { prismaPostgres } from "./connectors/prisma-postgres";
-import { discord } from "./connectors/discord";
-import { lark } from "./connectors/lark";
-import { luma } from "./connectors/luma";
-import { lumaAi } from "./connectors/luma-ai";
-import { langsmith } from "./connectors/langsmith";
-import { mailsac } from "./connectors/mailsac";
-import { manus } from "./connectors/manus";
-import { minio } from "./connectors/minio";
-import { pdforge } from "./connectors/pdforge";
-import { discordWebhook } from "./connectors/discord-webhook";
-import { sponge } from "./connectors/sponge";
-import { spotify } from "./connectors/spotify";
-import { slackWebhook } from "./connectors/slack-webhook";
-import { gitlab } from "./connectors/gitlab";
-import { wix } from "./connectors/wix";
-import { v0 } from "./connectors/v0";
-import { db9 } from "./connectors/db9";
-import { drive9 } from "./connectors/drive9";
-import { msg9 } from "./connectors/msg9";
-import { amplitude } from "./connectors/amplitude";
-import { attio } from "./connectors/attio";
-import { buffer } from "./connectors/buffer";
-import { coda } from "./connectors/coda";
-import { freshdesk } from "./connectors/freshdesk";
-import { miro } from "./connectors/miro";
-import { mixpanel } from "./connectors/mixpanel";
-import { typeform } from "./connectors/typeform";
-import { testOauth } from "./connectors/test-oauth";
-import { pandadoc } from "./connectors/pandadoc";
-import { greenhouse } from "./connectors/greenhouse";
+import { zep } from "./connectors/zep";
+import { zeptomail } from "./connectors/zeptomail";
 import { zoom } from "./connectors/zoom";
-import { groq } from "./connectors/groq";
-import { gumroad } from "./connectors/gumroad";
-import { langfuse } from "./connectors/langfuse";
-import { n8n } from "./connectors/n8n";
-import { wandb } from "./connectors/wandb";
-import { altium365 } from "./connectors/altium-365";
-import { browserstack } from "./connectors/browserstack";
-import { sendgrid } from "./connectors/sendgrid";
-import { servicenow } from "./connectors/servicenow";
-import { testrail } from "./connectors/testrail";
-import { twilio } from "./connectors/twilio";
-import { square } from "./connectors/square";
-import { gong } from "./connectors/gong";
-import { ironclad } from "./connectors/ironclad";
-import { snowflake } from "./connectors/snowflake";
-import { railway } from "./connectors/railway";
-import { railwayProject } from "./connectors/railway-project";
 
 /**
  * Secret field configuration for connector auth methods
@@ -436,207 +436,207 @@ export interface ConnectorConfig {
  * schema, utility getters, and autocomplete all continue to work.
  */
 const CONNECTOR_TYPES_DEF = {
-  ...axiom,
-  ...ahrefs,
-  ...agora,
-  ...agentmail,
-  ...airtable,
-  ...anthropicManagedAgents,
-  ...bentoml,
-  ...doubao,
   ...github,
-  ...notion,
   ...gmail,
-  ...googleSheets,
-  ...googleDocs,
+  ...notion,
+  ...x,
   ...googleDrive,
-  ...googleAds,
-  ...googleCalendar,
-  ...googleMeet,
-  ...close,
-  ...huggingFace,
-  ...hume,
-  ...heygen,
-  ...helicone,
-  ...hubspot,
-  ...computer,
   ...slack,
+  ...googleSheets,
+  ...googleCalendar,
+  ...googleDocs,
+  ...linear,
+  ...intervalsIcu,
+  ...vercel,
+  ...strava,
+  ...googleMeet,
+  ...hubspot,
+  ...localAgent,
+  ...sentry,
+  ...todoist,
+  ...xero,
+  ...airtable,
   ...docusign,
-  ...duffel,
+  ...googleAds,
+  ...gumroad,
+  ...spotify,
+  ...agentmail,
+  ...agora,
+  ...ahrefs,
+  ...altium365,
+  ...amplitude,
+  ...anthropicManagedAgents,
+  ...apify,
+  ...apollo,
+  ...asana,
+  ...atlassian,
+  ...attio,
+  ...axiom,
+  ...bentoml,
+  ...bitrix,
+  ...braveSearch,
+  ...brevo,
+  ...brightData,
+  ...browserbase,
+  ...browserless,
+  ...browserstack,
+  ...browserUse,
+  ...buffer,
+  ...calCom,
+  ...calendly,
+  ...canva,
+  ...chatwoot,
+  ...clickup,
+  ...close,
+  ...cloudflare,
+  ...cloudinary,
+  ...coda,
+  ...codexOauth,
+  ...computer,
+  ...cronlytic,
+  ...customerIo,
+  ...db9,
+  ...deel,
+  ...deepseek,
+  ...devto,
+  ...dify,
+  ...discord,
+  ...discordWebhook,
+  ...doppler,
+  ...doubao,
+  ...drive9,
   ...dropbox,
   ...dropboxSign,
-  ...linear,
-  ...intercom,
+  ...duffel,
+  ...e2b,
+  ...elevenlabs,
+  ...etsy,
+  ...exa,
+  ...explorium,
+  ...fal,
+  ...figma,
+  ...firecrawl,
+  ...fireflies,
+  ...freshdesk,
+  ...gamma,
+  ...garminConnect,
+  ...gemini,
+  ...gitlab,
+  ...gong,
+  ...granola,
+  ...greenhouse,
+  ...groq,
+  ...helicone,
+  ...heygen,
+  ...htmlcsstoimage,
+  ...huggingFace,
+  ...hume,
+  ...imgur,
+  ...infisical,
+  ...instagram,
   ...instantly,
+  ...intercom,
+  ...ironclad,
   ...jam,
   ...jira,
   ...jotform,
   ...klaviyo,
   ...kommo,
+  ...langfuse,
+  ...langsmith,
+  ...lark,
   ...line,
-  ...loops,
-  ...make,
-  ...mem0,
-  ...metabase,
-  ...moss,
-  ...deel,
-  ...deepseek,
-  ...clickup,
-  ...cloudflare,
-  ...cloudinary,
-  ...cronlytic,
-  ...customerIo,
-  ...dify,
-  ...e2b,
-  ...figma,
-  ...mercury,
-  ...minimax,
-  ...reportei,
   ...localBrowser,
-  ...localAgent,
-  ...serpapi,
-  ...salesforce,
-  ...reddit,
-  ...reap,
-  ...strava,
-  ...x,
-  ...neon,
-  ...gamma,
-  ...garminConnect,
-  ...gemini,
-  ...vercel,
-  ...sentry,
-  ...posthog,
-  ...productlane,
-  ...intervalsIcu,
-  ...monday,
-  ...calendly,
-  ...canva,
-  ...calCom,
-  ...xero,
-  ...supabase,
-  ...supermemory,
-  ...todoist,
-  ...webflow,
-  ...workos,
-  ...wrike,
-  ...outlookMail,
-  ...outlookCalendar,
-  ...asana,
-  ...atlassian,
+  ...loops,
+  ...luma,
+  ...lumaAi,
+  ...mailchimp,
+  ...mailsac,
+  ...make,
+  ...manus,
+  ...mem0,
+  ...mercury,
   ...metaAds,
-  ...stripe,
+  ...metabase,
+  ...minimax,
+  ...minio,
+  ...miro,
+  ...mixpanel,
+  ...monday,
+  ...moss,
+  ...msg9,
+  ...n8n,
+  ...neon,
   ...onyx,
   ...openai,
-  ...codexOauth,
-  ...similarweb,
+  ...outlookCalendar,
+  ...outlookMail,
+  ...pandadoc,
+  ...pdf4me,
+  ...pdfco,
+  ...pdforge,
   ...perplexity,
+  ...pika,
+  ...pinecone,
   ...pipedrive,
   ...plain,
   ...plausible,
-  ...mailchimp,
-  ...chatwoot,
-  ...resend,
-  ...revenuecat,
-  ...replicate,
-  ...pdf4me,
-  ...apify,
-  ...doppler,
-  ...infisical,
-  ...apollo,
-  ...pinecone,
-  ...pika,
-  ...bitrix,
-  ...brevo,
-  ...braveSearch,
-  ...brightData,
-  ...browserbase,
-  ...browserUse,
-  ...browserless,
-  ...fireflies,
-  ...firecrawl,
-  ...scrapeninja,
-  ...pdfco,
-  ...elevenlabs,
-  ...etsy,
-  ...exa,
-  ...explorium,
-  ...devto,
-  ...fal,
-  ...granola,
   ...podchaser,
+  ...posthog,
+  ...prismaPostgres,
+  ...productlane,
   ...pushinator,
   ...qdrant,
   ...qiita,
-  ...zep,
-  ...zeptomail,
+  ...railway,
+  ...railwayProject,
+  ...reap,
+  ...reddit,
+  ...replicate,
+  ...reportei,
+  ...resend,
+  ...revenuecat,
   ...runway,
+  ...salesforce,
+  ...scrapeninja,
+  ...sendgrid,
+  ...serpapi,
+  ...servicenow,
   ...shopify,
   ...shortio,
+  ...similarweb,
+  ...slackWebhook,
+  ...snowflake,
+  ...sponge,
+  ...square,
   ...stabilityAi,
-  ...streak,
   ...strapi,
+  ...streak,
+  ...stripe,
+  ...supabase,
   ...supadata,
+  ...supermemory,
   ...tavily,
+  ...testOauth,
+  ...testrail,
   ...tldv,
   ...together,
   ...twenty,
+  ...twilio,
+  ...typeform,
+  ...v0,
+  ...wandb,
+  ...webflow,
+  ...wix,
+  ...workos,
+  ...wrike,
   ...youtube,
   ...zapier,
   ...zapsign,
   ...zendesk,
-  ...htmlcsstoimage,
-  ...imgur,
-  ...instagram,
-  ...prismaPostgres,
-  ...discord,
-  ...lark,
-  ...luma,
-  ...lumaAi,
-  ...langsmith,
-  ...mailsac,
-  ...manus,
-  ...minio,
-  ...pdforge,
-  ...discordWebhook,
-  ...sponge,
-  ...spotify,
-  ...slackWebhook,
-  ...gitlab,
-  ...wix,
-  ...v0,
-  ...db9,
-  ...drive9,
-  ...msg9,
-  ...amplitude,
-  ...attio,
-  ...buffer,
-  ...coda,
-  ...freshdesk,
-  ...miro,
-  ...mixpanel,
-  ...typeform,
-  ...testOauth,
-  ...pandadoc,
-  ...greenhouse,
+  ...zep,
+  ...zeptomail,
   ...zoom,
-  ...groq,
-  ...gumroad,
-  ...langfuse,
-  ...n8n,
-  ...wandb,
-  ...altium365,
-  ...browserstack,
-  ...sendgrid,
-  ...servicenow,
-  ...testrail,
-  ...twilio,
-  ...square,
-  ...gong,
-  ...ironclad,
-  ...snowflake,
-  ...railway,
-  ...railwayProject,
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
