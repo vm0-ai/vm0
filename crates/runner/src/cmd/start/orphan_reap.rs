@@ -566,6 +566,8 @@ mod tests {
         fixture
             .assert_orphans(&[(run_id, current_sandbox_id)])
             .await;
+
+        fixture.destroy_all_idle_entries().await;
     }
 
     #[tokio::test]
@@ -614,6 +616,7 @@ mod tests {
             .assert_status(&[("sess-idle-owned-reaper", sandbox_id)], &[])
             .await;
         fixture.assert_orphan_count(0).await;
+        fixture.destroy_all_idle_entries().await;
     }
 
     #[tokio::test]
