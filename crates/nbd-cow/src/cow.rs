@@ -174,7 +174,11 @@ impl CowLayer {
             let to_write = remaining_in_block.min(data.len() - pos);
 
             if !self.write_buffer.contains_key(&block_idx) {
-                let full_block = self.read_full_block(block_idx)?;
+                let full_block = if to_write == self.block_size {
+                    vec![0u8; self.block_size]
+                } else {
+                    self.read_full_block(block_idx)?
+                };
                 self.write_buffer.insert(block_idx, full_block);
             }
             let block_data = self
