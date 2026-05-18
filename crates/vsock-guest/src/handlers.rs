@@ -249,11 +249,11 @@ pub(crate) fn handle_decoded_write_file_message(
     vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
 }
 
-/// Handle incoming message and return the connection-loop outcome.
+/// Handle basic incoming messages and return the connection-loop outcome.
 ///
 /// Exec operation, `MSG_SPAWN_PROCESS`, and guarded write-file operations are
-/// handled separately in `handle_connection`.
-pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
+/// handled separately by the connection dispatcher.
+pub(crate) fn handle_basic_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
         "INFO",
         &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
