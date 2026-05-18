@@ -206,7 +206,7 @@ impl Drop for ChunkedWriteCleanupGuard {
 
         let command = std::mem::take(&mut self.command);
         let sudo = self.sudo;
-        let write_observer = self.write_observer.clone();
+        let write_observer = FrameWriteObserver::default();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let _ = cleanup_timeout(

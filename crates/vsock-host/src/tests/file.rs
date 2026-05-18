@@ -1744,6 +1744,82 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
 }
 
 #[tokio::test]
+async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    let count = write_start_count.fetch_add(1, Ordering::SeqCst);
+                    if count >= 3 {
+                        return Err(io::Error::other("write observer is no longer active"));
+                    }
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(false, "disk full");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    let payload = vsock_proto::encode_error("cleanup unavailable");
+    guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, cleanup.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
+
+    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+        .await
+        .expect("cleanup retry was not sent after observer became inactive");
+    assert_eq!(retry.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert!(decoded.command.contains("rm -f --"));
+    send_exec_result(
+        &mut guest,
+        retry.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
 async fn write_file_chunked_cleanup_nonzero_exit_retries_untracked_on_drop() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
