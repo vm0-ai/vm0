@@ -301,6 +301,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.StoredSecretKmsRead]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Prefer AWS KMS material when reading stored-secret envelopes. Disabled keeps reading the legacy AES branch during rollout; writes still dual-write when SECRETS_KMS_KEY_ID is configured.",
+    enabled: false,
+  },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
     description:

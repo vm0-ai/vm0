@@ -2,8 +2,27 @@ import { command, computed, type Computed } from "ccstate";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
+
+export async function loadUserFeatureSwitchOverrides(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+): Promise<Record<string, boolean>> {
+  const [row] = await db
+    .select({ switches: userFeatureSwitches.switches })
+    .from(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, orgId),
+        eq(userFeatureSwitches.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  return row?.switches ?? {};
+}
 
 export function userFeatureSwitchOverrides(
   orgId: string,
@@ -11,18 +30,7 @@ export function userFeatureSwitchOverrides(
 ): Computed<Promise<Record<string, boolean>>> {
   return computed(async (get): Promise<Record<string, boolean>> => {
     const db = get(db$);
-    const [row] = await db
-      .select({ switches: userFeatureSwitches.switches })
-      .from(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, orgId),
-          eq(userFeatureSwitches.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    return row?.switches ?? {};
+    return await loadUserFeatureSwitchOverrides(db, orgId, userId);
   });
 }
 

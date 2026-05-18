@@ -18,7 +18,11 @@ import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { safeJsonParse, safeSync, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  decryptSecretValue,
+  encryptSecretValue,
+  encryptStoredSecretValue,
+} from "./crypto.utils";
 import {
   parseStripeCliAuthConfig,
   parseStripeCliAuthStartOutput as parseStripeCliAuthStartOutputText,
@@ -1127,7 +1131,7 @@ async function importCliAuthStripeConnector(args: {
 }): Promise<CliAuthStripeCompleteResult> {
   args.signal.throwIfAborted();
 
-  const encryptedValue = encryptSecretValue(args.apiKey);
+  const encryptedValue = await encryptStoredSecretValue(args.apiKey);
   const updatedAt = nowDate();
   const writeDb = args.set(writeDb$);
   const description = `Stripe CLI ${args.mode} mode API key`;

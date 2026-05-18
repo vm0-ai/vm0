@@ -1,4 +1,4 @@
-import { createDecipheriv, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
 import {
@@ -8,6 +8,7 @@ import {
   ScheduleListResponse,
   ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   ScheduleCronCallbackPayload,
   ScheduleLoopCallbackPayload,
@@ -25,6 +26,8 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
+import { decryptStoredSecretsMap } from "./crypto.utils";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
@@ -34,42 +37,15 @@ const OPENROUTER_CHAT_COMPLETIONS_URL =
 const LIGHTWEIGHT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-const secretsMapSchema = z.record(z.string(), z.string());
-
-function decryptSecretsMap(
-  encryptedData: string | null,
-): Record<string, string> | null {
-  if (!encryptedData) {
-    return null;
-  }
-
-  const key = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
-  const [ivBase64, authTagBase64, dataBase64] = encryptedData.split(":");
-  if (!ivBase64 || !authTagBase64 || !dataBase64) {
-    throw new Error("Invalid encrypted secrets format");
-  }
-
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    key,
-    Buffer.from(ivBase64, "base64"),
-    { authTagLength: 16 },
-  );
-  decipher.setAuthTag(Buffer.from(authTagBase64, "base64"));
-
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(dataBase64, "base64")),
-    decipher.final(),
-  ]);
-
-  return secretsMapSchema.parse(JSON.parse(decrypted.toString("utf8")));
-}
-
-function scheduleResponse(
+async function scheduleResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
   displayName: string | null,
-): ScheduleResponse {
-  const secrets = decryptSecretsMap(schedule.encryptedSecrets);
+  featureSwitchContext: FeatureSwitchContext,
+): Promise<ScheduleResponse> {
+  const secrets = await decryptStoredSecretsMap(
+    schedule.encryptedSecrets,
+    featureSwitchContext,
+  );
   return {
     id: schedule.id,
     agentId: schedule.agentId,
@@ -526,7 +502,7 @@ async function insertNewSchedule(
 
 export const deploySchedule$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly userId: string;
       readonly orgId: string;
@@ -604,11 +580,19 @@ export const deploySchedule$ = command(
         });
     signal.throwIfAborted();
 
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     return {
       kind: "ok",
       status: existing ? 200 : 201,
       response: {
-        schedule: scheduleResponse(schedule, agent.displayName),
+        schedule: await scheduleResponse(schedule, agent.displayName, {
+          orgId: args.orgId,
+          userId: args.userId,
+          overrides: featureSwitchOverrides,
+        }),
         created: !existing,
       },
     };
@@ -617,7 +601,7 @@ export const deploySchedule$ = command(
 
 export const disableSchedule$ = command(
   async (
-    { set },
+    { get, set },
     args: ScheduleMutationArgs,
     signal: AbortSignal,
   ): Promise<DisableScheduleResult> => {
@@ -648,9 +632,17 @@ export const disableSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     return {
       kind: "ok",
-      response: scheduleResponse(updated, ownership.displayName),
+      response: await scheduleResponse(updated, ownership.displayName, {
+        orgId: args.orgId,
+        userId: args.userId,
+        overrides: featureSwitchOverrides,
+      }),
     };
   },
 );
@@ -689,7 +681,7 @@ export const deleteSchedule$ = command(
 
 export const enableSchedule$ = command(
   async (
-    { set },
+    { get, set },
     args: ScheduleMutationArgs,
     signal: AbortSignal,
   ): Promise<EnableScheduleResult> => {
@@ -741,9 +733,17 @@ export const enableSchedule$ = command(
       return { kind: "not_found" };
     }
 
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
     return {
       kind: "ok",
-      response: scheduleResponse(updated, displayName),
+      response: await scheduleResponse(updated, displayName, {
+        orgId: args.orgId,
+        userId: args.userId,
+        overrides: featureSwitchOverrides,
+      }),
     };
   },
 );
@@ -1149,15 +1149,32 @@ export function zeroScheduleList(args: {
       }),
     );
 
-    return {
-      schedules: schedules.flatMap((schedule) => {
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    const featureSwitchContext = {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    } satisfies FeatureSwitchContext;
+
+    const responses = await Promise.all(
+      schedules.flatMap((schedule) => {
         if (!agentMap.has(schedule.agentId)) {
           return [];
         }
         return [
-          scheduleResponse(schedule, agentMap.get(schedule.agentId) ?? null),
+          scheduleResponse(
+            schedule,
+            agentMap.get(schedule.agentId) ?? null,
+            featureSwitchContext,
+          ),
         ];
       }),
+    );
+
+    return {
+      schedules: responses,
     };
   });
 }

@@ -103,6 +103,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aws-sdk/client-kms':
+        specifier: ^3.1048.0
+        version: 3.1048.0
       '@aws-sdk/client-s3':
         specifier: ^3.1048.0
         version: 3.1048.0
@@ -1213,6 +1216,10 @@ packages:
 
   '@aws-crypto/util@5.2.0':
     resolution: {integrity: sha512-4RkU9EsI6ZpBve5fseQlGNUWKMa1RLPQ1dnjnQoe07ldfIzcsGb5hC5W0Dm7u423KWzawlrpbjXBrXCEv9zazQ==}
+
+  '@aws-sdk/client-kms@3.1048.0':
+    resolution: {integrity: sha512-pJznSdKl1Sw5vmsN8PkTFF+Ic+JmUflJ4/V2IVMMO9ZIA1A8ifa0Fmno/C93ChXmuxcwmyELkdLAM+XS4OQb4w==}
+    engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-s3@3.1048.0':
     resolution: {integrity: sha512-SrJn5FteqqtcDBgQIvqLKk3Qn/2vSsi5XR03I53EDDR4CbCdLysVSNgUnjVncEECMua9Pz+nxO0/lEx3TP+6mA==}
@@ -10581,6 +10588,19 @@ snapshots:
       '@smithy/util-utf8': 2.3.0
       tslib: 2.8.1
 
+  '@aws-sdk/client-kms@3.1048.0':
+    dependencies:
+      '@aws-crypto/sha256-browser': 5.2.0
+      '@aws-crypto/sha256-js': 5.2.0
+      '@aws-sdk/core': 3.974.11
+      '@aws-sdk/credential-provider-node': 3.972.42
+      '@aws-sdk/types': 3.973.8
+      '@smithy/core': 3.24.3
+      '@smithy/fetch-http-handler': 5.4.3
+      '@smithy/node-http-handler': 4.7.3
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
   '@aws-sdk/client-s3@3.1048.0':
     dependencies:
       '@aws-crypto/sha1-browser': 5.2.0
@@ -10658,7 +10678,7 @@ snapshots:
       '@aws-sdk/nested-clients': 3.997.9
       '@aws-sdk/types': 3.973.8
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-node@3.972.42':
@@ -10761,7 +10781,7 @@ snapshots:
       '@smithy/core': 3.24.3
       '@smithy/fetch-http-handler': 5.4.3
       '@smithy/node-http-handler': 4.7.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/s3-request-presigner@3.1048.0':
@@ -10787,7 +10807,7 @@ snapshots:
       '@aws-sdk/nested-clients': 3.997.9
       '@aws-sdk/types': 3.973.8
       '@smithy/core': 3.24.3
-      '@smithy/types': 4.14.1
+      '@smithy/types': 4.14.2
       tslib: 2.8.1
 
   '@aws-sdk/types@3.973.8':

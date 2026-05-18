@@ -53,6 +53,7 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
   ConnectorCategories = "connectorCategories",
+  StoredSecretKmsRead = "storedSecretKmsRead",
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",

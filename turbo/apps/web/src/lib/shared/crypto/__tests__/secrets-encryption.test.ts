@@ -1,9 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { encryptSecretsMap, decryptSecretsMap } from "../secrets-encryption";
+import {
+  encryptSecretValue,
+  decryptSecretValue,
+  encryptSecretsMap,
+  decryptSecretsMap,
+} from "../secrets-encryption";
 
 // Valid 32-byte hex key for testing
 const TEST_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+function storedSecretEnvelope(legacy: string | undefined): string {
+  return `vm0secret:v1:${Buffer.from(
+    JSON.stringify({
+      v: 1,
+      kind: "stored-secret",
+      legacy,
+      kms: { keyId: "alias/vm0-secrets", ciphertext: "kms-ciphertext" },
+    }),
+    "utf8",
+  ).toString("base64url")}`;
+}
 
 describe("secrets-encryption", () => {
   describe("encryptSecretsMap", () => {
@@ -62,6 +79,18 @@ describe("secrets-encryption", () => {
       expect(decrypted).toEqual(secrets);
     });
 
+    it("should decrypt the legacy branch of dual stored-secret envelopes", () => {
+      const secrets = { API_KEY: "sk-123456" };
+      const encrypted = encryptSecretsMap(secrets, TEST_KEY);
+
+      const decrypted = decryptSecretsMap(
+        storedSecretEnvelope(encrypted ?? undefined),
+        TEST_KEY,
+      );
+
+      expect(decrypted).toEqual(secrets);
+    });
+
     it("should preserve all key-value pairs through encryption cycle", () => {
       const secrets = {
         key1: "value1",
@@ -93,6 +122,22 @@ describe("secrets-encryption", () => {
       expect(() => {
         return decryptSecretsMap(tampered, TEST_KEY);
       }).toThrow();
+    });
+  });
+
+  describe("decryptSecretValue", () => {
+    it("should decrypt the legacy branch of dual stored-secret envelopes", () => {
+      const encrypted = encryptSecretValue("secret", TEST_KEY);
+
+      expect(
+        decryptSecretValue(storedSecretEnvelope(encrypted), TEST_KEY),
+      ).toBe("secret");
+    });
+
+    it("should throw for KMS-only stored-secret envelopes", () => {
+      expect(() => {
+        return decryptSecretValue(storedSecretEnvelope(undefined), TEST_KEY);
+      }).toThrow("KMS-only stored secret ciphertext is not supported here");
     });
   });
 });

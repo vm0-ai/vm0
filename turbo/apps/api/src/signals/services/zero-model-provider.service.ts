@@ -21,7 +21,7 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptStoredSecretValue } from "./crypto.utils";
 
 const L = logger("zero-model-provider.service");
 
@@ -410,7 +410,7 @@ async function upsertMultiAuthSecret(
     readonly description: string;
   },
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(args.value);
   await writeDb
     .insert(secrets)
     .values({
@@ -471,7 +471,8 @@ export const upsertUserModelProvider$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const encryptedValue = encryptSecretValue(args.secret);
+    const encryptedValue = await encryptStoredSecretValue(args.secret);
+    signal.throwIfAborted();
 
     L.debug("upserting model provider", {
       orgId: args.orgId,
