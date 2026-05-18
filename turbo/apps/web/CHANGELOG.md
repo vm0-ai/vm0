@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.374.1](https://github.com/vm0-ai/vm0/compare/web-v12.374.0...web-v12.374.1) (2026-05-18)
+
+
+### Refactoring
+
+* cut over cli auth test connector route ([#13788](https://github.com/vm0-ai/vm0/issues/13788)) ([41398c5](https://github.com/vm0-ai/vm0/commit/41398c5f561bfcc40c6d99ca21fa43770212f03f))
+* cut over cli auth test enable connector route ([#13798](https://github.com/vm0-ai/vm0/issues/13798)) ([efff382](https://github.com/vm0-ai/vm0/commit/efff3828c654ca4922c443e65c874e96654f1a6b))
+* cut over cli auth test token route ([#13806](https://github.com/vm0-ai/vm0/issues/13806)) ([e747ec8](https://github.com/vm0-ai/vm0/commit/e747ec8c7361843aa746cfa4df8c96121354b1fd))
+* cut over zero agent by-id route ([#13785](https://github.com/vm0-ai/vm0/issues/13785)) ([594c1ed](https://github.com/vm0-ai/vm0/commit/594c1edcaad6b90d279d347da1c78e56c5527b3d))
+* cut over zero agents root route ([#13801](https://github.com/vm0-ai/vm0/issues/13801)) ([bcb294c](https://github.com/vm0-ai/vm0/commit/bcb294c7d9b3c0ee8239ed6360d72659ef430c9f))
+* cut over zero chat thread artifacts route ([#13805](https://github.com/vm0-ai/vm0/issues/13805)) ([a6df09e](https://github.com/vm0-ai/vm0/commit/a6df09e53a2e076a9be538a0f299879bf90bfa22))
+* cut over zero chat thread rename route ([#13797](https://github.com/vm0-ai/vm0/issues/13797)) ([feb5cf5](https://github.com/vm0-ai/vm0/commit/feb5cf5a3d0f03eed02c29cdb5ee4fb8a3e55221))
+* cut over zero chat thread unpin route ([#13791](https://github.com/vm0-ai/vm0/issues/13791)) ([7112b5b](https://github.com/vm0-ai/vm0/commit/7112b5bce64fa85f18c9f32ae22cc0e29e5ed3f6))
+* proxy agent composes instructions to api ([#13802](https://github.com/vm0-ai/vm0/issues/13802)) ([0353ccb](https://github.com/vm0-ai/vm0/commit/0353ccbd78a40470fe1e2287fc79f0d2a8a151f3))
+* proxy agent composes list to api ([#13783](https://github.com/vm0-ai/vm0/issues/13783)) ([0ff96f6](https://github.com/vm0-ai/vm0/commit/0ff96f6378b5e4362f6e96720bf7350f1864b620))
+* proxy agent composes metadata to api ([#13794](https://github.com/vm0-ai/vm0/issues/13794)) ([a00b967](https://github.com/vm0-ai/vm0/commit/a00b9670dc6a908e09b55bcd8225159d619c0aa7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+    * @vm0/core bumped to 8.281.5
+    * @vm0/db bumped to 1.14.12
+
 ## [12.374.0](https://github.com/vm0-ai/vm0/compare/web-v12.373.1...web-v12.374.0) (2026-05-18)
 
 

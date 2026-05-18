@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.54.8](https://github.com/vm0-ai/vm0/compare/api-v1.54.7...api-v1.54.8) (2026-05-18)
+
+
+### Bug Fixes
+
+* gate KMS dual-write behind StoredSecretKmsWrite feature switch ([#13799](https://github.com/vm0-ai/vm0/issues/13799)) ([e699848](https://github.com/vm0-ai/vm0/commit/e6998484e874db0da320924b17ea57f4c2f383c2))
+
+
+### Refactoring
+
+* cut over cli auth test connector route ([#13788](https://github.com/vm0-ai/vm0/issues/13788)) ([41398c5](https://github.com/vm0-ai/vm0/commit/41398c5f561bfcc40c6d99ca21fa43770212f03f))
+* cut over cli auth test enable connector route ([#13798](https://github.com/vm0-ai/vm0/issues/13798)) ([efff382](https://github.com/vm0-ai/vm0/commit/efff3828c654ca4922c443e65c874e96654f1a6b))
+* cut over cli auth test token route ([#13806](https://github.com/vm0-ai/vm0/issues/13806)) ([e747ec8](https://github.com/vm0-ai/vm0/commit/e747ec8c7361843aa746cfa4df8c96121354b1fd))
+* cut over zero agent by-id route ([#13785](https://github.com/vm0-ai/vm0/issues/13785)) ([594c1ed](https://github.com/vm0-ai/vm0/commit/594c1edcaad6b90d279d347da1c78e56c5527b3d))
+* cut over zero agents root route ([#13801](https://github.com/vm0-ai/vm0/issues/13801)) ([bcb294c](https://github.com/vm0-ai/vm0/commit/bcb294c7d9b3c0ee8239ed6360d72659ef430c9f))
+* cut over zero chat thread artifacts route ([#13805](https://github.com/vm0-ai/vm0/issues/13805)) ([a6df09e](https://github.com/vm0-ai/vm0/commit/a6df09e53a2e076a9be538a0f299879bf90bfa22))
+* proxy agent composes list to api ([#13783](https://github.com/vm0-ai/vm0/issues/13783)) ([0ff96f6](https://github.com/vm0-ai/vm0/commit/0ff96f6378b5e4362f6e96720bf7350f1864b620))
+* proxy agent composes metadata to api ([#13794](https://github.com/vm0-ai/vm0/issues/13794)) ([a00b967](https://github.com/vm0-ai/vm0/commit/a00b9670dc6a908e09b55bcd8225159d619c0aa7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+    * @vm0/core bumped to 8.281.5
+    * @vm0/db bumped to 1.14.12
+
 ## [1.54.7](https://github.com/vm0-ai/vm0/compare/api-v1.54.6...api-v1.54.7) (2026-05-18)
 
 

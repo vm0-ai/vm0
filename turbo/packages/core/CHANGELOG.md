@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.281.5](https://github.com/vm0-ai/vm0/compare/core-v8.281.4...core-v8.281.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* gate KMS dual-write behind StoredSecretKmsWrite feature switch ([#13799](https://github.com/vm0-ai/vm0/issues/13799)) ([e699848](https://github.com/vm0-ai/vm0/commit/e6998484e874db0da320924b17ea57f4c2f383c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+
 ## [8.281.4](https://github.com/vm0-ai/vm0/compare/core-v8.281.3...core-v8.281.4) (2026-05-18)
 
 
