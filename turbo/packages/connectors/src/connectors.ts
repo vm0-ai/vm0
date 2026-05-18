@@ -87,7 +87,6 @@ import { fal } from "./connectors/fal";
 import { figma } from "./connectors/figma";
 import { firecrawl } from "./connectors/firecrawl";
 import { fireflies } from "./connectors/fireflies";
-import { flightapi } from "./connectors/flightapi";
 import { freshdesk } from "./connectors/freshdesk";
 import { gamma } from "./connectors/gamma";
 import { garminConnect } from "./connectors/garmin-connect";
@@ -160,7 +159,6 @@ import { plain } from "./connectors/plain";
 import { plausible } from "./connectors/plausible";
 import { podchaser } from "./connectors/podchaser";
 import { posthog } from "./connectors/posthog";
-import { postalform } from "./connectors/postalform";
 import { prismaPostgres } from "./connectors/prisma-postgres";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
@@ -203,7 +201,6 @@ import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
 import { twenty } from "./connectors/twenty";
 import { twilio } from "./connectors/twilio";
-import { twocaptcha } from "./connectors/twocaptcha";
 import { typeform } from "./connectors/typeform";
 import { v0 } from "./connectors/v0";
 import { wandb } from "./connectors/wandb";
@@ -540,7 +537,6 @@ const CONNECTOR_TYPES_DEF = {
   ...figma,
   ...firecrawl,
   ...fireflies,
-  ...flightapi,
   ...freshdesk,
   ...gamma,
   ...garminConnect,
@@ -613,7 +609,6 @@ const CONNECTOR_TYPES_DEF = {
   ...plausible,
   ...podchaser,
   ...posthog,
-  ...postalform,
   ...prismaPostgres,
   ...productlane,
   ...pushinator,
@@ -656,7 +651,6 @@ const CONNECTOR_TYPES_DEF = {
   ...together,
   ...twenty,
   ...twilio,
-  ...twocaptcha,
   ...typeform,
   ...v0,
   ...wandb,

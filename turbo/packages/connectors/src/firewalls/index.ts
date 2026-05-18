@@ -53,9 +53,9 @@ import { asanaFirewall } from "./asana.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
-// NOTE: aviationstack/builtwith/clado/diffbot/flightapi/google-maps/hunter/
-// mapbox/mathpix/nyne/openrouter/openweather/postalform/reducto/suno/twocaptcha
-// were added in the same Sponge-catalog batch and are wired below.
+// NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
+// mathpix/nyne/openrouter/openweather/reducto/suno were added in the same
+// Sponge-catalog batch and are wired below.
 import { axiomFirewall } from "./axiom.generated";
 import { bentomlFirewall } from "./bentoml.generated";
 import { bitrixFirewall } from "./bitrix.generated";
@@ -101,7 +101,6 @@ import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { firefliesFirewall } from "./fireflies.generated";
-import { flightapiFirewall } from "./flightapi.generated";
 import { freshdeskFirewall } from "./freshdesk.generated";
 import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
@@ -181,7 +180,6 @@ import { plainFirewall } from "./plain.generated";
 import { plausibleFirewall } from "./plausible.generated";
 import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
-import { postalformFirewall } from "./postalform.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
@@ -222,7 +220,6 @@ import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
 import { twentyFirewall } from "./twenty.generated";
-import { twocaptchaFirewall } from "./twocaptcha.generated";
 import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
 import { wandbFirewall } from "./wandb.generated";
@@ -467,7 +464,6 @@ const CONNECTOR_FIREWALLS = {
   builtwith: builtwithFirewall,
   clado: cladoFirewall,
   diffbot: diffbotFirewall,
-  flightapi: flightapiFirewall,
   "google-maps": googleMapsFirewall,
   hunter: hunterFirewall,
   mapbox: mapboxFirewall,
@@ -475,10 +471,8 @@ const CONNECTOR_FIREWALLS = {
   nyne: nyneFirewall,
   openrouter: openrouterFirewall,
   openweather: openweatherFirewall,
-  postalform: postalformFirewall,
   reducto: reductoFirewall,
   suno: sunoFirewall,
-  twocaptcha: twocaptchaFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

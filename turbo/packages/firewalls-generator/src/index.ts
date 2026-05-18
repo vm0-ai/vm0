@@ -65,7 +65,6 @@ import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateFireflies } from "./fireflies";
-import { generate as generateFlightapi } from "./flightapi";
 import { generate as generateFreshdesk } from "./freshdesk";
 import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
@@ -140,7 +139,6 @@ import { generate as generatePlain } from "./plain";
 import { generate as generatePlausible } from "./plausible";
 import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
-import { generate as generatePostalform } from "./postalform";
 import { generate as generateProductlane } from "./productlane";
 import { generate as generatePrismaPostgres } from "./prisma-postgres";
 import { generate as generatePushinator } from "./pushinator";
@@ -182,7 +180,6 @@ import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
 import { generate as generateTwenty } from "./twenty";
-import { generate as generateTwocaptcha } from "./twocaptcha";
 import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
@@ -407,7 +404,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   builtwith: generateBuiltwith,
   clado: generateClado,
   diffbot: generateDiffbot,
-  flightapi: generateFlightapi,
   "google-maps": generateGoogleMaps,
   hunter: generateHunter,
   mapbox: generateMapbox,
@@ -415,10 +411,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   nyne: generateNyne,
   openrouter: generateOpenrouter,
   openweather: generateOpenweather,
-  postalform: generatePostalform,
   reducto: generateReducto,
   suno: generateSuno,
-  twocaptcha: generateTwocaptcha,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

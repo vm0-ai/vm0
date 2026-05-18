@@ -197,7 +197,6 @@
     "generate:builtwith": "tsx src/index.ts builtwith",
     "generate:clado": "tsx src/index.ts clado",
     "generate:diffbot": "tsx src/index.ts diffbot",
-    "generate:flightapi": "tsx src/index.ts flightapi",
     "generate:google-maps": "tsx src/index.ts google-maps",
     "generate:hunter": "tsx src/index.ts hunter",
     "generate:mapbox": "tsx src/index.ts mapbox",
@@ -205,10 +204,8 @@
     "generate:nyne": "tsx src/index.ts nyne",
     "generate:openrouter": "tsx src/index.ts openrouter",
     "generate:openweather": "tsx src/index.ts openweather",
-    "generate:postalform": "tsx src/index.ts postalform",
     "generate:reducto": "tsx src/index.ts reducto",
-    "generate:suno": "tsx src/index.ts suno",
-    "generate:twocaptcha": "tsx src/index.ts twocaptcha"
+    "generate:suno": "tsx src/index.ts suno"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

@@ -1,15 +1,17 @@
 /**
  * Generate Nyne firewall config.
  *
- * Data source: https://nyne.ai
+ * Data source: https://api.nyne.ai/documentation
  *
- * Nyne authenticates with a Bearer token on `https://api.nyne.ai/...`.
+ * Nyne authenticates with two headers, `X-API-Key` and `X-API-Secret`, on
+ * `https://api.nyne.ai/...` (no Bearer token).
  */
 
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://nyne.ai";
-const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
+const DOCS_URL = "https://api.nyne.ai/documentation";
+const PLACEHOLDER_KEY = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
+const PLACEHOLDER_SECRET = "SafeLocalCoffeeSafeLocalCoffeeSafeLocal";
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -25,14 +27,16 @@ function generateTypeScript(): string {
     '  name: "nyne",',
     '  description: "Nyne API",',
     "  placeholders: {",
-    `    NYNE_TOKEN: "${PLACEHOLDER_VALUE}",`,
+    `    NYNE_API_KEY: "${PLACEHOLDER_KEY}",`,
+    `    NYNE_API_SECRET: "${PLACEHOLDER_SECRET}",`,
     "  },",
     "  apis: [",
     "    {",
     '      base: "https://api.nyne.ai",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.NYNE_TOKEN }}",',
+    '          "X-API-Key": "${{ secrets.NYNE_API_KEY }}",',
+    '          "X-API-Secret": "${{ secrets.NYNE_API_SECRET }}",',
     "        },",
     "      },",
     "      permissions: [],",

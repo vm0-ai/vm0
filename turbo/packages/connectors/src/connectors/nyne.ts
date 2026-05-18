@@ -5,18 +5,23 @@ export const nyne = {
     label: "Nyne",
     category: "sales-crm-business-operations",
     environmentMapping: {
-      NYNE_TOKEN: "$secrets.NYNE_TOKEN",
+      NYNE_API_KEY: "$secrets.NYNE_API_KEY",
+      NYNE_API_SECRET: "$secrets.NYNE_API_SECRET",
     },
     helpText:
       "Connect Nyne to orchestrate AI sales agents that prospect, qualify, and book meetings",
     authMethods: {
       "api-token": {
-        label: "API Key",
+        label: "API Credentials",
         helpText:
-          "1. Sign in to [Nyne](https://nyne.ai)\n2. Open the **API keys** page in your workspace settings\n3. Click **Create Key**, name it, and copy the value\n4. Use it as a Bearer token on requests to `https://api.nyne.ai`",
+          "1. Sign in at [nyne.ai](https://nyne.ai)\n2. Open your dashboard → **API Keys**\n3. Copy your **API Key** and **API Secret**\n4. Nyne authenticates each request with both `X-API-Key` and `X-API-Secret` headers on `https://api.nyne.ai`",
         secrets: {
-          NYNE_TOKEN: {
+          NYNE_API_KEY: {
             label: "API Key",
+            required: true,
+          },
+          NYNE_API_SECRET: {
+            label: "API Secret",
             required: true,
           },
         },

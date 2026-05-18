@@ -14,6 +14,6 @@ export const nyneHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "NYNE_TOKEN";
+    return "NYNE_API_KEY";
   },
 };

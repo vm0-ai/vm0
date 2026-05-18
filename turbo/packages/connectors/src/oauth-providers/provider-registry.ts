@@ -68,7 +68,6 @@ import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
-import { flightapiHandler } from "./providers/flightapi-handler";
 import { freshdeskHandler } from "./providers/freshdesk-handler";
 import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
@@ -157,7 +156,6 @@ import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
 import { togetherHandler } from "./providers/together-handler";
 import { twentyHandler } from "./providers/twenty-handler";
-import { twocaptchaHandler } from "./providers/twocaptcha-handler";
 import { typeformHandler } from "./providers/typeform-handler";
 import { youtubeHandler } from "./providers/youtube-handler";
 import { zapierHandler } from "./providers/zapier-handler";
@@ -178,7 +176,6 @@ import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
 import { posthogHandler } from "./providers/posthog-handler";
-import { postalformHandler } from "./providers/postalform-handler";
 import { prismaPostgresHandler } from "./providers/prisma-postgres-handler";
 import { pdf4meHandler } from "./providers/pdf4me-handler";
 import { pandadocHandler } from "./providers/pandadoc-handler";
@@ -437,7 +434,6 @@ export const PROVIDER_HANDLERS: Record<
   builtwith: builtwithHandler,
   clado: cladoHandler,
   diffbot: diffbotHandler,
-  flightapi: flightapiHandler,
   "google-maps": googleMapsHandler,
   hunter: hunterHandler,
   mapbox: mapboxHandler,
@@ -445,10 +441,8 @@ export const PROVIDER_HANDLERS: Record<
   nyne: nyneHandler,
   openrouter: openrouterHandler,
   openweather: openweatherHandler,
-  postalform: postalformHandler,
   reducto: reductoHandler,
   suno: sunoHandler,
-  twocaptcha: twocaptchaHandler,
 };
 
 /**
