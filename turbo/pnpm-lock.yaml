@@ -28,6 +28,7 @@ overrides:
   smol-toml: '>=1.6.1'
   '@opentelemetry/instrumentation': '>=0.213.0'
   zod: 4.3.6
+  ws: '>=8.20.1'
   postcss: '>=8.5.10'
   protobufjs@7.5.5: 7.5.6
   '@protobufjs/utf8@1.1.0': 1.1.1
