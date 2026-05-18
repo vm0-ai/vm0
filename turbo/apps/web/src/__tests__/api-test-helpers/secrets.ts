@@ -1,8 +1,10 @@
-import { POST as setVariableRoute } from "../../../app/api/zero/variables/route";
 import { getAuthContext } from "../../lib/auth/get-auth-context";
 import { resolveOrg } from "../../lib/zero/org/resolve-org";
-import { insertTestUserSecret } from "../db-test-seeders/secrets";
-import { createTestRequest } from "./core";
+import {
+  insertTestUserSecret,
+  insertTestUserVariable,
+} from "../db-test-seeders/secrets";
+import { getTestAuthContext } from "./core";
 
 // ============================================================================
 // Secret Test Helpers
@@ -55,7 +57,7 @@ export async function createTestSecret(
 // ============================================================================
 
 /**
- * Create or update a platform variable via API route handler.
+ * Create or update a platform variable for the mocked authenticated user.
  *
  * @param name - The variable name (uppercase with underscores)
  * @param value - The variable value
@@ -74,20 +76,17 @@ export async function createTestVariable(
   createdAt: string;
   updatedAt: string;
 }> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/zero/variables",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, value, description }),
-    },
-  );
-  const response = await setVariableRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create variable: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  const { userId, orgId } = await getTestAuthContext();
+  const variable = await insertTestUserVariable({
+    orgId,
+    userId,
+    name,
+    value,
+    description: description ?? null,
+  });
+  return {
+    ...variable,
+    createdAt: variable.createdAt.toISOString(),
+    updatedAt: variable.updatedAt.toISOString(),
+  };
 }

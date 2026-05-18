@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import { POST as createComposeRoute } from "../../composes/route";
-import { POST as setVariableRoute } from "../../../zero/variables/route";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
@@ -48,6 +47,7 @@ import {
   seedTestRun,
   seedStalePendingRun,
 } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { insertTestUserVariable } from "../../../../../src/__tests__/db-test-seeders/secrets";
 import { reloadEnv } from "../../../../../src/env";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Route-level setup for feature-switch override state
@@ -1422,19 +1422,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
      * Helper to create a server-stored variable
      */
     async function createVariable(name: string, value: string): Promise<void> {
-      const request = createTestRequest(
-        "http://localhost:3000/api/zero/variables",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, value }),
-        },
-      );
-      const response = await setVariableRoute(request);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to create variable: ${error.error?.message}`);
-      }
+      await insertTestUserVariable({
+        orgId: user.orgId,
+        userId: user.userId,
+        name,
+        value,
+      });
     }
 
     it("should succeed when required vars are stored on server (not provided via CLI)", async () => {

@@ -1320,4 +1320,11 @@ describe("API backend rewrites", () => {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
+
+  it("should match the variables route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/variables/extra")).toBe(
+      false,
+    );
+  });
 });

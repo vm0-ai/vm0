@@ -183,13 +183,45 @@ export async function insertTestUserVariable(params: {
   userId: string;
   name: string;
   value?: string;
-}): Promise<void> {
+  description?: string | null;
+}): Promise<{
+  id: string;
+  name: string;
+  value: string;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}> {
   initServices();
-  await globalThis.services.db.insert(variables).values({
-    name: params.name,
-    value: params.value ?? "test-variable-value",
-    userId: params.userId,
-    orgId: params.orgId,
-    description: "test seed",
-  });
+  const [variable] = await globalThis.services.db
+    .insert(variables)
+    .values({
+      name: params.name,
+      value: params.value ?? "test-variable-value",
+      userId: params.userId,
+      orgId: params.orgId,
+      description: params.description ?? "test seed",
+    })
+    .onConflictDoUpdate({
+      target: [variables.orgId, variables.userId, variables.name],
+      set: {
+        value: params.value ?? "test-variable-value",
+        description: params.description ?? "test seed",
+        updatedAt: new Date(),
+      },
+    })
+    .returning({
+      id: variables.id,
+      name: variables.name,
+      value: variables.value,
+      description: variables.description,
+      createdAt: variables.createdAt,
+      updatedAt: variables.updatedAt,
+    });
+
+  if (!variable) {
+    throw new Error("insertTestUserVariable: insert failed");
+  }
+
+  return variable;
 }

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { DELETE } from "../route";
-import { POST, GET } from "../../route";
 import {
   createTestRequest,
   createTestOrg,
@@ -28,10 +27,6 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function variableUrl(): string {
-  return `http://localhost:3000/api/zero/variables`;
-}
-
 function variableByNameUrl(name: string): string {
   return `http://localhost:3000/api/zero/variables/${name}`;
 }
@@ -43,26 +38,17 @@ describe("DELETE /api/zero/variables/:name", () => {
 
   it("should delete variable successfully", async () => {
     const userId = uniqueId("zvar-del-ok");
-    await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
-    // Create a variable
-    await POST(
-      createTestRequest(variableUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "DELETE_ME",
-          value: "to-be-deleted",
-        }),
-      }),
-    );
-
-    // Verify it exists via GET list
-    const listResponse = await GET(
-      createTestRequest(variableUrl(), { method: "GET" }),
-    );
-    const listData = await listResponse.json();
-    expect(listData.variables).toHaveLength(1);
+    await insertTestUserVariable({
+      orgId,
+      userId,
+      name: "DELETE_ME",
+      value: "to-be-deleted",
+    });
+    expect(
+      await findTestVariablesByOrgAndName({ orgId, name: "DELETE_ME" }),
+    ).toHaveLength(1);
 
     // Delete it
     const deleteResponse = await DELETE(
@@ -72,12 +58,9 @@ describe("DELETE /api/zero/variables/:name", () => {
     );
     expect(deleteResponse.status).toBe(204);
 
-    // Verify it's gone
-    const listResponse2 = await GET(
-      createTestRequest(variableUrl(), { method: "GET" }),
-    );
-    const listData2 = await listResponse2.json();
-    expect(listData2.variables).toEqual([]);
+    expect(
+      await findTestVariablesByOrgAndName({ orgId, name: "DELETE_ME" }),
+    ).toEqual([]);
   });
 
   it("should return 404 for nonexistent variable", async () => {
