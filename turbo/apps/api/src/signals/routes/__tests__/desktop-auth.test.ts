@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
+import { mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 
 const context = testContext();
@@ -54,14 +54,6 @@ function handoffRowsForUser(userId: string) {
   return writeDb
     .select()
     .from(desktopAuthHandoffCodes)
-    .where(eq(desktopAuthHandoffCodes.userId, userId));
-}
-
-async function expireHandoffRowsForUser(userId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .update(desktopAuthHandoffCodes)
-    .set({ expiresAt: new Date(now() - 1000) })
     .where(eq(desktopAuthHandoffCodes.userId, userId));
 }
 
@@ -147,8 +139,10 @@ describe("desktop auth routes", () => {
   });
 
   it("rejects expired handoff codes", async () => {
+    const createdAt = new Date("2026-05-18T00:00:00.000Z");
     const userId = `user_desktop_${randomUUID()}`;
     mockSession(userId);
+    mockNow(createdAt);
     const handoff = await accept(
       handoffClient().create({
         body: {},
@@ -157,7 +151,7 @@ describe("desktop auth routes", () => {
       [200],
     );
     const code = codeFromCallbackUrl(handoff.body.callbackUrl);
-    await expireHandoffRowsForUser(userId);
+    mockNow(new Date(createdAt.getTime() + 61_000));
 
     const response = await accept(
       consumeClient().consume({
