@@ -74,4 +74,4 @@ echo -e "\033[0;35m[stripe]\033[0m Webhook forwarding → localhost:${PORT}/api/
 
 # Start Next.js dev server
 cd "$WEB_APP_DIR"
-exec env VM0_API_URL="$TUNNEL_URL" npx next dev --turbo --port "$PORT"
+env VM0_API_URL="$TUNNEL_URL" npx next dev --turbo --port "$PORT"
