@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -56,8 +56,19 @@ struct ControlSinkState {
 }
 
 struct ConnectedControlSink {
-    stream: Arc<Mutex<UnixStream>>,
+    stream: Arc<ControlStreamState>,
     shutdown: UnixStream,
+}
+
+struct ControlStreamState {
+    stream: Mutex<UnixStream>,
+    locked: Mutex<bool>,
+    ready: Condvar,
+}
+
+struct ControlStreamGuard<'a> {
+    state: &'a ControlStreamState,
+    stream: MutexGuard<'a, UnixStream>,
 }
 
 enum ControlSinkInner {
@@ -313,7 +324,7 @@ impl ControlSinkState {
     fn wait_for_stream(
         &self,
         deadline: Instant,
-    ) -> Result<Arc<Mutex<UnixStream>>, (ProcessControlStatus, String)> {
+    ) -> Result<Arc<ControlStreamState>, (ProcessControlStatus, String)> {
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             if !self.active.load(Ordering::Acquire) {
@@ -406,13 +417,71 @@ impl ConnectedControlSink {
     fn new(stream: UnixStream) -> io::Result<Self> {
         let shutdown = stream.try_clone()?;
         Ok(Self {
-            stream: Arc::new(Mutex::new(stream)),
+            stream: Arc::new(ControlStreamState::new(stream)),
             shutdown,
         })
     }
 
     fn shutdown(&self) {
         let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+impl ControlStreamState {
+    fn new(stream: UnixStream) -> Self {
+        Self {
+            stream: Mutex::new(stream),
+            locked: Mutex::new(false),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn lock_until(&self, deadline: Instant) -> io::Result<ControlStreamGuard<'_>> {
+        let mut locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if !*locked {
+                *locked = true;
+                drop(locked);
+                let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+                return Ok(ControlStreamGuard {
+                    state: self,
+                    stream,
+                });
+            }
+            let Some(wait) = duration_until(deadline) else {
+                return Err(request_timeout_error());
+            };
+            let (next_locked, wait_result) = self
+                .ready
+                .wait_timeout(locked, wait)
+                .unwrap_or_else(|e| e.into_inner());
+            locked = next_locked;
+            if wait_result.timed_out() {
+                return Err(request_timeout_error());
+            }
+        }
+    }
+}
+
+impl std::ops::Deref for ControlStreamGuard<'_> {
+    type Target = UnixStream;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stream
+    }
+}
+
+impl std::ops::DerefMut for ControlStreamGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.stream
+    }
+}
+
+impl Drop for ControlStreamGuard<'_> {
+    fn drop(&mut self) {
+        let mut locked = self.state.locked.lock().unwrap_or_else(|e| e.into_inner());
+        *locked = false;
+        self.state.ready.notify_one();
     }
 }
 
@@ -464,24 +533,29 @@ fn forward_control_request(
     } = request;
     let (status, diagnostic, mark_failed) = {
         match sink.wait_for_stream(deadline) {
-            Ok(stream) => {
-                let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
-                if !sink.active.load(Ordering::Acquire) {
-                    (
-                        ProcessControlStatus::Inactive,
-                        "process operation is not active".to_owned(),
-                        false,
-                    )
-                } else if request_expired(deadline) {
-                    (
-                        ProcessControlStatus::SinkTimeout,
-                        REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
-                        false,
-                    )
-                } else {
-                    forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
+            Ok(stream) => match stream.lock_until(deadline) {
+                Ok(mut stream) => {
+                    if !sink.active.load(Ordering::Acquire) {
+                        (
+                            ProcessControlStatus::Inactive,
+                            "process operation is not active".to_owned(),
+                            false,
+                        )
+                    } else if request_expired(deadline) {
+                        (
+                            ProcessControlStatus::SinkTimeout,
+                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                            false,
+                        )
+                    } else {
+                        forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
+                    }
                 }
-            }
+                Err(error) if is_timeout(&error) => {
+                    (ProcessControlStatus::SinkTimeout, error.to_string(), false)
+                }
+                Err(error) => (ProcessControlStatus::SinkError, error.to_string(), false),
+            },
             Err((status, diagnostic)) => (status, diagnostic, false),
         }
     };
@@ -604,7 +678,11 @@ fn control_sink_io_timeout(deadline: Instant) -> io::Result<Duration> {
     duration_until(deadline)
         .map(|remaining| remaining.min(CONTROL_SINK_IO_TIMEOUT))
         .filter(|timeout| !timeout.is_zero())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, REQUEST_TIMEOUT_DIAGNOSTIC))
+        .ok_or_else(request_timeout_error)
+}
+
+fn request_timeout_error() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, REQUEST_TIMEOUT_DIAGNOSTIC)
 }
 
 fn write_control_request(
@@ -1289,7 +1367,7 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1321,7 +1399,7 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1354,7 +1432,7 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
 
@@ -1403,7 +1481,7 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock().unwrap_or_else(|e| e.into_inner());
+        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
         let pending_slot = sink.reserve_pending_slot().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -1427,7 +1505,6 @@ mod tests {
             }
         });
 
-        drop(stream_guard);
         let (msg_type, seq, status, message_id, diagnostic) =
             read_process_control_result(&mut host);
         worker.join().unwrap();
@@ -1450,6 +1527,7 @@ mod tests {
                 | io::ErrorKind::UnexpectedEof
                 | io::ErrorKind::ConnectionReset
         ));
+        drop(stream_guard);
     }
 
     #[test]

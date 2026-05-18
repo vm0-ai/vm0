@@ -50,6 +50,10 @@
 //! `process_control_result.status` uses 0=delivered, 1=inactive,
 //! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
 //! 6=sink_timeout, 7=queue_full, and 8=sink_error.
+//! `process_control.request_timeout_ms` is the caller-visible budget, counted
+//! from guest receipt through local sink connection, request write, and response
+//! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
+//! saturate values that do not fit in `u32`.
 
 mod error;
 mod frame;
