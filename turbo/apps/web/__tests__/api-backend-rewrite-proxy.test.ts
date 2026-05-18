@@ -32,6 +32,7 @@ const { proxyRequest } =
   require("next/dist/server/lib/router-utils/proxy-request.js") as {
     readonly proxyRequest: ProxyRequest;
   };
+const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -234,6 +235,31 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent composes metadata paths", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/composes/${AGENT_COMPOSE_ID}/metadata`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/not-a-uuid/metadata"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/list/metadata"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/versions/metadata"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/composes/${AGENT_COMPOSE_ID}`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/composes/${AGENT_COMPOSE_ID}/metadata/extra`,
+      ),
+    ).toBe(false);
   });
 
   it("matches only UUID-shaped agent run cancel paths", () => {

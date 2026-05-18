@@ -33,6 +33,10 @@ const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH_RE = /^\/api\/agent\/checkpoints\/[^/]+$/;
 const AGENT_COMPOSES_LIST_REWRITE_SOURCE = "/api/agent/composes/list";
+const AGENT_COMPOSES_METADATA_REWRITE_SOURCE = `/api/agent/composes/:id(${UUID_PATH_SEGMENT_PATTERN})/metadata`;
+const AGENT_COMPOSES_METADATA_PATH_RE = new RegExp(
+  `^/api/agent/composes/${UUID_PATH_SEGMENT_PATTERN}/metadata$`,
+);
 const AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE = "/api/agent/composes/versions";
 const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
@@ -68,6 +72,11 @@ export const API_BACKEND_REWRITES = [
     AGENT_CHECKPOINT_PATH_RE,
   ],
   [AGENT_COMPOSES_LIST_REWRITE_SOURCE, "/api/agent/composes/list"],
+  [
+    AGENT_COMPOSES_METADATA_REWRITE_SOURCE,
+    "/api/agent/composes/:id/metadata",
+    AGENT_COMPOSES_METADATA_PATH_RE,
+  ],
   [AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE, "/api/agent/composes/versions"],
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],

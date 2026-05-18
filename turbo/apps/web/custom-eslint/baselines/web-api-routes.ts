@@ -8,7 +8,6 @@
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/composes/[id]/instructions/route.ts",
-  "app/api/agent/composes/[id]/metadata/route.ts",
   "app/api/agent/composes/[id]/route.ts",
   "app/api/agent/composes/route.ts",
   "app/api/agent/runs/[id]/events/route.ts",

@@ -24,6 +24,7 @@ const { getPathMatch } =
 
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH = "/api/agent/checkpoints/checkpoint_123";
 const AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS = [
@@ -38,6 +39,16 @@ const AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
   "/api/agent/composes/lists",
   "/api/agent/composes",
   "/api/agent/composes/versions",
+] as const;
+const AGENT_COMPOSES_METADATA_REWRITE_SOURCE =
+  "/api/agent/composes/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/metadata";
+const AGENT_COMPOSES_METADATA_PATH = `/api/agent/composes/${AGENT_COMPOSE_ID}/metadata`;
+const AGENT_COMPOSES_METADATA_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/composes/not-a-uuid/metadata",
+  "/api/agent/composes/list/metadata",
+  "/api/agent/composes/versions/metadata",
+  `/api/agent/composes/${AGENT_COMPOSE_ID}`,
+  `/api/agent/composes/${AGENT_COMPOSE_ID}/metadata/extra`,
 ] as const;
 const AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE = "/api/agent/composes/versions";
 const AGENT_COMPOSES_VERSIONS_PATH = "/api/agent/composes/versions";
@@ -1069,6 +1080,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_COMPOSES_LIST_PATH)).toStrictEqual({});
     for (const pathname of AGENT_COMPOSES_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent composes metadata rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_COMPOSES_METADATA_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_COMPOSES_METADATA_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/composes/:id/metadata",
+    });
+
+    const matcher = getPathMatch(AGENT_COMPOSES_METADATA_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_COMPOSES_METADATA_PATH)).toStrictEqual({
+      id: AGENT_COMPOSE_ID,
+    });
+    for (const pathname of AGENT_COMPOSES_METADATA_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

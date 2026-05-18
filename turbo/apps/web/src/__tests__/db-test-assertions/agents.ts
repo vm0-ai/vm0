@@ -50,33 +50,6 @@ export async function getTestZeroAgentId(
   return row.id;
 }
 
-/**
- * Read a zero_agents row by org + agent name.
- */
-export async function getTestZeroAgent(
-  orgId: string,
-  name: string,
-): Promise<
-  | {
-      displayName: string | null;
-      description: string | null;
-      sound: string | null;
-    }
-  | undefined
-> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-    })
-    .from(zeroAgents)
-    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, name)))
-    .limit(1);
-  return row;
-}
-
 // ---------------------------------------------------------------------------
 // Session / conversation assertions (migrated from api-test-helpers/agents.ts)
 // ---------------------------------------------------------------------------

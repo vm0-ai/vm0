@@ -8,13 +8,12 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestCompose,
-  createTestRequest,
   getTestTelegramBotToken,
   updateOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
-import { PATCH as updateComposeMetadata } from "../../../agent/composes/[id]/metadata/route";
 
 const context = testContext();
 
@@ -92,18 +91,13 @@ function registerRequest(body: Record<string, unknown>) {
   });
 }
 
-async function updateAgentDisplayName(composeId: string): Promise<void> {
-  const response = await updateComposeMetadata(
-    createTestRequest(
-      `http://localhost:3000/api/agent/composes/${composeId}/metadata`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayName: TEST_AGENT_DISPLAY_NAME }),
-      },
-    ),
-  );
-  expect(response.status).toBe(200);
+async function updateAgentDisplayName(
+  orgId: string,
+  name: string,
+): Promise<void> {
+  await createTestZeroAgent(orgId, name, {
+    displayName: TEST_AGENT_DISPLAY_NAME,
+  });
 }
 
 /** Generate a unique numeric bot ID for test isolation */
@@ -152,11 +146,11 @@ describe("POST /api/telegram/register", () => {
   });
 
   it("creates installation and sets webhook on valid token", async () => {
-    await context.setupUser();
+    const user = await context.setupUser();
 
     const botId = testBotId();
     const { composeId, name } = await createTestCompose(uniqueId("agent"));
-    await updateAgentDisplayName(composeId);
+    await updateAgentDisplayName(user.orgId, name);
 
     const getMeHandler = telegramGetMe(botId, `bot_${botId}`);
     const setWebhookHandler = telegramSetWebhook(true);
