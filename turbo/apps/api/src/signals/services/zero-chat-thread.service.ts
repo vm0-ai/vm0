@@ -62,6 +62,10 @@ const ACTIONABLE_ERROR_SNIPPETS = [
   "usage_limit",
   "usage-limit",
   "UsageLimit",
+  "purchase more credits",
+  "current quota",
+  "insufficient_quota",
+  "billing details",
 ] as const;
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {

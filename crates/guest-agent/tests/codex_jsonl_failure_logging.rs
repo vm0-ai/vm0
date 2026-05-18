@@ -50,6 +50,10 @@ async fn codex_jsonl_error_event_is_written_to_system_log() -> Result<(), Box<dy
     .expect("execute_cli should return promptly")?;
 
     assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    assert_eq!(
+        cli_result.failure_diagnostic.as_deref(),
+        Some("Mock error event for fixture testing")
+    );
     let system_log = std::fs::read_to_string(&system_log_path)?;
     assert!(
         system_log.contains(

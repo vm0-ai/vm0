@@ -599,7 +599,8 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
   it("should use actionable run error over stored transient assistant error", async () => {
     const transientError =
       "Oops, something went wrong. Please try again later.";
-    const usageLimitError = "You've hit your usage limit.";
+    const codexCreditError =
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 3:14 PM.";
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -621,7 +622,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
       {
         status: "failed",
         completedAt: new Date(),
-        error: usageLimitError,
+        error: codexCreditError,
       },
       ["pending", "running"],
     );
@@ -645,8 +646,8 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const assistantMsg = data.chatMessages.find((m: { role: string }) => {
       return m.role === "assistant";
     });
-    expect(assistantMsg.error).toBe(usageLimitError);
-    expect(assistantMsg.content).toBe(usageLimitError);
+    expect(assistantMsg.error).toBe(codexCreditError);
+    expect(assistantMsg.content).toBe(codexCreditError);
   });
 
   it("returns activeRuns with live status for non-terminal runs", async () => {

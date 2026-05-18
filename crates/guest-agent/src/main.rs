@@ -196,7 +196,11 @@ async fn execute(
                     (
                         cli_exit_code,
                         cli_exit_code,
-                        cli_failure_message(cli_exit_code, &cli_result.stderr_lines),
+                        cli_failure_message(
+                            cli_exit_code,
+                            &cli_result.stderr_lines,
+                            cli_result.failure_diagnostic.as_deref(),
+                        ),
                         false,
                     )
                 } else if env::has_api()
@@ -296,7 +300,22 @@ fn write_checkpoint_error_file(message: &str) {
     }
 }
 
-fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
+fn cli_failure_message(
+    code: i32,
+    stderr_lines: &[String],
+    failure_diagnostic: Option<&str>,
+) -> String {
+    if let Some(message) = failure_diagnostic.and_then(|message| {
+        let message = message.trim();
+        if message.is_empty() {
+            None
+        } else {
+            Some(message)
+        }
+    }) {
+        return message.to_string();
+    }
+
     if stderr_lines.is_empty() {
         return format!("Agent exited with code {code}");
     }
@@ -544,7 +563,7 @@ mod tests {
             .chain(std::iter::once(long_line.clone()))
             .chain((0..(MAX_LOGGED_CLI_STDERR_LINES - 2)).map(|i| format!("extra line {i}")))
             .collect::<Vec<_>>();
-        let msg = cli_failure_message(1, &stderr_lines);
+        let msg = cli_failure_message(1, &stderr_lines, None);
         assert!(
             !msg.contains("prefix line"),
             "returned error message should omit older stderr lines"
@@ -605,7 +624,7 @@ mod tests {
             .chain((1..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("line {i}")))
             .collect::<Vec<_>>();
 
-        let msg = cli_failure_message(1, &stderr_lines);
+        let msg = cli_failure_message(1, &stderr_lines, None);
         assert!(
             msg.contains(&exact_limit_line),
             "returned error message should preserve line at exact size limit"
@@ -639,7 +658,7 @@ mod tests {
 
         let prefix = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES - 1);
         let stderr_line = format!("{prefix}é-tail");
-        let msg = cli_failure_message(1, &[stderr_line]);
+        let msg = cli_failure_message(1, &[stderr_line], None);
 
         assert!(
             msg.contains(&prefix),
@@ -666,12 +685,30 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_message_prefers_codex_failure_diagnostic() {
+        let stderr_lines = vec!["background task noise".to_string()];
+        let msg = cli_failure_message(
+            1,
+            &stderr_lines,
+            Some(
+                "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
+            ),
+        );
+
+        assert_eq!(
+            msg,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
+        );
+    }
+
+    #[test]
     fn is_claude_zero_turn_result_requires_all_guards() {
         let zero_turn = cli::CliExecutionResult {
             exit_code: 0,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+            failure_diagnostic: None,
         };
         let one_turn = cli::CliExecutionResult {
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(1) }),

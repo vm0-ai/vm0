@@ -361,7 +361,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   it("should use actionable run error over stored transient paged assistant error", async () => {
     const transientError =
       "Oops, something went wrong. Please try again later.";
-    const usageLimitError = "You've hit your usage limit.";
+    const codexCreditError =
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 3:14 PM.";
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -381,7 +382,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       {
         status: "failed",
         completedAt: new Date(),
-        error: usageLimitError,
+        error: codexCreditError,
       },
       ["pending", "running"],
     );
@@ -405,8 +406,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     const assistantMsg = data.messages.find((m: { role: string }) => {
       return m.role === "assistant";
     });
-    expect(assistantMsg.error).toBe(usageLimitError);
-    expect(assistantMsg.content).toBe(usageLimitError);
+    expect(assistantMsg.error).toBe(codexCreditError);
+    expect(assistantMsg.content).toBe(codexCreditError);
   });
 
   it("should not expose run-level error on event-backed assistant rows", async () => {
