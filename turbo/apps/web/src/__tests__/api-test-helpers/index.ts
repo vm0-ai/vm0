@@ -65,6 +65,7 @@ export {
   insertTestAssistantEventMessages,
   setTestChatMessageAttachFiles,
   setTestChatMessageContent,
+  getTestAgentSessionArtifacts,
   setTestChatThreadLastReadAt,
   setTestChatThreadLastReadMessageId,
   setTestChatThreadModelPin,

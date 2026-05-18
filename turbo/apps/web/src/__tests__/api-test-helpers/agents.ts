@@ -52,6 +52,7 @@ export {
 
 export {
   getTestAgentSessionWithConversation,
+  getTestAgentSessionArtifacts,
   getTestAgentComposeName,
   getTestChatThreadLastReadAt,
   getTestChatThreadLastReadMessageId,

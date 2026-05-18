@@ -26,7 +26,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/[id]/telemetry/system-log/route.ts",
   "app/api/agent/runs/queue/route.ts",
   "app/api/agent/runs/route.ts",
-  "app/api/agent/sessions/[id]/route.ts",
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
   "app/api/cli/auth/test-approve/route.ts",
@@ -215,7 +214,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "234c1ad5132649ff35110ee6d10c4926dc83f89c17e9c667b71682598b03dc3a";
+  "49e80ac1285d68825660aa6094542889a6c0f3ef1a0d9b3ddb08316ca7df5fe7";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

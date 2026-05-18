@@ -23,10 +23,10 @@ import {
   findTestRunnerJobEntry,
   findTestStorage,
   getTestAgentSessionWithConversation,
+  getTestAgentSessionArtifacts,
   createTestSecret,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
-import { GET as getSessionById } from "../../sessions/[id]/route";
 import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
@@ -1762,16 +1762,13 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await findTestRunRecord(data.runId);
       expect(run?.sessionId).toBeTruthy();
 
-      const sessionRequest = createTestRequest(
-        `http://localhost:3000/api/agent/sessions/${run!.sessionId!}`,
-      );
-      const sessionResponse = await getSessionById(sessionRequest);
-      const sessionBody = await sessionResponse.json();
-      expect(sessionResponse.status).toBe(200);
-      expect(sessionBody.artifactNames).toEqual(
-        expect.arrayContaining([primary, "memory"]),
-      );
-      expect(sessionBody.artifactNames).toHaveLength(2);
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId!);
+      expect(
+        artifacts.map((artifact) => {
+          return artifact.name;
+        }),
+      ).toEqual(expect.arrayContaining([primary, "memory"]));
+      expect(artifacts).toHaveLength(2);
     });
   });
 

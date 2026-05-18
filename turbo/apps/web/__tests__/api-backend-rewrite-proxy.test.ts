@@ -138,6 +138,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/auth")).toBe(false);
   });
 
+  it("matches only one segment for agent session by-id rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/sessions/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/sessions")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/sessions/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/session/abc")).toBe(false);
+  });
+
   it("routes hosted-site deployment endpoints to the API backend", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),

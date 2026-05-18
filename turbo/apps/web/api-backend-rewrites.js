@@ -21,9 +21,16 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/me\/model-providers\/[^/]+$/;
+const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
+const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
   ["/api/auth/me", "/api/auth/me"],
+  [
+    AGENT_SESSION_ID_REWRITE_SOURCE,
+    "/api/agent/sessions/:id",
+    AGENT_SESSION_ID_PATH_RE,
+  ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
