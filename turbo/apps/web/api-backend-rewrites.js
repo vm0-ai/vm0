@@ -91,6 +91,10 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/event-consumers/telegram-typing",
     "/api/internal/event-consumers/telegram-typing",
   ],
+  [
+    "/api/internal/event-consumers/voice-chat",
+    "/api/internal/event-consumers/voice-chat",
+  ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],

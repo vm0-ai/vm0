@@ -339,6 +339,20 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the internal event consumer voice chat rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chat"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/voice-chat/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chats"),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(
