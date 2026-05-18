@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../../app/api/zero/onboarding/setup/route";
-import { GET as getOnboardingStatus } from "../../app/api/zero/onboarding/status/route";
 import { GET as listAgents } from "../../app/api/zero/agents/route";
 import { GET as getUserConnectors } from "../../app/api/zero/agents/[id]/user-connectors/route";
 import {
@@ -59,14 +58,6 @@ describe("POST /api/zero/onboarding/setup", () => {
     // Verify default agent was set
     const defaultAgent = await getOrgDefaultAgent(orgId);
     expect(defaultAgent).toBe(data.agentId);
-
-    // Verify onboarding status reports complete
-    const statusRes = await getOnboardingStatus(
-      createTestRequest(`${BASE}/onboarding/status`),
-    );
-    const status = await statusRes.json();
-    expect(status.needsOnboarding).toBe(false);
-    expect(status.hasDefaultAgent).toBe(true);
   });
 
   it("should be idempotent — return same agentId on second call", async () => {

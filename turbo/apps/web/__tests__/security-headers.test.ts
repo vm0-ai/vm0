@@ -105,6 +105,13 @@ const ZERO_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/model-providers/anthropic-api-key",
   "/api/zero/model-provider",
 ] as const;
+const ONBOARDING_STATUS_REWRITE_SOURCE = "/api/zero/onboarding/status";
+const ONBOARDING_STATUS_PATH = "/api/zero/onboarding/status";
+const ONBOARDING_STATUS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/onboarding/status/extra",
+  "/api/zero/onboarding",
+  "/api/zero/onboarding/setup",
+] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
@@ -473,6 +480,10 @@ describe("API backend rewrites", () => {
         {
           source: "/api/zero/image-io/generate",
           destination: "https://api.example.test/api/zero/image-io/generate",
+        },
+        {
+          source: ONBOARDING_STATUS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/onboarding/status",
         },
         {
           source: "/api/zero/presentation-io/generate",
@@ -1295,6 +1306,35 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero realtime token path", () => {
     expect(matchesApiBackendRewritePath(REALTIME_TOKEN_PATH)).toBe(true);
     for (const pathname of REALTIME_TOKEN_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact onboarding status rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ONBOARDING_STATUS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ONBOARDING_STATUS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/onboarding/status",
+    });
+
+    const matcher = getPathMatch(ONBOARDING_STATUS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(ONBOARDING_STATUS_PATH)).toStrictEqual({});
+    for (const pathname of ONBOARDING_STATUS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact onboarding status path", () => {
+    expect(matchesApiBackendRewritePath(ONBOARDING_STATUS_PATH)).toBe(true);
+    for (const pathname of ONBOARDING_STATUS_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
