@@ -158,6 +158,7 @@ async fn execute(
     {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
+        write_checkpoint_error_file(&msg);
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
         return 1;
     }
@@ -211,7 +212,6 @@ async fn execute(
                             Some(msg),
                         );
                         log_info!(LOG_TAG, "{msg}");
-                        let _ = std::fs::write(paths::checkpoint_error_file(), msg);
                         (cli_exit_code, 1, msg.to_string(), true)
                     } else {
                         (0, 0, String::new(), false)
@@ -242,8 +242,11 @@ async fn execute(
         cli_exit_code,
         exit_code,
         cli_elapsed,
-        last_event_sequence,
-        skip_recovery_checkpoint_for_no_history,
+        CompletionState {
+            last_event_sequence,
+            failure_message: (exit_code != 0).then_some(error_message.as_str()),
+            skip_recovery_checkpoint_for_no_history,
+        },
         telemetry,
         &http,
     )
@@ -279,6 +282,17 @@ fn history_target_unavailable(path: &Path) -> bool {
         Ok(metadata) => metadata.is_file() && metadata.len() == 0,
         Err(e) if e.kind() == ErrorKind::NotFound => true,
         Err(_) => false,
+    }
+}
+
+fn write_checkpoint_error_file(message: &str) {
+    let message = message.trim();
+    if message.is_empty() {
+        return;
+    }
+
+    if let Err(e) = std::fs::write(paths::checkpoint_error_file(), message) {
+        log_warn!(LOG_TAG, "Failed to write checkpoint error file: {e}");
     }
 }
 
@@ -331,18 +345,34 @@ fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(truncated)
 }
 
+struct CompletionState<'a> {
+    last_event_sequence: Option<u32>,
+    failure_message: Option<&'a str>,
+    skip_recovery_checkpoint_for_no_history: bool,
+}
+
 async fn complete_execution(
     cli_exit_code: i32,
     mut exit_code: i32,
     cli_elapsed: Duration,
-    last_event_sequence: Option<u32>,
-    skip_recovery_checkpoint_for_no_history: bool,
+    state: CompletionState<'_>,
     telemetry: &Telemetry,
     http: &HttpClient,
 ) -> i32 {
+    let has_failure_message = state
+        .failure_message
+        .is_some_and(|message| !message.trim().is_empty());
+    if let Some(message) = state.failure_message {
+        write_checkpoint_error_file(message);
+    }
+
     // Check if any events failed to send (before logging execution result)
     if std::path::Path::new(paths::event_error_flag()).exists() {
-        log_error!(LOG_TAG, "Some events failed to send, marking run as failed");
+        let msg = "Some events failed to send, marking run as failed";
+        log_error!(LOG_TAG, "{msg}");
+        if !has_failure_message {
+            write_checkpoint_error_file(msg);
+        }
         exit_code = 1;
     }
 
@@ -396,7 +426,7 @@ async fn complete_execution(
                     http,
                     env::sandbox_id(),
                     env::sandbox_reuse_result(),
-                    last_event_sequence,
+                    state.last_event_sequence,
                 )
                 .await;
                 final_telemetry(telemetry).await;
@@ -409,7 +439,7 @@ async fn complete_execution(
                     "✗ Checkpoint failed ({}s)",
                     cp_start.elapsed().as_secs()
                 );
-                let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
+                write_checkpoint_error_file(&msg);
                 exit_code = 1;
 
                 // Failure path: don't call /complete from guest. The runner's
@@ -422,7 +452,7 @@ async fn complete_execution(
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "{agent_type} completed successfully");
-        } else if skip_recovery_checkpoint_for_no_history {
+        } else if state.skip_recovery_checkpoint_for_no_history {
             log_info!(
                 LOG_TAG,
                 "{agent_type} completed without resumable session history; marking run as failed"
@@ -435,7 +465,7 @@ async fn complete_execution(
         }
 
         if env::has_api() {
-            if skip_recovery_checkpoint_for_no_history {
+            if state.skip_recovery_checkpoint_for_no_history {
                 log_info!(
                     LOG_TAG,
                     "Skipping recovery checkpoint because no session history was created"
@@ -837,11 +867,27 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = HttpClient::new().unwrap();
         let telemetry = Telemetry::spawn(masker, http.clone());
-        let exit_code =
-            complete_execution(0, 1, Duration::ZERO, None, true, &telemetry, &http).await;
+        let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
+        let exit_code = complete_execution(
+            0,
+            1,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: Some(failure_message),
+                skip_recovery_checkpoint_for_no_history: true,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            failure_message
+        );
         assert_eq!(prepare_mock.calls_async().await, 0);
         assert_eq!(checkpoint_mock.calls_async().await, 0);
 
@@ -920,14 +966,26 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = HttpClient::new().unwrap();
         let telemetry = Telemetry::spawn(masker, http.clone());
-        let exit_code =
-            complete_execution(1, 1, Duration::ZERO, None, false, &telemetry, &http).await;
+        let failure_message = "You've hit your usage limit.";
+        let exit_code = complete_execution(
+            1,
+            1,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: Some(failure_message),
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
-        assert!(
-            !std::path::Path::new(paths::checkpoint_error_file()).exists(),
-            "recovery checkpoint failure must not write the success-path checkpoint error file"
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            failure_message
         );
         prepare_mock.assert_calls_async(1).await;
         upload_mock.assert_calls_async(1).await;
