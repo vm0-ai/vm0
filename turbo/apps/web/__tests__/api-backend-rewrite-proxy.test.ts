@@ -508,7 +508,21 @@ describe("API backend rewrite proxy behavior", () => {
 
   it("matches the zero variables rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/variables/extra")).toBe(
+    expect(
+      matchesApiBackendRewritePath("/api/zero/variables/extra/nested"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/variable")).toBe(false);
+  });
+
+  it("matches only one segment for zero variable by-name rewrites", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/variables/USER_TOKEN")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/variables/USER_TOKEN/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/variable/USER_TOKEN")).toBe(
       false,
     );
   });

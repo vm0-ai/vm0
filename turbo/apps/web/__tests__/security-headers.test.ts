@@ -142,6 +142,15 @@ const QUEUE_POSITION_NEXT_NEGATIVE_PATHS = [
   "/api/zero/queue-position/extra",
   "/api/zero/queue-positions",
 ] as const;
+const ZERO_VARIABLES_REWRITE_SOURCE = "/api/zero/variables";
+const ZERO_VARIABLES_PATH = "/api/zero/variables";
+const ZERO_VARIABLES_NEXT_NEGATIVE_PATHS = ["/api/zero/variable"] as const;
+const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
+const ZERO_VARIABLE_BY_NAME_PATH = "/api/zero/variables/USER_TOKEN";
+const ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/variables/USER_TOKEN/extra",
+  "/api/zero/variable/USER_TOKEN",
+] as const;
 const PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE =
   "/api/zero/permission-access-requests";
 const PERMISSION_ACCESS_REQUESTS_PATH = "/api/zero/permission-access-requests";
@@ -641,6 +650,14 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/org/membership-requests",
         },
         {
+          source: ZERO_VARIABLES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/variables",
+        },
+        {
+          source: ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/variables/:name",
+        },
+        {
           source: "/api/zero/voice-io/speech",
           destination: "https://api.example.test/api/zero/voice-io/speech",
         },
@@ -1130,6 +1147,31 @@ describe("API backend rewrites", () => {
       type: "claude-code-oauth-token",
     });
     for (const pathname of ZERO_ME_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for zero variable by-name rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/variables/:name",
+    });
+
+    const matcher = getPathMatch(ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_VARIABLE_BY_NAME_PATH)).toStrictEqual({
+      name: "USER_TOKEN",
+    });
+    for (const pathname of ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -1625,11 +1667,16 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match the variables route for middleware pass-through", async () => {
-    expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/variables/extra")).toBe(
-      false,
-    );
+  it("should match the variables routes for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_VARIABLES_PATH)).toBe(true);
+    for (const pathname of ZERO_VARIABLES_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+
+    expect(matchesApiBackendRewritePath(ZERO_VARIABLE_BY_NAME_PATH)).toBe(true);
+    for (const pathname of ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should match the permission policies route for middleware pass-through", async () => {
