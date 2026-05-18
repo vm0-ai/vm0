@@ -28,6 +28,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/github/oauth/install", "/api/github/oauth/install"],
   ["/api/integrations/github", "/api/integrations/github"],
   ["/api/logs/search", "/api/logs/search"],
+  ["/api/storages/list", "/api/storages/list"],
   ["/api/usage", "/api/usage"],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],

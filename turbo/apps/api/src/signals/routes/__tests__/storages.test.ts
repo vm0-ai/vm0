@@ -5,14 +5,16 @@ import {
   storagesListContract,
 } from "@vm0/api-contracts/contracts/storages";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { createStore } from "ccstate";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -57,6 +59,13 @@ interface StorageFixture {
   readonly storageId: string;
   readonly name: string;
   readonly versionIds: readonly string[];
+}
+
+interface PatFixture {
+  readonly orgId: string;
+  readonly tokenId: string;
+  readonly userId: string;
+  readonly token: string;
 }
 
 function authHeaders() {
@@ -137,10 +146,56 @@ async function deleteStorageFixture(fixture: StorageFixture): Promise<void> {
   await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
 }
 
+async function deletePatFixture(fixture: PatFixture): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .delete(orgMembersCache)
+    .where(
+      and(
+        eq(orgMembersCache.orgId, fixture.orgId),
+        eq(orgMembersCache.userId, fixture.userId),
+      ),
+    );
+  await db.delete(cliTokens).where(eq(cliTokens.id, fixture.tokenId));
+}
+
 const trackStorage = createFixtureTracker<StorageFixture>(deleteStorageFixture);
+const trackPat = createFixtureTracker<PatFixture>(deletePatFixture);
 const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
+
+async function seedPatFixture(): Promise<PatFixture> {
+  const tokenId = randomUUID();
+  const userId = `user_${randomUUID()}`;
+  const orgId = `org_${randomUUID()}`;
+  const seconds = currentSecond();
+  const token = signPatJwtForTests({
+    scope: "cli",
+    userId,
+    orgId,
+    tokenId,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+  const db = store.set(writeDb$);
+
+  await db.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId,
+    name: "test token",
+    expiresAt: new Date(now() + 60_000),
+  });
+  await db.insert(orgMembersCache).values({
+    orgId,
+    userId,
+    role: "admin",
+    cachedAt: new Date(now()),
+  });
+
+  return { orgId, tokenId, userId, token };
+}
 
 async function seedStorage(args: SeedStorageArgs): Promise<StorageFixture> {
   const db = store.set(writeDb$);
@@ -308,6 +363,80 @@ describe("GET /api/storages/list", () => {
     });
   });
 
+  it("isolates artifact listings by authenticated user and organization", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const visible = await trackStorage(
+      seedStorage({
+        orgId,
+        userId,
+        name: "visible-artifact",
+        type: "artifact",
+        versions: [{ size: 20, fileCount: 2 }],
+      }),
+    );
+    await trackStorage(
+      seedStorage({
+        orgId,
+        userId: `user_${randomUUID()}`,
+        name: "same-org-other-user-artifact",
+        type: "artifact",
+        versions: [{ size: 30, fileCount: 3 }],
+      }),
+    );
+    await trackStorage(
+      seedStorage({
+        orgId: `org_${randomUUID()}`,
+        userId,
+        name: "other-org-same-user-artifact",
+        type: "artifact",
+        versions: [{ size: 40, fileCount: 4 }],
+      }),
+    );
+
+    const response = await listClient().list({
+      query: { type: "artifact" },
+      headers: authHeaders(),
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(
+      response.body.map((item: StorageListResponseItem) => {
+        return item.name;
+      }),
+    ).toStrictEqual([visible.name]);
+  });
+
+  it("accepts PAT tokens without storage-specific capabilities", async () => {
+    const pat = await trackPat(seedPatFixture());
+    const artifact = await trackStorage(
+      seedStorage({
+        orgId: pat.orgId,
+        userId: pat.userId,
+        name: "pat-artifact",
+        type: "artifact",
+        versions: [{ size: 25, fileCount: 2 }],
+      }),
+    );
+
+    const response = await listClient().list({
+      query: { type: "artifact" },
+      headers: { authorization: `Bearer ${pat.token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]?.name).toBe(artifact.name);
+  });
+
   it("lists volumes with org-level storage ownership and filters out artifacts", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -369,6 +498,53 @@ describe("GET /api/storages/list", () => {
     }
     expect(response.body).toHaveLength(1);
     expect(response.body[0]?.name).toBe("sandbox-artifact");
+  });
+
+  it("lists volumes for sandbox tokens through the run organization", async () => {
+    const fixture = await seedRunScopedFixture();
+    await trackStorage(
+      seedStorage({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "sandbox-volume",
+        type: "volume",
+        versions: [{ size: 70, fileCount: 7 }],
+      }),
+    );
+    const token = sandboxToken(fixture);
+
+    const response = await listClient().list({
+      query: { type: "volume" },
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]?.name).toBe("sandbox-volume");
+  });
+
+  it("returns 404 when the sandbox token run cannot be resolved", async () => {
+    const token = sandboxToken({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: randomUUID(),
+    });
+
+    const response = await listClient().list({
+      query: { type: "volume" },
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(404);
+    if (response.status !== 404) {
+      return;
+    }
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
   });
 });
 

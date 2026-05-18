@@ -196,6 +196,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/integrations")).toBe(false);
   });
 
+  it("matches the storages list rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/list")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/list/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/lists")).toBe(false);
+  });
+
   it("matches the usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/usage")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/usage/extra")).toBe(false);
