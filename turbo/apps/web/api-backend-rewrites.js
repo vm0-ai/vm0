@@ -29,6 +29,8 @@ const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 
 export const API_BACKEND_REWRITES = [
   ["/api/auth/me", "/api/auth/me"],
+  ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
+  ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
   [
     AGENT_SESSION_ID_REWRITE_SOURCE,
     "/api/agent/sessions/:id",

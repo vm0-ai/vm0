@@ -52,6 +52,8 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/sign-in-token",
   "/:locale/sign-in-token",
+  "/desktop-auth/callback(.*)",
+  "/desktop-auth/consume(.*)",
   "/api/cli/auth/device",
   "/api/cli/auth/token",
   "/api/slack/oauth/(.*)",

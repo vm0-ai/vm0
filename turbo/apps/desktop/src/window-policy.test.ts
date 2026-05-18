@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { resolveDesktopConfig } from "./config";
+import {
+  buildDesktopAuthConsumeUrl,
+  buildDesktopAuthStartUrl,
+  isDesktopAuthStartNavigation,
+  parseDesktopAuthCallback,
+} from "./desktop-auth";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 describe("resolveDesktopConfig", () => {
@@ -57,7 +63,7 @@ describe("window policy", () => {
 
   it("allows app-origin navigation", () => {
     expect(
-      isAllowedAppNavigation("https://www.vm0.ai/sign-in", allowedOrigins),
+      isAllowedAppNavigation("https://www.vm0.ai/connectors", allowedOrigins),
     ).toBe(true);
   });
 
@@ -73,40 +79,16 @@ describe("window policy", () => {
     ).toStrictEqual({ action: "allow-in-app" });
   });
 
-  it("allows Clerk development frontend API navigation inside Electron", () => {
-    expect(
-      isAllowedAppNavigation(
-        "https://mock-instance.clerk.accounts.dev/v1/client",
-        allowedOrigins,
-      ),
-    ).toBe(true);
-  });
-
-  it("opens same-site Clerk frontend API windows inside Electron", () => {
-    expect(
-      decideWindowOpen(
-        "https://clerk.vm0.ai/v1/oauth_callback",
-        allowedOrigins,
-      ),
-    ).toStrictEqual({ action: "allow-in-app" });
-  });
-
-  it("opens Google OAuth windows inside Electron", () => {
+  it("keeps Google OAuth windows external", () => {
     expect(
       decideWindowOpen(
         "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=https%3A%2F%2Fmock-instance.clerk.accounts.dev%2Fv1%2Foauth_callback&state=abc",
         allowedOrigins,
       ),
-    ).toStrictEqual({ action: "allow-in-app" });
-  });
-
-  it("opens GitHub OAuth windows inside Electron", () => {
-    expect(
-      decideWindowOpen(
-        "https://github.com/login/oauth/authorize?client_id=clerk&redirect_uri=https%3A%2F%2Fclerk.vm0.ai%2Fv1%2Foauth_callback&state=abc",
-        allowedOrigins,
-      ),
-    ).toStrictEqual({ action: "allow-in-app" });
+    ).toStrictEqual({
+      action: "open-external",
+      url: "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=https%3A%2F%2Fmock-instance.clerk.accounts.dev%2Fv1%2Foauth_callback&state=abc",
+    });
   });
 
   it("keeps ordinary GitHub links external", () => {
@@ -140,5 +122,58 @@ describe("window policy", () => {
     expect(
       decideWindowOpen("javascript:alert('nope')", allowedOrigins),
     ).toStrictEqual({ action: "deny" });
+  });
+});
+
+describe("desktop auth", () => {
+  const allowedOrigins = new Set(["https://app.vm0.ai", "https://www.vm0.ai"]);
+  const platformUrl = new URL("https://app.vm0.ai");
+  const code = "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
+
+  it("builds the system-browser sign-in URL with a hosted callback", () => {
+    expect(buildDesktopAuthStartUrl(platformUrl)).toBe(
+      "https://app.vm0.ai/sign-in?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fdesktop-auth%2Fcallback",
+    );
+  });
+
+  it("detects app sign-in navigation that should open in the system browser", () => {
+    expect(
+      isDesktopAuthStartNavigation(
+        "https://app.vm0.ai/sign-in",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthStartNavigation(
+        "https://accounts.google.com/signin",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+  });
+
+  it("parses a valid desktop callback code", () => {
+    expect(
+      parseDesktopAuthCallback(`vm0://auth/callback?code=${code}`),
+    ).toStrictEqual({ code });
+  });
+
+  it("rejects unsafe desktop callbacks", () => {
+    expect(parseDesktopAuthCallback("vm0://auth/callback?token=secret")).toBe(
+      null,
+    );
+    expect(parseDesktopAuthCallback("vm0://other/callback?code=abc")).toBe(
+      null,
+    );
+    expect(
+      parseDesktopAuthCallback(
+        "https://app.vm0.ai/desktop-auth/consume?code=abc",
+      ),
+    ).toBe(null);
+  });
+
+  it("builds the Electron web-session consume URL", () => {
+    expect(buildDesktopAuthConsumeUrl(platformUrl, code)).toBe(
+      `https://app.vm0.ai/desktop-auth/consume?code=${code}`,
+    );
   });
 });

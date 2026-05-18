@@ -30,6 +30,7 @@ import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { cronVoiceChatCleanupRoutes } from "./routes/cron-voice-chat-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
+import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
@@ -188,6 +189,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
+  ...desktopAuthRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...internalCallbacksAgentRoutes,

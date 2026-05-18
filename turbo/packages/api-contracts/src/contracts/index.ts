@@ -31,6 +31,12 @@ export {
   type ApiErrorResponse,
 } from "./errors";
 export {
+  desktopAuthConsumeContract,
+  desktopAuthHandoffContract,
+  type DesktopAuthConsumeContract,
+  type DesktopAuthHandoffContract,
+} from "./desktop-auth";
+export {
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
