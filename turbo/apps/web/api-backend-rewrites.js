@@ -441,6 +441,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/usage/members", "/api/zero/usage/members"],
   ["/api/zero/usage/runs", "/api/zero/usage/runs"],
   ["/api/zero/video-io/generate", "/api/zero/video-io/generate"],
+  ["/api/zero/website-io/generate", "/api/zero/website-io/generate"],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
   ["/api/zero/host/deployments/:path*", "/api/zero/host/deployments/:path*"],
   ["/api/zero/voice-io/quota", "/api/zero/voice-io/quota"],

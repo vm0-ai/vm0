@@ -62,7 +62,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
-  "built-in": "file:write",
+  "built-in": ["file:write", "host:write"],
   web: null,
   host: "host:write",
   "local-agent": ["local-agent:read", "local-agent:write"],
@@ -133,6 +133,7 @@ export function buildZeroHelpText(
     "  Update yourself?       zero agent --help",
     "  Manage custom skills?  zero skill --help",
     "  Generate image?        zero built-in generate image --help",
+    "  Generate website?      zero built-in generate website --help",
     "  Generate voice?        zero built-in generate voice --help",
     ...(shouldHideCommand("local-browser", payload)
       ? []

@@ -332,6 +332,19 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show built-in when host:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["host:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("built-in");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
   it("should show the host help example when host:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",

@@ -1,10 +1,7 @@
-import { readFile } from "node:fs/promises";
-
 import { Command } from "commander";
 import chalk from "chalk";
-import { completeHostedSite, prepareHostedSite } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { scanStaticSite } from "../../../lib/host/static-site";
+import { publishStaticSite } from "../../../lib/host/publish-static-site";
 
 interface HostOptions {
   readonly site: string;
@@ -39,77 +36,33 @@ Notes:
   )
   .action(
     withErrorHandler(async (dir: string, options: HostOptions) => {
-      const scan = await scanStaticSite(dir);
-      const totalSize = scan.files.reduce((sum, file) => {
-        return sum + file.size;
-      }, 0);
-
-      if (!options.json) {
-        console.log(chalk.dim(`Preparing ${scan.files.length} files...`));
-      }
-
-      const prepared = await prepareHostedSite({
+      const result = await publishStaticSite({
+        dir,
         site: options.site,
         spaFallback: Boolean(options.spa),
-        files: scan.files.map((file) => {
-          return {
-            path: file.path,
-            size: file.size,
-            sha256: file.sha256,
-            contentType: file.contentType,
-            immutable: file.immutable,
-          };
-        }),
+        onProgress: options.json
+          ? undefined
+          : (progress) => {
+              if (progress.phase === "preparing") {
+                console.log(
+                  chalk.dim(`Preparing ${progress.fileCount} files...`),
+                );
+                return;
+              }
+              console.log(chalk.dim(`Uploading ${progress.path}`));
+            },
       });
 
-      const uploadByPath = new Map(
-        prepared.uploads.map((upload) => {
-          return [upload.path, upload.uploadUrl];
-        }),
-      );
-
-      for (const file of scan.files) {
-        const uploadUrl = uploadByPath.get(file.path);
-        if (!uploadUrl) {
-          throw new Error(`Missing upload URL for ${file.path}`);
-        }
-        if (!options.json) {
-          console.log(chalk.dim(`Uploading ${file.path}`));
-        }
-        const bytes = await readFile(file.absolutePath);
-        const response = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.contentType },
-          body: new Uint8Array(bytes),
-        });
-        if (!response.ok) {
-          throw new Error(
-            `Failed to upload ${file.path} (HTTP ${response.status})`,
-          );
-        }
-      }
-
-      const completed = await completeHostedSite(prepared.deploymentId);
-
       if (options.json) {
-        console.log(
-          JSON.stringify({
-            siteId: completed.siteId,
-            deploymentId: completed.deploymentId,
-            publicSlug: completed.publicSlug,
-            url: completed.url,
-            fileCount: scan.files.length,
-            size: totalSize,
-          }),
-        );
+        console.log(JSON.stringify(result));
         return;
       }
 
       console.log(chalk.green("✓ Hosted site ready"));
-      console.log(chalk.dim(`  Site: ${completed.publicSlug}`));
-      console.log(chalk.dim(`  Deployment: ${completed.deploymentId}`));
-      console.log(chalk.dim(`  Files: ${scan.files.length.toLocaleString()}`));
-      console.log(chalk.dim(`  Size: ${formatBytes(totalSize)}`));
-      console.log(`  URL: ${completed.url}`);
+      console.log(chalk.dim(`  Site: ${result.publicSlug}`));
+      console.log(chalk.dim(`  Deployment: ${result.deploymentId}`));
+      console.log(chalk.dim(`  Files: ${result.fileCount.toLocaleString()}`));
+      console.log(chalk.dim(`  Size: ${formatBytes(result.size)}`));
+      console.log(`  URL: ${result.url}`);
     }),
   );

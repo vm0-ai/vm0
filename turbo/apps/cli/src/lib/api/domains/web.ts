@@ -8,6 +8,7 @@ import type {
   ZeroBuiltInGenerationAcceptedResponse,
   ZeroBuiltInGenerationResponse,
 } from "@vm0/api-contracts/contracts/zero-built-in-generation";
+import type { ZeroWebsiteIoGenerateResponse } from "@vm0/api-contracts/contracts/zero-website-io-generate";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
 
@@ -334,6 +335,15 @@ interface GenerateWebPresentationResult {
     totalTokens: number;
   };
 }
+
+interface GenerateWebWebsiteOptions {
+  prompt: string;
+  template?: string;
+  title?: string;
+  audience?: string;
+}
+
+type GenerateWebWebsiteResult = ZeroWebsiteIoGenerateResponse;
 
 interface PrepareUploadResponse {
   id: string;
@@ -1013,4 +1023,51 @@ export async function generateWebPresentation(
     token,
     fallback: "Failed to generate presentation",
   });
+}
+
+/**
+ * Generate structured website template content from a prompt. The CLI builds
+ * and publishes the generated content through zero host.
+ */
+export async function generateWebWebsite(
+  options: GenerateWebWebsiteOptions,
+): Promise<GenerateWebWebsiteResult> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(
+    new URL("/api/zero/website-io/generate", baseUrl),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: options.prompt,
+        ...(options.template ? { template: options.template } : {}),
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.audience ? { audience: options.audience } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate website",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+
+  return (await response.json()) as GenerateWebWebsiteResult;
 }

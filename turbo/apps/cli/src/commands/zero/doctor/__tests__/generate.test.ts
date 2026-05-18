@@ -260,6 +260,27 @@ describe("zero doctor generate command", () => {
     expect(text).not.toContain("Official provider:");
   });
 
+  it("suggests the built-in website command", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], []),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "website"]);
+
+    const text = output();
+    expect(text).toContain("Website generation choices for current agent");
+    expect(text).toContain("Connectors:");
+    expect(text).toContain("No ready website generation connectors found.");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in website generation");
+    expect(text).toContain("Models: gpt-5.5");
+    expect(text).toContain("Use: zero built-in generate website -h");
+    expect(text).not.toContain("Model: gpt-5.5");
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+  });
+
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes(
