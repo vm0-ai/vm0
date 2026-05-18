@@ -1198,7 +1198,7 @@
           },
           {
             "name": "Zero",
-            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* - 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* - 0 issues created this week, 3 in backlog.\n*Sentry* - connector not configured.\n*Plausible* - connector not configured."
+            "text": "Programado. Se ejecuta de lunes a viernes a las 08:30.\n\nEjecución de esta mañana:\n*GitHub* – 96 PRs mergeados hoy vs. 14,3 de media 🔴 pico del 572 % (refactor de tests coordinado). Issues cerrados: 71 vs. 28,6 de media 🟢.\n*Linear* – 0 issues creados esta semana, 3 en el backlog.\n*Sentry* – conector no configurado.\n*Plausible* – conector no configurado."
           }
         ],
         "steps": [
@@ -1289,7 +1289,7 @@
           },
           {
             "name": "Zero",
-            "text": "Customer 360 - Acme Corp\n\nOverview: Enterprise, 6 months in, primary contact: James Chen (CTO)\nRecent Activity: 3 email threads Apr 1–10, last meeting Apr 8, 2 open Linear issues\nOpen Items: Unanswered email Apr 9 re: API limits, feature request #812 unassigned\n\nSummary:\n• Health: Engaged but technical blockers slowing adoption\n• Risk: No response to Apr 9 email for 5 days\n• Next: Follow up on API limits today, share #812 resolution timeline"
+            "text": "Customer 360 – Acme Corp\n\nResumen: Enterprise, 6 meses como cliente, contacto principal: James Chen (CTO)\nActividad reciente: 3 hilos de email entre el 1 y el 10 de abril, última reunión el 8 de abril, 2 issues abiertos en Linear\nPendientes: Email sin responder del 9 de abril sobre límites de API, solicitud de funcionalidad #812 sin asignar\n\nResumen:\n• Salud: Comprometidos, pero bloqueos técnicos están ralentizando la adopción\n• Riesgo: Sin respuesta al email del 9 de abril durante 5 días\n• Próximos pasos: Hacer seguimiento hoy sobre los límites de API, compartir el plazo de resolución de #812"
           }
         ],
         "steps": [
@@ -1376,7 +1376,7 @@
           },
           {
             "name": "Zero",
-            "text": "No digest sent Apr 13 - no topics met the 2-source threshold."
+            "text": "El 13 de abril no se envió digest – ningún tema alcanzó el umbral de 2 fuentes."
           }
         ],
         "steps": [
@@ -1430,19 +1430,19 @@
       "pr-review": {
         "title": "Revisión de código de PR con inteligencia artificial",
         "description": "Zero lee el diff de su PR, marca problemas críticos como P0, clasifica oportunidades de mejora y los reporta en Slack para que su equipo actúe antes del merge.",
-        "timeSaved": "~30 min saved per PR",
-        "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review - critical issues that must be fixed before merge, plus lower-priority suggestions - posted directly in Slack.",
+        "timeSaved": "~30 min ahorrados por PR",
+        "scenario": "Los PRs se acumulan. Los revisores están ocupados. Alguien pulsa 'aprobar' para vaciar su cola y un bug sutil llega a producción. Zero revisa cada PR a fondo sin cola. Apúntelo a cualquier número de PR y obtendrá una revisión estructurada – problemas críticos que deben corregirse antes del merge, más sugerencias de menor prioridad – publicada directamente en Slack.",
         "promptVariants": [
           {
-            "label": "Standard review",
+            "label": "Revisión estándar",
             "prompt": "@Zero review vm0-ai/vm0#8886"
           },
           {
-            "label": "Focused review",
+            "label": "Revisión enfocada",
             "prompt": "@Zero review vm0-ai/vm0#9215 - focus on the auth middleware changes and any potential security issues."
           },
           {
-            "label": "Re-review after fixes",
+            "label": "Re-revisión tras correcciones",
             "prompt": "@Zero re-review vm0-ai/vm0#8886 - I pushed a second commit addressing your P0 feedback."
           }
         ],
@@ -1453,70 +1453,70 @@
           },
           {
             "name": "Zero",
-            "text": "Review for vm0-ai/vm0#8886 - 1 commit reviewed.\n\nP0 (must fix before merge):\n• createPlainSupportThread has 5 paths that return false instead of throwing - silent failures in prod.\n\nP1 (improvement):\n• Error messages don't include the SDK error code - harder to debug from logs."
+            "text": "Revisión de vm0-ai/vm0#8886 – 1 commit revisado.\n\nP0 (debe corregirse antes del merge):\n• createPlainSupportThread tiene 5 rutas que devuelven false en lugar de lanzar – fallos silenciosos en producción.\n\nP1 (mejora):\n• Los mensajes de error no incluyen el código de error del SDK – dificulta el debug desde logs."
           }
         ],
         "steps": [
           {
-            "title": "Zero reads the full diff",
-            "description": "Zero fetches the PR via GitHub, reads every changed file, and understands the intent of the change from the PR title, description, and commit messages."
+            "title": "Zero lee el diff completo",
+            "description": "Zero obtiene el PR vía GitHub, lee cada archivo modificado y comprende la intención del cambio a partir del título, descripción y mensajes de commit."
           },
           {
-            "title": "Zero ranks issues by severity",
-            "description": "Findings are classified as P0 (must fix before merge - bugs, security issues, silent failures) or P1 (improvements - better error handling, test coverage, naming)."
+            "title": "Zero clasifica los problemas por severidad",
+            "description": "Los hallazgos se clasifican como P0 (corregir antes del merge – bugs, problemas de seguridad, fallos silenciosos) o P1 (mejoras – mejor manejo de errores, cobertura de tests, naming)."
           },
           {
-            "title": "Review posted to Slack",
-            "description": "Zero posts the full review in the Slack thread where it was requested, with specific file references and line numbers so the author knows exactly what to fix."
+            "title": "Revisión publicada en Slack",
+            "description": "Zero publica la revisión completa en el hilo de Slack donde se solicitó, con referencias a archivos y números de línea específicos para que el autor sepa exactamente qué corregir."
           }
         ],
         "nextActions": [
           {
-            "title": "Create a GitHub issue from a finding",
-            "description": "Log a P0 as a tracked issue if it can't be fixed immediately",
+            "title": "Crear un issue de GitHub desde un hallazgo",
+            "description": "Registre un P0 como issue rastreado si no puede corregirse de inmediato",
             "examplePrompt": "@Zero create a GitHub issue for the P0 in that review. Assign to Ethan and label as bug, priority-high."
           },
           {
-            "title": "Re-review after changes",
-            "description": "Verify that P0 feedback was addressed",
+            "title": "Re-revisión tras cambios",
+            "description": "Verifique que se abordó el feedback P0",
             "examplePrompt": "@Zero re-review #8886, second commit - confirm the P0 is resolved."
           },
           {
-            "title": "Check CI status",
-            "description": "See if all checks pass before merging",
+            "title": "Comprobar el estado de CI",
+            "description": "Verifique si todos los checks pasan antes del merge",
             "examplePrompt": "@Zero what's the CI status on vm0-ai/vm0#8886? Is it safe to merge?"
           }
         ],
         "integrations": [
           {
-            "description": "GitHub is required. Zero needs read access to pull requests and the full diff."
+            "description": "GitHub es obligatorio. Zero necesita acceso de lectura a los pull requests y al diff completo."
           },
           {
-            "description": "Slack is where the review request is made and where findings are delivered."
+            "description": "Slack es donde se solicita la revisión y donde se entregan los hallazgos."
           }
         ],
         "tips": [
-          "Include the specific concern in your prompt - 'focus on auth changes' or 'check for race conditions' - to get a more targeted review than a general diff scan.",
-          "Use re-review for iterative PRs. After the author pushes fixes, ask Zero to re-check only the P0 items to confirm they're resolved.",
-          "Set a team norm: Zero review before any merge to main. It catches the class of issues that slip through async human review."
+          "Incluya la preocupación específica en su prompt – 'enfócate en los cambios de auth' o 'verifica race conditions' – para obtener una revisión más dirigida que un escaneo general del diff.",
+          "Use re-revisión para PRs iterativos. Después de que el autor empuje correcciones, pídale a Zero que vuelva a revisar solo los ítems P0 para confirmar que están resueltos.",
+          "Establezca una norma de equipo: revisión de Zero antes de cualquier merge a main. Detecta la clase de problemas que se escapan a la revisión humana asíncrona."
         ]
       },
       "api-performance": {
         "title": "Investigar cuellos de botella en el rendimiento API",
         "description": "Zero extrae datos TP95 de Axiom, identifica los endpoints más lentos, detecta patrones y crea un issue en GitHub con los hallazgos desde Slack.",
-        "timeSaved": "~45 min saved",
-        "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand - pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
+        "timeSaved": "~45 min ahorrados",
+        "scenario": "Los picos de TP95 no siempre te despiertan. Se quedan en tus dashboards de métricas, degradando silenciosamente la experiencia de usuario mientras tu equipo se enfoca en entregar. Zero facilita comprobar el rendimiento de cualquier endpoint bajo demanda – obtener los últimos 7 días de datos TP95, ver qué requests son lentos y conseguir un issue de GitHub creado automáticamente para que nada se pierda.",
         "promptVariants": [
           {
-            "label": "TP95 check",
+            "label": "Comprobación TP95",
             "prompt": "@Zero check Axiom for the POST /api/zero/runs endpoint - show me the TP95 for the last 7 days and flag any events over 5s."
           },
           {
-            "label": "File an issue",
+            "label": "Crear un issue",
             "prompt": "@Zero pull Axiom TP95 for /api/zero/runs over the last 7 days and create a GitHub issue with the findings, assigned to Lancy."
           },
           {
-            "label": "Compare endpoints",
+            "label": "Comparar endpoints",
             "prompt": "@Zero compare the last 7 days of TP95 for /api/zero/runs vs /api/chat/send on Axiom. Which is slower and what's the pattern?"
           }
         ],
@@ -1527,70 +1527,70 @@
           },
           {
             "name": "Zero",
-            "text": "POST /api/zero/runs - 7-day TP95 summary:\n\nWorst: 6,857ms on Apr 12\nSlow events (>5s): 14 total\nRoot cause: sync dispatch pipeline blocks the response - it waits for sandbox allocation before returning.\n\nGitHub issue filed: vm0-ai/vm0#9682, assigned to Lancy."
+            "text": "POST /api/zero/runs – resumen TP95 de los últimos 7 días:\n\nPeor: 6.857 ms el 12 de abril\nEventos lentos (>5 s): 14 en total\nCausa raíz: la pipeline de despacho síncrono bloquea la respuesta – espera la asignación del sandbox antes de devolver.\n\nIssue de GitHub creado: vm0-ai/vm0#9682, asignado a Lancy."
           }
         ],
         "steps": [
           {
-            "title": "Zero queries Axiom for the endpoint",
-            "description": "Zero pulls all request events for the specified endpoint over the time window, computing TP50, TP95, and TP99 per day."
+            "title": "Zero consulta Axiom para el endpoint",
+            "description": "Zero extrae todos los eventos de request del endpoint indicado en la ventana de tiempo, calculando TP50, TP95 y TP99 por día."
           },
           {
-            "title": "Zero surfaces slow events",
-            "description": "Zero filters for events above the threshold (default: 5 seconds), groups them by time of day and error pattern, and identifies the likely root cause."
+            "title": "Zero destaca los eventos lentos",
+            "description": "Zero filtra los eventos por encima del umbral (por defecto: 5 segundos), los agrupa por hora del día y patrón de error, e identifica la causa raíz probable."
           },
           {
-            "title": "GitHub issue created with findings",
-            "description": "Zero files a structured GitHub issue with the metric table, slow event list, and root cause analysis - ready for the engineering team to act on."
+            "title": "Issue de GitHub creado con los hallazgos",
+            "description": "Zero crea un issue de GitHub estructurado con la tabla de métricas, la lista de eventos lentos y el análisis de causa raíz – listo para que el equipo de ingeniería actúe."
           }
         ],
         "nextActions": [
           {
-            "title": "Assign and prioritize",
-            "description": "Route the issue to the right engineer",
+            "title": "Asignar y priorizar",
+            "description": "Dirigir el issue al ingeniero adecuado",
             "examplePrompt": "@Zero assign the Axiom issue to Ethan and add the label performance, priority-high."
           },
           {
-            "title": "Schedule regular monitoring",
-            "description": "Set up a weekly TP95 check for key endpoints",
+            "title": "Programar monitoreo regular",
+            "description": "Configurar una comprobación TP95 semanal para endpoints clave",
             "examplePrompt": "@Zero every Monday at 9am, pull the last 7 days of TP95 for /api/zero/runs and post to #dev. File a GitHub issue only if TP95 exceeds 3s."
           },
           {
-            "title": "Investigate a specific slow event",
-            "description": "Dig into a single outlier event",
+            "title": "Investigar un evento lento específico",
+            "description": "Profundizar en un único evento atípico",
             "examplePrompt": "@Zero pull the full trace for the 6,857ms event on Apr 12 from Axiom and tell me where the time is spent."
           }
         ],
         "integrations": [
           {
-            "description": "Axiom is required. Zero queries your Axiom dataset for request events filtered by endpoint path and time window."
+            "description": "Axiom es obligatorio. Zero consulta tu dataset de Axiom para eventos de request filtrados por ruta de endpoint y ventana de tiempo."
           },
           {
-            "description": "GitHub is optional. Zero creates issues from findings when asked, with the metric table embedded in the body."
+            "description": "GitHub es opcional. Zero crea issues a partir de los hallazgos cuando se le pide, con la tabla de métricas incrustada en el cuerpo."
           }
         ],
         "tips": [
-          "Specify a threshold in your prompt - 'flag events over 3 seconds' - so Zero's findings match your SLO, not a generic cutoff.",
-          "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
-          "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
+          "Especifique un umbral en su prompt – 'marca eventos por encima de 3 segundos' – para que los hallazgos de Zero coincidan con su SLO, no con un corte genérico.",
+          "Pida a Zero que compruebe el endpoint justo después de un deploy para detectar regresiones antes de que afecten a usuarios a escala.",
+          "Combínelo con Daily Error Triage para un chequeo de salud matutino completo: errores de Sentry más rendimiento de Axiom en un solo brief."
         ]
       },
       "production-db-query": {
         "title": "Consulta datos de producción en lenguaje natural",
         "description": "Haga una pregunta sobre sus datos de producción. Zero escribe el SQL, lo ejecuta en modo solo lectura y devuelve la respuesta en Slack.",
-        "timeSaved": "~20 min saved",
-        "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain - just ask the question in Slack.",
+        "timeSaved": "~20 min ahorrados",
+        "scenario": "Un stakeholder pregunta cuántos usuarios completaron el onboarding en los últimos 30 días. Es una pregunta sencilla, pero responderla implica abrir un cliente de DB, encontrar la tabla correcta, escribir una query, asegurarse de usar credenciales de solo lectura, ejecutarla y formatear el resultado. Zero maneja toda la cadena – solo haga la pregunta en Slack.",
         "promptVariants": [
           {
-            "label": "Count query",
+            "label": "Consulta de conteo",
             "prompt": "@Zero how many users signed up in the last 30 days? Query the production database."
           },
           {
-            "label": "Trend query",
+            "label": "Consulta de tendencia",
             "prompt": "@Zero query production - show me daily active user counts for the last 14 days, broken down by plan tier."
           },
           {
-            "label": "Anomaly check",
+            "label": "Comprobación de anomalías",
             "prompt": "@Zero check production DB - are there any users with a free credit balance above 1000? List the top 10."
           }
         ],
@@ -1601,70 +1601,70 @@
           },
           {
             "name": "Zero",
-            "text": "Production DB query result (read-only):\n\nzero_runs created in last 7 days: 4,218\nBreakdown: Mon 523, Tue 641, Wed 688, Thu 712, Fri 654\nWeekend: 0 (expected - team usage pattern)\n\nQuery ran in 42ms."
+            "text": "Resultado de la consulta a la DB de producción (solo lectura):\n\nzero_runs creados en los últimos 7 días: 4.218\nDesglose: Lun 523, Mar 641, Mié 688, Jue 712, Vie 654\nFin de semana: 0 (esperado – patrón de uso del equipo)\n\nLa query se ejecutó en 42 ms."
           }
         ],
         "steps": [
           {
-            "title": "Zero interprets your question",
-            "description": "Zero maps your plain-language question to the relevant tables and columns in your production schema."
+            "title": "Zero interpreta tu pregunta",
+            "description": "Zero mapea tu pregunta en lenguaje natural a las tablas y columnas relevantes de tu esquema de producción."
           },
           {
-            "title": "Zero runs a read-only query",
-            "description": "Zero executes only SELECT statements against production. No writes, no mutations. Credentials are retrieved securely via Doppler - they never appear in the conversation."
+            "title": "Zero ejecuta una query de solo lectura",
+            "description": "Zero ejecuta solo sentencias SELECT contra producción. Sin writes, sin mutaciones. Las credenciales se obtienen de forma segura vía Doppler – nunca aparecen en la conversación."
           },
           {
-            "title": "Results returned in Slack",
-            "description": "Zero posts the query result in the thread, formatted as a readable summary. For large result sets, it returns the key numbers and offers to export the full table."
+            "title": "Resultados devueltos en Slack",
+            "description": "Zero publica el resultado en el hilo, formateado como un resumen legible. Para conjuntos de resultados grandes, devuelve las cifras clave y ofrece exportar la tabla completa."
           }
         ],
         "nextActions": [
           {
-            "title": "Export to a spreadsheet",
-            "description": "Get the full result set in a usable format",
+            "title": "Exportar a una hoja de cálculo",
+            "description": "Obtener el conjunto completo de resultados en un formato utilizable",
             "examplePrompt": "@Zero re-run that query and export the results to a Google Sheet named 'DAU by Plan - April 2026'."
           },
           {
-            "title": "Schedule a recurring count",
-            "description": "Track a metric automatically",
+            "title": "Programar un conteo recurrente",
+            "description": "Hacer seguimiento automático de una métrica",
             "examplePrompt": "@Zero every Monday morning, query production for last week's new user count and post to #metrics."
           },
           {
-            "title": "File an issue from a finding",
-            "description": "Escalate an anomaly you discovered",
+            "title": "Crear un issue desde un hallazgo",
+            "description": "Escalar una anomalía que ha descubierto",
             "examplePrompt": "@Zero create a GitHub issue for the users with credit balance above 1000 - title 'Credit balance anomaly', assign to Ethan."
           }
         ],
         "integrations": [
           {
-            "description": "vm0's production database skill is required. It provides a read-only connection to your Postgres instance via securely managed credentials - no manual setup needed."
+            "description": "La skill de base de datos de producción de vm0 es obligatoria. Proporciona una conexión de solo lectura a tu instancia de Postgres mediante credenciales gestionadas de forma segura – sin necesidad de configuración manual."
           },
           {
-            "description": "Slack is where you ask the question and receive the result."
+            "description": "Slack es donde haces la pregunta y recibes el resultado."
           }
         ],
         "tips": [
-          "Always specify 'production database' or 'prod DB' in your prompt so Zero knows which connection to use if you have multiple environments.",
-          "Zero runs only SELECT queries. If you need to modify data, Zero will flag it and ask you to handle it through the appropriate workflow instead.",
-          "For sensitive queries, prefix with 'do not log the results' - Zero will deliver the answer in an ephemeral message visible only to you."
+          "Especifique siempre 'base de datos de producción' o 'prod DB' en su prompt para que Zero sepa qué conexión usar si tiene varios entornos.",
+          "Zero solo ejecuta queries SELECT. Si necesita modificar datos, Zero lo señalará y le pedirá que lo haga mediante el flujo de trabajo apropiado.",
+          "Para consultas sensibles, anteponga 'no registrar los resultados' – Zero entregará la respuesta en un mensaje efímero visible solo para usted."
         ]
       },
       "security-compliance": {
         "title": "Automatiza auditorías de compliance de infraestructura",
         "description": "Zero verifica su infraestructura contra requisitos de compliance en GitHub, proveedores cloud y documentación, y publica un informe estructurado.",
-        "timeSaved": "~2 hrs saved",
-        "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message - checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
+        "timeSaved": "~2 h ahorradas",
+        "scenario": "Su equipo de cumplimiento plantea una pregunta: ¿dónde se almacenan los datos de clientes y cumplen los requisitos regionales? Responderla implica revisar las configuraciones del proveedor de nube, leer los ajustes de despliegue, contrastar la documentación y redactar un resumen. Zero hace todo esto desde un solo mensaje de Slack – revisa sus regiones de Vercel, la configuración de Cloudflare R2 y los archivos de infraestructura, y publica un brief estructurado.",
         "promptVariants": [
           {
-            "label": "Region audit",
+            "label": "Auditoría de regiones",
             "prompt": "@Zero check our infrastructure for data residency - where are our Cloudflare R2 buckets located, what region does Vercel deploy to, and is there any cross-region replication configured?"
           },
           {
-            "label": "Security review",
+            "label": "Revisión de seguridad",
             "prompt": "@Zero audit our GitHub repo for any hardcoded secrets or API keys accidentally committed in the last 90 days."
           },
           {
-            "label": "Compliance brief",
+            "label": "Brief de cumplimiento",
             "prompt": "@Zero research our infrastructure setup and write a brief on whether we meet SOC 2 Type I requirements for data storage and access controls. Save it to Notion under 'Compliance > SOC 2 Prep'."
           }
         ],
@@ -1675,74 +1675,74 @@
           },
           {
             "name": "Zero",
-            "text": "Cloudflare R2: Region set to auto (Cloudflare selects nearest region). No cross-region replication configured.\n\nVercel: Defaults to iad1 (US East, Washington DC) for serverless functions. Static assets served from CDN edge globally.\n\nSummary: Data is US-based by default. If EU residency is required, both R2 and Vercel need explicit region configuration."
+            "text": "Cloudflare R2: Región configurada como auto (Cloudflare selecciona la región más cercana). No hay replicación entre regiones configurada.\n\nVercel: Por defecto iad1 (Este de EE. UU., Washington DC) para serverless functions. Los assets estáticos se sirven globalmente vía CDN edge.\n\nResumen: Los datos están en EE. UU. por defecto. Si se requiere residencia en la UE, tanto R2 como Vercel necesitan configuración explícita de región."
           }
         ],
         "steps": [
           {
-            "title": "Zero gathers config from your infrastructure",
-            "description": "Zero reads your repository configuration files, deployment configs, and checks connected cloud services for the relevant settings."
+            "title": "Zero recopila la configuración de su infraestructura",
+            "description": "Zero lee los archivos de configuración y despliegue de su repositorio y consulta los servicios cloud conectados para obtener los ajustes relevantes."
           },
           {
-            "title": "Zero cross-references against the compliance requirement",
-            "description": "Zero maps each finding against the specific requirement - data residency, access control, encryption - and flags any gaps."
+            "title": "Zero contrasta con el requisito de cumplimiento",
+            "description": "Zero mapea cada hallazgo contra el requisito específico – residencia de datos, control de acceso, cifrado – y marca cualquier brecha."
           },
           {
-            "title": "Findings brief posted and optionally saved",
-            "description": "Zero posts a structured brief in Slack with findings per service and a summary recommendation. On request, it saves the full report to Notion."
+            "title": "Brief de hallazgos publicado y opcionalmente guardado",
+            "description": "Zero publica un brief estructurado en Slack con hallazgos por servicio y una recomendación resumen. Bajo petición, guarda el informe completo en Notion."
           }
         ],
         "nextActions": [
           {
-            "title": "Save to Notion for the audit",
-            "description": "Archive the findings for your compliance record",
+            "title": "Guardar en Notion para la auditoría",
+            "description": "Archivar los hallazgos para su registro de cumplimiento",
             "examplePrompt": "@Zero save the compliance brief to Notion under 'Compliance > Infrastructure Audit > April 2026'."
           },
           {
-            "title": "Create remediation issues",
-            "description": "Turn gaps into tracked engineering work",
+            "title": "Crear issues de remediación",
+            "description": "Convertir las brechas en trabajo de ingeniería rastreado",
             "examplePrompt": "@Zero create GitHub issues for each gap in the compliance brief. Label them compliance and assign to Ethan."
           },
           {
-            "title": "Schedule a quarterly audit",
-            "description": "Make compliance checks a recurring practice",
+            "title": "Programar una auditoría trimestral",
+            "description": "Convertir los chequeos de cumplimiento en práctica recurrente",
             "examplePrompt": "@Zero every quarter, run this infrastructure compliance check and post findings to #compliance."
           }
         ],
         "integrations": [
           {
-            "description": "GitHub is required. Zero reads your infrastructure and deployment config files from the repository."
+            "description": "GitHub es obligatorio. Zero lee sus archivos de configuración de infraestructura y despliegue del repositorio."
           },
           {
-            "description": "Notion is optional. Zero saves compliance briefs and findings for audit trail documentation."
+            "description": "Notion es opcional. Zero guarda briefs y hallazgos de cumplimiento para la documentación del audit trail."
           }
         ],
         "tips": [
-          "Be specific about the compliance framework or requirement - 'SOC 2 data residency' produces a more useful brief than 'check if we're compliant.'",
-          "Ask Zero to DM you the sensitive findings rather than posting to a channel - some compliance gaps shouldn't be broadcast publicly.",
-          "Archive findings to Notion immediately. Compliance auditors want documentation of the process, not just the conclusion."
+          "Sea específico sobre el marco o requisito de cumplimiento – 'residencia de datos SOC 2' produce un brief más útil que 'comprueba si cumplimos.'",
+          "Pida a Zero que le envíe por DM los hallazgos sensibles en lugar de publicarlos en un canal – algunas brechas de cumplimiento no deben difundirse públicamente.",
+          "Archive los hallazgos en Notion de inmediato. Los auditores de cumplimiento quieren documentación del proceso, no solo de la conclusión."
         ]
       },
       "cross-tool-context": {
         "title": "Estado unificado del proyecto desde múltiples herramientas",
         "description": "Pregunte a Zero sobre cualquier proyecto. Busca en sus herramientas en paralelo y sintetiza un briefing con estado, responsable, bloqueos y última actualización.",
-        "timeSaved": "~25 min saved",
-        "scenario": "Someone asks about the status of the Stripe integration. The last Slack thread is from two weeks ago. There's a Linear ticket but the status says 'In Progress' with no update. The Notion doc has a decision log from last month. GitHub has three open PRs. None of these sources tell the full story alone. Zero searches all four in parallel and gives you one answer.",
+        "timeSaved": "~25 min ahorrados",
+        "scenario": "Alguien pregunta por el estado de la integración con Stripe. El último hilo de Slack es de hace dos semanas. Hay un ticket en Linear, pero el estado dice 'En curso' sin actualización. El documento de Notion tiene un registro de decisiones del mes pasado. GitHub tiene tres PRs abiertos. Ninguna de estas fuentes cuenta la historia completa por sí sola. Zero busca en las cuatro en paralelo y le da una sola respuesta.",
         "promptVariants": [
           {
-            "label": "Basic",
+            "label": "Básico",
             "prompt": "@Zero what's the current status of the Stripe integration? Search Slack (last 14 days), Notion, Linear, and GitHub. Return: current state, owner, blockers, and last meaningful update with source."
           },
           {
-            "label": "Deep dive",
+            "label": "En profundidad",
             "prompt": "@Zero pull everything on the auth refactor from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
           },
           {
-            "label": "Scheduled",
+            "label": "Programado",
             "prompt": "@Zero every Monday morning, DM me a status brief on the mobile SDK project - current state, owner, blockers, last update."
           },
           {
-            "label": "Conflict-aware",
+            "label": "Sensible a conflictos",
             "prompt": "@Zero check Slack and Linear for the latest on the onboarding redesign and flag if the two sources disagree on status or ownership."
           }
         ],
@@ -1753,58 +1753,58 @@
           },
           {
             "name": "Zero",
-            "text": "Connector Architecture Refactor - Status Brief\n\nState: In progress - environment variables migrated from skill frontmatter to connector definitions. Core refactor merged.\nOwner: Lancy\nBlockers: None active.\nLast update: Apr 14 (GitHub) - PR #9312 merged.\n\nSources agree."
+            "text": "Refactor de Arquitectura de Conectores – Brief de Estado\n\nEstado: En progreso – las variables de entorno se migraron del frontmatter de la skill a las definiciones del conector. Refactor central mergeado.\nResponsable: Lancy\nBloqueos: Ninguno activo.\nÚltima actualización: 14 de abril (GitHub) – PR #9312 mergeado.\n\nLas fuentes coinciden."
           }
         ],
         "steps": [
           {
-            "title": "Zero searches all sources in parallel",
-            "description": "Zero queries Slack, Notion, Linear, and GitHub simultaneously for the topic within the specified time window - returning raw findings from each source."
+            "title": "Zero busca en todas las fuentes en paralelo",
+            "description": "Zero consulta Slack, Notion, Linear y GitHub simultáneamente sobre el tema dentro de la ventana de tiempo indicada – devolviendo hallazgos en bruto de cada fuente."
           },
           {
-            "title": "Zero synthesizes and flags conflicts",
-            "description": "Zero extracts state, owner, blockers, and last update per source. If sources disagree - e.g., Linear says 'Done' but Slack has an open question from yesterday - Zero flags the conflict explicitly."
+            "title": "Zero sintetiza y marca conflictos",
+            "description": "Zero extrae estado, responsable, bloqueos y última actualización por fuente. Si las fuentes no coinciden – p. ej., Linear dice 'Hecho' pero Slack tiene una pregunta abierta de ayer – Zero marca el conflicto explícitamente."
           },
           {
-            "title": "4-part brief delivered in Slack",
-            "description": "Zero returns: current state in one sentence, owner/DRI, active blockers, and the most recent meaningful update with its source citation."
+            "title": "Brief de 4 partes entregado en Slack",
+            "description": "Zero devuelve: estado actual en una frase, responsable/DRI, bloqueos activos y la actualización más reciente y significativa con su cita de fuente."
           }
         ],
         "nextActions": [
           {
-            "title": "Log the brief to Notion",
-            "description": "Create a searchable record of the status snapshot",
+            "title": "Registrar el brief en Notion",
+            "description": "Crear un registro buscable del snapshot de estado",
             "examplePrompt": "@Zero save this status brief to Notion under 'Project Status > Stripe Integration > April 2026'."
           },
           {
-            "title": "Schedule weekly updates",
-            "description": "Get a status DM every Monday without asking",
+            "title": "Programar actualizaciones semanales",
+            "description": "Recibir un DM de estado cada lunes sin pedirlo",
             "examplePrompt": "@Zero every Monday at 9am, DM me the status of the mobile SDK across Slack, Linear, and GitHub."
           },
           {
-            "title": "Escalate a blocker",
-            "description": "Turn a found blocker into a tracked issue",
+            "title": "Escalar un bloqueo",
+            "description": "Convertir un bloqueo encontrado en un issue rastreado",
             "examplePrompt": "@Zero the blocker you found - create a GitHub issue for it and assign to the owner."
           }
         ],
         "integrations": [
           {
-            "description": "Slack is required. It's the primary source of async discussion and where the brief is delivered."
+            "description": "Slack es obligatorio. Es la fuente principal de discusión asíncrona y donde se entrega el brief."
           },
           {
-            "description": "Linear is required. It's the source of truth for task ownership and current status."
+            "description": "Linear es obligatorio. Es la fuente de la verdad para la propiedad de tareas y el estado actual."
           },
           {
-            "description": "Notion is optional. Zero searches long-form decisions and context when included."
+            "description": "Notion es opcional. Zero busca decisiones y contexto de formato largo cuando se incluye."
           },
           {
-            "description": "GitHub is optional. Zero includes PR and commit activity for technical topics."
+            "description": "GitHub es opcional. Zero incluye actividad de PRs y commits para temas técnicos."
           }
         ],
         "tips": [
-          "Be specific - 'the Stripe integration' works better than 'the payment feature.' Specific terms match across tools; vague ones don't.",
-          "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
-          "Pair with Document Decisions to auto-log the brief to Notion - useful for recurring reviews where you want a historical snapshot per week."
+          "Sea específico – 'la integración con Stripe' funciona mejor que 'la función de pagos.' Los términos específicos hacen match entre herramientas; los vagos no.",
+          "Añada una ventana de tiempo para proyectos de larga duración: 'enfócate en los últimos 14 días' evita que Zero presente contexto obsoleto como si fuera actual.",
+          "Combínelo con Document Decisions para auto-registrar el brief en Notion – útil para revisiones recurrentes donde quiere un snapshot histórico por semana."
         ]
       },
       "multilingual-cms-publishing": {
@@ -2583,7 +2583,7 @@
             "prompt": "@Zero redacta un post de blog a partir de este hilo: estructúralo, llena los huecos y dame una URL de preview."
           },
           {
-            "label": "Use-case page",
+            "label": "Página de caso de uso",
             "prompt": "@Zero redacta una página de use case para [descripción del flujo]: sigue la estructura estándar, propón metadata (slug, color, avatar) y crea un PR."
           }
         ],
@@ -3680,7 +3680,7 @@
     "filter": {
       "all": "Todos",
       "everyone": "Multifuncional",
-      "engineering": "Engineering",
+      "engineering": "Ingeniería",
       "product": "Producto",
       "marketing": "Marketing",
       "sales": "Ventas",
