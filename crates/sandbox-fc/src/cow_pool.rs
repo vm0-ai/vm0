@@ -1889,6 +1889,19 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prewarmed_slot_drop_fallback_removes_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "drop-fallback");
+        let workspace = slot.workspace().to_owned();
+
+        assert!(workspace.exists());
+        drop(slot);
+
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+    }
+
+    #[tokio::test]
     async fn destroy_slot_async_starts_teardown_before_returned_future_is_polled() {
         let tmp = tempfile::tempdir().unwrap();
         let (slot, teardown_started, release_teardown, dropped) =
