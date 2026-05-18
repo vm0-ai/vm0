@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
@@ -39,6 +42,10 @@ function authHeaders() {
 
 function agentsClient() {
   return setupApp({ context })(zeroAgentsMainContract);
+}
+
+function agentsByIdClient() {
+  return setupApp({ context })(zeroAgentsByIdContract);
 }
 
 function currentSecond(): number {
@@ -305,5 +312,57 @@ describe("POST /api/zero/agents", () => {
     expect(composeCount?.value).toBe(7);
     expect(zeroAgentCount?.value).toBe(7);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("allows creating another public agent after one is deleted", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+    const createdAgentIds: string[] = [];
+
+    for (let index = 0; index < 7; index += 1) {
+      const response = await accept(
+        agentsClient().create({
+          headers: authHeaders(),
+          body: { displayName: `Agent ${index + 1}` },
+        }),
+        [201],
+      );
+      createdAgentIds.push(response.body.agentId);
+    }
+
+    const blocked = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Blocked" },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("CONFLICT");
+
+    const deletedAgentId = createdAgentIds[0];
+    if (!deletedAgentId) {
+      throw new Error("Expected a created agent");
+    }
+    const deleteResponse = await accept(
+      agentsByIdClient().delete({
+        params: { id: deletedAgentId },
+        headers: authHeaders(),
+      }),
+      [204],
+    );
+    expect(deleteResponse.body).toBeUndefined();
+
+    const response = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "After Delete" },
+      }),
+      [201],
+    );
+    expect(response.body.displayName).toBe("After Delete");
   });
 });

@@ -148,6 +148,19 @@ describe("PUT /api/zero/agents/:id", () => {
     });
   });
 
+  it("returns 400 for invalid path params", async () => {
+    const response = await accept(
+      agentsClient().update({
+        params: { id: "not-a-uuid" },
+        headers: authHeaders(),
+        body: {},
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("updates agent metadata, validates custom skills and model selection, and preserves omitted fields", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -237,6 +250,37 @@ describe("PUT /api/zero/agents/:id", () => {
     expect(response.body.description).toBe("Updated description");
   });
 
+  it("allows an owner member to update their own agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Member Agent",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      agentsClient().update({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { displayName: "Member Updated" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      displayName: "Member Updated",
+    });
+  });
+
   it("returns 400 when a requested custom skill does not exist", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -264,6 +308,38 @@ describe("PUT /api/zero/agents/:id", () => {
       error: {
         message:
           "Custom skill 'missing-skill' not found in this organization. Create it with 'zero skill create' first.",
+        code: "VALIDATION_ERROR",
+      },
+    });
+  });
+
+  it("returns 400 when a built-in connector is requested as a custom skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().update({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { customSkills: ["github"] },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "'github' is a built-in connector, not a custom skill. Enable it via connectors instead.",
         code: "VALIDATION_ERROR",
       },
     });
@@ -553,6 +629,39 @@ describe("PATCH /api/zero/agents/:id", () => {
     });
   });
 
+  it("returns 403 when an org admin changes another user's public agent visibility", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const adminUserId = `user_${randomUUID()}`;
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        visibility: "public",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { visibility: "private" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only the agent owner can update agent visibility",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("returns 403 when an org admin updates another user's private agent", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -582,6 +691,50 @@ describe("PATCH /api/zero/agents/:id", () => {
       error: {
         message: "Only the private agent owner can update agent profile",
         code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 409 when changing a private agent to public would exceed the public limit", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    for (let index = 0; index < 7; index += 1) {
+      await store.set(
+        seedAgentForInstructions$,
+        {
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          visibility: "public",
+        },
+        context.signal,
+      );
+    }
+    const privateAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      agentsClient().updateMetadata({
+        params: { id: privateAgent.agentId },
+        headers: authHeaders(),
+        body: { visibility: "public" },
+      }),
+      [409],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "This organization has reached the maximum number of agents (7). Delete an existing agent before making this agent public.",
+        code: "CONFLICT",
       },
     });
   });

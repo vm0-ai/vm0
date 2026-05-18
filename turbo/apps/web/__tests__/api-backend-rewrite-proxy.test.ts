@@ -558,6 +558,25 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches only one segment for zero agent by-id rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/agents")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agent/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(false);
+  });
+
   it("matches only one segment for zero agent custom connector rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -568,9 +587,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath(
         "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/custom-connectors/extra",
       ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/agents/custom-connectors"),
     ).toBe(false);
   });
 
@@ -585,9 +601,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/user-connectors/extra",
       ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/agents/user-connectors"),
-    ).toBe(false);
   });
 
   it("matches only one segment for zero agent instructions rewrites", () => {
@@ -601,9 +614,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/instructions/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/agents/instructions")).toBe(
-      false,
-    );
   });
 
   it("matches the zero team rewrite path exactly", () => {
