@@ -303,6 +303,14 @@ const handleBillingRedirect$ = command(() => {
 
   // Defer toast until Toaster component is mounted
   if (billing === "pro" || billing === "team") {
+    // Fire Google Ads conversion event: subscription completed via Stripe
+    // checkout. The `billing` param is set only on Stripe success redirect
+    // and stripped above, so this fires at most once per real conversion.
+    type GtagFn = (...args: unknown[]) => void;
+    (window as Window & { gtag?: GtagFn }).gtag?.("event", "conversion", {
+      send_to: "AW-18144854014/3tdOCMimwK8cEP7_kcxD",
+    });
+
     const label = billing === "pro" ? "Pro" : "Team";
     window.addEventListener(
       "load",
