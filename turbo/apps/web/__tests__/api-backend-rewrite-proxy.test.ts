@@ -235,6 +235,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/storages/lists")).toBe(false);
   });
 
+  it("matches the storages prepare rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/prepare")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/prepare/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/prepared")).toBe(false);
+  });
+
   it("matches the usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/usage")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/usage/extra")).toBe(false);

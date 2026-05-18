@@ -64,7 +64,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/runners/poll/route.ts",
   "app/api/runners/realtime/token/route.ts",
   "app/api/storages/commit/route.ts",
-  "app/api/storages/prepare/route.ts",
   "app/api/telegram/register/route.ts",
   "app/api/telegram/setup-status/route.ts",
   "app/api/telegram/webhook/[telegramBotId]/route.ts",

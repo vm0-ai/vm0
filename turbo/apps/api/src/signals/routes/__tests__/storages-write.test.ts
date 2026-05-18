@@ -343,6 +343,79 @@ describe("POST /api/storages/prepare", () => {
     expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
+  it("returns 400 when one file exceeds the per-file size schema limit", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody({
+          files: [
+            validFile({
+              path: "large-file.bin",
+              size: MAX_FILE_SIZE_BYTES + 1,
+            }),
+          ],
+        }),
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("computes the same version ID regardless of file order", async () => {
+    await useClerkSession();
+    const name = storageName("order-independent");
+    const filesOrderAB = [
+      validFile({ path: "a.txt", hash: TEST_HASH, size: 100 }),
+      validFile({ path: "b.txt", hash: SECOND_TEST_HASH, size: 200 }),
+    ];
+    const filesOrderBA = [...filesOrderAB].reverse();
+
+    const first = await prepareOk(
+      prepareBody({ storageName: name, files: filesOrderAB }),
+    );
+    const second = await prepareOk(
+      prepareBody({ storageName: name, files: filesOrderBA }),
+    );
+
+    expect(first.versionId).toBe(second.versionId);
+  });
+
+  it("computes different version IDs when file content or path changes", async () => {
+    await useClerkSession();
+    const name = storageName("content-hash");
+
+    const original = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "data.txt", hash: TEST_HASH, size: 100 })],
+      }),
+    );
+    const changedContent = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [
+          validFile({
+            path: "data.txt",
+            hash: SECOND_TEST_HASH,
+            size: 100,
+          }),
+        ],
+      }),
+    );
+    const changedPath = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "renamed.txt", hash: TEST_HASH, size: 100 })],
+      }),
+    );
+
+    expect(changedContent.versionId).not.toBe(original.versionId);
+    expect(changedPath.versionId).not.toBe(original.versionId);
+  });
+
   it("scopes sandbox tokens through the run organization", async () => {
     const fixture = await seedRunScopedFixture();
     await trackStorageOrg(Promise.resolve({ orgId: fixture.orgId }));

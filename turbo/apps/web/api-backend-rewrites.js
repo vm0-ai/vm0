@@ -49,6 +49,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/logs/search", "/api/logs/search"],
   ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],
+  ["/api/storages/prepare", "/api/storages/prepare"],
   ["/api/usage", "/api/usage"],
   [
     "/api/webhooks/built-in-generations/:path*",

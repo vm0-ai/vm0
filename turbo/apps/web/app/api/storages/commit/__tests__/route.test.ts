@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "../route";
-import { POST as preparePOST } from "../../prepare/route";
 import {
   createTestRequest,
   createTestArtifact,
+  createTestVolume,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -80,21 +80,8 @@ describe("POST /api/storages/commit", () => {
 
   it("should return 400 when versionId does not match computed hash", async () => {
     const storageName = `mismatch-${Date.now()}`;
-
-    // Create storage via prepare route (creates storage but no version yet)
-    const prepareRequest = createTestRequest(
-      "http://localhost:3000/api/storages/prepare",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          storageName,
-          storageType: "volume",
-          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
-        }),
-      },
-    );
-    await preparePOST(prepareRequest);
+    const files = [{ path: "test.txt", hash: "a".repeat(64), size: 100 }];
+    await createTestVolume(storageName, { files, skipCommit: true });
 
     // Commit with wrong version ID
     const request = createTestRequest(
@@ -106,7 +93,7 @@ describe("POST /api/storages/commit", () => {
           storageName,
           storageType: "volume",
           versionId: "wrong_version_id",
-          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
+          files,
         }),
       },
     );
@@ -123,19 +110,10 @@ describe("POST /api/storages/commit", () => {
 
     const storageName = `missing-s3-${Date.now()}`;
     const files = [{ path: "test.txt", hash: "b".repeat(64), size: 100 }];
-
-    // Create storage via prepare route
-    const prepareRequest = createTestRequest(
-      "http://localhost:3000/api/storages/prepare",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageName, storageType: "volume", files }),
-      },
-    );
-    const prepareResponse = await preparePOST(prepareRequest);
-    const prepareData = await prepareResponse.json();
-    const { versionId } = prepareData;
+    const { versionId } = await createTestVolume(storageName, {
+      files,
+      skipCommit: true,
+    });
 
     // Commit - should fail because manifest doesn't exist
     const request = createTestRequest(
@@ -164,19 +142,10 @@ describe("POST /api/storages/commit", () => {
       { path: "file1.txt", hash: "e".repeat(64), size: 100 },
       { path: "file2.txt", hash: "f".repeat(64), size: 200 },
     ];
-
-    // Create storage via prepare route
-    const prepareRequest = createTestRequest(
-      "http://localhost:3000/api/storages/prepare",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageName, storageType: "artifact", files }),
-      },
-    );
-    const prepareResponse = await preparePOST(prepareRequest);
-    const prepareData = await prepareResponse.json();
-    const { versionId } = prepareData;
+    const { versionId } = await createTestArtifact(storageName, {
+      files,
+      skipCommit: true,
+    });
 
     // Commit
     const request = createTestRequest(
@@ -208,19 +177,10 @@ describe("POST /api/storages/commit", () => {
     // Empty artifacts (fileCount === 0) should not require archive.tar.gz in S3
     const storageName = `empty-${Date.now()}`;
     const files: { path: string; hash: string; size: number }[] = [];
-
-    // Create storage via prepare route
-    const prepareRequest = createTestRequest(
-      "http://localhost:3000/api/storages/prepare",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageName, storageType: "artifact", files }),
-      },
-    );
-    const prepareResponse = await preparePOST(prepareRequest);
-    const prepareData = await prepareResponse.json();
-    const { versionId } = prepareData;
+    const { versionId } = await createTestArtifact(storageName, {
+      files,
+      skipCommit: true,
+    });
 
     // Mock only manifest exists call (should only be called once for empty artifact)
     context.mocks.s3.s3ObjectExists.mockResolvedValueOnce(true);
@@ -286,19 +246,10 @@ describe("POST /api/storages/commit", () => {
   it("should verify S3 objects using orgId-based key (not slug)", async () => {
     const storageName = `s3key-prefix-${Date.now()}`;
     const files = [{ path: "file1.txt", hash: "e".repeat(64), size: 100 }];
-
-    // Create storage via prepare route
-    const prepareRequest = createTestRequest(
-      "http://localhost:3000/api/storages/prepare",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storageName, storageType: "artifact", files }),
-      },
-    );
-    const prepareResponse = await preparePOST(prepareRequest);
-    const prepareData = await prepareResponse.json();
-    const { versionId } = prepareData;
+    const { versionId } = await createTestArtifact(storageName, {
+      files,
+      skipCommit: true,
+    });
 
     // Reset mock call history before commit
     context.mocks.s3.s3ObjectExists.mockClear();
