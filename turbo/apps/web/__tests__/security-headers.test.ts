@@ -76,6 +76,16 @@ const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/user-model-preference/extra",
   "/api/zero/user-preferences",
 ] as const;
+const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/me/model-providers/:type";
+const ZERO_ME_MODEL_PROVIDER_TYPE_PATH =
+  "/api/zero/me/model-providers/claude-code-oauth-token";
+const ZERO_ME_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/me/model-providers",
+  "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+  "/api/zero/me/model-providers/claude-code-oauth-token/oauth/callback",
+  "/api/zero/me/model-providers/claude-code-oauth-token/extra",
+] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
@@ -478,6 +488,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/user-model-preference",
         },
         {
+          source: ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/me/model-providers/:type",
+        },
+        {
           source: "/api/zero/user-preferences",
           destination: "https://api.example.test/api/zero/user-preferences",
         },
@@ -858,6 +873,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_ORG_LIST_PATH)).toStrictEqual({});
     for (const pathname of ZERO_ORG_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for zero me model-provider type rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/me/model-providers/:type",
+    });
+
+    const matcher = getPathMatch(ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ME_MODEL_PROVIDER_TYPE_PATH)).toStrictEqual({
+      type: "claude-code-oauth-token",
+    });
+    for (const pathname of ZERO_ME_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

@@ -312,6 +312,32 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/lists")).toBe(false);
   });
 
+  it("matches only one segment for zero me model-provider type rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/me/model-providers")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/extra",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,

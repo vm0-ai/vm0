@@ -17,6 +17,10 @@ const ZERO_VOICE_CHAT_TRIGGER_REASONING_REWRITE_SOURCE = `${ZERO_VOICE_CHAT_SESS
 const ZERO_VOICE_CHAT_TRIGGER_REASONING_PATH_RE = new RegExp(
   `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/trigger-reasoning$`,
 );
+const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/me/model-providers/:type";
+const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
+  /^\/api\/zero\/me\/model-providers\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
   ["/api/device-token", "/api/device-token"],
@@ -58,6 +62,11 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/deployments/:deploymentId/complete",
   ],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
+  [
+    ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+    "/api/zero/me/model-providers/:type",
+    ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE,
+  ],
   [
     "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
     "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",

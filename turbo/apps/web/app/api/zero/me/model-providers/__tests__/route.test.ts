@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET, POST } from "../route";
-import { DELETE } from "../[type]/route";
 import {
   createTestRequest,
   createTestOrgModelProvider,
@@ -24,10 +23,6 @@ function listUrl(): string {
 
 function upsertUrl(): string {
   return BASE_URL;
-}
-
-function deleteUrl(type: string): string {
-  return `${BASE_URL}/${type}`;
 }
 
 async function expectUnauthorized(
@@ -90,13 +85,6 @@ describe("Model-first personal OAuth model provider routes", () => {
 
     it("POST returns 401", async () => {
       await expectUnauthorized(createProvider("claude-code-oauth-token", "k"));
-    });
-
-    it("DELETE returns 401", async () => {
-      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
-        method: "DELETE",
-      });
-      await expectUnauthorized(DELETE(request));
     });
   });
 
@@ -215,32 +203,6 @@ describe("Model-first personal OAuth model provider routes", () => {
         "sk-proj-test",
         "gpt-5.5",
       );
-      expect(response.status).toBe(404);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // DELETE /api/zero/me/model-providers/:type
-  // ---------------------------------------------------------------------------
-
-  describe("DELETE /api/zero/me/model-providers/:type", () => {
-    it("deletes the user's personal provider", async () => {
-      await createProvider("claude-code-oauth-token", "k");
-      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
-        method: "DELETE",
-      });
-      const response = await DELETE(request);
-      expect(response.status).toBe(204);
-
-      const providers = await listProviders();
-      expect(providers).toHaveLength(0);
-    });
-
-    it("returns 404 when deleting a non-existent personal provider", async () => {
-      const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
-        method: "DELETE",
-      });
-      const response = await DELETE(request);
       expect(response.status).toBe(404);
     });
   });
@@ -421,25 +383,5 @@ describe("Model-first personal OAuth routes — cross-user privacy invariant", (
     const bobList = await listProviders();
     expect(bobList).toHaveLength(1);
     expect(bobList[0]?.type).toBe("claude-code-oauth-token");
-  });
-
-  it("bob cannot delete a type alice owns (404, no row of that type for bob)", async () => {
-    const { orgId, alice, bob } = await setupTwoUserOrg();
-
-    authAs(alice, orgId);
-    await createProvider("claude-code-oauth-token", "alice-key");
-
-    authAs(bob, orgId);
-    const request = createTestRequest(deleteUrl("claude-code-oauth-token"), {
-      method: "DELETE",
-    });
-    const response = await DELETE(request);
-    expect(response.status).toBe(404);
-
-    // Alice's provider remains intact
-    authAs(alice, orgId);
-    const aliceList = await listProviders();
-    expect(aliceList).toHaveLength(1);
-    expect(aliceList[0]?.type).toBe("claude-code-oauth-token");
   });
 });
