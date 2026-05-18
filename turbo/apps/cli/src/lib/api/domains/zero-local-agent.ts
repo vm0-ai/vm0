@@ -176,6 +176,25 @@ export async function deleteLocalAgentHost(hostId: string): Promise<void> {
   handleError(result, "Failed to delete local-agent host");
 }
 
+export async function closeLocalAgentHost(params: {
+  hostToken: string;
+}): Promise<void> {
+  const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
+  const client = initClient(zeroLocalAgentHostsContract, {
+    baseUrl,
+    baseHeaders: buildBearerHeaders(params.hostToken),
+    jsonQuery: false as const,
+  });
+
+  const result = await client.close({});
+
+  if (result.status === 200) {
+    return;
+  }
+
+  handleError(result, "Failed to close local-agent host");
+}
+
 export async function getLocalAgentRun(
   jobId: string,
 ): Promise<LocalAgentRunResponse> {

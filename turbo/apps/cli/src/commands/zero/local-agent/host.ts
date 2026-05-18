@@ -11,6 +11,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   ApiRequestError,
   claimNextLocalAgentHostJob,
+  closeLocalAgentHost,
   completeLocalAgentHostJob,
   createLocalAgentHostRealtimeSubscription,
   listLocalAgentHosts,
@@ -351,9 +352,43 @@ function assertHostNameAvailable(
   );
 }
 
+function hostsMatchingName(
+  hostName: string,
+  hosts: readonly LocalAgentHost[],
+): LocalAgentHost[] {
+  return hosts.filter((host) => {
+    return host.displayName === hostName;
+  });
+}
+
+function hostSelectionForName(
+  hostName: string,
+  hosts: readonly LocalAgentHost[],
+): StartHostSelection | null {
+  const matchingNameHosts = hostsMatchingName(hostName, hosts);
+  if (matchingNameHosts.length > 1) {
+    throw new Error(
+      `Multiple local-agent hosts are named ${hostName}. Use --host-id <id> to choose one.`,
+    );
+  }
+
+  const [host] = matchingNameHosts;
+  if (!host) {
+    return null;
+  }
+  if (host.status === "closed") {
+    return restoreHostSelection(host);
+  }
+
+  throw new Error(
+    `Local-agent host is already online: ${hostName}. Choose another --name or delete the existing host first.`,
+  );
+}
+
 async function promptNewHostName(params: {
   initialName: string;
   existingHosts: readonly LocalAgentHost[];
+  allowClosedReuse?: boolean;
 }): Promise<string> {
   const selected = await promptText(
     "Host name:",
@@ -363,14 +398,20 @@ async function promptNewHostName(params: {
       if (!hostName) {
         return "Host name is required";
       }
-      if (
-        params.existingHosts.some((host) => {
-          return host.displayName === hostName;
-        })
-      ) {
+      const matchingHosts = hostsMatchingName(hostName, params.existingHosts);
+      if (matchingHosts.length === 0) {
+        return true;
+      }
+      if (!params.allowClosedReuse) {
         return "A host with this name already exists";
       }
-      return true;
+      if (matchingHosts.length > 1) {
+        return "Multiple local-agent hosts have this name";
+      }
+      if (matchingHosts[0]?.status === "closed") {
+        return true;
+      }
+      return "A host with this name is already online";
     },
   );
   const hostName = selected?.trim();
@@ -386,7 +427,20 @@ async function promptNewHostName(params: {
   throw new Error("Host name selection cancelled");
 }
 
-async function chooseHostForStart(params: {
+async function promptStartHostSelection(params: {
+  initialName: string;
+  existingHosts: readonly LocalAgentHost[];
+}): Promise<StartHostSelection> {
+  const hostName = await promptNewHostName({
+    initialName: params.initialName,
+    existingHosts: params.existingHosts,
+    allowClosedReuse: true,
+  });
+
+  return hostSelectionForName(hostName, params.existingHosts) ?? { hostName };
+}
+
+export async function chooseHostForStart(params: {
   requestedHostName?: string;
   requestedHostId?: string;
   createNew?: boolean;
@@ -424,23 +478,10 @@ async function chooseHostForStart(params: {
   }
 
   if (requestedHostName) {
-    const matchingNameHosts = hosts.filter((host) => {
-      return host.displayName === requestedHostName;
-    });
-    if (matchingNameHosts.length > 1) {
-      throw new Error(
-        `Multiple local-agent hosts are named ${requestedHostName}. Use --host-id <id> to choose one.`,
-      );
-    }
-    const [host] = matchingNameHosts;
-    if (!host) {
-      return { hostName: requestedHostName };
-    }
-    if (host.status === "closed") {
-      return restoreHostSelection(host);
-    }
-    throw new Error(
-      `Local-agent host is already online: ${requestedHostName}. Choose another --name or delete the existing host first.`,
+    return (
+      hostSelectionForName(requestedHostName, hosts) ?? {
+        hostName: requestedHostName,
+      }
     );
   }
 
@@ -482,12 +523,10 @@ async function chooseHostForStart(params: {
       throw new Error("Local-agent host selection cancelled");
     }
     if (selected === NEW_HOST_SELECTION) {
-      return {
-        hostName: await promptNewHostName({
-          initialName: hostname(),
-          existingHosts: hosts,
-        }),
-      };
+      return promptStartHostSelection({
+        initialName: hostname(),
+        existingHosts: hosts,
+      });
     }
 
     const host = closedHosts.find((item) => {
@@ -686,12 +725,17 @@ async function runHostLoop(params: {
 }): Promise<void> {
   let latestError: string | null = null;
   let stopped = false;
+  let closeHostOnStop = false;
   let nextHeartbeatAt = 0;
   let jobNotifier: LocalAgentJobNotifier | null = null;
 
-  const onStop = () => {
+  const stopLoop = () => {
     stopped = true;
     jobNotifier?.close();
+  };
+  const onStop = () => {
+    closeHostOnStop = true;
+    stopLoop();
   };
 
   const sendHeartbeat = async (): Promise<void> => {
@@ -702,7 +746,7 @@ async function runHostLoop(params: {
     } catch (error) {
       if (isInvalidHostTokenError(error)) {
         console.log(chalk.yellow("Local-agent host was deleted; stopping."));
-        onStop();
+        stopLoop();
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
@@ -713,22 +757,24 @@ async function runHostLoop(params: {
     }
   };
 
-  try {
-    jobNotifier = await createLocalAgentJobNotifier(params.hostToken);
-  } catch (error) {
-    console.log(
-      chalk.yellow(
-        `Realtime job notifications unavailable, falling back to polling: ${errorMessage(error)}`,
-      ),
-    );
-  }
-
-  await sendHeartbeat();
-
   process.once("SIGINT", onStop);
   process.once("SIGTERM", onStop);
 
   try {
+    try {
+      jobNotifier = await createLocalAgentJobNotifier(params.hostToken);
+    } catch (error) {
+      console.log(
+        chalk.yellow(
+          `Realtime job notifications unavailable, falling back to polling: ${errorMessage(error)}`,
+        ),
+      );
+    }
+
+    if (!stopped) {
+      await sendHeartbeat();
+    }
+
     while (!stopped) {
       if (Date.now() >= nextHeartbeatAt) {
         await sendHeartbeat();
@@ -743,7 +789,7 @@ async function runHostLoop(params: {
       } catch (error) {
         if (isInvalidHostTokenError(error)) {
           console.log(chalk.yellow("Local-agent host was deleted; stopping."));
-          onStop();
+          stopLoop();
           continue;
         }
         const message = error instanceof Error ? error.message : String(error);
@@ -792,6 +838,17 @@ async function runHostLoop(params: {
     jobNotifier?.close();
     process.removeListener("SIGINT", onStop);
     process.removeListener("SIGTERM", onStop);
+    if (closeHostOnStop) {
+      try {
+        await closeLocalAgentHost({ hostToken: params.hostToken });
+      } catch (error) {
+        console.log(
+          chalk.yellow(
+            `Failed to close local-agent host: ${errorMessage(error)}`,
+          ),
+        );
+      }
+    }
   }
 }
 

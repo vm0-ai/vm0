@@ -17,6 +17,7 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   claimLocalAgentDeviceCode$,
   claimNextLocalAgentHostJob$,
+  closeLocalAgentHost$,
   completeLocalAgentHostJob$,
   createLocalAgentDeviceCode$,
   createLocalAgentHostRealtimeToken$,
@@ -262,6 +263,22 @@ const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { ok: true as const } };
 });
 
+const hostsCloseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const hostToken = parseBearerToken(get(authorization$));
+  if (!hostToken) {
+    return unauthorizedLocalAgent;
+  }
+
+  const result = await set(closeLocalAgentHost$, { hostToken }, signal);
+  signal.throwIfAborted();
+
+  if (!result) {
+    return invalidLocalAgentToken;
+  }
+
+  return { status: 200 as const, body: { ok: true as const } };
+});
+
 const runListQuery$ = queryOf(zeroLocalAgentRunContract.list);
 const runListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -483,6 +500,10 @@ export const zeroLocalAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalAgentHostsContract.delete,
     handler: authRoute(localAgentAuthOptions, hostsDeleteInner$),
+  },
+  {
+    route: zeroLocalAgentHostsContract.close,
+    handler: hostsCloseInner$,
   },
   {
     route: zeroLocalAgentRunContract.list,

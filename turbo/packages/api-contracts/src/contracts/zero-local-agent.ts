@@ -126,6 +126,10 @@ export const localAgentHostDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
+export const localAgentHostCloseResponseSchema = z.object({
+  ok: z.literal(true),
+});
+
 export const zeroLocalAgentDeviceStartContract = c.router({
   start: {
     method: "POST",
@@ -309,6 +313,17 @@ export const zeroLocalAgentHostsContract = c.router({
     },
     summary: "Delete a local-agent host",
   },
+  close: {
+    method: "POST",
+    path: "/api/zero/local-agent/hosts/close",
+    headers: authHeadersSchema,
+    body: c.noBody(),
+    responses: {
+      200: localAgentHostCloseResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Mark the current local-agent host closed",
+  },
 });
 
 export const zeroLocalAgentHostJobsContract = c.router({
@@ -379,6 +394,9 @@ export type LocalAgentHostStartResponse = z.infer<
 >;
 export type LocalAgentHostDeleteResponse = z.infer<
   typeof localAgentHostDeleteResponseSchema
+>;
+export type LocalAgentHostCloseResponse = z.infer<
+  typeof localAgentHostCloseResponseSchema
 >;
 export type LocalAgentHostJobNextResponse = z.infer<
   typeof localAgentHostJobNextResponseSchema
