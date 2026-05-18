@@ -309,15 +309,18 @@ export default async function RootLayout({
                 s.parentNode.insertBefore(b, s);})(window.lintrk);
             `}
           </Script>
-          <noscript>
-            <img
-              height="1"
-              width="1"
-              style={{ display: "none" }}
-              alt=""
-              src={`https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif`}
-            />
-          </noscript>
+          {/*
+            LinkedIn's no-JS tracking pixel must render as raw HTML inside
+            <noscript> — next/image and the @next/next/no-img-element rule
+            both rely on client-side JS, which by definition cannot run here.
+            dangerouslySetInnerHTML keeps the pixel in pure HTML and stays
+            consistent with the JSON-LD blocks above.
+          */}
+          <noscript
+            dangerouslySetInnerHTML={{
+              __html: `<img height="1" width="1" style="display:none;" alt="" src="https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif" />`,
+            }}
+          />
         </body>
       </html>
     </ClerkProvider>
