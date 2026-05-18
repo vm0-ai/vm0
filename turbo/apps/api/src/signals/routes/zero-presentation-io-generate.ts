@@ -10,7 +10,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import {
   getMissingImagePricing,
   imagePricing$,
@@ -31,7 +31,6 @@ import {
   presentationPricing$,
   presentationServiceUnavailable,
   recordGeneratedPresentation$,
-  submitOpenAiPresentationBackgroundGeneration,
 } from "../services/zero-presentation-io-generate.service";
 import {
   builtInGenerationRequestWithInternal,
@@ -39,10 +38,8 @@ import {
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
-  mergeBuiltInGenerationJobInternal$,
   refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
-import { shouldUseBuiltInGenerationProviderWebhooks } from "../services/built-in-generation-provider-webhooks.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
@@ -297,50 +294,6 @@ const runPresentationGenerationJobSafely$ = command(
   },
 );
 
-const submitPresentationProviderWebhookJob$ = command(
-  async (
-    { set },
-    args: PresentationJobArgs,
-    signal: AbortSignal,
-  ): Promise<GenerationErrorResponse | null> => {
-    if (!optionalEnv("OPENAI_WEBHOOK_SECRET")) {
-      return presentationServiceUnavailable(
-        "OpenAI webhook is not configured",
-        "NOT_CONFIGURED",
-      );
-    }
-
-    await set(markBuiltInGenerationRunning$, args.generationId, signal);
-    const handle = await submitOpenAiPresentationBackgroundGeneration(
-      args.options,
-      args.generationId,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (isErrorResponse(handle)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: handle.body.error },
-        signal,
-      );
-      return handle;
-    }
-    await set(
-      mergeBuiltInGenerationJobInternal$,
-      {
-        generationId: args.generationId,
-        internal: {
-          provider: "openai",
-          providerJobId: handle.responseId,
-          providerTask: "presentation-deck",
-        },
-      },
-      signal,
-    );
-    return null;
-  },
-);
-
 const postPresentationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -380,6 +333,10 @@ const postPresentationInner$ = command(
       ? getMissingImagePricing(imagePricing, options.imageModel)
       : [];
     if (options.imageCount > 0 && missingImagePricing.length > 0) {
+      L.error("Presentation image generation pricing is not configured", {
+        imageModel: options.imageModel,
+        missingImagePricing,
+      });
       return presentationServiceUnavailable(
         "Presentation image generation pricing is not configured",
         "NOT_CONFIGURED",
@@ -422,34 +379,6 @@ const postPresentationInner$ = command(
       },
       signal,
     );
-    if (shouldUseBuiltInGenerationProviderWebhooks()) {
-      const submitError = await set(
-        submitPresentationProviderWebhookJob$,
-        {
-          generationId,
-          orgId: auth.orgId,
-          userId: auth.userId,
-          runId,
-          admission,
-          options,
-          pricing,
-          imagePricing,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-      if (submitError) {
-        await set(completeRunBuiltInAdmission$, {
-          admission,
-          status: "failed",
-        });
-        signal.throwIfAborted();
-        return submitError;
-      }
-
-      return acceptedPresentationResponse(generationId, realtime);
-    }
-
     waitUntil(
       set(
         runPresentationGenerationJobSafely$,

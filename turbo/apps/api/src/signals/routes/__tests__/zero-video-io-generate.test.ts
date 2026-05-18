@@ -121,6 +121,30 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
+function readWebhookUrl(requestUrl: string | null): string {
+  if (requestUrl) {
+    const webhookUrl = new URL(requestUrl).searchParams.get("fal_webhook");
+    if (webhookUrl) {
+      return webhookUrl;
+    }
+  }
+  throw new Error("Expected Fal request fal_webhook query parameter");
+}
+
+async function postFalWebhook(
+  app: ReturnType<typeof createApp>,
+  requestUrl: string | null,
+  payload: unknown,
+): Promise<void> {
+  const url = new URL(readWebhookUrl(requestUrl));
+  const response = await app.request(`${url.pathname}${url.search}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "COMPLETED", payload }),
+  });
+  expect(response.status).toBe(200);
+}
+
 function readAcceptedGenerationId(
   body: unknown,
   type: "video",
@@ -594,9 +618,11 @@ describe("POST /api/zero/video-io/generate", () => {
 
     let observedAuthorization: string | null = null;
     let observedBody: unknown = null;
+    let observedRequestUrl: string | null = null;
     server.use(
       http.post(FAL_VIDEO_QUEUE_URL, async ({ request }) => {
         observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
         observedBody = await request.json();
         return HttpResponse.json({
           request_id: "video-request",
@@ -654,7 +680,16 @@ describe("POST /api/zero/video-io/generate", () => {
       fixture.userId,
     );
 
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: FAL_VIDEO_URL,
+        content_type: "video/mp4",
+        file_name: "output.mp4",
+        file_size: VIDEO_BYTES.byteLength,
+      },
+    });
     await clearAllDetached();
+    expect(readWebhookUrl(observedRequestUrl)).toContain(generationId);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `built-in-generation:${generationId}`,
       expect.objectContaining({
@@ -819,8 +854,10 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     let observedBody: unknown = null;
+    let observedRequestUrl: string | null = null;
     server.use(
       http.post(KLING_V3_4K_QUEUE_URL, async ({ request }) => {
+        observedRequestUrl = request.url;
         observedBody = await request.json();
         return HttpResponse.json({
           request_id: "kling-video-request",
@@ -877,6 +914,14 @@ describe("POST /api/zero/video-io/generate", () => {
       fixture.userId,
     );
 
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: KLING_VIDEO_URL,
+        content_type: "video/mp4",
+        file_name: "kling-output.mp4",
+        file_size: VIDEO_BYTES.byteLength,
+      },
+    });
     await clearAllDetached();
 
     const statusResponse = await app.request(
@@ -898,7 +943,7 @@ describe("POST /api/zero/video-io/generate", () => {
       sourceUrl: KLING_VIDEO_URL,
       requestId: "kling-video-request",
     });
-    expect(observedBody).toStrictEqual({
+    expect(observedBody).toMatchObject({
       prompt: "a vertical concert stage reveal",
       aspect_ratio: "9:16",
       duration: "5",
@@ -960,8 +1005,10 @@ describe("POST /api/zero/video-io/generate", () => {
     );
 
     let observedBody: unknown = null;
+    let observedRequestUrl: string | null = null;
     server.use(
       http.post(SEEDANCE_FAST_QUEUE_URL, async ({ request }) => {
+        observedRequestUrl = request.url;
         observedBody = await request.json();
         return HttpResponse.json({
           request_id: "seedance-video-request",
@@ -1019,6 +1066,14 @@ describe("POST /api/zero/video-io/generate", () => {
       fixture.userId,
     );
 
+    await postFalWebhook(app, observedRequestUrl, {
+      video: {
+        url: SEEDANCE_VIDEO_URL,
+        content_type: "video/mp4",
+        file_name: "seedance-output.mp4",
+        file_size: VIDEO_BYTES.byteLength,
+      },
+    });
     await clearAllDetached();
 
     const statusResponse = await app.request(
@@ -1040,7 +1095,7 @@ describe("POST /api/zero/video-io/generate", () => {
       sourceUrl: SEEDANCE_VIDEO_URL,
       requestId: "seedance-video-request",
     });
-    expect(observedBody).toStrictEqual({
+    expect(observedBody).toMatchObject({
       prompt: "a wide multi-shot chase scene",
       aspect_ratio: "21:9",
       duration: "8",
@@ -1097,22 +1152,20 @@ describe("POST /api/zero/video-io/generate", () => {
       body: JSON.stringify({ prompt: "a city" }),
     });
 
-    expect(response.status).toBe(202);
-    const generationId = readAcceptedGenerationId(
-      await response.json(),
-      "video",
-      fixture.userId,
-    );
-
-    await clearAllDetached();
-
-    const statusResponse = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
-    );
-    expect(statusResponse.status).toBe(200);
-    await expect(statusResponse.json()).resolves.toMatchObject({
-      generationId,
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Video generation failed",
+        code: "INTERNAL_SERVER_ERROR",
+      },
+    });
+    const jobRows = await store
+      .set(writeDb$)
+      .select()
+      .from(builtInGenerationJobs)
+      .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+    expect(jobRows).toHaveLength(1);
+    expect(jobRows[0]).toMatchObject({
       type: "video",
       status: "failed",
       error: {
@@ -1121,9 +1174,9 @@ describe("POST /api/zero/video-io/generate", () => {
       },
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${generationId}`,
+      `built-in-generation:${jobRows[0]?.id}`,
       expect.objectContaining({
-        generationId,
+        generationId: jobRows[0]?.id,
         type: "video",
         status: "failed",
       }),

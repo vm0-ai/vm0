@@ -113,15 +113,15 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
-  - Uses OpenAI for GPT Image models and fal.ai for non-OpenAI models
+  - Uses fal.ai for all image model execution
 
 Models:
-  - OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
-    gpt-image-1-mini. OpenAI generations bill returned text/image/output
-    token usage.
-  - fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4.
-    fal generations bill by output image or rounded-up output megapixel,
-    depending on the model.
+  - fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
+    gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image,
+    seedream4.
+    GPT Image models bill by fal output image quality and size.
+    Other fal generations bill by output image or rounded-up output
+    megapixel, depending on the model.
 
 Options:
   - Prompt: required, up to 32,000 characters; stdin is supported.
@@ -133,13 +133,13 @@ Options:
     between 655,360 and 8,294,400. gpt-image-1.5, gpt-image-1, and
     gpt-image-1-mini use auto, 1024x1024, 1536x1024, or 1024x1536.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
-  - Background: auto, opaque, or transparent. gpt-image-2 and fal models do
-    not support transparent backgrounds.
-  - Format: png, jpeg, or webp for OpenAI; png or jpeg for fal. Use
-    --compression 0-100 only with OpenAI jpeg or webp outputs.
-  - Moderation: auto or low for OpenAI models.
+  - Background: auto, opaque, or transparent when supported. gpt-image-2,
+    Flux, Qwen, and Seedream do not support transparent backgrounds.
+  - Format: png, jpeg, or webp for GPT Image models; png or jpeg for the
+    other fal models.
   - fal-only controls: --seed, --safety-tolerance for Flux, and
-    --enhance-prompt for flux-pro-1.1.
+    --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
+    not supported on the fal-backed image path.
   - This command generates one text-to-image result. GPT Image also
     supports image edits, reference images, masks, partial-image streaming,
     and multiple images per request, but those are not exposed by this

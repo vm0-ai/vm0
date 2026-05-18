@@ -7,22 +7,13 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { waitUntil } from "../context/wait-until";
-import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
 import { env } from "../../lib/env";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
-import { settle } from "../utils";
-import {
-  falBuiltInGenerationWebhookUrl,
-  shouldUseBuiltInGenerationProviderWebhooks,
-} from "../services/built-in-generation-provider-webhooks.service";
+import { falBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import {
   checkVideoCredits$,
-  downloadFalVideo,
-  parseFalVideoResult,
   parseVideoOptions,
-  recordGeneratedVideo$,
   submitFalVideoGeneration,
   type VideoOptions,
   type VideoPricingRow,
@@ -31,16 +22,13 @@ import {
   videoPricingCategoryForOptions,
   videoPricingKey,
   videoServiceUnavailable,
-  waitForFalVideoResult,
 } from "../services/zero-video-io-generate.service";
 import {
   builtInGenerationRequestWithInternal,
-  completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
   mergeBuiltInGenerationJobInternal$,
-  refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
 import {
   completeRunBuiltInAdmission$,
@@ -49,7 +37,6 @@ import {
   type RunBuiltInAdmission,
 } from "../services/zero-run-built-in-admission.service";
 
-const L = logger("ZeroVideoIoGenerate");
 const videoBody$ = bodyResultOf(zeroVideoIoGenerateContract.post);
 
 interface GenerationError {
@@ -74,8 +61,6 @@ interface VideoJobArgs {
   readonly pricing: VideoPricingRow;
   readonly falKey: string;
 }
-
-type AdmissionCompletionStatus = "completed" | "failed";
 
 function isGenerationError(value: unknown): value is GenerationError {
   return (
@@ -130,130 +115,6 @@ function acceptedVideoResponse(
     },
   };
 }
-
-const runVideoGenerationJob$ = command(
-  async (
-    { set },
-    args: VideoJobArgs,
-    signal: AbortSignal,
-  ): Promise<AdmissionCompletionStatus> => {
-    await set(markBuiltInGenerationRunning$, args.generationId, signal);
-
-    const queueHandle = await submitFalVideoGeneration(
-      args.options,
-      args.falKey,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (isErrorResponse(queueHandle)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: queueHandle.body.error },
-        signal,
-      );
-      return "failed";
-    }
-
-    const resultBody = await waitForFalVideoResult(
-      queueHandle,
-      args.falKey,
-      signal,
-    );
-    signal.throwIfAborted();
-    if (isErrorResponse(resultBody)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: resultBody.body.error },
-        signal,
-      );
-      return "failed";
-    }
-
-    const falResult = parseFalVideoResult(resultBody, queueHandle.requestId);
-    if (isErrorResponse(falResult)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: falResult.body.error },
-        signal,
-      );
-      return "failed";
-    }
-
-    const generation = await downloadFalVideo(falResult, args.options, signal);
-    signal.throwIfAborted();
-    if (isErrorResponse(generation)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: generation.body.error },
-        signal,
-      );
-      return "failed";
-    }
-
-    const active = await set(
-      refreshActiveBuiltInGenerationJob$,
-      { generationId: args.generationId, type: "video" },
-      signal,
-    );
-    if (!active) {
-      return "failed";
-    }
-
-    const result = await set(
-      recordGeneratedVideo$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        runId: args.runId,
-        pricing: args.pricing,
-        generation,
-        usageIdempotency: {
-          generationId: args.generationId,
-          scope: "video",
-        },
-      },
-      signal,
-    );
-
-    await set(
-      completeBuiltInGenerationJob$,
-      { generationId: args.generationId, result },
-      signal,
-    );
-    return "completed";
-  },
-);
-
-const runVideoGenerationJobSafely$ = command(
-  async ({ set }, args: VideoJobArgs, signal: AbortSignal): Promise<void> => {
-    const result = await settle(set(runVideoGenerationJob$, args, signal));
-    signal.throwIfAborted();
-    const admissionStatus: AdmissionCompletionStatus = result.ok
-      ? result.value
-      : "failed";
-    await set(completeRunBuiltInAdmission$, {
-      admission: args.admission,
-      status: admissionStatus,
-    });
-    signal.throwIfAborted();
-    if (result.ok) {
-      return;
-    }
-
-    L.error("Built-in video generation job failed", result.error);
-    await set(
-      failBuiltInGenerationJob$,
-      {
-        generationId: args.generationId,
-        error: {
-          message: "Video generation failed",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      },
-      signal,
-    );
-  },
-);
 
 const submitVideoProviderWebhookJob$ = command(
   async (
@@ -374,50 +235,29 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
     signal,
   );
-  if (shouldUseBuiltInGenerationProviderWebhooks()) {
-    const submitError = await set(
-      submitVideoProviderWebhookJob$,
-      {
-        generationId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-        runId,
-        admission,
-        options,
-        pricing: pricingRow,
-        falKey,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (submitError) {
-      await set(completeRunBuiltInAdmission$, {
-        admission,
-        status: "failed",
-      });
-      signal.throwIfAborted();
-      return submitError;
-    }
-
-    return acceptedVideoResponse(generationId, realtime);
-  }
-
-  waitUntil(
-    set(
-      runVideoGenerationJobSafely$,
-      {
-        generationId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-        runId,
-        admission,
-        options,
-        pricing: pricingRow,
-        falKey,
-      },
-      signal,
-    ),
+  const submitError = await set(
+    submitVideoProviderWebhookJob$,
+    {
+      generationId,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      runId,
+      admission,
+      options,
+      pricing: pricingRow,
+      falKey,
+    },
+    signal,
   );
+  signal.throwIfAborted();
+  if (submitError) {
+    await set(completeRunBuiltInAdmission$, {
+      admission,
+      status: "failed",
+    });
+    signal.throwIfAborted();
+    return submitError;
+  }
 
   return acceptedVideoResponse(generationId, realtime);
 });

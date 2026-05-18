@@ -253,6 +253,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches built-in generation webhook rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/built-in-generation"),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(

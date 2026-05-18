@@ -69,7 +69,3 @@ export function falBuiltInGenerationWebhookUrl(args: {
   }
   return baseUrl.toString();
 }
-
-export function shouldUseBuiltInGenerationProviderWebhooks(): boolean {
-  return env("ENV") !== "development";
-}

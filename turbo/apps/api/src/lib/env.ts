@@ -10,7 +10,6 @@ const SCHEMA = {
   SECRETS_ENCRYPTION_KEY: z.string().length(64),
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
-  OPENAI_WEBHOOK_SECRET: z.string().min(1).optional(),
   FAL_KEY: z.string().min(1).optional(),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),

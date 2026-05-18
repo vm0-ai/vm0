@@ -221,7 +221,6 @@ export {
   webhookFirewallAuthContract,
   webhookGithubContract,
   webhookStripeContract,
-  webhookBuiltInGenerationOpenAiContract,
   webhookBuiltInGenerationFalContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
@@ -250,7 +249,6 @@ export {
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookStripeContract,
-  type WebhookBuiltInGenerationOpenAiContract,
   type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
 export {
@@ -1390,7 +1388,6 @@ export {
   zeroImageIoGenerateContract,
   zeroImageIoGenerateRequestSchema,
   zeroImageIoGenerateResponseSchema,
-  zeroImageIoUsageSchema,
   type ZeroImageIoGenerateContract,
   type ZeroImageIoGenerateRequest,
   type ZeroImageIoGenerateResponse,

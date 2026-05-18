@@ -164,27 +164,40 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["output_image", usd(0.0387), 1],
   ]),
 
-  // OpenAI GPT Image 2 — https://platform.openai.com/docs/pricing
-  // Uses the exact token usage returned by the Images API with 20% markup.
+  // Fal-hosted GPT Image models. The endpoints return image URLs without
+  // token usage, so built-in generation bills the output image tier with 20%
+  // markup. Large tiers use the highest documented non-1024x1024 price.
   ...usageGroup("image", "gpt-image-2", [
-    ["tokens.input.text", usd(6), 1_000_000],
-    ["tokens.input.image", usd(9.6), 1_000_000],
-    ["tokens.output.image", usd(36), 1_000_000],
+    ["output_image.low.standard", usd(0.006 * 1.2), 1],
+    ["output_image.low.large", usd(0.012 * 1.2), 1],
+    ["output_image.medium.standard", usd(0.053 * 1.2), 1],
+    ["output_image.medium.large", usd(0.101 * 1.2), 1],
+    ["output_image.high.standard", usd(0.211 * 1.2), 1],
+    ["output_image.high.large", usd(0.401 * 1.2), 1],
   ]),
   ...usageGroup("image", "gpt-image-1.5", [
-    ["tokens.input.text", usd(9.6), 1_000_000],
-    ["tokens.input.image", usd(9.6), 1_000_000],
-    ["tokens.output.image", usd(38.4), 1_000_000],
+    ["output_image.low.standard", usd(0.009 * 1.2), 1],
+    ["output_image.low.large", usd(0.013 * 1.2), 1],
+    ["output_image.medium.standard", usd(0.034 * 1.2), 1],
+    ["output_image.medium.large", usd(0.051 * 1.2), 1],
+    ["output_image.high.standard", usd(0.133 * 1.2), 1],
+    ["output_image.high.large", usd(0.2 * 1.2), 1],
   ]),
   ...usageGroup("image", "gpt-image-1", [
-    ["tokens.input.text", usd(6), 1_000_000],
-    ["tokens.input.image", usd(12), 1_000_000],
-    ["tokens.output.image", usd(48), 1_000_000],
+    ["output_image.low.standard", usd(0.011 * 1.2), 1],
+    ["output_image.low.large", usd(0.016 * 1.2), 1],
+    ["output_image.medium.standard", usd(0.042 * 1.2), 1],
+    ["output_image.medium.large", usd(0.063 * 1.2), 1],
+    ["output_image.high.standard", usd(0.167 * 1.2), 1],
+    ["output_image.high.large", usd(0.25 * 1.2), 1],
   ]),
   ...usageGroup("image", "gpt-image-1-mini", [
-    ["tokens.input.text", usd(1.2), 1_000_000],
-    ["tokens.input.image", usd(2.4), 1_000_000],
-    ["tokens.output.image", usd(12), 1_000_000],
+    ["output_image.low.standard", usd(0.005 * 1.2), 1],
+    ["output_image.low.large", usd(0.006 * 1.2), 1],
+    ["output_image.medium.standard", usd(0.011 * 1.2), 1],
+    ["output_image.medium.large", usd(0.015 * 1.2), 1],
+    ["output_image.high.standard", usd(0.036 * 1.2), 1],
+    ["output_image.high.large", usd(0.052 * 1.2), 1],
   ]),
 
   // fal.ai image generation — billed by model-specific output unit with 20% markup.

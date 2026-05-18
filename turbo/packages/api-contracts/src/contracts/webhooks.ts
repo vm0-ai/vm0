@@ -69,21 +69,6 @@ export const webhookStripeContract = c.router({
   },
 });
 
-export const webhookBuiltInGenerationOpenAiContract = c.router({
-  post: {
-    method: "POST",
-    path: "/api/webhooks/built-in-generations/openai",
-    body: c.type<string>(),
-    responses: {
-      200: thirdPartyWebhookOkSchema,
-      400: thirdPartyWebhookErrorSchema,
-      401: thirdPartyWebhookErrorSchema,
-      503: thirdPartyWebhookErrorSchema,
-    },
-    summary: "Handle OpenAI built-in generation webhooks",
-  },
-});
-
 export const webhookBuiltInGenerationFalContract = c.router({
   post: {
     method: "POST",
@@ -627,8 +612,6 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
-export type WebhookBuiltInGenerationOpenAiContract =
-  typeof webhookBuiltInGenerationOpenAiContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;

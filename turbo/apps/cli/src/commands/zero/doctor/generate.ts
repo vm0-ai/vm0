@@ -33,25 +33,25 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 > = {
   image: [
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1",
       command: "zero built-in generate image --model gpt-image-1 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-2",
       command: "zero built-in generate image --model gpt-image-2 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1.5",
       command: "zero built-in generate image --model gpt-image-1.5 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1-mini",
       command: "zero built-in generate image --model gpt-image-1-mini -h",
       reason: "available without connector setup",
@@ -144,7 +144,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "zero built-in generate image -h",
     models:
-      "OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
   },
   video: {
     label: "Built-in video generation",

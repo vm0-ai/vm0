@@ -2,43 +2,34 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
 import type { RouteEntry } from "../route";
-import { env, optionalEnv } from "../../lib/env";
+import { env } from "../../lib/env";
 import { createBuiltInGenerationRealtimeSubscription } from "../external/realtime";
-import { settle } from "../utils";
 import {
   checkImageCredits$,
-  generateImageWithProvider,
   getMissingImagePricing,
   imagePricing$,
   insufficientCredits,
   parseImageOptions,
-  recordGeneratedImage$,
   serviceUnavailable,
   submitFalImageQueueGeneration,
-  submitOpenAiImageBackgroundGeneration,
   type ImageOptions,
   type ImagePricing,
 } from "../services/zero-image-io-generate.service";
 import {
   builtInGenerationRequestWithInternal,
-  completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
   markBuiltInGenerationRunning$,
   mergeBuiltInGenerationJobInternal$,
-  refreshActiveBuiltInGenerationJob$,
 } from "../services/zero-built-in-generation.service";
-import {
-  falBuiltInGenerationWebhookUrl,
-  shouldUseBuiltInGenerationProviderWebhooks,
-} from "../services/built-in-generation-provider-webhooks.service";
+import { falBuiltInGenerationWebhookUrl } from "../services/built-in-generation-provider-webhooks.service";
 import {
   completeRunBuiltInAdmission$,
   isRunBuiltInAdmissionError,
@@ -70,8 +61,6 @@ interface ImageJobArgs {
   readonly options: ImageOptions;
   readonly pricing: ImagePricing;
 }
-
-type AdmissionCompletionStatus = "completed" | "failed";
 
 function isGenerationError(value: unknown): value is GenerationError {
   return (
@@ -114,89 +103,20 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
   };
 }
 
-const runImageGenerationJob$ = command(
-  async (
-    { set },
-    args: ImageJobArgs,
-    signal: AbortSignal,
-  ): Promise<AdmissionCompletionStatus> => {
-    await set(markBuiltInGenerationRunning$, args.generationId, signal);
-
-    const generation = await generateImageWithProvider(args.options, signal);
-    signal.throwIfAborted();
-    if (isErrorResponse(generation)) {
-      await set(
-        failBuiltInGenerationJob$,
-        { generationId: args.generationId, error: generation.body.error },
-        signal,
-      );
-      return "failed";
-    }
-
-    const active = await set(
-      refreshActiveBuiltInGenerationJob$,
-      { generationId: args.generationId, type: "image" },
-      signal,
-    );
-    if (!active) {
-      return "failed";
-    }
-
-    const result = await set(
-      recordGeneratedImage$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        runId: args.runId,
-        pricing: args.pricing,
-        generation,
-        usageIdempotency: {
-          generationId: args.generationId,
-          scope: "image",
-        },
-      },
-      signal,
-    );
-
-    await set(
-      completeBuiltInGenerationJob$,
-      { generationId: args.generationId, result },
-      signal,
-    );
-    return "completed";
-  },
-);
-
-const runImageGenerationJobSafely$ = command(
-  async ({ set }, args: ImageJobArgs, signal: AbortSignal): Promise<void> => {
-    const result = await settle(set(runImageGenerationJob$, args, signal));
-    signal.throwIfAborted();
-    const admissionStatus: AdmissionCompletionStatus = result.ok
-      ? result.value
-      : "failed";
-    await set(completeRunBuiltInAdmission$, {
-      admission: args.admission,
-      status: admissionStatus,
-    });
-    signal.throwIfAborted();
-    if (result.ok) {
-      return;
-    }
-
-    L.error("Built-in image generation job failed", result.error);
-    await set(
-      failBuiltInGenerationJob$,
-      {
-        generationId: args.generationId,
-        error: {
-          message: "Image generation failed",
-          code: "INTERNAL_SERVER_ERROR",
-        },
-      },
-      signal,
-    );
-  },
-);
+function acceptedImageResponse(
+  generationId: string,
+  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+) {
+  return {
+    status: 202 as const,
+    body: {
+      generationId,
+      type: "image" as const,
+      status: "queued" as const,
+      realtime,
+    },
+  };
+}
 
 const submitImageProviderWebhookJob$ = command(
   async (
@@ -206,60 +126,17 @@ const submitImageProviderWebhookJob$ = command(
   ): Promise<GenerationErrorResponse | null> => {
     await set(markBuiltInGenerationRunning$, args.generationId, signal);
 
-    if (args.options.provider === "fal") {
-      const falKey = env("FAL_KEY");
-      if (!falKey) {
-        return serviceUnavailable(
-          "Fal image generation is not configured",
-          "NOT_CONFIGURED",
-        );
-      }
-      const handle = await submitFalImageQueueGeneration(
-        args.options,
-        falKey,
-        falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
-        signal,
-      );
-      signal.throwIfAborted();
-      if (isErrorResponse(handle)) {
-        await set(
-          failBuiltInGenerationJob$,
-          { generationId: args.generationId, error: handle.body.error },
-          signal,
-        );
-        return handle;
-      }
-      await set(
-        mergeBuiltInGenerationJobInternal$,
-        {
-          generationId: args.generationId,
-          internal: {
-            provider: "fal",
-            providerJobId: handle.requestId,
-            providerStatusUrl: handle.statusUrl,
-            providerResponseUrl: handle.responseUrl,
-            providerTask: "image",
-          },
-        },
-        signal,
-      );
-      return null;
-    }
-
-    if (!optionalEnv("OPENAI_WEBHOOK_SECRET")) {
+    const falKey = env("FAL_KEY");
+    if (!falKey) {
       return serviceUnavailable(
-        "OpenAI webhook is not configured",
+        "Fal image generation is not configured",
         "NOT_CONFIGURED",
       );
     }
-
-    const handle = await submitOpenAiImageBackgroundGeneration(
+    const handle = await submitFalImageQueueGeneration(
       args.options,
-      {
-        generationId: args.generationId,
-        generationType: "image",
-        task: "image",
-      },
+      falKey,
+      falBuiltInGenerationWebhookUrl({ generationId: args.generationId }),
       signal,
     );
     signal.throwIfAborted();
@@ -276,8 +153,10 @@ const submitImageProviderWebhookJob$ = command(
       {
         generationId: args.generationId,
         internal: {
-          provider: "openai",
-          providerJobId: handle.responseId,
+          provider: "fal",
+          providerJobId: handle.requestId,
+          providerStatusUrl: handle.statusUrl,
+          providerResponseUrl: handle.responseUrl,
           providerTask: "image",
         },
       },
@@ -313,13 +192,17 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   const missingPricing = getMissingImagePricing(pricing, options.model);
   if (missingPricing.length > 0) {
+    L.error("Image generation pricing is not configured", {
+      model: options.model,
+      missingPricing,
+    });
     return serviceUnavailable(
       "Image generation pricing is not configured",
       "NOT_CONFIGURED",
     );
   }
 
-  if (options.provider === "fal" && !env("FAL_KEY")) {
+  if (!env("FAL_KEY")) {
     return serviceUnavailable(
       "Fal image generation is not configured",
       "NOT_CONFIGURED",
@@ -363,66 +246,30 @@ const postImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     signal,
   );
 
-  if (shouldUseBuiltInGenerationProviderWebhooks()) {
-    const submitError = await set(
-      submitImageProviderWebhookJob$,
-      {
-        generationId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-        runId,
-        admission,
-        options,
-        pricing,
-      },
-      signal,
-    );
+  const submitError = await set(
+    submitImageProviderWebhookJob$,
+    {
+      generationId,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      runId,
+      admission,
+      options,
+      pricing,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (submitError) {
+    await set(completeRunBuiltInAdmission$, {
+      admission,
+      status: "failed",
+    });
     signal.throwIfAborted();
-    if (submitError) {
-      await set(completeRunBuiltInAdmission$, {
-        admission,
-        status: "failed",
-      });
-      signal.throwIfAborted();
-      return submitError;
-    }
-
-    return {
-      status: 202 as const,
-      body: {
-        generationId,
-        type: "image" as const,
-        status: "queued" as const,
-        realtime,
-      },
-    };
+    return submitError;
   }
 
-  waitUntil(
-    set(
-      runImageGenerationJobSafely$,
-      {
-        generationId,
-        orgId: auth.orgId,
-        userId: auth.userId,
-        runId,
-        admission,
-        options,
-        pricing,
-      },
-      signal,
-    ),
-  );
-
-  return {
-    status: 202 as const,
-    body: {
-      generationId,
-      type: "image" as const,
-      status: "queued" as const,
-      realtime,
-    },
-  };
+  return acceptedImageResponse(generationId, realtime);
 });
 
 export const zeroImageIoGenerateRoutes: readonly RouteEntry[] = [
