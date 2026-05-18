@@ -849,16 +849,6 @@ export function upsertOrgNoSecretModelProvider(
 }
 
 /**
- * Delete an org-level model provider and its secrets
- */
-export function deleteOrgModelProvider(
-  orgId: string,
-  type: ModelProviderType,
-): Promise<void> {
-  return deleteModelProvider(orgId, ORG_SENTINEL_USER_ID, type);
-}
-
-/**
  * Get a specific model provider by ID, user-aware.
  *
  * Org-tier rows (`userId = '__org__'`) are visible to any caller in the org.

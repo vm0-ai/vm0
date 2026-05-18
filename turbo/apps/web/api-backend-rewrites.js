@@ -32,6 +32,10 @@ const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH_RE = /^\/api\/agent\/checkpoints\/[^/]+$/;
+const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/model-providers/:type";
+const ZERO_MODEL_PROVIDER_TYPE_PATH_RE =
+  /^\/api\/zero\/model-providers\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
   [
@@ -120,6 +124,11 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
   ],
   ["/api/zero/model-providers", "/api/zero/model-providers"],
+  [
+    ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+    "/api/zero/model-providers/:type",
+    ZERO_MODEL_PROVIDER_TYPE_PATH_RE,
+  ],
   [
     "/api/zero/built-in-generations/:path*",
     "/api/zero/built-in-generations/:path*",

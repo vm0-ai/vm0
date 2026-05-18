@@ -130,7 +130,7 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS = [
 const ZERO_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/model-providers";
 const ZERO_MODEL_PROVIDERS_PATH = "/api/zero/model-providers";
 const ZERO_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/model-providers/anthropic-api-key",
+  "/api/zero/model-providers/anthropic-api-key/extra",
   "/api/zero/model-provider",
 ] as const;
 const ONBOARDING_STATUS_REWRITE_SOURCE = "/api/zero/onboarding/status";
@@ -150,6 +150,15 @@ const PERMISSION_POLICIES_PATH = "/api/zero/permission-policies";
 const PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/permission-policies/extra",
   "/api/zero/permission-policy",
+] as const;
+const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/model-providers/:type";
+const ZERO_MODEL_PROVIDER_TYPE_PATH =
+  "/api/zero/model-providers/anthropic-api-key";
+const ZERO_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/model-providers",
+  "/api/zero/model-providers/anthropic-api-key/extra",
+  "/api/zero/model-provider/anthropic-api-key",
 ] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
@@ -696,6 +705,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_MODEL_PROVIDERS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/model-providers",
+        },
+        {
+          source: ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/model-providers/:type",
         },
         {
           source: "/api/zero/user-preferences",
@@ -1503,6 +1517,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_ORG_LEAVE_PATH)).toStrictEqual({});
     for (const pathname of ZERO_ORG_LEAVE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for zero model provider type rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/model-providers/:type",
+    });
+
+    const matcher = getPathMatch(ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_MODEL_PROVIDER_TYPE_PATH)).toStrictEqual({
+      type: "anthropic-api-key",
+    });
+    for (const pathname of ZERO_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

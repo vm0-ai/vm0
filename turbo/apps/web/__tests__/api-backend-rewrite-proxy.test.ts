@@ -556,9 +556,7 @@ describe("API backend rewrite proxy behavior", () => {
       true,
     );
     expect(
-      matchesApiBackendRewritePath(
-        "/api/zero/model-providers/anthropic-api-key",
-      ),
+      matchesApiBackendRewritePath("/api/zero/model-providers-extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/model-provider")).toBe(
       false,
@@ -644,6 +642,24 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(matchesApiBackendRewritePath("/api/zero/org/leaves")).toBe(false);
+  });
+
+  it("matches the zero model provider type rewrite path by one segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/anthropic-api-key",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/codex-oauth-token",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/anthropic-api-key/extra",
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero voice-chat token rewrite exactly", () => {
