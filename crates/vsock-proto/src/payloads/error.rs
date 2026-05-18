@@ -67,8 +67,9 @@ mod tests {
 
     #[test]
     fn error_payload_truncates_oversized_utf8_at_character_boundary() {
-        let prefix = "A".repeat(u16::MAX as usize - 1);
-        let message = format!("{prefix}é");
+        let emoji = "\u{1F600}";
+        let prefix = "A".repeat(u16::MAX as usize - (emoji.len() - 1));
+        let message = format!("{prefix}{emoji}");
         let payload = encode_error(&message);
 
         let declared_len = u16::from_be_bytes(payload.get(..2).unwrap().try_into().unwrap());
