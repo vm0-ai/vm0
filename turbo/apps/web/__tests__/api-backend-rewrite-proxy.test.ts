@@ -359,6 +359,18 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the permission policies rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/permission-policies")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/permission-policies/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/permission-policy")).toBe(
+      false,
+    );
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

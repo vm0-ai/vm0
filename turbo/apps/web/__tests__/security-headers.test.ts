@@ -124,6 +124,12 @@ const ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/onboarding/setup/extra",
   "/api/zero/onboarding",
 ] as const;
+const PERMISSION_POLICIES_REWRITE_SOURCE = "/api/zero/permission-policies";
+const PERMISSION_POLICIES_PATH = "/api/zero/permission-policies";
+const PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/permission-policies/extra",
+  "/api/zero/permission-policy",
+] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
@@ -547,6 +553,10 @@ describe("API backend rewrites", () => {
         {
           source: "/api/zero/uploads/prepare",
           destination: "https://api.example.test/api/zero/uploads/prepare",
+        },
+        {
+          source: PERMISSION_POLICIES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/permission-policies",
         },
         {
           source: PUSH_SUBSCRIPTIONS_REWRITE_SOURCE,
@@ -1125,6 +1135,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact permission policies rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === PERMISSION_POLICIES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: PERMISSION_POLICIES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/permission-policies",
+    });
+
+    const matcher = getPathMatch(PERMISSION_POLICIES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(PERMISSION_POLICIES_PATH)).toStrictEqual({});
+    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero member credit cap rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1543,5 +1576,12 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath("/api/zero/variables/extra")).toBe(
       false,
     );
+  });
+
+  it("should match the permission policies route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(PERMISSION_POLICIES_PATH)).toBe(true);
+    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 });
