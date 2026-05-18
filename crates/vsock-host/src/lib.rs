@@ -63,7 +63,10 @@ const READ_BUF_SIZE: usize = 64 * 1024;
 /// Observer called when a request frame reaches the guest-write boundary.
 ///
 /// The callback is synchronous because it runs while the shared writer lock is
-/// held, immediately before frame bytes are written.
+/// held, immediately before frame bytes are written. Keep the callback fast and
+/// do not call back into the same [`VsockHost`], because that can deadlock on
+/// the writer lock. Multi-frame helper operations may invoke the same observer
+/// more than once.
 #[derive(Clone)]
 pub struct FrameWriteObserver {
     record_write_start: Arc<dyn Fn() -> io::Result<()> + Send + Sync>,

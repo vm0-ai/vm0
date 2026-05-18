@@ -736,8 +736,8 @@ impl VsockHost {
             .await
     }
 
-    /// Write a file on the guest and report when the first helper frame is
-    /// about to be written to the guest.
+    /// Write a file on the guest and report before each helper frame is
+    /// written to the guest.
     pub async fn write_file_with_write_observer(
         &self,
         path: &str,
