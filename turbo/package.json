@@ -61,6 +61,7 @@
       "js-yaml": ">=4.1.1",
       "lodash": ">=4.18.0",
       "lodash-es": ">=4.18.0",
+      "ws": ">=8.20.1",
       "mdast-util-to-hast": ">=13.2.1",
       "minimatch": ">=10.2.3",
       "@esbuild-kit/core-utils>esbuild": "^0.25.4",
