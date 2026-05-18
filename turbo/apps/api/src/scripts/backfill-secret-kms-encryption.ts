@@ -158,12 +158,20 @@ async function migrateSecretsTable(args: MigrationArgs): Promise<number> {
         args.mode,
       );
       if (!args.dryRun) {
-        await database
+        const updatedRows = await database
           .update(secrets)
           .set({ encryptedValue })
-          .where(eq(secrets.id, row.id));
+          .where(
+            and(
+              eq(secrets.id, row.id),
+              eq(secrets.encryptedValue, row.encrypted),
+            ),
+          )
+          .returning({ id: secrets.id });
+        migrated += updatedRows.length;
+      } else {
+        migrated += 1;
       }
-      migrated += 1;
     }
 
     if (args.dryRun) {
@@ -207,12 +215,20 @@ async function migrateOrgCustomConnectorSecretsTable(
         args.mode,
       );
       if (!args.dryRun) {
-        await database
+        const updatedRows = await database
           .update(orgCustomConnectorSecrets)
           .set({ encryptedValue })
-          .where(eq(orgCustomConnectorSecrets.id, row.id));
+          .where(
+            and(
+              eq(orgCustomConnectorSecrets.id, row.id),
+              eq(orgCustomConnectorSecrets.encryptedValue, row.encrypted),
+            ),
+          )
+          .returning({ id: orgCustomConnectorSecrets.id });
+        migrated += updatedRows.length;
+      } else {
+        migrated += 1;
       }
-      migrated += 1;
     }
 
     if (args.dryRun) {
@@ -262,12 +278,20 @@ async function migrateZeroAgentSchedulesTable(
         args.mode,
       );
       if (!args.dryRun) {
-        await database
+        const updatedRows = await database
           .update(zeroAgentSchedules)
           .set({ encryptedSecrets })
-          .where(eq(zeroAgentSchedules.id, row.id));
+          .where(
+            and(
+              eq(zeroAgentSchedules.id, row.id),
+              eq(zeroAgentSchedules.encryptedSecrets, row.encrypted),
+            ),
+          )
+          .returning({ id: zeroAgentSchedules.id });
+        migrated += updatedRows.length;
+      } else {
+        migrated += 1;
       }
-      migrated += 1;
     }
 
     if (args.dryRun) {
