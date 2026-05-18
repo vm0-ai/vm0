@@ -90,6 +90,14 @@ pub struct CliExecutionResult {
     /// Claude Code's final result metadata, when a terminal result event was
     /// observed. Codex uses its own event schema and leaves this unset.
     pub claude_result: Option<ClaudeResultSummary>,
+
+    /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
+    /// stdout JSONL.
+    ///
+    /// Codex reports terminal failures as JSONL events on stdout, not stderr.
+    /// Keeping the diagnostic here lets the guest-agent surface the actual
+    /// failure reason in its final run error.
+    pub failure_diagnostic: Option<String>,
 }
 
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
@@ -247,6 +255,7 @@ pub async fn execute_cli(
     let mut last_read_event_at: Option<Instant> = None;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
+    let mut failure_diagnostic = None;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             line_result = reader.next_line(), if !stdout_eof => {
@@ -294,12 +303,19 @@ pub async fn execute_cli(
                                 && let Some(diagnostic) =
                                     events::masked_codex_failure_diagnostic(&event, masker)
                             {
+                                let message = diagnostic.message;
                                 log_warn!(
                                     LOG_TAG,
                                     "Codex JSONL failure event seq={seq} type={}: {}",
                                     diagnostic.event_type,
-                                    diagnostic.message
+                                    message
                                 );
+                                if should_replace_failure_diagnostic(
+                                    failure_diagnostic.as_deref(),
+                                    &message,
+                                ) {
+                                    failure_diagnostic = Some(message);
+                                }
                             }
                             // Capture checkpoint metadata before event payload preparation
                             // mutates the event through masking.
@@ -603,5 +619,37 @@ pub async fn execute_cli(
         stderr_lines: masked_stderr_lines,
         last_event_sequence,
         claude_result,
+        failure_diagnostic,
     })
+}
+
+fn should_replace_failure_diagnostic(existing: Option<&str>, candidate: &str) -> bool {
+    match existing {
+        None => true,
+        Some(existing) => {
+            !events::is_generic_codex_failure_diagnostic(candidate)
+                || events::is_generic_codex_failure_diagnostic(existing)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_replace_failure_diagnostic;
+
+    #[test]
+    fn specific_codex_failure_diagnostic_survives_later_generic_event() {
+        assert!(!should_replace_failure_diagnostic(
+            Some("You've hit your usage limit."),
+            "turn failed",
+        ));
+    }
+
+    #[test]
+    fn specific_codex_failure_diagnostic_replaces_generic_event() {
+        assert!(should_replace_failure_diagnostic(
+            Some("error"),
+            "You've hit your usage limit.",
+        ));
+    }
 }
