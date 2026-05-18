@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
@@ -116,6 +116,7 @@ struct ChunkedWriteCleanupGuard {
     command: String,
     sudo: bool,
     write_observer: FrameWriteObserver,
+    cleanup_armed: Arc<AtomicBool>,
 }
 
 impl ChunkedWriteCleanupGuard {
@@ -124,12 +125,14 @@ impl ChunkedWriteCleanupGuard {
         command: String,
         sudo: bool,
         write_observer: FrameWriteObserver,
+        cleanup_armed: Arc<AtomicBool>,
     ) -> Self {
         Self {
             shared: Some(shared),
             command,
             sudo,
             write_observer,
+            cleanup_armed,
         }
     }
 
@@ -141,6 +144,11 @@ impl ChunkedWriteCleanupGuard {
         &mut self,
         normal_operation: &mut CompositeNormalOperation,
     ) -> io::Result<()> {
+        if !self.cleanup_armed.load(Ordering::Acquire) {
+            self.disarm();
+            return Ok(());
+        }
+
         let result = if let Some(shared) = self.shared.as_ref() {
             cleanup_timeout(
                 exec_operation::exec_cleanup_with_composite_on_shared_and_observer(
@@ -192,6 +200,9 @@ impl Drop for ChunkedWriteCleanupGuard {
         let Some(shared) = self.shared.take() else {
             return;
         };
+        if !self.cleanup_armed.load(Ordering::Acquire) {
+            return;
+        }
 
         let command = std::mem::take(&mut self.command);
         let sudo = self.sudo;
@@ -213,6 +224,17 @@ impl Drop for ChunkedWriteCleanupGuard {
             });
         }
     }
+}
+
+fn write_observer_that_arms_cleanup(
+    write_observer: FrameWriteObserver,
+    cleanup_armed: Arc<AtomicBool>,
+) -> FrameWriteObserver {
+    FrameWriteObserver::new(move || {
+        write_observer.record_write_start()?;
+        cleanup_armed.store(true, Ordering::Release);
+        Ok(())
+    })
 }
 
 struct HostTempFileGuard {
@@ -744,11 +766,15 @@ impl VsockHost {
         let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
         let quoted_tmp = shell_quote(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
+        let cleanup_armed = Arc::new(AtomicBool::new(false));
+        let write_observer =
+            write_observer_that_arms_cleanup(write_observer, Arc::clone(&cleanup_armed));
         let mut cleanup_guard = ChunkedWriteCleanupGuard::new(
             Arc::clone(&self.shared),
             rm_tmp,
             sudo,
             write_observer.clone(),
+            cleanup_armed,
         );
 
         let result = async {
