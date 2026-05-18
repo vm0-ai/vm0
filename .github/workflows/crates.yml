@@ -1351,9 +1351,11 @@ jobs:
           wait_for_exit() {
             # Budget must exceed the 10s heartbeat tick — drain can only
             # complete on a tick boundary, so anything <10s has no headroom
-            # for the ~9s real teardown work (idle pool + namespace cleanup
-            # + mitm/dns/kmsg shutdown). 15s = 1.5× tick. See issue #10869.
-            local svc=$1 budget=${2:-15}
+            # for real teardown work (idle pool + namespace cleanup
+            # + mitm/dns/kmsg shutdown) and slow shutdown tails like
+            # background memory prefetch. 30s = 3× tick. See issues #10869
+            # and #13688.
+            local svc=$1 budget=${2:-30}
             echo "--- Waiting up to ${budget}s for $svc to exit ---"
             for i in $(seq 1 "$budget"); do
               systemctl is-active --quiet "vm0-runner-${svc}" || return 0
