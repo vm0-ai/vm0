@@ -1043,7 +1043,11 @@ function ModelPolicyRouteDialog({
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-foreground">Route</label>
-            <div role="radiogroup" aria-label="Route" className="grid gap-3">
+            <div
+              role="radiogroup"
+              aria-label="Route"
+              className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+            >
               <RouteChoiceButton
                 active={dialog.routeKind === "built-in"}
                 title="Built-in"
