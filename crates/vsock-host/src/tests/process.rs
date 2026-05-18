@@ -8,6 +8,7 @@ use super::support::{
 };
 use crate::{
     ConnectionState, GuestProcessHandle, VsockHost, operation_tracker::NormalOperationReadiness,
+    process as process_impl,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
@@ -1421,6 +1422,30 @@ async fn test_spawn_process_cancel_after_frame_keeps_tracker_busy_until_close() 
     host.wait_until_closed(Duration::from_secs(5))
         .await
         .expect("guest close should close host");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_process_frame_write_guard_started_drop_poisons_connection() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+
+    process_impl::test_support::drop_started_frame_write_guard(Arc::clone(&host.shared));
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable

@@ -746,3 +746,14 @@ pub(crate) async fn spawn_process_on_shared(
         exit_rx: Some(exit_rx),
     })
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    pub(crate) fn drop_started_frame_write_guard(shared: Arc<Shared>) {
+        let mut guard = ProcessOperationFrameWriteGuard::new(shared);
+        guard.mark_started();
+        drop(guard);
+    }
+}
