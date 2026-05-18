@@ -394,6 +394,7 @@ mod tests {
                 ParkResult::Parked => {}
                 ParkResult::Replaced(job) => {
                     job.run().await;
+                    self.destroy_all_idle_entries().await;
                     panic!("expected synthetic idle candidate to park without replacement");
                 }
                 ParkResult::Rejected(rejected) => {
@@ -402,6 +403,16 @@ mod tests {
                     drop(lease);
                     panic!("expected synthetic idle candidate to be accepted by the idle pool");
                 }
+            }
+        }
+
+        async fn destroy_all_idle_entries(&self) {
+            let jobs = {
+                let mut idle_pool = self.idle_pool.lock().await;
+                idle_pool.drain()
+            };
+            for job in jobs {
+                job.run().await;
             }
         }
 
