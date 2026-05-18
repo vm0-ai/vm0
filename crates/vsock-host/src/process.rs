@@ -287,9 +287,12 @@ impl GuestProcessHandle {
         })?;
 
         // `wait` consumes the handle, so an unclaimed stdout receiver can no
-        // longer be observed by the caller. Drop it before waiting to avoid
-        // buffering streamed stdout in an unbounded channel with no reader.
-        drop(self.stdout_rx.take());
+        // longer be observed by the caller. Drop it before waiting and clear
+        // the sender to avoid retaining an unused channel for long-lived
+        // processes that never emit another stdout chunk.
+        if self.stdout_rx.take().is_some() {
+            clear_process_stdout_sender(&self.control.shared, self.control.target_seq);
+        }
 
         let event = rx
             .await
@@ -452,6 +455,15 @@ fn remove_process_operation(shared: &Arc<Shared>, seq: u32) {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { process, .. } = &mut *guard {
         process.remove_operation(seq);
+    }
+}
+
+fn clear_process_stdout_sender(shared: &Arc<Shared>, seq: u32) {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { process, .. } = &mut *guard
+        && let Some(operation) = process.operation_mut(seq)
+    {
+        operation.stdout_tx = None;
     }
 }
 

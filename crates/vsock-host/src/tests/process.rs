@@ -1462,23 +1462,17 @@ async fn test_wait_drops_unclaimed_stdout_receiver() {
 
     let wait = handle.wait();
     tokio::pin!(wait);
-    tokio::select! {
-        biased;
-        result = &mut wait => panic!("spawn wait completed before exit: {result:?}"),
-        _ = tokio::task::yield_now() => {}
-    }
+    assert!(
+        matches!(poll_once(wait.as_mut()), Poll::Pending),
+        "spawn wait should remain pending before exit",
+    );
+    assert_eq!(
+        registration_counts(&host),
+        (0, 1, 0),
+        "wait should clear unclaimed stdout sender before waiting for exit",
+    );
 
     send_chunk.notify_one();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if registration_counts(&host) == (0, 1, 0) {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("wait should drop unclaimed stdout receiver before buffering chunks");
 
     send_exit.notify_one();
     let event = tokio::time::timeout(Duration::from_secs(5), &mut wait)
