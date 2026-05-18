@@ -881,6 +881,9 @@ pub(crate) fn destroy_slot_sync(mut slot: PrewarmedSlot) {
 }
 
 /// Best-effort teardown of a pre-warmed slot on Tokio's blocking pool.
+///
+/// The blocking task is spawned before this returns so dropping the returned
+/// future cannot make the slot fall back to synchronous `Drop` on the caller.
 pub(crate) fn destroy_slot_async(slot: PrewarmedSlot) -> impl std::future::Future<Output = ()> {
     let teardown = tokio::task::spawn_blocking(move || destroy_slot_sync(slot));
     async move {
@@ -1883,5 +1886,23 @@ mod tests {
         assert!(ws.exists());
         destroy_slot_sync(slot);
         assert!(!ws.exists());
+    }
+
+    #[tokio::test]
+    async fn destroy_slot_async_starts_teardown_before_returned_future_is_polled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (slot, teardown_started, release_teardown, dropped) =
+            test_slot_with_teardown_gate(tmp.path(), "eager-teardown");
+        let workspace = slot.workspace().to_owned();
+
+        let teardown = destroy_slot_async(slot);
+        assert_eq!(teardown_started.await.unwrap(), workspace);
+        assert!(workspace.exists());
+
+        drop(teardown);
+        release_teardown.send(()).unwrap();
+
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
     }
 }
