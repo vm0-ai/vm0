@@ -319,9 +319,8 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero secrets rewrite path exactly", () => {
+  it("matches the zero secrets root rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/secrets/extra")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
   });
 
@@ -344,6 +343,18 @@ describe("API backend rewrite proxy behavior", () => {
   it("matches the report error rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/report-error")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/report-error/extra")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero secrets by-name rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/secret/DELETE_ME")).toBe(
       false,
     );
   });

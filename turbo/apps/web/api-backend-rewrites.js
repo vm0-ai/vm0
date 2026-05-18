@@ -23,6 +23,8 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/me\/model-providers\/[^/]+$/;
 const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
+const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
+const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
   ["/api/auth/me", "/api/auth/me"],
@@ -128,6 +130,11 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/report-error", "/api/zero/report-error"],
+  [
+    ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/secrets/:name",
+    ZERO_SECRETS_BY_NAME_PATH_RE,
+  ],
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/model-policies", "/api/zero/model-policies"],
   ["/api/zero/realtime/token", "/api/zero/realtime/token"],

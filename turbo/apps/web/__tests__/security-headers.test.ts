@@ -136,6 +136,15 @@ const PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/permission-access-requests/extra",
   "/api/zero/permission-access-request",
 ] as const;
+const ZERO_SECRETS_REWRITE_SOURCE = "/api/zero/secrets";
+const ZERO_SECRETS_PATH = "/api/zero/secrets";
+const ZERO_SECRETS_NEXT_NEGATIVE_PATHS = ["/api/zero/secret"] as const;
+const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
+const ZERO_SECRETS_BY_NAME_PATH = "/api/zero/secrets/DELETE_ME";
+const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/secrets/DELETE_ME/extra",
+  "/api/zero/secret/DELETE_ME",
+] as const;
 const ZERO_ORG_LIST_REWRITE_SOURCE = "/api/zero/org/list";
 const ZERO_ORG_LIST_PATH = "/api/zero/org/list";
 const ZERO_ORG_LIST_NEXT_NEGATIVE_PATHS = [
@@ -546,12 +555,16 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/permission-access-requests",
         },
         {
-          source: "/api/zero/secrets",
+          source: ZERO_SECRETS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/secrets",
         },
         {
           source: REALTIME_TOKEN_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/realtime/token",
+        },
+        {
+          source: ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/secrets/:name",
         },
         {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
@@ -1101,6 +1114,54 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero secrets root rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SECRETS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SECRETS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/secrets",
+    });
+
+    const matcher = getPathMatch(ZERO_SECRETS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SECRETS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_SECRETS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment zero secrets by-name rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SECRETS_BY_NAME_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/secrets/:name",
+    });
+
+    const matcher = getPathMatch(ZERO_SECRETS_BY_NAME_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SECRETS_BY_NAME_PATH)).toStrictEqual({
+      name: "DELETE_ME",
+    });
+    for (const pathname of ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact voice-io tts rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1429,8 +1490,11 @@ describe("API backend rewrites", () => {
   });
 
   it("should match the zero secrets route for middleware pass-through", async () => {
-    expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/secrets/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath(ZERO_SECRETS_PATH)).toBe(true);
+    expect(matchesApiBackendRewritePath(ZERO_SECRETS_BY_NAME_PATH)).toBe(true);
+    for (const pathname of ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should bypass web middleware only for the exact zero model providers path", () => {
