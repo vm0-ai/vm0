@@ -288,6 +288,24 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the internal event consumer telegram typing rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typing",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typing/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typings",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(

@@ -7,9 +7,7 @@ import {
   type MockInstance,
 } from "vitest";
 import { http, HttpResponse } from "msw";
-import type { NextRequest } from "next/server";
 import { POST } from "../route";
-import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -27,24 +25,6 @@ import { server } from "../../../../../../src/mocks/server";
 import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
-
-/**
- * Forward an MSW-intercepted fetch to the matching Next.js route handler so
- * the real end-to-end flow (HMAC-signed dispatch → consumer route → service
- * call) runs inside the test. Without this, MSW would reject the internal
- * fetch (onUnhandledRequest: "error") and the real consumer logic would
- * never execute.
- */
-async function forwardToConsumer(
-  request: Request,
-  handler: (req: NextRequest) => Promise<Response>,
-): Promise<Response> {
-  const response = await handler(request as NextRequest);
-  return new HttpResponse(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
-}
 
 async function handleAxiomApiConsumer(request: Request): Promise<Response> {
   const body = (await request.json()) as {
@@ -100,6 +80,10 @@ async function handleChatAssistantApiConsumer(
   return HttpResponse.json({
     processed: Array.isArray(body.events) ? body.events.length : 0,
   });
+}
+
+function handleTelegramTypingApiConsumer(): Response {
+  return HttpResponse.json({ scheduled: true });
 }
 
 const context = testContext();
@@ -162,8 +146,8 @@ describe("POST /api/webhooks/agent/events", () => {
       ),
       http.post(
         "http://localhost:3000/api/internal/event-consumers/telegram-typing",
-        ({ request }) => {
-          return forwardToConsumer(request, telegramTypingConsumerPOST);
+        () => {
+          return handleTelegramTypingApiConsumer();
         },
       ),
       http.post(

@@ -501,6 +501,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/internal/event-consumers/chat-assistant",
         },
         {
+          source: "/api/internal/event-consumers/telegram-typing",
+          destination:
+            "https://api.example.test/api/internal/event-consumers/telegram-typing",
+        },
+        {
           source: "/api/user/export",
           destination: "https://api.example.test/api/user/export",
         },
