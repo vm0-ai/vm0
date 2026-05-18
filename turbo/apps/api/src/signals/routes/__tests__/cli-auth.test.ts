@@ -35,6 +35,7 @@ import { signPatJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
+import { decryptSecretValue } from "../../services/crypto.utils";
 
 const context = testContext();
 const store = createStore();
@@ -151,6 +152,25 @@ async function postCliAuthTestApproveRaw(args: {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(args.body),
+    },
+  );
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
+async function postCliAuthTestCodexOauthRaw(args: {
+  readonly query?: string;
+  readonly body: string;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    `/api/cli/auth/test-codex-oauth${args.query ?? ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: args.body,
     },
   );
   return {
@@ -349,6 +369,118 @@ describe("CLI auth routes", () => {
       .where(eq(cliTokens.token, token))
       .limit(1);
     return row;
+  }
+
+  async function findOrgModelProviderSecret(
+    orgId: string,
+    name: string,
+  ): Promise<string | undefined> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, ORG_SENTINEL_USER_ID),
+          eq(secrets.name, name),
+          eq(secrets.type, "model-provider"),
+        ),
+      )
+      .limit(1);
+
+    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+  }
+
+  async function readOrgCodexOauthProviderState(orgId: string): Promise<{
+    readonly authMethod: string | null;
+    readonly tokenExpiresAt: Date | null;
+    readonly workspaceName: string | null;
+    readonly planType: string | null;
+    readonly needsReconnect: boolean;
+    readonly lastRefreshErrorCode: string | null;
+  } | null> {
+    const writeDb = store.set(writeDb$);
+    const [provider] = await writeDb
+      .select({
+        authMethod: modelProviders.authMethod,
+        tokenExpiresAt: modelProviders.tokenExpiresAt,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+      })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.type, "codex-oauth-token"),
+        ),
+      )
+      .limit(1);
+
+    return provider ?? null;
+  }
+
+  function base64UrlEncode(input: string): string {
+    return Buffer.from(input, "utf8")
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  function makeJwt(payload: Record<string, unknown>): string {
+    const header = base64UrlEncode(
+      JSON.stringify({ alg: "RS256", typ: "JWT" }),
+    );
+    const body = base64UrlEncode(JSON.stringify(payload));
+    return `${header}.${body}.fake-signature`;
+  }
+
+  function makeCodexIdToken(args: {
+    readonly accountId: string;
+    readonly planType: string;
+    readonly workspaceName?: string;
+  }): string {
+    const authClaims: Record<string, unknown> = {
+      chatgpt_account_id: args.accountId,
+      chatgpt_plan_type: args.planType,
+    };
+    if (args.workspaceName !== undefined) {
+      authClaims.organization = { title: args.workspaceName };
+    }
+
+    return makeJwt({
+      "https://api.openai.com/auth": authClaims,
+      exp: Math.floor(now() / 1000) + 3600,
+    });
+  }
+
+  function makeCodexAuthJson(args?: {
+    readonly accessToken?: string;
+    readonly refreshToken?: string;
+    readonly accountId?: string;
+    readonly idTokenAccountId?: string;
+    readonly planType?: string;
+    readonly workspaceName?: string;
+  }): string {
+    const accessExp = Math.floor(now() / 1000) + 7200;
+    return JSON.stringify({
+      OPENAI_API_KEY: null,
+      tokens: {
+        access_token: args?.accessToken ?? makeJwt({ exp: accessExp }),
+        refresh_token:
+          args?.refreshToken ?? "rt_synthetic_authjson_seed_high_entropy",
+        account_id: args?.accountId ?? "ws_acct_plain",
+        id_token: makeCodexIdToken({
+          accountId: args?.idTokenAccountId ?? "ws_acct_id_token",
+          planType: args?.planType ?? "plus",
+          workspaceName: args?.workspaceName ?? "Acme",
+        }),
+      },
+    });
   }
 
   beforeEach(() => {
@@ -1091,6 +1223,61 @@ describe("CLI auth routes", () => {
   });
 
   describe("POST /api/cli/auth/test-codex-oauth", () => {
+    const LEGACY_CODEX_OAUTH_BODY = {
+      accessToken: "REAL-AT-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718",
+      refreshToken: "REAL-RT-1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+      accountId: "ws_REAL_ACCOUNT_test",
+      idToken: "hdr.PAYLOAD.SIG",
+    } as const;
+
+    it("returns 404 outside allowed test environments", async () => {
+      mockEnv("ENV", "production");
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<string>(
+        client.create({ query: {}, body: LEGACY_CODEX_OAUTH_BODY }),
+        404,
+      );
+
+      expect(response.body).toBe("Not found");
+    });
+
+    it("rejects invalid JSON bodies with the legacy error", async () => {
+      const response = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestCodexOauthRaw({ body: "{ not json" }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({ error: "Invalid JSON body" });
+    });
+
+    it("rejects invalid body shapes", async () => {
+      const response = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestCodexOauthRaw({
+          body: JSON.stringify({ accessToken: "missing-others" }),
+        }),
+        400,
+      );
+
+      expect(response.body.error).toBe("Invalid body shape");
+    });
+
+    it("requires the test user to have cached org membership", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = `org_${randomUUID()}`;
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({ query: {}, body: LEGACY_CODEX_OAUTH_BODY }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Test user has no org — run test-token first",
+      });
+    });
+
     it("seeds legacy Codex OAuth token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
@@ -1102,10 +1289,7 @@ describe("CLI auth routes", () => {
         client.create({
           query: {},
           body: {
-            accessToken: "codex-access-token",
-            refreshToken: "codex-refresh-token",
-            accountId: "codex-account",
-            idToken: "codex-id-token",
+            ...LEGACY_CODEX_OAUTH_BODY,
             expiresIn: 600,
             needsReconnect: true,
             lastRefreshErrorCode: "refresh_failed",
@@ -1117,25 +1301,162 @@ describe("CLI auth routes", () => {
       expect(response.body.ok).toBeTruthy();
       expect(response.body.orgId).toBe(orgId);
       expect(response.body.tokenExpiresAt).toBeDefined();
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: [DEFAULT_TEST_EMAIL],
+      });
 
-      const writeDb = store.set(writeDb$);
-      const [provider] = await writeDb
-        .select()
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.orgId, orgId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-            eq(modelProviders.type, "codex-oauth-token"),
-          ),
-        )
-        .limit(1);
+      const provider = await readOrgCodexOauthProviderState(orgId);
       expect(provider).toMatchObject({
         authMethod: "auth_json",
         needsReconnect: true,
         lastRefreshErrorCode: "refresh_failed",
       });
       expect(provider?.tokenExpiresAt).toBeInstanceOf(Date);
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ACCESS_TOKEN"),
+      ).resolves.toBe(LEGACY_CODEX_OAUTH_BODY.accessToken);
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_REFRESH_TOKEN"),
+      ).resolves.toBe(LEGACY_CODEX_OAUTH_BODY.refreshToken);
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ACCOUNT_ID"),
+      ).resolves.toBe(LEGACY_CODEX_OAUTH_BODY.accountId);
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ID_TOKEN"),
+      ).resolves.toBe(LEGACY_CODEX_OAUTH_BODY.idToken);
+    });
+
+    it("pre-expires legacy Codex OAuth token state when expiresIn is negative", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({ orgId, userId, slug: "codex-oauth-expired" });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: {},
+          body: { ...LEGACY_CODEX_OAUTH_BODY, expiresIn: -60 },
+        }),
+        200,
+      );
+
+      const provider = await readOrgCodexOauthProviderState(orgId);
+      expect(provider?.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(provider!.tokenExpiresAt!.getTime()).toBeLessThan(now());
+    });
+
+    it("resolves a custom test user email through Clerk", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "codex-oauth-custom-email",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: { email: "custom@test.com" },
+          body: LEGACY_CODEX_OAUTH_BODY,
+        }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
+      });
+    });
+
+    it("seeds Codex OAuth token state through the auth_json paste path", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({ orgId, userId, slug: "codex-oauth-auth-json" });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: {},
+          body: { authJson: makeCodexAuthJson() },
+        }),
+        200,
+      );
+
+      expect(response.body.ok).toBeTruthy();
+      expect(response.body.orgId).toBe(orgId);
+      expect(response.body.tokenExpiresAt).toBeDefined();
+
+      const provider = await readOrgCodexOauthProviderState(orgId);
+      expect(provider).toMatchObject({
+        authMethod: "auth_json",
+        workspaceName: "Acme",
+        planType: "plus",
+        needsReconnect: false,
+        lastRefreshErrorCode: null,
+      });
+      expect(provider?.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(provider!.tokenExpiresAt!.getTime()).toBeGreaterThan(now());
+
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_ACCOUNT_ID"),
+      ).resolves.toBe("ws_acct_id_token");
+      await expect(
+        findOrgModelProviderSecret(orgId, "CHATGPT_REFRESH_TOKEN"),
+      ).resolves.toBe("rt_synthetic_authjson_seed_high_entropy");
+      await expect(
+        findOrgModelProviderSecret(orgId, "CODEX_AUTH_JSON"),
+      ).resolves.toBeUndefined();
+    });
+
+    it("rejects malformed authJson with the parser error", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "codex-oauth-malformed-auth-json",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: { authJson: "{ not json" },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "auth.json shape invalid: auth.json is not valid JSON",
+      });
+    });
+
+    it("rejects free-plan authJson with the legacy error", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "codex-oauth-free-plan",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: { authJson: makeCodexAuthJson({ planType: "free" }) },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Free plan rejected by parser",
+      });
     });
   });
 });

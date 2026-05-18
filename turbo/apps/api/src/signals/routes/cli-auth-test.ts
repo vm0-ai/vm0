@@ -314,6 +314,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(testCodexOauthBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
+    if (
+      bodyResult.response.body.error.message === "Invalid JSON in request body"
+    ) {
+      return stringError(400, "Invalid JSON body");
+    }
     return stringError(400, "Invalid body shape");
   }
 
