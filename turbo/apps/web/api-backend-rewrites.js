@@ -160,6 +160,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/org/domains", "/api/zero/org/domains"],
+  ["/api/zero/org/invite", "/api/zero/org/invite"],
   ["/api/zero/org/list", "/api/zero/org/list"],
   ["/api/zero/org/members/credit-cap", "/api/zero/org/members/credit-cap"],
   ["/api/zero/org/membership-requests", "/api/zero/org/membership-requests"],

@@ -262,54 +262,6 @@ export async function getOrgMembers(userId: string, orgId: string) {
 }
 
 /**
- * Invite a member to the org.
- * Requires admin role.
- */
-export async function inviteMember(
-  callerUserId: string,
-  orgId: string,
-  callerRole: OrgRole,
-  email: string,
-  inviteRole: OrgRole = "member",
-) {
-  if (callerRole !== "admin") {
-    throw forbidden("Only admins can invite members");
-  }
-
-  const client = await clerkClient();
-  await client.organizations.createOrganizationInvitation({
-    organizationId: orgId,
-    emailAddress: email,
-    inviterUserId: callerUserId,
-    role: inviteRole === "admin" ? "org:admin" : "org:member",
-  });
-
-  log.debug("Invitation sent", { orgId, email, inviteRole });
-}
-
-/**
- * Revoke a pending invitation.
- * Requires admin role.
- */
-export async function revokeInvitation(
-  orgId: string,
-  role: OrgRole,
-  invitationId: string,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can revoke invitations");
-  }
-
-  const client = await clerkClient();
-  await client.organizations.revokeOrganizationInvitation({
-    organizationId: orgId,
-    invitationId,
-  });
-
-  log.debug("Invitation revoked", { orgId, invitationId });
-}
-
-/**
  * Clean up org-scoped data when a user leaves or is removed from an org.
  * Called after Clerk membership is revoked.
  */

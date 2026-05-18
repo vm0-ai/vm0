@@ -559,6 +559,14 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero org invite rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/invite")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/invite/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/invites")).toBe(false);
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,
