@@ -160,6 +160,9 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       hostToken,
       hostName: bodyResult.data.hostName,
       supportedBackends: bodyResult.data.supportedBackends,
+      ...(bodyResult.data.realtimeConnected === undefined
+        ? {}
+        : { realtimeConnected: bodyResult.data.realtimeConnected }),
     },
     signal,
   );

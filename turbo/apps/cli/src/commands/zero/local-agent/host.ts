@@ -35,8 +35,7 @@ import {
   type LocalAgentPermissionMode,
 } from "../../../lib/local-agent/backends";
 
-const HEARTBEAT_INTERVAL_MS = 30_000;
-const JOB_POLL_INTERVAL_MS = 2_000;
+const HEARTBEAT_INTERVAL_MS = 60_000;
 const ABLY_CONNECT_TIMEOUT_MS = 10_000;
 
 interface HostStartOptions {
@@ -56,7 +55,8 @@ interface PermissionModeChoice {
 }
 
 interface LocalAgentJobNotifier {
-  wait(timeoutMs: number): Promise<void>;
+  isConnected(): boolean;
+  wait(timeoutMs: number): Promise<boolean>;
   close(): void;
 }
 
@@ -67,12 +67,6 @@ interface StartHostSelection {
 }
 
 const NEW_HOST_SELECTION = "__new__";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -181,22 +175,33 @@ async function createLocalAgentJobNotifier(
     await channel.subscribe(subscription.eventName, onMessage);
 
     return {
-      wait(timeoutMs: number): Promise<void> {
-        if (pendingEvent || closed || timeoutMs <= 0) {
+      isConnected(): boolean {
+        return ably.connection.state === "connected";
+      },
+      wait(timeoutMs: number): Promise<boolean> {
+        if (pendingEvent || closed) {
           pendingEvent = false;
-          return Promise.resolve();
+          return Promise.resolve(true);
+        }
+        if (timeoutMs <= 0) {
+          return Promise.resolve(false);
         }
 
         return new Promise((resolve) => {
-          function done() {
+          const done = (notified: boolean) => {
             clearTimeout(timer);
-            if (wake === done) {
+            if (wake === onWake) {
               wake = null;
             }
-            resolve();
+            resolve(notified);
+          };
+          function onWake() {
+            done(true);
           }
-          const timer = setTimeout(done, timeoutMs);
-          wake = done;
+          const timer = setTimeout(() => {
+            done(false);
+          }, timeoutMs);
+          wake = onWake;
         });
       },
       close(): void {
@@ -740,7 +745,10 @@ async function runHostLoop(params: {
 
   const sendHeartbeat = async (): Promise<void> => {
     try {
-      await sendLocalAgentHeartbeat(params);
+      await sendLocalAgentHeartbeat({
+        ...params,
+        realtimeConnected: jobNotifier?.isConnected() ?? false,
+      });
       nextHeartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
       latestError = null;
     } catch (error) {
@@ -749,6 +757,7 @@ async function runHostLoop(params: {
         stopLoop();
         return;
       }
+      nextHeartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
       const message = error instanceof Error ? error.message : String(error);
       if (message !== latestError) {
         console.log(chalk.yellow(`Heartbeat failed: ${message}`));
@@ -761,23 +770,33 @@ async function runHostLoop(params: {
   process.once("SIGTERM", onStop);
 
   try {
-    try {
-      jobNotifier = await createLocalAgentJobNotifier(params.hostToken);
-    } catch (error) {
-      console.log(
-        chalk.yellow(
-          `Realtime job notifications unavailable, falling back to polling: ${errorMessage(error)}`,
-        ),
-      );
-    }
+    jobNotifier = await createLocalAgentJobNotifier(params.hostToken).catch(
+      (error: unknown) => {
+        throw new Error(
+          `Realtime job notifications unavailable: ${errorMessage(error)}`,
+        );
+      },
+    );
+    const notifier = jobNotifier;
 
     if (!stopped) {
       await sendHeartbeat();
     }
 
+    let shouldClaim = true;
     while (!stopped) {
       if (Date.now() >= nextHeartbeatAt) {
         await sendHeartbeat();
+      }
+      if (stopped) {
+        break;
+      }
+
+      if (!shouldClaim) {
+        shouldClaim = await notifier.wait(
+          Math.max(1, nextHeartbeatAt - Date.now()),
+        );
+        continue;
       }
 
       let nextJob;
@@ -793,17 +812,11 @@ async function runHostLoop(params: {
           continue;
         }
         const message = error instanceof Error ? error.message : String(error);
-        console.log(chalk.yellow(`Job poll failed: ${message}`));
-        await sleep(JOB_POLL_INTERVAL_MS);
-        continue;
+        throw new Error(`Failed to claim local-agent job: ${message}`);
       }
 
       if (nextJob.status === "idle") {
-        if (jobNotifier) {
-          await jobNotifier.wait(Math.max(1, nextHeartbeatAt - Date.now()));
-        } else {
-          await sleep(JOB_POLL_INTERVAL_MS);
-        }
+        shouldClaim = false;
         continue;
       }
 
@@ -833,6 +846,7 @@ async function runHostLoop(params: {
       const status =
         result.exitCode === 0 ? chalk.green("completed") : chalk.red("failed");
       console.log(`${status} ${nextJob.job.id}`);
+      shouldClaim = true;
     }
   } finally {
     jobNotifier?.close();

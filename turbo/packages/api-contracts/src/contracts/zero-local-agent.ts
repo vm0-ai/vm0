@@ -190,6 +190,7 @@ export const zeroLocalAgentHeartbeatContract = c.router({
     body: z.object({
       hostName: hostNameSchema,
       supportedBackends: supportedBackendsSchema,
+      realtimeConnected: z.boolean().optional(),
     }),
     responses: {
       200: localAgentHeartbeatResponseSchema,

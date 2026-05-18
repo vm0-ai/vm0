@@ -509,6 +509,7 @@ export const heartbeatLocalAgentHost$ = command(
       readonly hostToken: string;
       readonly hostName: string;
       readonly supportedBackends: readonly LocalAgentBackend[];
+      readonly realtimeConnected?: boolean;
     },
     signal: AbortSignal,
   ): Promise<{ readonly hostId: string } | null> => {
@@ -550,6 +551,15 @@ export const heartbeatLocalAgentHost$ = command(
 
     if (!wasOnline) {
       await publishLocalAgentHostsChangedSafe(row.userId, signal);
+    }
+
+    if (params.realtimeConnected === false) {
+      L.warn("Local-agent realtime unavailable for host", {
+        hostId: row.id,
+        hostName: normalizeHostName(params.hostName),
+        realtimeConnected: params.realtimeConnected,
+        supportedBackends: normalizeBackends(params.supportedBackends),
+      });
     }
 
     return { hostId: row.id };

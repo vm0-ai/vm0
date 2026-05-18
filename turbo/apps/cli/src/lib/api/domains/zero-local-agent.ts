@@ -74,6 +74,7 @@ export async function sendLocalAgentHeartbeat(params: {
   hostToken: string;
   hostName: string;
   supportedBackends: LocalAgentBackend[];
+  realtimeConnected?: boolean;
 }): Promise<{ hostId: string }> {
   const baseUrl = resolveLocalAgentApiBaseUrl(await getBaseUrl());
   const client = initClient(zeroLocalAgentHeartbeatContract, {
@@ -86,6 +87,9 @@ export async function sendLocalAgentHeartbeat(params: {
     body: {
       hostName: params.hostName,
       supportedBackends: params.supportedBackends,
+      ...(params.realtimeConnected === undefined
+        ? {}
+        : { realtimeConnected: params.realtimeConnected }),
     },
   });
 
