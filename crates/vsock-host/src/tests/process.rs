@@ -1551,6 +1551,67 @@ async fn test_spawn_process_cancel_after_frame_keeps_tracker_busy_until_close() 
 }
 
 #[tokio::test]
+async fn test_unexpected_spawn_process_response_after_waiter_drop_closes_and_cleans_up() {
+    let (host_stream, mut guest) = make_pair();
+    let request_seen = Arc::new(Notify::new());
+    let release_guest = Arc::new(Notify::new());
+
+    {
+        let request_seen = Arc::clone(&request_seen);
+        let release_guest = Arc::clone(&release_guest);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let spawn = read_guest_message(&mut guest).await;
+            assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+            request_seen.notify_one();
+
+            release_guest.notified().await;
+            let response = vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, spawn.seq, &[]).unwrap();
+            guest.write_all(&response).await.unwrap();
+
+            let mut discard = [0u8; 1];
+            let _ = guest.read(&mut discard).await;
+        });
+    }
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let task_host = Arc::clone(&host);
+    let task = tokio::spawn(async move {
+        task_host
+            .spawn_process("dropped-waiter", 0, &[], false, true, None)
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
+        .await
+        .expect("guest should receive spawn_process request");
+
+    task.abort();
+    let _ = task.await;
+    assert_eq!(
+        registration_counts(&host),
+        (0, 1, 1),
+        "aborted spawn_process future after frame write must keep process tracking",
+    );
+
+    release_guest.notify_one();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .expect("unexpected detached spawn response should close host");
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "unexpected detached spawn response must clean process registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
     let (host_stream, mut guest) = make_pair();
 

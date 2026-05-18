@@ -483,6 +483,11 @@ async fn reader_loop(
                 }
                 if let Some(pending_response) = pending_response {
                     let _ = pending_response.response_tx.send(msg);
+                } else if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
+                    && process::reject_unexpected_process_response(&shared, &msg).is_err()
+                {
+                    shared.poison_connection();
+                    return;
                 }
             }
         }

@@ -84,6 +84,10 @@ impl ConnectedProcessState {
         self.operations.get_mut(&seq)
     }
 
+    fn contains_operation(&self, seq: u32) -> bool {
+        self.operations.contains_key(&seq)
+    }
+
     fn take_operation(&mut self, seq: u32) -> Option<ProcessOperation> {
         self.operations.remove(&seq)
     }
@@ -520,6 +524,26 @@ pub(crate) fn record_spawn_process_result(
         let pid = vsock_proto::decode_spawn_process_result(&msg.payload)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         operation.pid = Some(pid);
+    }
+    Ok(())
+}
+
+pub(crate) fn reject_unexpected_process_response(
+    shared: &Arc<Shared>,
+    msg: &RawMessage,
+) -> io::Result<()> {
+    let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    let ConnectionState::Connected { process, .. } = &*guard else {
+        return Ok(());
+    };
+    if process.contains_operation(msg.seq) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unexpected response type for spawn_process: 0x{:02X}",
+                msg.msg_type
+            ),
+        ));
     }
     Ok(())
 }
