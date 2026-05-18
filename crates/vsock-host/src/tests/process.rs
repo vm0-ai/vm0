@@ -169,6 +169,107 @@ async fn test_spawn_process_control_uses_operation_seq_and_nonce() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_control_sub_millisecond_timeout_rounds_up_to_one_ms() {
+    let (host_stream, mut guest) = make_pair();
+    let (observed_tx, observed_rx) = oneshot::channel();
+    let (release_guest_tx, release_guest_rx) = oneshot::channel();
+
+    let guest_task = tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+
+        let payload = vsock_proto::encode_spawn_process_result(42);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest).await;
+        assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        observed_tx
+            .send(decoded_control.request_timeout_ms)
+            .unwrap();
+
+        let _ = release_guest_rx.await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+
+    let (control_result, observed_timeout_ms) =
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                handle.control("message-sub-ms", b"payload", Duration::from_nanos(1)),
+                observed_rx,
+            )
+        })
+        .await
+        .expect("control request should be written before timeout");
+
+    assert_eq!(observed_timeout_ms.unwrap(), 1);
+    assert_eq!(control_result.unwrap_err().kind(), io::ErrorKind::TimedOut);
+
+    let _ = release_guest_tx.send(());
+    guest_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_spawn_process_control_large_timeout_saturates_request_timeout_ms() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+        let decoded_spawn = vsock_proto::decode_spawn_process(&spawn.payload).unwrap();
+        let control_nonce = decoded_spawn.control_nonce.unwrap();
+
+        let payload = vsock_proto::encode_spawn_process_result(42);
+        let resp = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+
+        let control = read_guest_message(&mut guest).await;
+        assert_eq!(control.msg_type, MSG_PROCESS_CONTROL);
+        let decoded_control = vsock_proto::decode_process_control(&control.payload).unwrap();
+        assert_eq!(decoded_control.request_timeout_ms, u32::MAX);
+
+        send_process_control_result(
+            &mut guest,
+            control.seq,
+            decoded_control.target_seq,
+            control_nonce,
+            decoded_control.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let handle = host
+        .spawn_process("sleep 1", 0, &[], false, false, None)
+        .await
+        .unwrap();
+
+    let ack = handle
+        .control(
+            "message-large-timeout",
+            b"payload",
+            Duration::from_millis(u64::from(u32::MAX) + 1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack.message_id, "message-large-timeout");
+}
+
+#[tokio::test]
 async fn test_spawn_process_with_control_sink_sets_control_sink_flag() {
     let (host_stream, mut guest) = make_pair();
 
