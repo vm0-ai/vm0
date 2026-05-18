@@ -73,6 +73,7 @@ struct ControlStreamGuard<'a> {
 
 enum ControlSinkInner {
     Waiting,
+    Handshaking(UnixStream),
     Connected(ConnectedControlSink),
     Failed(String),
     Closed,
@@ -295,14 +296,36 @@ impl ControlSinkState {
         self.ready.notify_all();
     }
 
+    fn begin_handshake(&self, stream: &UnixStream) -> io::Result<bool> {
+        let shutdown = stream.try_clone()?;
+        if !self.active.load(Ordering::Acquire) {
+            let _ = shutdown.shutdown(std::net::Shutdown::Both);
+            return Ok(false);
+        }
+
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if !self.active.load(Ordering::Acquire) {
+            let _ = shutdown.shutdown(std::net::Shutdown::Both);
+            *guard = ControlSinkInner::Closed;
+            self.ready.notify_all();
+            return Ok(false);
+        }
+        if !matches!(*guard, ControlSinkInner::Waiting) {
+            let _ = shutdown.shutdown(std::net::Shutdown::Both);
+            return Ok(false);
+        }
+
+        *guard = ControlSinkInner::Handshaking(shutdown);
+        self.ready.notify_all();
+        Ok(true)
+    }
+
     fn fail(&self, message: String) {
         if !self.active.load(Ordering::Acquire) {
             return;
         }
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if let ControlSinkInner::Connected(connected) = &*guard {
-            connected.shutdown();
-        }
+        shutdown_sink_stream(&guard);
         {
             if !matches!(*guard, ControlSinkInner::Closed) {
                 *guard = ControlSinkInner::Failed(message);
@@ -314,9 +337,7 @@ impl ControlSinkState {
     fn close(&self) {
         self.active.store(false, Ordering::Release);
         let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        if let ControlSinkInner::Connected(connected) = &*guard {
-            connected.shutdown();
-        }
+        shutdown_sink_stream(&guard);
         *guard = ControlSinkInner::Closed;
         self.ready.notify_all();
     }
@@ -335,7 +356,7 @@ impl ControlSinkState {
             }
             match &*guard {
                 ControlSinkInner::Connected(connected) => return Ok(Arc::clone(&connected.stream)),
-                ControlSinkInner::Waiting => {
+                ControlSinkInner::Waiting | ControlSinkInner::Handshaking(_) => {
                     let Some(wait) = duration_until(deadline) else {
                         return Err((
                             ProcessControlStatus::SinkTimeout,
@@ -410,6 +431,16 @@ impl ControlSinkState {
         }
 
         Ok(PendingControlSlot::new(Arc::clone(self)))
+    }
+}
+
+fn shutdown_sink_stream(inner: &ControlSinkInner) {
+    match inner {
+        ControlSinkInner::Handshaking(stream) => {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+        ControlSinkInner::Connected(connected) => connected.shutdown(),
+        ControlSinkInner::Waiting | ControlSinkInner::Failed(_) | ControlSinkInner::Closed => {}
     }
 }
 
@@ -492,6 +523,11 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
         }
         match process_control_ipc::accept_with_timeout(&listener, CONTROL_ACCEPT_POLL_TIMEOUT) {
             Ok(mut stream) => {
+                match sink.begin_handshake(&stream) {
+                    Ok(true) => {}
+                    Ok(false) => return,
+                    Err(error) => break Err(error),
+                }
                 break stream
                     .set_read_timeout(Some(CONTROL_SINK_IO_TIMEOUT))
                     .and_then(|()| stream.set_write_timeout(Some(CONTROL_SINK_IO_TIMEOUT)))
@@ -1373,6 +1409,48 @@ mod tests {
         assert_eq!(status, ProcessControlStatus::SinkError);
         assert_eq!(message_id, "msg-handshake-failed");
         assert!(!diagnostic.is_empty());
+    }
+
+    #[test]
+    fn operation_release_interrupts_control_sink_handshake() {
+        const HANDSHAKE_NONCE: ProcessControlNonce = *b"dd33ee55ff77aa99";
+
+        let registry = ProcessControlRegistry::default();
+        let registration = registry.register(15, Some(HANDSHAKE_NONCE), true).unwrap();
+        let endpoint = registration.bootstrap_endpoint.clone().unwrap();
+        let sink = registry.resolve(15, HANDSHAKE_NONCE).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+
+        let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !matches!(&*guard, ControlSinkInner::Handshaking(_)) {
+            let now = Instant::now();
+            assert!(
+                now < deadline,
+                "control sink should enter handshaking after accept"
+            );
+            let (next_guard, _) = sink
+                .ready
+                .wait_timeout(guard, deadline.duration_since(now))
+                .unwrap_or_else(|e| e.into_inner());
+            guard = next_guard;
+        }
+        drop(guard);
+
+        registration.guard.release();
+
+        let guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(matches!(*guard, ControlSinkInner::Closed));
+        drop(guard);
+
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        let error = process_control_ipc::read_request(&mut stream).unwrap_err();
+        assert!(
+            !is_timeout(&error),
+            "operation release should interrupt the accepted handshake stream"
+        );
     }
 
     #[test]
