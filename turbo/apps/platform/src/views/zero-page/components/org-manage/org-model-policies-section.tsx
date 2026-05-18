@@ -585,33 +585,14 @@ function RouteChoiceButton({
   );
 }
 
-function ProviderStatusBadge({ configured }: { configured: boolean }) {
-  if (configured) {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-        <span className="h-1 w-1 rounded-full bg-emerald-500" />
-        Ready
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-      <span className="h-1 w-1 rounded-full bg-amber-500" />
-      Add key
-    </span>
-  );
-}
-
 function ProviderTypeSelect({
   value,
   types,
-  providers,
   placeholder,
   onChange,
 }: {
   value: ModelProviderType | null;
   types: ModelProviderType[];
-  providers: ModelProviderResponse[];
   placeholder: string;
   onChange: (type: ModelProviderType) => void;
 }) {
@@ -638,7 +619,6 @@ function ProviderTypeSelect({
       </SelectTrigger>
       <SelectContent>
         {types.map((type) => {
-          const configured = Boolean(findProviderByType(providers, type));
           return (
             <SelectItem key={type} value={type}>
               <div className="flex min-w-0 items-center gap-2">
@@ -646,7 +626,6 @@ function ProviderTypeSelect({
                 <span className="min-w-0 flex-1 truncate">
                   {getUILabel(type)}
                 </span>
-                <ProviderStatusBadge configured={configured} />
               </div>
             </SelectItem>
           );
@@ -658,25 +637,22 @@ function ProviderTypeSelect({
 
 function ProviderConfiguredHint({ onEdit }: { onEdit: () => void }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/15" />
-      <span>Ready</span>
-      <span aria-hidden="true">·</span>
+    <p className="text-xs text-muted-foreground">
+      Key connected.{" "}
       <button
         type="button"
         onClick={onEdit}
-        className="text-foreground/80 underline underline-offset-2 decoration-border hover:decoration-foreground/40"
+        className="text-primary underline"
       >
         Edit key
       </button>
-    </div>
+    </p>
   );
 }
 
 function ApiKeyProviderSection({
   selectedProviderType,
   apiTypes,
-  providers,
   routeProvider,
   apiKeyValue,
   apiKeyError,
@@ -686,7 +662,6 @@ function ApiKeyProviderSection({
 }: {
   selectedProviderType: ModelProviderType | null;
   apiTypes: ModelProviderType[];
-  providers: ModelProviderResponse[];
   routeProvider: ModelProviderResponse | null;
   apiKeyValue: string;
   apiKeyError: string | null;
@@ -706,68 +681,44 @@ function ApiKeyProviderSection({
       <ProviderTypeSelect
         value={selectedProviderType}
         types={apiTypes}
-        providers={providers}
         placeholder="Select a provider"
         onChange={onChange}
       />
       {selectedProviderType && !routeProvider && (
-        <>
-          <ProviderKeyNotice providerType={selectedProviderType} />
-          <div className="flex flex-col gap-1.5 pt-1">
-            <label className="text-sm font-medium text-foreground">
-              {getUILabel(selectedProviderType)} {secretLabel}
-            </label>
-            <Input
-              type="password"
-              autoComplete="off"
-              value={apiKeyValue}
-              placeholder={getProviderSecretPlaceholder(selectedProviderType)}
-              onChange={(e) => {
-                onApiKeyChange(e.target.value);
-              }}
-              className={apiKeyError ? "border-destructive" : ""}
-            />
-            {apiKeyError ? (
-              <p className="text-xs text-destructive">{apiKeyError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Stored in workspace secrets.{" "}
-                {secretSignupUrl ? (
-                  <a
-                    href={secretSignupUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2 decoration-border hover:decoration-foreground/40"
-                  >
-                    Get a key
-                  </a>
-                ) : null}
-              </p>
-            )}
-          </div>
-        </>
+        <div className="flex flex-col gap-1.5 pt-1">
+          <label className="text-sm font-medium text-foreground">
+            {getUILabel(selectedProviderType)} {secretLabel}
+          </label>
+          <Input
+            type="password"
+            autoComplete="off"
+            value={apiKeyValue}
+            placeholder={getProviderSecretPlaceholder(selectedProviderType)}
+            onChange={(e) => {
+              onApiKeyChange(e.target.value);
+            }}
+            className={apiKeyError ? "border-destructive" : ""}
+          />
+          {apiKeyError ? (
+            <p className="text-xs text-destructive">{apiKeyError}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Stored in workspace secrets.{" "}
+              {secretSignupUrl ? (
+                <a
+                  href={secretSignupUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline"
+                >
+                  Get a key
+                </a>
+              ) : null}
+            </p>
+          )}
+        </div>
       )}
       {routeProvider && <ProviderConfiguredHint onEdit={onEditKey} />}
-    </div>
-  );
-}
-
-function ProviderKeyNotice({
-  providerType,
-}: {
-  providerType: ModelProviderType;
-}) {
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-amber-200/70 bg-amber-50/60 px-3 py-2">
-      <IconAlertTriangle
-        size={14}
-        stroke={1.75}
-        className="mt-0.5 shrink-0 text-amber-600"
-      />
-      <span className="text-xs leading-relaxed text-amber-900">
-        {getUILabel(providerType)} isn&apos;t connected yet. Add a key below to
-        use it.
-      </span>
     </div>
   );
 }
@@ -1140,7 +1091,6 @@ function ModelPolicyRouteDialog({
             <ApiKeyProviderSection
               selectedProviderType={selectedProviderType}
               apiTypes={apiTypes}
-              providers={providers}
               routeProvider={routeProvider}
               apiKeyValue={apiKeyValue}
               apiKeyError={apiKeyError}
