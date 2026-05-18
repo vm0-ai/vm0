@@ -66,6 +66,13 @@ const INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS = [
   "/api/integrations/github/extra",
   "/api/integrations",
 ] as const;
+const STORAGES_COMMIT_REWRITE_SOURCE = "/api/storages/commit";
+const STORAGES_COMMIT_PATH = "/api/storages/commit";
+const STORAGES_COMMIT_NEXT_NEGATIVE_PATHS = [
+  "/api/storages/commit/extra",
+  "/api/storages",
+  "/api/storages/commits",
+] as const;
 const STORAGES_DOWNLOAD_REWRITE_SOURCE = "/api/storages/download";
 const STORAGES_DOWNLOAD_PATH = "/api/storages/download";
 const STORAGES_DOWNLOAD_NEXT_NEGATIVE_PATHS = [
@@ -482,6 +489,10 @@ describe("API backend rewrites", () => {
         {
           source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
           destination: "https://api.example.test/api/integrations/github",
+        },
+        {
+          source: STORAGES_COMMIT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/storages/commit",
         },
         {
           source: STORAGES_DOWNLOAD_REWRITE_SOURCE,
@@ -945,6 +956,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(STORAGES_LIST_PATH)).toStrictEqual({});
     for (const pathname of STORAGES_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact storages commit rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === STORAGES_COMMIT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: STORAGES_COMMIT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/storages/commit",
+    });
+
+    const matcher = getPathMatch(STORAGES_COMMIT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(STORAGES_COMMIT_PATH)).toStrictEqual({});
+    for (const pathname of STORAGES_COMMIT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

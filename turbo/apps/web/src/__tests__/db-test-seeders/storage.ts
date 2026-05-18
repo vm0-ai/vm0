@@ -66,6 +66,64 @@ export async function prepareTestStorage(params: {
 }
 
 /**
+ * Insert the storage version metadata that the commit route would create after
+ * S3 upload verification. This is used by web tests that need committed
+ * storage records after both `/api/storages/prepare` and `/api/storages/commit`
+ * moved behind API backend rewrites.
+ *
+ * @why-db-direct The web prepare and commit routes have been removed; web
+ * tests still need storage fixtures without depending on apps/api route
+ * handlers.
+ */
+export async function commitPreparedTestStorage(params: {
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly files: readonly TestStorageFile[];
+}): Promise<{ readonly size: number; readonly fileCount: number }> {
+  initServices();
+  const totalSize = params.files.reduce((sum, file) => {
+    return sum + file.size;
+  }, 0);
+  const fileCount = params.files.length;
+
+  await globalThis.services.db.transaction(async (tx) => {
+    const [storage] = await tx
+      .select()
+      .from(storages)
+      .where(eq(storages.id, params.storageId))
+      .limit(1);
+
+    if (!storage) {
+      throw new Error(`Storage "${params.storageId}" not found`);
+    }
+
+    await tx
+      .insert(storageVersions)
+      .values({
+        id: params.versionId,
+        storageId: params.storageId,
+        s3Key: `${storage.s3Prefix}/${params.versionId}`,
+        size: totalSize,
+        fileCount,
+        createdBy: "user",
+      })
+      .onConflictDoNothing();
+
+    await tx
+      .update(storages)
+      .set({
+        headVersionId: params.versionId,
+        size: totalSize,
+        fileCount,
+        updatedAt: new Date(),
+      })
+      .where(eq(storages.id, params.storageId));
+  });
+
+  return { size: totalSize, fileCount };
+}
+
+/**
  * Create a volume storage directly in the DB for a specific org.
  * Unlike createTestVolume() which uses the mock user's org via API,
  * this allows creating storages under any org (e.g., SYSTEM_ORG_ID).

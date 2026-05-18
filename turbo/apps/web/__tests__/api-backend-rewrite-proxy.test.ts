@@ -217,6 +217,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/integrations")).toBe(false);
   });
 
+  it("matches the storages commit rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/commit")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/commit/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/commits")).toBe(false);
+  });
+
   it("matches the storages download rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/storages/download")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/storages/download/extra")).toBe(
