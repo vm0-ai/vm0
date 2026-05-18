@@ -4,7 +4,7 @@ use crate::read::read_u16_at;
 
 /// Encode error payload: `[2B error_len][error]`.
 ///
-/// Error message is truncated to 65535 bytes if longer.
+/// Error message is truncated to at most 65535 bytes at a UTF-8 boundary.
 pub fn encode_error(message: &str) -> Vec<u8> {
     let (msg, msg_len) = truncate_utf8_to_u16_bytes(message);
     let mut p = Vec::with_capacity(2 + msg_len as usize);

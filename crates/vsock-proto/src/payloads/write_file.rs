@@ -36,7 +36,7 @@ pub fn encode_write_file(
 
 /// Encode write_file_result payload: `[1B success][2B error_len][error]`.
 ///
-/// Error message is truncated to 65535 bytes if longer.
+/// Error message is truncated to at most 65535 bytes at a UTF-8 boundary.
 pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
     let (err, err_len) = truncate_utf8_to_u16_bytes(error);
     let mut p = Vec::with_capacity(3 + err_len as usize);
