@@ -51,6 +51,21 @@ mod tests {
     }
 
     #[test]
+    fn error_payload_keeps_utf8_character_ending_at_u16_max() {
+        let prefix = "A".repeat(u16::MAX as usize - "é".len());
+        let expected = format!("{prefix}é");
+        let message = format!("{expected}B");
+        let payload = encode_error(&message);
+
+        let declared_len = u16::from_be_bytes(payload.get(..2).unwrap().try_into().unwrap());
+        assert_eq!(declared_len as usize, expected.len());
+        assert_eq!(payload.len(), 2 + expected.len());
+
+        let msg = decode_error(&payload).unwrap();
+        assert_eq!(msg, expected);
+    }
+
+    #[test]
     fn error_payload_truncates_oversized_utf8_at_character_boundary() {
         let prefix = "A".repeat(u16::MAX as usize - 1);
         let message = format!("{prefix}é");
