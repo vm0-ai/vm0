@@ -7,10 +7,11 @@ use tracing::{info, warn};
 
 const MEMORY_PREFETCH_CHUNK_BYTES: usize = 1024 * 1024;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum PrefetchOutcome {
     Complete { bytes: u64 },
     Cancelled { bytes: u64 },
+    ReadFailed { bytes: u64, error: std::io::Error },
 }
 
 pub(crate) struct MemoryPrefetchTasks {
@@ -103,37 +104,42 @@ fn prefetch_memory_with_cancel(path: &Path, cancel: &CancellationToken) {
     };
 
     match prefetch_reader(&mut file, cancel) {
-        Ok(PrefetchOutcome::Complete { bytes }) => {
+        PrefetchOutcome::Complete { bytes } => {
             info!(bytes, path = %path.display(), "memory prefetch complete");
         }
-        Ok(PrefetchOutcome::Cancelled { bytes }) => {
+        PrefetchOutcome::Cancelled { bytes } => {
             info!(bytes, path = %path.display(), "memory prefetch cancelled");
         }
-        Err(e) => {
-            warn!(error = %e, path = %path.display(), "memory prefetch: read failed");
+        PrefetchOutcome::ReadFailed { bytes, error } => {
+            warn!(error = %error, bytes, path = %path.display(), "memory prefetch: read failed");
         }
     }
 }
 
-fn prefetch_reader<R: Read>(
-    reader: &mut R,
-    cancel: &CancellationToken,
-) -> std::io::Result<PrefetchOutcome> {
+fn prefetch_reader<R: Read>(reader: &mut R, cancel: &CancellationToken) -> PrefetchOutcome {
     let mut buf = vec![0u8; MEMORY_PREFETCH_CHUNK_BYTES];
     let mut total: u64 = 0;
     loop {
         if cancel.is_cancelled() {
-            return Ok(PrefetchOutcome::Cancelled { bytes: total });
+            return PrefetchOutcome::Cancelled { bytes: total };
         }
 
-        let n = reader.read(&mut buf)?;
+        let n = match reader.read(&mut buf) {
+            Ok(n) => n,
+            Err(error) => {
+                return PrefetchOutcome::ReadFailed {
+                    bytes: total,
+                    error,
+                };
+            }
+        };
         if n == 0 {
-            return Ok(PrefetchOutcome::Complete { bytes: total });
+            return PrefetchOutcome::Complete { bytes: total };
         }
         total += n as u64;
 
         if cancel.is_cancelled() {
-            return Ok(PrefetchOutcome::Cancelled { bytes: total });
+            return PrefetchOutcome::Cancelled { bytes: total };
         }
     }
 }
@@ -172,9 +178,9 @@ mod tests {
         cancel.cancel();
         let mut reader = TestReader::new(3, None, cancel.clone());
 
-        let outcome = prefetch_reader(&mut reader, &cancel).unwrap();
+        let outcome = prefetch_reader(&mut reader, &cancel);
 
-        assert_eq!(outcome, PrefetchOutcome::Cancelled { bytes: 0 });
+        assert!(matches!(outcome, PrefetchOutcome::Cancelled { bytes: 0 }));
         assert_eq!(reader.reads, 0);
     }
 
@@ -183,10 +189,23 @@ mod tests {
         let cancel = CancellationToken::new();
         let mut reader = TestReader::new(3, Some(1), cancel.clone());
 
-        let outcome = prefetch_reader(&mut reader, &cancel).unwrap();
+        let outcome = prefetch_reader(&mut reader, &cancel);
 
-        assert_eq!(outcome, PrefetchOutcome::Cancelled { bytes: 1 });
+        assert!(matches!(outcome, PrefetchOutcome::Cancelled { bytes: 1 }));
         assert_eq!(reader.reads, 1);
+    }
+
+    #[test]
+    fn prefetch_reader_reports_bytes_read_before_failure() {
+        let cancel = CancellationToken::new();
+        let mut reader = FailingReader { reads: 0 };
+
+        let outcome = prefetch_reader(&mut reader, &cancel);
+
+        assert!(matches!(
+            outcome,
+            PrefetchOutcome::ReadFailed { bytes: 1, .. }
+        ));
     }
 
     #[tokio::test]
@@ -281,6 +300,21 @@ mod tests {
                 self.cancel.cancel();
             }
 
+            Ok(1)
+        }
+    }
+
+    struct FailingReader {
+        reads: usize,
+    }
+
+    impl Read for FailingReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.reads == 1 {
+                return Err(std::io::Error::other("boom"));
+            }
+            self.reads += 1;
+            buf[0] = 0;
             Ok(1)
         }
     }
