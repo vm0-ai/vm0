@@ -1526,8 +1526,8 @@ async fn test_spawn_process_cancel_after_frame_keeps_tracker_busy_until_close() 
     let _ = task.await;
     assert_eq!(
         registration_counts(&host),
-        (0, 1, 1),
-        "aborted spawn_process future after frame write must keep process tracking",
+        (0, 1, 0),
+        "aborted spawn_process future after frame write must keep process tracking without orphaning stdout sender",
     );
     assert_eq!(
         normal_operation_readiness(&host),
@@ -1586,8 +1586,8 @@ async fn test_unexpected_spawn_process_response_after_waiter_drop_closes_and_cle
     let _ = task.await;
     assert_eq!(
         registration_counts(&host),
-        (0, 1, 1),
-        "aborted spawn_process future after frame write must keep process tracking",
+        (0, 1, 0),
+        "aborted spawn_process future after frame write must keep process tracking without orphaning stdout sender",
     );
 
     release_guest.notify_one();
@@ -1602,6 +1602,78 @@ async fn test_unexpected_spawn_process_response_after_waiter_drop_closes_and_cle
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_process_result_after_waiter_drop_tracks_until_exit() {
+    let (host_stream, mut guest) = make_pair();
+    let request_seen = Arc::new(Notify::new());
+    let release_guest = Arc::new(Notify::new());
+
+    {
+        let request_seen = Arc::clone(&request_seen);
+        let release_guest = Arc::clone(&release_guest);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let spawn = read_guest_message(&mut guest).await;
+            assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+            request_seen.notify_one();
+
+            release_guest.notified().await;
+            let result_payload = vsock_proto::encode_spawn_process_result(124);
+            let result =
+                vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &result_payload).unwrap();
+            guest.write_all(&result).await.unwrap();
+
+            let chunk_payload = vsock_proto::encode_stdout_chunk(124, b"detached output");
+            let chunk = vsock_proto::encode(MSG_STDOUT_CHUNK, spawn.seq, &chunk_payload).unwrap();
+            guest.write_all(&chunk).await.unwrap();
+
+            let exit_payload = vsock_proto::encode_process_exit(124, 0, b"", b"");
+            let exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+            guest.write_all(&exit).await.unwrap();
+        });
+    }
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let task_host = Arc::clone(&host);
+    let task = tokio::spawn(async move {
+        task_host
+            .spawn_process("dropped-waiter-valid-result", 0, &[], false, true, None)
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
+        .await
+        .expect("guest should receive spawn_process request");
+
+    task.abort();
+    let _ = task.await;
+    assert_eq!(
+        registration_counts(&host),
+        (0, 1, 0),
+        "aborted spawn_process future must keep process tracking without orphaning stdout sender",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    release_guest.notify_one();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .expect("valid detached lifecycle frames should drain before close");
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "detached spawn_process exit must clean process registration",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
     );
 }
 
@@ -1723,7 +1795,7 @@ async fn test_late_malformed_lifecycle_after_handle_drop_poisons_tracker() {
         .unwrap();
     assert_eq!(handle.pid(), 66);
     drop(handle);
-    assert_eq!(registration_counts(&host), (0, 1, 1));
+    assert_eq!(registration_counts(&host), (0, 1, 0));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Busy

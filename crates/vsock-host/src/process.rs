@@ -182,8 +182,14 @@ impl ProcessOperationRegistrationGuard {
 
 impl Drop for ProcessOperationRegistrationGuard {
     fn drop(&mut self) {
-        if self.state == ProcessOperationRegistrationState::RemoveOnDrop {
-            remove_process_operation(&self.shared, self.seq);
+        match self.state {
+            ProcessOperationRegistrationState::RemoveOnDrop => {
+                remove_process_operation(&self.shared, self.seq);
+            }
+            ProcessOperationRegistrationState::KeepOnDrop => {
+                clear_process_stdout_sender(&self.shared, self.seq);
+            }
+            ProcessOperationRegistrationState::Disarmed => {}
         }
     }
 }
@@ -298,6 +304,14 @@ impl GuestProcessHandle {
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?;
         Ok(event)
+    }
+}
+
+impl Drop for GuestProcessHandle {
+    fn drop(&mut self) {
+        if self.stdout_rx.is_some() {
+            clear_process_stdout_sender(&self.control.shared, self.control.target_seq);
+        }
     }
 }
 
