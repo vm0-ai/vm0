@@ -505,13 +505,17 @@ mod tests {
 
         async fn assert_orphans(&self, expected: &[(RunId, SandboxId)]) {
             let remaining = self.orphans.snapshot().await;
-            assert_eq!(remaining.len(), expected.len());
-            for (remaining, (expected_run_id, expected_sandbox_id)) in
-                remaining.iter().zip(expected.iter())
-            {
-                assert_eq!(remaining.run_id, *expected_run_id);
-                assert_eq!(remaining.sandbox_id, *expected_sandbox_id);
-            }
+            let mut remaining = remaining
+                .iter()
+                .map(|record| (record.run_id.to_string(), record.sandbox_id.to_string()))
+                .collect::<Vec<_>>();
+            remaining.sort_unstable();
+            let mut expected = expected
+                .iter()
+                .map(|(run_id, sandbox_id)| (run_id.to_string(), sandbox_id.to_string()))
+                .collect::<Vec<_>>();
+            expected.sort_unstable();
+            assert_eq!(remaining, expected);
         }
 
         async fn assert_orphan_count(&self, expected: usize) {
@@ -529,12 +533,16 @@ mod tests {
                 .map(|idle_vms| {
                     idle_vms
                         .iter()
-                        .filter_map(|vm| {
-                            let session_id =
-                                vm.get("session_id").and_then(|session| session.as_str())?;
-                            let sandbox_id =
-                                vm.get("sandbox_id").and_then(|sandbox| sandbox.as_str())?;
-                            Some((session_id.to_string(), sandbox_id.to_string()))
+                        .map(|vm| {
+                            let session_id = vm
+                                .get("session_id")
+                                .and_then(|session| session.as_str())
+                                .expect("idle VM must include session_id");
+                            let sandbox_id = vm
+                                .get("sandbox_id")
+                                .and_then(|sandbox| sandbox.as_str())
+                                .expect("idle VM must include sandbox_id");
+                            (session_id.to_string(), sandbox_id.to_string())
                         })
                         .collect()
                 })
@@ -544,10 +552,16 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter_map(|run| {
-                    let run_id = run.get("run_id").and_then(|run_id| run_id.as_str())?;
-                    let sandbox_id = run.get("sandbox_id").and_then(|sandbox| sandbox.as_str())?;
-                    Some((run_id.to_string(), sandbox_id.to_string()))
+                .map(|run| {
+                    let run_id = run
+                        .get("run_id")
+                        .and_then(|run_id| run_id.as_str())
+                        .expect("active run must include run_id");
+                    let sandbox_id = run
+                        .get("sandbox_id")
+                        .and_then(|sandbox| sandbox.as_str())
+                        .expect("active run must include sandbox_id");
+                    (run_id.to_string(), sandbox_id.to_string())
                 })
                 .collect();
             active_runs.sort_unstable();
