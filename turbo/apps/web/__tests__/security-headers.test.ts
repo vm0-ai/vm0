@@ -216,8 +216,14 @@ const REALTIME_TOKEN_NEXT_NEGATIVE_PATHS = [
 const ZERO_SKILLS_REWRITE_SOURCE = "/api/zero/skills";
 const ZERO_SKILLS_PATH = "/api/zero/skills";
 const ZERO_SKILLS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/skills/extra",
+  "/api/zero/skills/extra/path",
   "/api/zero/skill",
+] as const;
+const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
+const ZERO_SKILLS_BY_NAME_PATH = "/api/zero/skills/my-skill";
+const ZERO_SKILLS_BY_NAME_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/skills/my-skill/extra",
+  "/api/zero/skill/my-skill",
 ] as const;
 const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
@@ -635,6 +641,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SKILLS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/skills",
+        },
+        {
+          source: ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/skills/:name",
         },
         {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
@@ -1508,6 +1518,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SKILLS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SKILLS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment zero skills by-name rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SKILLS_BY_NAME_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/skills/:name",
+    });
+
+    const matcher = getPathMatch(ZERO_SKILLS_BY_NAME_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SKILLS_BY_NAME_PATH)).toStrictEqual({
+      name: "my-skill",
+    });
+    for (const pathname of ZERO_SKILLS_BY_NAME_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

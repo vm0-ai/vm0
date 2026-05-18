@@ -357,8 +357,22 @@ describe("API backend rewrite proxy behavior", () => {
 
   it("matches the zero skills collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/skills")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/skills/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/skills/extra/path")).toBe(
+      false,
+    );
     expect(matchesApiBackendRewritePath("/api/zero/skill")).toBe(false);
+  });
+
+  it("matches the zero skills by-name rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/skills/my-skill")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/skills/my-skill/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/skill/my-skill")).toBe(
+      false,
+    );
   });
 
   it("matches the zero team rewrite path exactly", () => {

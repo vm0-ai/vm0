@@ -697,6 +697,7 @@ describe("GET /api/zero/skills/:name", () => {
         userId: fixture.userId,
         name: skillName,
         displayName: "My Skill",
+        description: "A useful skill",
       },
       context.signal,
     );
@@ -725,7 +726,7 @@ describe("GET /api/zero/skills/:name", () => {
     expect(response.body).toStrictEqual({
       name: "my-skill",
       displayName: "My Skill",
-      description: null,
+      description: "A useful skill",
       content: "# My Skill Content",
       files: [{ path: "SKILL.md", size: 18 }],
     });
@@ -888,6 +889,53 @@ describe("GET /api/zero/skills/:name", () => {
 
     expect(response.body.content).toBe("# Readable");
     expect(response.body.name).toBe("readable-skill");
+  });
+
+  it("accepts CLI token auth when reading skill detail", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "cli-readable-skill";
+    const s3Key = `orgs/${fixture.orgId}/custom-skill@${skillName}/v1`;
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+        displayName: "CLI Skill",
+        description: "Readable through CLI auth",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedSkillStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        skillName,
+        s3Key,
+        headVersionId: `head-${randomUUID()}`,
+      },
+      context.signal,
+    );
+    mockSkillContent(context, { s3Key, content: "# CLI Readable" });
+
+    const response = await accept(
+      detailClient().get({
+        headers: await cliAuthHeaders(fixture, "member"),
+        params: { name: skillName },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: skillName,
+      displayName: "CLI Skill",
+      description: "Readable through CLI auth",
+      content: "# CLI Readable",
+      files: [{ path: "SKILL.md", size: 14 }],
+    });
   });
 });
 
@@ -1061,6 +1109,40 @@ describe("PUT /api/zero/skills/:name", () => {
 
     expectS3VolumeUploads(state.version.s3Key, state.storage.headVersionId);
   });
+
+  it("accepts CLI token auth when updating a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "cli-updated-skill";
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+      },
+      context.signal,
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await accept(
+      detailClient().update({
+        headers: await cliAuthHeaders(fixture, "admin"),
+        params: { name: skillName },
+        body: { files: skillFiles("# CLI Updated") },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: skillName,
+      displayName: null,
+      description: null,
+      content: "# CLI Updated",
+      files: [{ path: "SKILL.md", size: 13 }],
+    });
+  });
 });
 
 describe("DELETE /api/zero/skills/:name", () => {
@@ -1224,6 +1306,36 @@ describe("DELETE /api/zero/skills/:name", () => {
         ],
       },
     });
+  });
+
+  it("accepts CLI token auth when deleting a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const skillName = "cli-deleted-skill";
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: skillName,
+      },
+      context.signal,
+    );
+
+    const response = await detailClient().delete({
+      headers: await cliAuthHeaders(fixture, "admin"),
+      params: { name: skillName },
+    });
+
+    expect(response.status).toBe(204);
+    if (response.status !== 204) {
+      throw new Error("Expected no content response");
+    }
+    expect(response.body).toBeUndefined();
+
+    const after = await readSkillStorageState(fixture, skillName);
+    expect(after.skillUpdatedAt).toBeUndefined();
   });
 
   it("unbinds a deleted skill from all affected agents", async () => {
