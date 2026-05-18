@@ -7,6 +7,7 @@
 
 mod support;
 
+mod basic;
 mod exec_operation;
 mod process_control;
 mod quiesce;
