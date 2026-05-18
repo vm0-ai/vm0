@@ -3,10 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { badRequest, forbidden, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
-import type {
-  OrgEnrollmentMode,
-  OrgRole,
-} from "@vm0/api-contracts/contracts/org-members";
+import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
@@ -15,26 +12,6 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 const log = logger("service:org-member");
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
-
-/**
- * Zod schema for Clerk domain REST API response.
- * The SDK may return camelCase or snake_case depending on the version,
- * so we parse both forms to be safe.
- */
-const clerkDomainDataSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  enrollment_mode: z.string().optional(),
-  enrollmentMode: z.string().optional(),
-  created_at: z.number().optional(),
-  createdAt: z.number().optional(),
-  verification: z
-    .object({
-      status: z.string(),
-      strategy: z.string(),
-    })
-    .optional(),
-});
 
 /**
  * Zod schema for Clerk membership request REST API response.
@@ -613,123 +590,4 @@ export async function deleteOrg(
   await client.organizations.deleteOrganization(orgId);
 
   log.debug("Organization deleted", { orgId, callerUserId });
-}
-
-/**
- * List domains for an org.
- * Requires admin role.
- */
-export async function getOrgDomains(
-  orgId: string,
-  role: OrgRole,
-): Promise<{
-  domains: Array<{
-    id: string;
-    name: string;
-    enrollmentMode: string;
-    verification: { status: string; strategy: string };
-    createdAt: string;
-  }>;
-}> {
-  if (role !== "admin") {
-    throw forbidden("Only admins can manage domains");
-  }
-
-  const client = await clerkClient();
-  const domains = await client.organizations.getOrganizationDomainList({
-    organizationId: orgId,
-  });
-
-  return {
-    domains: domains.data.map((d) => {
-      const parsed = clerkDomainDataSchema.parse(d);
-      const enrollmentMode =
-        parsed.enrollment_mode ?? parsed.enrollmentMode ?? "";
-      const createdAtMs = parsed.created_at ?? parsed.createdAt;
-      return {
-        id: parsed.id,
-        name: parsed.name,
-        enrollmentMode,
-        verification: parsed.verification
-          ? {
-              status: parsed.verification.status,
-              strategy: parsed.verification.strategy,
-            }
-          : { status: "unverified", strategy: "email_code" },
-        createdAt: createdAtMs
-          ? new Date(createdAtMs).toISOString()
-          : new Date(0).toISOString(),
-      };
-    }),
-  };
-}
-
-/**
- * Add a domain to an org.
- * Requires admin role.
- */
-export async function addOrgDomain(
-  orgId: string,
-  role: OrgRole,
-  domainName: string,
-  enrollmentMode: OrgEnrollmentMode,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can add domains");
-  }
-
-  const client = await clerkClient();
-  await client.organizations.createOrganizationDomain({
-    organizationId: orgId,
-    name: domainName,
-    enrollmentMode,
-  });
-
-  log.debug("Domain added", { orgId, domainName });
-}
-
-/**
- * Remove a domain from an org.
- * Requires admin role.
- */
-export async function removeOrgDomain(
-  orgId: string,
-  role: OrgRole,
-  domainId: string,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can remove domains");
-  }
-
-  const client = await clerkClient();
-  await client.organizations.deleteOrganizationDomain({
-    organizationId: orgId,
-    domainId,
-  });
-
-  log.debug("Domain removed", { orgId, domainId });
-}
-
-/**
- * Verify or unverify a domain for an org.
- * Requires admin role.
- */
-export async function setOrgDomainVerified(
-  orgId: string,
-  role: OrgRole,
-  domainId: string,
-  verified: boolean,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can manage domains");
-  }
-
-  const client = await clerkClient();
-  await client.organizations.updateOrganizationDomain({
-    organizationId: orgId,
-    domainId,
-    verified,
-  });
-
-  log.debug("Domain verification updated", { orgId, domainId, verified });
 }

@@ -335,6 +335,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/lists")).toBe(false);
   });
 
+  it("matches the zero org domains rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/domains")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/domains/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/domain")).toBe(false);
+  });
+
   it("matches only one segment for zero me model-provider type rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
