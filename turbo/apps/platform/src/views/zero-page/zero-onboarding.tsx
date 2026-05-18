@@ -62,6 +62,70 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
+// Onboarding connector ranking — ordered by historical org adoption
+// (2026-05-18 snapshot of the `connectors` table). Lower index = more
+// popular. Ties are listed alphabetically. Connectors not in this list
+// rank after all ranked entries and fall back to alphabetical order, so
+// newly added connectors stay discoverable without manual re-ranking.
+const ONBOARDING_CONNECTOR_RANK: readonly ConnectorType[] = [
+  "github",
+  "gmail",
+  "notion",
+  "x",
+  "google-drive",
+  "slack",
+  "google-sheets",
+  "google-calendar",
+  "google-docs",
+  "linear",
+  "intervals-icu",
+  "vercel",
+  "strava",
+  "google-meet",
+  "hubspot",
+  "local-agent",
+  "sentry",
+  "todoist",
+  "xero",
+  "airtable",
+  "docusign",
+  "google-ads",
+  "gumroad",
+  "spotify",
+];
+
+function compareConnectorTypesForOnboarding(
+  a: ConnectorType,
+  b: ConnectorType,
+): number {
+  const rankA = ONBOARDING_CONNECTOR_RANK.indexOf(a);
+  const rankB = ONBOARDING_CONNECTOR_RANK.indexOf(b);
+  if (rankA !== -1 && rankB !== -1) {
+    return rankA - rankB;
+  }
+  if (rankA !== -1) {
+    return -1;
+  }
+  if (rankB !== -1) {
+    return 1;
+  }
+  return a.localeCompare(b);
+}
+
+function getOnboardingConnectorEntries(): [
+  ConnectorType,
+  (typeof CONNECTOR_TYPES)[ConnectorType],
+][] {
+  return (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).sort(([a], [b]) => {
+    return compareConnectorTypesForOnboarding(a, b);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Progress bar
 // ---------------------------------------------------------------------------
@@ -149,10 +213,7 @@ function SelectConnectorsContent() {
   const search = useGet(connectorSearch$);
   const setSearch = useSet(setConnectorSearch$);
 
-  const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
-    ConnectorType,
-    (typeof CONNECTOR_TYPES)[ConnectorType],
-  ][];
+  const connectorEntries = getOnboardingConnectorEntries();
 
   const filtered = connectorEntries.filter(([type, config]) => {
     return matchesConnectorSearch(search, {
@@ -247,12 +308,7 @@ function ConnectStepContent() {
       }),
   );
 
-  const selectedEntries = (
-    Object.entries(CONNECTOR_TYPES) as [
-      ConnectorType,
-      (typeof CONNECTOR_TYPES)[ConnectorType],
-    ][]
-  ).filter(([type]) => {
+  const selectedEntries = getOnboardingConnectorEntries().filter(([type]) => {
     return effectiveConnectors.includes(type);
   });
 
@@ -523,12 +579,7 @@ function OrbitIllustration() {
   const selectedConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
 
-  const entries = (
-    Object.entries(CONNECTOR_TYPES) as [
-      ConnectorType,
-      (typeof CONNECTOR_TYPES)[ConnectorType],
-    ][]
-  ).filter(([type]) => {
+  const entries = getOnboardingConnectorEntries().filter(([type]) => {
     return selectedConnectors.includes(type);
   });
 
