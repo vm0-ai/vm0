@@ -241,6 +241,18 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/usages")).toBe(false);
   });
 
+  it("matches the internal event consumer axiom rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axiom/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axioms"),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/voice-io/quota/extra")).toBe(

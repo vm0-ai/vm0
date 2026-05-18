@@ -9,7 +9,6 @@ import {
 import { http, HttpResponse } from "msw";
 import type { NextRequest } from "next/server";
 import { POST } from "../route";
-import { POST as axiomConsumerPOST } from "../../../../internal/event-consumers/axiom/route";
 import { POST as chatAssistantConsumerPOST } from "../../../../internal/event-consumers/chat-assistant/route";
 import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
 import {
@@ -46,6 +45,50 @@ async function forwardToConsumer(
     status: response.status,
     headers: response.headers,
   });
+}
+
+async function handleAxiomApiConsumer(request: Request): Promise<Response> {
+  const body = (await request.json()) as {
+    readonly runId: string;
+    readonly events: readonly {
+      readonly sequenceNumber: number;
+      readonly type: string;
+      readonly [key: string]: unknown;
+    }[];
+    readonly context: { readonly userId: string };
+  };
+
+  const axiomEvents = body.events.map((event) => {
+    return {
+      runId: body.runId,
+      userId: body.context.userId,
+      sequenceNumber: event.sequenceNumber,
+      eventType: event.type,
+      eventData: event,
+    };
+  });
+
+  const ingested = axiomModule.ingestToAxiom(
+    axiomModule.getDatasetName(axiomModule.DATASETS.AGENT_RUN_EVENTS),
+    axiomEvents,
+  );
+  if (!ingested) {
+    return HttpResponse.json(
+      { error: "Axiom agent-run-events dataset is not configured" },
+      { status: 503 },
+    );
+  }
+
+  try {
+    await axiomModule.flushAxiom({ throwOnError: true, client: "sessions" });
+  } catch {
+    return HttpResponse.json(
+      { error: "Axiom agent-run-events flush failed" },
+      { status: 503 },
+    );
+  }
+
+  return HttpResponse.json({ received: body.events.length });
 }
 
 const context = testContext();
@@ -97,7 +140,7 @@ describe("POST /api/webhooks/agent/events", () => {
       http.post(
         "http://localhost:3000/api/internal/event-consumers/axiom",
         ({ request }) => {
-          return forwardToConsumer(request, axiomConsumerPOST);
+          return handleAxiomApiConsumer(request);
         },
       ),
       http.post(
