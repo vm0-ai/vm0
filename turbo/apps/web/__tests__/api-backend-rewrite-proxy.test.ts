@@ -132,6 +132,21 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches only one segment for agent checkpoint rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/agent/checkpoints/checkpoint_123"),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/checkpoints")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/checkpoints/checkpoint_123/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/checkpoint/checkpoint_123"),
+    ).toBe(false);
+  });
+
   it("matches the auth me rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/auth/me")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/auth/me/extra")).toBe(false);

@@ -28,8 +28,15 @@ const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
+const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
+const AGENT_CHECKPOINT_PATH_RE = /^\/api\/agent\/checkpoints\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
+  [
+    AGENT_CHECKPOINT_REWRITE_SOURCE,
+    "/api/agent/checkpoints/:id",
+    AGENT_CHECKPOINT_PATH_RE,
+  ],
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],

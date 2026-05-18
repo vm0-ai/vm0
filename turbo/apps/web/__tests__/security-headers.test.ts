@@ -23,6 +23,13 @@ const { getPathMatch } =
   };
 
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
+const AGENT_CHECKPOINT_PATH = "/api/agent/checkpoints/checkpoint_123";
+const AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/checkpoints",
+  "/api/agent/checkpoints/checkpoint_123/extra",
+  "/api/agent/checkpoint/checkpoint_123",
+] as const;
 const AUTH_ME_REWRITE_SOURCE = "/api/auth/me";
 const AUTH_ME_PATH = "/api/auth/me";
 const AUTH_ME_NEXT_NEGATIVE_PATHS = [
@@ -429,6 +436,10 @@ describe("API backend rewrites", () => {
     expect(rewrites).toEqual(
       expect.arrayContaining([
         {
+          source: AGENT_CHECKPOINT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/checkpoints/:id",
+        },
+        {
           source: AUTH_ME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/auth/me",
         },
@@ -700,6 +711,31 @@ describe("API backend rewrites", () => {
         },
       ]),
     );
+  });
+
+  it("should match only one segment for agent checkpoint rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_CHECKPOINT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_CHECKPOINT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/checkpoints/:id",
+    });
+
+    const matcher = getPathMatch(AGENT_CHECKPOINT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_CHECKPOINT_PATH)).toStrictEqual({
+      id: "checkpoint_123",
+    });
+    for (const pathname of AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact auth me rewrite", async () => {
@@ -1588,6 +1624,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact onboarding setup path", () => {
     expect(matchesApiBackendRewritePath(ONBOARDING_SETUP_PATH)).toBe(true);
     for (const pathname of ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for agent checkpoint detail paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_CHECKPOINT_PATH)).toBe(true);
+    for (const pathname of AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
