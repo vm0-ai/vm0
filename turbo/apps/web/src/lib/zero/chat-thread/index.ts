@@ -8,7 +8,6 @@ export {
   updateChatThreadTitle,
   updateChatThreadDraft,
   deleteChatThread,
-  markThreadRead,
   pinChatThread,
   unpinChatThread,
   renameChatThread,

@@ -457,6 +457,27 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat/searches")).toBe(false);
   });
 
+  it("matches the zero chat thread mark-read rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/mark-read",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/mark-read/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/chat-threads/mark-read"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the push subscriptions rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/push-subscriptions")).toBe(
       true,

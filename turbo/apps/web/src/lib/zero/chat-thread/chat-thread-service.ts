@@ -235,51 +235,6 @@ export async function getFirstRunModelPinForThread(
 }
 
 /**
- * Mark a thread read up to its current latest message.
- *
- * Idempotent: when the stored message id already matches the latest message,
- * no row is updated and callers should not emit realtime fanout.
- */
-export async function markThreadRead(
-  userId: string,
-  threadId: string,
-): Promise<{ lastReadMessageId: string | null; changed: boolean }> {
-  const [thread] = await globalThis.services.db
-    .select({ lastReadMessageId: chatThreads.lastReadMessageId })
-    .from(chatThreads)
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .limit(1);
-
-  if (!thread) {
-    throw notFound("Chat thread not found");
-  }
-
-  const [latestMessage] = await globalThis.services.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        visibleChatMessageCondition(),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1);
-
-  const latestMessageId = latestMessage?.id ?? null;
-  if (thread.lastReadMessageId === latestMessageId) {
-    return { lastReadMessageId: latestMessageId, changed: false };
-  }
-
-  await globalThis.services.db
-    .update(chatThreads)
-    .set({ lastReadMessageId: latestMessageId })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
-
-  return { lastReadMessageId: latestMessageId, changed: true };
-}
-
-/**
  * Get a chat thread by ID with ownership check.
  */
 export async function getChatThread(
