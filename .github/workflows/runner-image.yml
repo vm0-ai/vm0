@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  context:
+  prepare:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -195,14 +195,14 @@ jobs:
           JOB_REF: ${{ steps.identity.outputs.job-ref }}
         run: .github/scripts/runner-image-context.sh artifact-name
 
-  prepare:
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     permissions:
       contents: read
-    needs: [context]
-    if: needs.context.outputs.current-runner-image-needed == 'true'
+    needs: [prepare]
+    if: needs.prepare.outputs.current-runner-image-needed == 'true'
     timeout-minutes: 25
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
@@ -233,11 +233,11 @@ jobs:
           grafana-cloud-api-key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           env-label: dev
 
-      - name: Prepare runner image on all metal hosts
-        id: prepare
+      - name: Build runner image on all metal hosts
+        id: build
         env:
-          JOB_REF: ${{ needs.context.outputs.job-ref }}
-          HEAD_SHA: ${{ needs.context.outputs.head-sha }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           MANIFEST_PATH: runner-image-manifest/manifest.json
@@ -250,8 +250,8 @@ jobs:
       - name: Validate manifest
         env:
           MANIFEST_PATH: runner-image-manifest/manifest.json
-          HEAD_SHA: ${{ needs.context.outputs.head-sha }}
-          JOB_REF: ${{ needs.context.outputs.job-ref }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head-sha }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           TARGET: ${{ env.TARGET_TRIPLE }}
           PROFILE: ${{ env.PROFILE }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
@@ -260,6 +260,6 @@ jobs:
       - name: Upload runner image manifest
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.context.outputs.artifact-name }}
+          name: ${{ needs.prepare.outputs.artifact-name }}
           path: runner-image-manifest/manifest.json
           retention-days: 7
