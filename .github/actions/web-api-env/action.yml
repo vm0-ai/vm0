@@ -178,7 +178,6 @@ runs:
         add_var AWS_REGION AWS_REGION
         add_secret AWS_ACCESS_KEY_ID AWS_ACCESS_KEY_ID
         add_secret AWS_SECRET_ACCESS_KEY AWS_SECRET_ACCESS_KEY
-        add_secret AWS_SESSION_TOKEN AWS_SESSION_TOKEN
         add_secret OFFICIAL_RUNNER_SECRET OFFICIAL_RUNNER_SECRET
         add_env RUNNER_DEFAULT_GROUP "$runner_default_group"
         add_secret AXIOM_TOKEN_SESSIONS AXIOM_TOKEN_SESSIONS
