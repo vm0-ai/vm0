@@ -21,7 +21,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/[id]/telemetry/network/route.ts",
   "app/api/agent/runs/[id]/telemetry/route.ts",
   "app/api/agent/runs/[id]/telemetry/system-log/route.ts",
-  "app/api/agent/runs/queue/route.ts",
   "app/api/agent/runs/route.ts",
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",

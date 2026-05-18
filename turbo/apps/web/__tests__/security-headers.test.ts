@@ -30,6 +30,13 @@ const AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS = [
   "/api/agent/checkpoints/checkpoint_123/extra",
   "/api/agent/checkpoint/checkpoint_123",
 ] as const;
+const AGENT_RUNS_QUEUE_REWRITE_SOURCE = "/api/agent/runs/queue";
+const AGENT_RUNS_QUEUE_PATH = "/api/agent/runs/queue";
+const AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/extra",
+  "/api/agent/runs",
+  "/api/agent/runs/queues",
+] as const;
 const AUTH_ME_REWRITE_SOURCE = "/api/auth/me";
 const AUTH_ME_PATH = "/api/auth/me";
 const AUTH_ME_NEXT_NEGATIVE_PATHS = [
@@ -511,6 +518,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/checkpoints/:id",
         },
         {
+          source: AGENT_RUNS_QUEUE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs/queue",
+        },
+        {
           source: AUTH_ME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/auth/me",
         },
@@ -856,6 +867,29 @@ describe("API backend rewrites", () => {
       id: "checkpoint_123",
     });
     for (const pathname of AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent runs queue rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUNS_QUEUE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUNS_QUEUE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs/queue",
+    });
+
+    const matcher = getPathMatch(AGENT_RUNS_QUEUE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUNS_QUEUE_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2010,6 +2044,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for agent checkpoint detail paths", () => {
     expect(matchesApiBackendRewritePath(AGENT_CHECKPOINT_PATH)).toBe(true);
     for (const pathname of AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact agent runs queue path", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUNS_QUEUE_PATH)).toBe(true);
+    for (const pathname of AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

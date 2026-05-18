@@ -46,6 +46,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
+  ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [
     AGENT_SESSION_ID_REWRITE_SOURCE,
     "/api/agent/sessions/:id",

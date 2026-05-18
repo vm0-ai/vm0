@@ -5,11 +5,13 @@ import {
   runsMainContract,
   runsQueueContract,
 } from "@vm0/api-contracts/contracts/runs";
+import { userCache } from "@vm0/db/schema/user-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -70,6 +72,13 @@ async function createCompose(args: {
     },
     context.signal,
   );
+}
+
+async function cacheUserEmail(args: {
+  readonly userId: string;
+  readonly email: string;
+}): Promise<void> {
+  await store.set(writeDb$).insert(userCache).values(args);
 }
 
 function runsClient() {
@@ -488,6 +497,10 @@ describe("GET /api/agent/runs/queue", () => {
     const otherUserId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId: fixture.orgId, userId: otherUserId }));
     const sessionId = randomUUID();
+    await cacheUserEmail({
+      userId: fixture.userId,
+      email: "queue-owner@example.com",
+    });
 
     await store.set(
       seedRun$,
@@ -527,6 +540,7 @@ describe("GET /api/agent/runs/queue", () => {
       position: 1,
       agentName: "queue-agent",
       isOwner: true,
+      userEmail: "queue-owner@example.com",
       prompt: `${"a".repeat(200)}...`,
       sessionLink: `/chat/${sessionId}`,
     });
@@ -541,6 +555,66 @@ describe("GET /api/agent/runs/queue", () => {
       isOwner: false,
     });
     expect(JSON.stringify(response.body)).not.toContain("secret prompt");
+  });
+
+  it("counts active runs only in the active org", async () => {
+    const fixture = await createFixture();
+    const compose = await createCompose({ fixture, name: "active-agent" });
+    const otherOrg = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const otherOrgCompose = await store.set(
+      seedCompose$,
+      {
+        orgId: otherOrg.orgId,
+        userId: otherOrg.userId,
+        name: "other-org-agent",
+      },
+      context.signal,
+    );
+
+    await store.set(
+      seedRun$,
+      {
+        ...fixture,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedRun$,
+      {
+        ...fixture,
+        composeId: compose.composeId,
+        status: "pending",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedRun$,
+      {
+        orgId: otherOrg.orgId,
+        userId: otherOrg.userId,
+        composeId: otherOrgCompose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      queueClient().getQueue({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.concurrency).toMatchObject({
+      limit: 1,
+      active: 2,
+      available: 0,
+    });
+    expect(response.body.runningTasks).toHaveLength(1);
   });
 
   it("returns running task privacy and estimated time per run", async () => {

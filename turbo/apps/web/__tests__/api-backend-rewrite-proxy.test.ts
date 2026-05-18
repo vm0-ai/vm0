@@ -168,6 +168,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/session/abc")).toBe(false);
   });
 
+  it("matches the agent runs queue rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/runs/queue")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/queue/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
+  });
+
   it("routes hosted-site deployment endpoints to the API backend", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),
