@@ -65,6 +65,9 @@ PLAUSIBLE_SCRIPT_URL=
 # Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
 OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
 
+# Required: OpenAI Webhook signing secret (for built-in generations webhook)
+OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
+
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY
 
