@@ -2701,14 +2701,7 @@
       "idx": 385,
       "version": "7",
       "when": 1779081628852,
-      "tag": "0385_add_gpt_image_1_mini_fal_pricing",
-      "breakpoints": true
-    },
-    {
-      "idx": 386,
-      "version": "7",
-      "when": 1779081628853,
-      "tag": "0386_add_gpt_image_fal_quality_size_pricing",
+      "tag": "0385_add_gpt_image_fal_quality_size_pricing",
       "breakpoints": true
     }
   ]
