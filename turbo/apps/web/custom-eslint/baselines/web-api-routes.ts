@@ -106,7 +106,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/chat-threads/[id]/messages/route.ts",
   "app/api/zero/chat-threads/[id]/rename/route.ts",
   "app/api/zero/chat-threads/[id]/route.ts",
-  "app/api/zero/chat-threads/[id]/unpin/route.ts",
   "app/api/zero/chat-threads/route.ts",
   "app/api/zero/composes/[id]/metadata/route.ts",
   "app/api/zero/composes/[id]/route.ts",

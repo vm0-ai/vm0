@@ -371,25 +371,6 @@ export async function deleteChatThread(
 }
 
 /**
- * Clear the pin from a chat thread. Idempotent: unpinning an already-unpinned
- * thread is a no-op write but still succeeds.
- */
-export async function unpinChatThread(
-  threadId: string,
-  userId: string,
-): Promise<void> {
-  const updated = await globalThis.services.db
-    .update(chatThreads)
-    .set({ pinnedAt: null })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
-
-  if (updated.length === 0) {
-    throw notFound("Chat thread not found");
-  }
-}
-
-/**
  * Update a chat thread's title.
  */
 export async function updateChatThreadTitle(
