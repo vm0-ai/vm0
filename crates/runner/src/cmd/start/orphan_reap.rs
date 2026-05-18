@@ -386,10 +386,23 @@ mod tests {
                     source_ip: "10.0.0.1".into(),
                     storage_fingerprints: StorageFingerprints::default(),
                 });
-            assert!(matches!(
-                self.idle_pool.lock().await.park(candidate),
-                ParkResult::Parked
-            ));
+            let result = {
+                let mut idle_pool = self.idle_pool.lock().await;
+                idle_pool.park(candidate)
+            };
+            match result {
+                ParkResult::Parked => {}
+                ParkResult::Replaced(job) => {
+                    job.run().await;
+                    panic!("expected synthetic idle candidate to park without replacement");
+                }
+                ParkResult::Rejected(rejected) => {
+                    let (payload, lease) = rejected.into_active_destroy_parts();
+                    let _ = payload.stop_and_destroy().await;
+                    drop(lease);
+                    panic!("expected synthetic idle candidate to be accepted by the idle pool");
+                }
+            }
         }
 
         async fn reap(&self, mode: OrphanReapMode) {
