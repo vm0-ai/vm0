@@ -2,6 +2,7 @@ use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -10,8 +11,8 @@ use super::support::{
     read_guest_messages, send_exec_result,
 };
 use crate::{
-    ConnectionState, GuestProcessHandle, VsockHost, operation_tracker::NormalOperationReadiness,
-    process as process_impl,
+    ConnectionState, FrameWriteObserver, GuestProcessHandle, VsockHost,
+    operation_tracker::NormalOperationReadiness, process as process_impl,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Notify, oneshot};
@@ -1827,8 +1828,25 @@ async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
     });
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
-    let mut spawn = Box::pin(host.spawn_process("cancel-before-write", 0, &[], false, true, None));
+    let mut spawn = Box::pin(host.spawn_process_with_request_and_write_observer(
+        crate::ProcessSpawnRequest {
+            command: "cancel-before-write",
+            timeout_ms: 0,
+            env: &[],
+            sudo: false,
+            stream_stdout: true,
+            stdout_log_path: None,
+        },
+        FrameWriteObserver::new({
+            let write_start_count = Arc::clone(&write_start_count);
+            move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }),
+    ));
     assert!(
         matches!(poll_once(spawn.as_mut()), Poll::Pending),
         "spawn_process should wait for writer lock",
@@ -1836,6 +1854,7 @@ async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
     assert_eq!(registration_counts(&host), (1, 1, 1));
 
     drop(spawn);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),

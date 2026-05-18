@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::io;
+use std::sync::{Arc, Mutex};
 
-use vsock_host::VsockHost;
+use vsock_host::{FrameWriteObserver, VsockHost};
 
 use crate::park_coordinator::{
-    CoordinatorState, LeaseRejection, OperationLease, OperationTransitionError, ParkCoordinator,
+    CoordinatorState, LeaseRejection, OperationId, OperationLease, OperationLiveness,
+    OperationTransitionError, ParkCoordinator,
 };
 use crate::sandbox::SandboxState;
 
@@ -95,25 +97,126 @@ pub(crate) struct GuestOperation {
 }
 
 impl GuestOperation {
+    pub(crate) fn into_write_boundary(self) -> GuestOperationWriteBoundary {
+        GuestOperationWriteBoundary::new(self.guest, self.lease)
+    }
+}
+
+pub(crate) struct GuestOperationWriteBoundary {
+    guest: Arc<VsockHost>,
+    state: Arc<Mutex<GuestOperationWriteBoundaryState>>,
+}
+
+struct GuestOperationWriteBoundaryState {
+    operation_id: OperationId,
+    lease: Option<OperationLease>,
+    write_started: bool,
+}
+
+impl GuestOperationWriteBoundary {
+    fn new(guest: Arc<VsockHost>, lease: OperationLease) -> Self {
+        Self {
+            guest,
+            state: Arc::new(Mutex::new(GuestOperationWriteBoundaryState {
+                operation_id: lease.id(),
+                lease: Some(lease),
+                write_started: false,
+            })),
+        }
+    }
+
     pub(crate) fn guest(&self) -> Arc<VsockHost> {
         Arc::clone(&self.guest)
     }
 
-    pub(crate) fn mark_writing(&mut self) -> Result<(), OperationTransitionError> {
-        self.lease.mark_writing()
+    pub(crate) fn write_observer(&self) -> FrameWriteObserver {
+        let state = Arc::clone(&self.state);
+        FrameWriteObserver::new(move || {
+            let mut state = lock_write_boundary_state(&state);
+            state.record_write_start().map_err(|error| {
+                io::Error::other(format!("operation gate write-start transition: {error:?}"))
+            })
+        })
     }
 
-    pub(crate) fn mark_in_guest(&mut self) -> Result<(), OperationTransitionError> {
-        self.lease.mark_in_guest()
+    pub(crate) fn has_write_started(&self) -> bool {
+        lock_write_boundary_state(&self.state).write_started
     }
 
     pub(crate) fn complete(self) -> Result<(), OperationTransitionError> {
-        self.lease.complete()
+        let mut state = lock_write_boundary_state(&self.state);
+        state.complete()
     }
 
-    pub(crate) fn into_lease(self) -> OperationLease {
-        self.lease
+    pub(crate) fn complete_if_write_started(self) -> Result<(), OperationTransitionError> {
+        if self.has_write_started() {
+            self.complete()
+        } else {
+            Ok(())
+        }
     }
+
+    pub(crate) fn into_in_guest_lease(self) -> Result<OperationLease, OperationTransitionError> {
+        let mut state = lock_write_boundary_state(&self.state);
+        state.take_in_guest_lease()
+    }
+}
+
+impl GuestOperationWriteBoundaryState {
+    fn record_write_start(&mut self) -> Result<(), OperationTransitionError> {
+        if self.write_started {
+            return Ok(());
+        }
+
+        let Some(lease) = self.lease.as_mut() else {
+            return Err(OperationTransitionError::UnknownOperation {
+                operation_id: self.operation_id,
+            });
+        };
+
+        lease.mark_writing()?;
+        self.write_started = true;
+        Ok(())
+    }
+
+    fn take_lease(&mut self) -> Result<OperationLease, OperationTransitionError> {
+        self.lease
+            .take()
+            .ok_or(OperationTransitionError::UnknownOperation {
+                operation_id: self.operation_id,
+            })
+    }
+
+    fn complete(&mut self) -> Result<(), OperationTransitionError> {
+        let lease = self.take_lease()?;
+        if !self.write_started {
+            return Err(OperationTransitionError::InvalidTransition {
+                operation_id: self.operation_id,
+                from: OperationLiveness::Reserved,
+                to: OperationLiveness::Terminal,
+            });
+        }
+        lease.complete()
+    }
+
+    fn take_in_guest_lease(&mut self) -> Result<OperationLease, OperationTransitionError> {
+        let mut lease = self.take_lease()?;
+        if !self.write_started {
+            return Err(OperationTransitionError::InvalidTransition {
+                operation_id: self.operation_id,
+                from: OperationLiveness::Reserved,
+                to: OperationLiveness::InGuest,
+            });
+        }
+        lease.mark_in_guest()?;
+        Ok(lease)
+    }
+}
+
+fn lock_write_boundary_state(
+    state: &Mutex<GuestOperationWriteBoundaryState>,
+) -> std::sync::MutexGuard<'_, GuestOperationWriteBoundaryState> {
+    state.lock().unwrap_or_else(|error| error.into_inner())
 }
 
 #[cfg(test)]
@@ -135,6 +238,92 @@ mod tests {
             .begin_prepare_park()
             .expect("operation start failure should not leave an active lease");
         coordinator.abort_prepare_park(&attempt).unwrap();
+    }
+
+    fn write_boundary_state(coordinator: &ParkCoordinator) -> GuestOperationWriteBoundaryState {
+        let lease = coordinator.reserve_operation().expect("reserve operation");
+        GuestOperationWriteBoundaryState {
+            operation_id: lease.id(),
+            lease: Some(lease),
+            write_started: false,
+        }
+    }
+
+    #[test]
+    fn write_boundary_drop_before_write_start_is_clean() {
+        let coordinator = ParkCoordinator::new();
+        let state = write_boundary_state(&coordinator);
+
+        drop(state);
+
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[test]
+    fn write_boundary_first_write_blocks_park_until_complete() {
+        let coordinator = ParkCoordinator::new();
+        let mut state = write_boundary_state(&coordinator);
+
+        state.record_write_start().expect("record write start");
+
+        assert!(state.write_started);
+        assert_eq!(coordinator.active_operation_count(), 1);
+        assert!(matches!(
+            coordinator.begin_prepare_park(),
+            Err(crate::park_coordinator::PrepareParkError::Busy)
+        ));
+
+        state.complete().expect("complete operation");
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[test]
+    fn write_boundary_repeated_write_start_is_idempotent() {
+        let coordinator = ParkCoordinator::new();
+        let mut state = write_boundary_state(&coordinator);
+
+        state.record_write_start().expect("first write start");
+        state.record_write_start().expect("second write start");
+
+        state.complete().expect("complete operation");
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[test]
+    fn write_boundary_completion_before_write_start_is_rejected_cleanly() {
+        let coordinator = ParkCoordinator::new();
+        let mut state = write_boundary_state(&coordinator);
+
+        assert!(matches!(
+            state.complete(),
+            Err(OperationTransitionError::InvalidTransition {
+                from: OperationLiveness::Reserved,
+                to: OperationLiveness::Terminal,
+                ..
+            })
+        ));
+
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
+    }
+
+    #[test]
+    fn write_boundary_in_guest_requires_write_start() {
+        let coordinator = ParkCoordinator::new();
+        let mut state = write_boundary_state(&coordinator);
+
+        assert!(matches!(
+            state.take_in_guest_lease(),
+            Err(OperationTransitionError::InvalidTransition {
+                from: OperationLiveness::Reserved,
+                to: OperationLiveness::InGuest,
+                ..
+            })
+        ));
+
+        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_prepare_can_start(&coordinator);
     }
 
     #[test]

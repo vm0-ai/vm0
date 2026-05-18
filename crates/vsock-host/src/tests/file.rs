@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,7 +17,7 @@ use super::support::{
     send_exec_result, send_raw_exec_result, send_stream_exec_result, setup_host_and_guest,
 };
 use crate::file as file_impl;
-use crate::{CopyFileOptions, operation_tracker::NormalOperationReadiness};
+use crate::{CopyFileOptions, FrameWriteObserver, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
@@ -1169,10 +1170,23 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
 async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
     let write_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/blocked.txt", b"hello", false).await })
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/blocked.txt",
+                b"hello",
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
     };
 
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -1184,6 +1198,7 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
     .unwrap();
     write_task.abort();
     let _ = write_task.await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle

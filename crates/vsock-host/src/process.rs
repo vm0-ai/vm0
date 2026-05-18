@@ -12,7 +12,7 @@ use vsock_proto::{
 };
 
 use crate::{
-    ConnectionState, PendingRequestGuard, PendingResponse, Shared,
+    ConnectionState, FrameWriteObserver, PendingRequestGuard, PendingResponse, Shared,
     operation_tracker::NormalOperationToken, request_on_shared,
 };
 
@@ -50,6 +50,7 @@ pub(crate) struct SpawnProcessOnSharedRequest<'a> {
     pub(crate) stream_stdout: bool,
     pub(crate) stdout_log_path: Option<&'a str>,
     pub(crate) control_sink: bool,
+    pub(crate) write_observer: FrameWriteObserver,
 }
 
 /// Process lifecycle state while the vsock connection is open.
@@ -673,6 +674,7 @@ async fn spawn_process_on_shared_with_response_timeout(
         stream_stdout,
         stdout_log_path,
         control_sink,
+        write_observer,
     } = request;
     let control_nonce = *uuid::Uuid::new_v4().as_bytes();
     let payload = if control_sink {
@@ -750,6 +752,7 @@ async fn spawn_process_on_shared_with_response_timeout(
         let mut write_guard = ProcessOperationFrameWriteGuard::new(Arc::clone(shared));
         let mut writer = shared.writer.lock().await;
         mark_process_operation_possible_guest_write(shared, seq)?;
+        write_observer.record_write_start()?;
         write_guard.mark_started();
         registration_guard.keep_on_drop();
         if let Err(error) = writer.write_all(&data).await {
@@ -831,6 +834,7 @@ pub(crate) mod test_support {
                 stream_stdout,
                 stdout_log_path: None,
                 control_sink: false,
+                write_observer: FrameWriteObserver::default(),
             },
             response_timeout,
         )

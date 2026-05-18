@@ -699,7 +699,7 @@ impl FirecrackerSandbox {
     async fn run_bounded_guest_operation<T, Fut>(
         &self,
         operation: SandboxOperation,
-        call: impl FnOnce(Arc<VsockHost>) -> Fut,
+        call: impl FnOnce(Arc<VsockHost>, vsock_host::FrameWriteObserver) -> Fut,
     ) -> sandbox::Result<T>
     where
         Fut: Future<Output = io::Result<T>>,
@@ -709,14 +709,15 @@ impl FirecrackerSandbox {
             BackendCrashed,
         }
 
-        let mut guest = self.begin_guest_operation(operation).await?;
-        guest
-            .mark_writing()
-            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+        let guest = self
+            .begin_guest_operation(operation)
+            .await?
+            .into_write_boundary();
         let vsock = guest.guest();
+        let write_observer = guest.write_observer();
 
         let outcome = tokio::select! {
-            result = call(vsock) => {
+            result = call(vsock, write_observer) => {
                 GuestCallOutcome::Returned(result)
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -737,7 +738,7 @@ impl FirecrackerSandbox {
                 let result = Err(Self::operation_error(operation, error, backend_crashed));
                 if is_terminal {
                     guest
-                        .complete()
+                        .complete_if_write_started()
                         .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 }
                 result
@@ -1509,19 +1510,22 @@ impl Sandbox for FirecrackerSandbox {
         let limits = request.output_limits;
         let timeout_ms = request.timeout_ms();
 
-        self.run_bounded_guest_operation(operation, |guest| async move {
+        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
             guest
-                .exec_capture(vsock_host::ExecCaptureRequest {
-                    command: request.cmd,
-                    timeout_ms,
-                    env: request.env,
-                    sudo: request.sudo,
-                    label: "sandbox-exec",
-                    stdout_limit_bytes: limits.stdout_limit_bytes,
-                    stderr_limit_bytes: limits.stderr_limit_bytes,
-                    expected_exit_codes: &[],
-                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-                })
+                .exec_capture_with_write_observer(
+                    vsock_host::ExecCaptureRequest {
+                        command: request.cmd,
+                        timeout_ms,
+                        env: request.env,
+                        sudo: request.sudo,
+                        label: "sandbox-exec",
+                        stdout_limit_bytes: limits.stdout_limit_bytes,
+                        stderr_limit_bytes: limits.stderr_limit_bytes,
+                        expected_exit_codes: &[],
+                        wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+                    },
+                    write_observer,
+                )
                 .await
                 .map(|result| ExecResult {
                     exit_code: result.exit_code,
@@ -1537,8 +1541,10 @@ impl Sandbox for FirecrackerSandbox {
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         let operation = SandboxOperation::Exec;
 
-        self.run_bounded_guest_operation(operation, |guest| async move {
-            guest.read_file(path, max_bytes, 5000).await
+        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
+            guest
+                .read_file_with_write_observer(path, max_bytes, 5000, write_observer)
+                .await
         })
         .await
     }
@@ -1552,9 +1558,9 @@ impl Sandbox for FirecrackerSandbox {
         let operation = SandboxOperation::Exec;
         let timeout_ms = u32::try_from(options.timeout.as_millis()).unwrap_or(u32::MAX);
 
-        self.run_bounded_guest_operation(operation, |guest| async move {
+        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
             guest
-                .copy_file(
+                .copy_file_with_write_observer(
                     path,
                     host_path,
                     vsock_host::CopyFileOptions {
@@ -1562,6 +1568,7 @@ impl Sandbox for FirecrackerSandbox {
                         timeout_ms,
                         missing_ok: options.missing_ok,
                     },
+                    write_observer,
                 )
                 .await
                 .map(|result| CopyFileResult {
@@ -1574,8 +1581,10 @@ impl Sandbox for FirecrackerSandbox {
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         let operation = SandboxOperation::WriteFile;
 
-        self.run_bounded_guest_operation(operation, |guest| async move {
-            guest.write_file(path, content, false).await
+        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
+            guest
+                .write_file_with_write_observer(path, content, false, write_observer)
+                .await
         })
         .await
     }
@@ -1585,31 +1594,42 @@ impl Sandbox for FirecrackerSandbox {
         request: &SpawnProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         let operation = SandboxOperation::SpawnProcess;
-        let mut guest = self.begin_guest_operation(operation).await?;
-        guest
-            .mark_writing()
-            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
+        let guest = self
+            .begin_guest_operation(operation)
+            .await?
+            .into_write_boundary();
         let vsock = guest.guest();
+        let write_observer = guest.write_observer();
 
         let spawn_future: Pin<
             Box<dyn Future<Output = io::Result<vsock_host::GuestProcessHandle>> + Send + '_>,
         > = match request.control {
-            SpawnProcessControl::None => Box::pin(vsock.spawn_process(
-                request.cmd,
-                request.timeout_ms(),
-                request.env,
-                request.sudo,
-                request.output.streams_stdout(),
-                request.output.guest_log_path(),
-            )),
-            SpawnProcessControl::Enabled => Box::pin(vsock.spawn_process_with_control_sink(
-                request.cmd,
-                request.timeout_ms(),
-                request.env,
-                request.sudo,
-                request.output.streams_stdout(),
-                request.output.guest_log_path(),
-            )),
+            SpawnProcessControl::None => {
+                Box::pin(vsock.spawn_process_with_request_and_write_observer(
+                    vsock_host::ProcessSpawnRequest {
+                        command: request.cmd,
+                        timeout_ms: request.timeout_ms(),
+                        env: request.env,
+                        sudo: request.sudo,
+                        stream_stdout: request.output.streams_stdout(),
+                        stdout_log_path: request.output.guest_log_path(),
+                    },
+                    write_observer,
+                ))
+            }
+            SpawnProcessControl::Enabled => Box::pin(
+                vsock.spawn_process_with_control_sink_request_and_write_observer(
+                    vsock_host::ProcessSpawnRequest {
+                        command: request.cmd,
+                        timeout_ms: request.timeout_ms(),
+                        env: request.env,
+                        sudo: request.sudo,
+                        stream_stdout: request.output.streams_stdout(),
+                        stdout_log_path: request.output.guest_log_path(),
+                    },
+                    write_observer,
+                ),
+            ),
         };
 
         tokio::select! {
@@ -1622,15 +1642,12 @@ impl Sandbox for FirecrackerSandbox {
                         let result = Err(Self::operation_error(operation, error, backend_crashed));
                         if is_terminal {
                             guest
-                                .complete()
+                                .complete_if_write_started()
                                 .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                         }
                         return result;
                     }
                 };
-                guest
-                    .mark_in_guest()
-                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let pid = handle.pid();
                 let process_control = (request.control == SpawnProcessControl::Enabled).then(|| {
                     let control = handle.control_handle();
@@ -1649,7 +1666,9 @@ impl Sandbox for FirecrackerSandbox {
                     .streams_stdout()
                     .then(|| handle.take_stdout_receiver())
                     .flatten();
-                let lease = guest.into_lease();
+                let lease = guest
+                    .into_in_guest_lease()
+                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let exit = gated_spawn_exit_future(
                     async move {
                         let event = handle.wait().await?;

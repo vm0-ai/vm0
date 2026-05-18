@@ -441,36 +441,36 @@ async fn handle_connection(
 
 /// Execute an [`ExecRequest`] through the sandbox operation gate.
 async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) -> ExecResponse {
-    let mut operation = match guest_operations.begin_control_operation().await {
+    let operation = match guest_operations.begin_control_operation().await {
         Ok(operation) => operation,
         Err(error) => {
             return ExecResponse::Error {
                 error: control_start_error(error),
             };
         }
-    };
-    if let Err(error) = operation.mark_writing() {
-        return ExecResponse::Error {
-            error: format!("operation gate transition failed: {error:?}"),
-        };
     }
+    .into_write_boundary();
 
     let vsock = operation.guest();
+    let write_observer = operation.write_observer();
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
     let result = vsock
-        .exec_capture(vsock_host::ExecCaptureRequest {
-            command: &request.command,
-            timeout_ms,
-            env,
-            sudo: request.sudo,
-            label: "runner-exec",
-            stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-            expected_exit_codes: &[],
-            wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-        })
+        .exec_capture_with_write_observer(
+            vsock_host::ExecCaptureRequest {
+                command: &request.command,
+                timeout_ms,
+                env,
+                sudo: request.sudo,
+                label: "runner-exec",
+                stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+                expected_exit_codes: &[],
+                wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+            },
+            write_observer,
+        )
         .await;
 
     match result {
@@ -491,7 +491,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) ->
         Err(e) => {
             let message = format!("exec failed: {e}");
             if guest_error_is_terminal(&e, false)
-                && let Err(error) = operation.complete()
+                && let Err(error) = operation.complete_if_write_started()
             {
                 return ExecResponse::Error {
                     error: format!("operation gate completion failed: {error:?}"),
