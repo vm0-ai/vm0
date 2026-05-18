@@ -346,6 +346,12 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero skills collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/skills")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/skills/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/skill")).toBe(false);
+  });
+
   it("matches the zero team rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/team")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/team/extra")).toBe(false);

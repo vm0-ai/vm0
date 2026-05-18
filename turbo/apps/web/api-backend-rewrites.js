@@ -154,6 +154,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
   ],
+  ["/api/zero/skills", "/api/zero/skills"],
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/model-policies", "/api/zero/model-policies"],
   ["/api/zero/realtime/token", "/api/zero/realtime/token"],

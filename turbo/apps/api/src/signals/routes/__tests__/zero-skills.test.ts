@@ -9,6 +9,8 @@ import {
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroSkills } from "@vm0/db/schema/zero-skill";
@@ -16,7 +18,8 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockNow } from "../../../lib/time";
+import { mockNow, now } from "../../../lib/time";
+import { generateCliToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteSkillsForFixture$,
@@ -40,6 +43,39 @@ const mocks = createZeroRouteMocks(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+async function cliAuthHeaders(
+  fixture: SkillsFixture,
+  role: "admin" | "member" = "admin",
+): Promise<{ readonly authorization: string }> {
+  const tokenId = randomUUID();
+  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: fixture.userId,
+    name: "Test Token",
+    expiresAt: new Date(now() + 60 * 60 * 1000),
+  });
+  await writeDb
+    .insert(orgMembersCache)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role,
+      cachedAt: new Date(now() + 60 * 1000),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: {
+        role,
+        cachedAt: new Date(now() + 60 * 1000),
+      },
+    });
+
+  return { authorization: `Bearer ${token}` };
 }
 
 function listClient() {
@@ -304,6 +340,27 @@ describe("POST /api/zero/skills", () => {
       name: "my-skill",
       displayName: "My Skill",
       description: "A useful skill",
+    });
+  });
+
+  it("accepts CLI token auth when creating a skill", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await accept(
+      listClient().create({
+        headers: await cliAuthHeaders(fixture, "admin"),
+        body: { name: "cli-skill", files: skillFiles("# CLI Skill") },
+      }),
+      [201],
+    );
+
+    expect(response.body).toStrictEqual({
+      name: "cli-skill",
+      displayName: null,
+      description: null,
     });
   });
 
@@ -573,6 +630,31 @@ describe("GET /api/zero/skills", () => {
 
     expect(response.body).toHaveLength(1);
     expect(response.body[0]?.name).toBe("readable-skill");
+  });
+
+  it("accepts CLI token auth when listing skills", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedSkill$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "cli-readable-skill",
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      listClient().list({
+        headers: await cliAuthHeaders(fixture, "member"),
+      }),
+      [200],
+    );
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]?.name).toBe("cli-readable-skill");
   });
 });
 
