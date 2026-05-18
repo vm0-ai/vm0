@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.54.6](https://github.com/vm0-ai/vm0/compare/api-v1.54.5...api-v1.54.6) (2026-05-18)
+
+
+### Bug Fixes
+
+* close local-agent host on shutdown ([#13653](https://github.com/vm0-ai/vm0/issues/13653)) ([25c506c](https://github.com/vm0-ai/vm0/commit/25c506ca0269195af577f7d7ed889071fffc7230))
+* disable api sentry outside production ([#13715](https://github.com/vm0-ai/vm0/issues/13715)) ([679e089](https://github.com/vm0-ai/vm0/commit/679e089d392997c18b9a761ea04f9b038e5e3ac8))
+* move built-in generation to provider callbacks ([#13475](https://github.com/vm0-ai/vm0/issues/13475)) ([3476a88](https://github.com/vm0-ai/vm0/commit/3476a885bd0691af362fca7c94727d581d5b2c81))
+* remove legacy sandbox cli auth ([#13657](https://github.com/vm0-ai/vm0/issues/13657)) ([f63a1f3](https://github.com/vm0-ai/vm0/commit/f63a1f3e2bd48c3013fa5c0621253d160f788cb2))
+* require local-agent realtime notifications ([#13661](https://github.com/vm0-ai/vm0/issues/13661)) ([5455eca](https://github.com/vm0-ai/vm0/commit/5455ecab8d69c0cd60ce70ccee5d6166281e9502))
+* route electron auth through api handoff ([#13734](https://github.com/vm0-ai/vm0/issues/13734)) ([52770b9](https://github.com/vm0-ai/vm0/commit/52770b9e3bcbfcc30bf2e4a3ebdadc118731d908))
+* share dev tunnel url with api dev server ([#13727](https://github.com/vm0-ai/vm0/issues/13727)) ([60c61ca](https://github.com/vm0-ai/vm0/commit/60c61ca00e296f05e58d814b5ea4443ac8f0d98d))
+
+
+### Refactoring
+
+* cut over /api/zero/model-providers to API backend ([#13654](https://github.com/vm0-ai/vm0/issues/13654)) ([695cc39](https://github.com/vm0-ai/vm0/commit/695cc399d4d425d9f4e03229ed57e9e0a3497cb0))
+* cut over auth me route to api ([#13681](https://github.com/vm0-ai/vm0/issues/13681)) ([a29c470](https://github.com/vm0-ai/vm0/commit/a29c470f7ba9ac358f50cfd2eca2bb3d5624aaab))
+* cut over permission access requests route ([#13643](https://github.com/vm0-ai/vm0/issues/13643)) ([44d8a16](https://github.com/vm0-ai/vm0/commit/44d8a16eb8c490c7de7ae77fad0d7386709967bf))
+* cut over zero me model-provider delete route ([#13650](https://github.com/vm0-ai/vm0/issues/13650)) ([a6bf6f1](https://github.com/vm0-ai/vm0/commit/a6bf6f10e6f0ccb1ead50bfde97c28638897f991))
+* cut over zero me model-providers route ([#13666](https://github.com/vm0-ai/vm0/issues/13666)) ([9094811](https://github.com/vm0-ai/vm0/commit/9094811abd1c9643c6b3c7299462564a7e761ed2))
+* cut over zero member credit cap route ([#13664](https://github.com/vm0-ai/vm0/issues/13664)) ([28dfb3e](https://github.com/vm0-ai/vm0/commit/28dfb3e0ed32bbdd8f7fdfd3a027863dc5fcfb70))
+* cut over zero onboarding setup route ([#13710](https://github.com/vm0-ai/vm0/issues/13710)) ([0918f8f](https://github.com/vm0-ai/vm0/commit/0918f8f34abfa35cfb5665e9abd41bdf2c852e23))
+* cut over zero onboarding status route ([#13639](https://github.com/vm0-ai/vm0/issues/13639)) ([54ca1c9](https://github.com/vm0-ai/vm0/commit/54ca1c9c1bb256b7e3eb72c8ec0fa0e0278371a4))
+* cut over zero org delete route ([#13745](https://github.com/vm0-ai/vm0/issues/13745)) ([960e3f0](https://github.com/vm0-ai/vm0/commit/960e3f0e5ed97c52a87bd9b555e04781ab365a05))
+* cut over zero org invite route ([#13733](https://github.com/vm0-ai/vm0/issues/13733)) ([d7a3bdd](https://github.com/vm0-ai/vm0/commit/d7a3bddf455165ea000ae5016d49c1312c602795))
+* cut over zero org logo route ([#13743](https://github.com/vm0-ai/vm0/issues/13743)) ([95dad74](https://github.com/vm0-ai/vm0/commit/95dad740ecc1cdbdcb3f05fe7eb7d245fb417ffb))
+* cut over zero org members route ([#13744](https://github.com/vm0-ai/vm0/issues/13744)) ([01af229](https://github.com/vm0-ai/vm0/commit/01af229dd3ff4adca48a57132167b5c6c7c44cdd))
+* cut over zero org membership requests route ([#13694](https://github.com/vm0-ai/vm0/issues/13694)) ([6f92671](https://github.com/vm0-ai/vm0/commit/6f926716735fb1a3760c8fe8db2e141f4b14d766))
+* cut over zero skills collection route ([#13642](https://github.com/vm0-ai/vm0/issues/13642)) ([d5a37a3](https://github.com/vm0-ai/vm0/commit/d5a37a3acdc100c68760f327bc01641854745b83))
+* cut over zero skills detail route ([#13739](https://github.com/vm0-ai/vm0/issues/13739)) ([b1018d8](https://github.com/vm0-ai/vm0/commit/b1018d8ed08b3dc1b67f6b253d9dbe5f7cf4f512))
+* cut over zero team route ([#13634](https://github.com/vm0-ai/vm0/issues/13634)) ([95250ba](https://github.com/vm0-ai/vm0/commit/95250ba655d7b73ecce7ce3bea51f25c7c8b6a66))
+* proxy storages commit to api ([#13741](https://github.com/vm0-ai/vm0/issues/13741)) ([f359213](https://github.com/vm0-ai/vm0/commit/f3592130aea010b58bb5fbd7e62cd13e213a5351))
+* proxy storages download to api ([#13649](https://github.com/vm0-ai/vm0/issues/13649)) ([ac58522](https://github.com/vm0-ai/vm0/commit/ac58522d6badc85039ea4a850f5e6253f84d7c99))
+* proxy storages list to api ([#13616](https://github.com/vm0-ai/vm0/issues/13616)) ([a6516c6](https://github.com/vm0-ai/vm0/commit/a6516c6e7eebccb3c8f6df59257135aa9a994564))
+* proxy storages prepare to api ([#13683](https://github.com/vm0-ai/vm0/issues/13683)) ([6b6639d](https://github.com/vm0-ai/vm0/commit/6b6639dee2f06c481ed338b08c886e83663c2f56))
+* proxy zero model policies to api ([#13652](https://github.com/vm0-ai/vm0/issues/13652)) ([3e4443e](https://github.com/vm0-ai/vm0/commit/3e4443e9d76a6ad3cc2f914c705b1dd67a9ababf))
+* proxy zero report-error to api backend ([#13637](https://github.com/vm0-ai/vm0/issues/13637)) ([daff1c4](https://github.com/vm0-ai/vm0/commit/daff1c49f227733a527a41b2e6870f2f184f2597))
+* **web:** proxy zero permission policies to api ([#13646](https://github.com/vm0-ai/vm0/issues/13646)) ([e0ddb2f](https://github.com/vm0-ai/vm0/commit/e0ddb2f4907e3498c588b8663cc335696748b7a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.5
+    * @vm0/core bumped to 8.281.3
+    * @vm0/db bumped to 1.14.10
+
 ## [1.54.5](https://github.com/vm0-ai/vm0/compare/api-v1.54.4...api-v1.54.5) (2026-05-18)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.0...sandbox-fc-v0.34.1) (2026-05-18)
+
+
+### Performance Improvements
+
+* offload cow slot teardown ([#13677](https://github.com/vm0-ai/vm0/issues/13677)) ([4060d0d](https://github.com/vm0-ai/vm0/commit/4060d0d99f72139aa68d0ffb82ca5fcfee70b208))
+
 ## [0.34.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.33.5...sandbox-fc-v0.34.0) (2026-05-17)
 
 

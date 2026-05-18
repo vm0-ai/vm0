@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.156.5](https://github.com/vm0-ai/vm0/compare/cli-v9.156.4...cli-v9.156.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* close local-agent host on shutdown ([#13653](https://github.com/vm0-ai/vm0/issues/13653)) ([25c506c](https://github.com/vm0-ai/vm0/commit/25c506ca0269195af577f7d7ed889071fffc7230))
+* move built-in generation to provider callbacks ([#13475](https://github.com/vm0-ai/vm0/issues/13475)) ([3476a88](https://github.com/vm0-ai/vm0/commit/3476a885bd0691af362fca7c94727d581d5b2c81))
+* remove legacy sandbox cli auth ([#13657](https://github.com/vm0-ai/vm0/issues/13657)) ([f63a1f3](https://github.com/vm0-ai/vm0/commit/f63a1f3e2bd48c3013fa5c0621253d160f788cb2))
+* require local-agent realtime notifications ([#13661](https://github.com/vm0-ai/vm0/issues/13661)) ([5455eca](https://github.com/vm0-ai/vm0/commit/5455ecab8d69c0cd60ce70ccee5d6166281e9502))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.5
+    * @vm0/core bumped to 8.281.3
+
 ## [9.156.4](https://github.com/vm0-ai/vm0/compare/cli-v9.156.3...cli-v9.156.4) (2026-05-18)
 
 

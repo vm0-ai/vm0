@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.0...vsock-proto-v0.18.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* preserve utf-8 boundaries in vsock error payloads ([#13687](https://github.com/vm0-ai/vm0/issues/13687)) ([3af6a5d](https://github.com/vm0-ai/vm0/commit/3af6a5d481b411688fbc208adea1621517f3a8f7))
+
+
+### Refactoring
+
+* align process control timeout semantics ([#13598](https://github.com/vm0-ai/vm0/issues/13598)) ([9f56eae](https://github.com/vm0-ai/vm0/commit/9f56eae01348c91ec3df805d0a3c0566aacc9dbf))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.17.0...vsock-proto-v0.18.0) (2026-05-17)
 
 

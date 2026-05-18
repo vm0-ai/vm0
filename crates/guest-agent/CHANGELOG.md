@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.32.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.0...guest-agent-v0.32.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* preserve codex jsonl failure diagnostics ([#13713](https://github.com/vm0-ai/vm0/issues/13713)) ([7fe2ece](https://github.com/vm0-ai/vm0/commit/7fe2ece7cb75ee6606e4cfb522cc28a19117acf3))
+* preserve stderr for generic codex failures ([#13717](https://github.com/vm0-ai/vm0/issues/13717)) ([326145b](https://github.com/vm0-ai/vm0/commit/326145b4d1643757ff9a815d15ff71d3e4ec0729))
+
+
+### Documentation
+
+* document guest-agent http client constructors ([#13674](https://github.com/vm0-ai/vm0/issues/13674)) ([4ede9cc](https://github.com/vm0-ai/vm0/commit/4ede9cc0dffe19e7c6dc463dec870a03af0de0a3))
+
 ## [0.32.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.31.8...guest-agent-v0.32.0) (2026-05-17)
 
 

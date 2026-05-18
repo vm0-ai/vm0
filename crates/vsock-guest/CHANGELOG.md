@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.0...vsock-guest-v0.18.1) (2026-05-18)
+
+
+### Refactoring
+
+* align process control timeout semantics ([#13598](https://github.com/vm0-ai/vm0/issues/13598)) ([9f56eae](https://github.com/vm0-ai/vm0/commit/9f56eae01348c91ec3df805d0a3c0566aacc9dbf))
+* split vsock guest connection tests ([#13699](https://github.com/vm0-ai/vm0/issues/13699)) ([4260357](https://github.com/vm0-ai/vm0/commit/4260357d3ad7919e3a7178550d7d823ad9948c77))
+* **vsock-guest:** split connection dispatch ([#13697](https://github.com/vm0-ai/vm0/issues/13697)) ([d2f47c5](https://github.com/vm0-ai/vm0/commit/d2f47c5a5d5d382acfca77b3dd50f0704115ff81))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.17.0...vsock-guest-v0.18.0) (2026-05-17)
 
 
