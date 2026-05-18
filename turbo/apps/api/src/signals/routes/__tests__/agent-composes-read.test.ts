@@ -601,6 +601,39 @@ describe("GET /api/agent/composes/versions", () => {
     expect(prefix.body).toStrictEqual({ versionId: VERSION_D });
   });
 
+  it("accepts sandbox tokens", async () => {
+    const fixture = await track(
+      store.set(
+        seedAgentComposeReadFixture$,
+        {
+          composes: [{ name: "sandbox-version-agent", versionId: VERSION_C }],
+        },
+        context.signal,
+      ),
+    );
+    const composeId = fixture.composes[0]?.id;
+    if (!composeId) {
+      throw new Error("Expected seeded compose");
+    }
+    const token = sandboxToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+
+    const response = await accept(
+      versionsClient().resolveVersion({
+        query: { composeId, version: "latest" },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      versionId: VERSION_C,
+      tag: "latest",
+    });
+  });
+
   it("returns web-compatible errors for missing compose, missing head, and version misses", async () => {
     const fixture = await track(
       store.set(

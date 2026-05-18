@@ -202,6 +202,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
   });
 
+  it("matches the agent composes versions rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/composes/versions")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/agent/composes/versions/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/composes")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/composes/version")).toBe(
+      false,
+    );
+  });
+
   it("matches only UUID-shaped agent run cancel paths", () => {
     expect(
       matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/cancel`),

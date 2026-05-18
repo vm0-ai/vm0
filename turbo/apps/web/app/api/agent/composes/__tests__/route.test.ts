@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "../route";
 import { GET as getByIdGET, DELETE as deleteDELETE } from "../[id]/route";
 import { GET as listGET } from "../list/route";
-import { GET as versionsGET } from "../versions/route";
 import { GET as instructionsGET } from "../[id]/instructions/route";
 import {
   createTestRequest,
@@ -1238,29 +1237,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       const response = await deleteDELETE(request);
       expect(response.status).toBe(403);
-    });
-  });
-
-  describe("GET /api/agent/composes/versions", () => {
-    it("sandbox token with agent:read can resolve version", async () => {
-      const agentName = `test-sandbox-versions-${Date.now()}`;
-      const { composeId, versionId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/versions?composeId=${composeId}&version=latest`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await versionsGET(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.versionId).toBe(versionId);
     });
   });
 

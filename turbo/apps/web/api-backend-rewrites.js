@@ -32,6 +32,7 @@ const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH_RE = /^\/api\/agent\/checkpoints\/[^/]+$/;
+const AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE = "/api/agent/composes/versions";
 const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
 const ZERO_MODEL_PROVIDER_TYPE_PATH_RE =
@@ -55,6 +56,7 @@ export const API_BACKEND_REWRITES = [
     "/api/agent/checkpoints/:id",
     AGENT_CHECKPOINT_PATH_RE,
   ],
+  [AGENT_COMPOSES_VERSIONS_REWRITE_SOURCE, "/api/agent/composes/versions"],
   ["/api/auth/me", "/api/auth/me"],
   ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
   ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
