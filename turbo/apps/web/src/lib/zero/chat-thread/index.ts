@@ -8,7 +8,6 @@ export {
   updateChatThreadTitle,
   updateChatThreadDraft,
   deleteChatThread,
-  renameChatThread,
   resolveAttachFileUrls,
   getChatThreadArtifacts,
 } from "./chat-thread-service";

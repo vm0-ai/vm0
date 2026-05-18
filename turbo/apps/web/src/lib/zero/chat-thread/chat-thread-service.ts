@@ -395,29 +395,6 @@ export async function updateChatThreadTitle(
   await publishThreadListChanged(userId);
 }
 
-/**
- * Rename a chat thread from the UI. Sets both the title and `renamed_at`,
- * which signals that this thread has been manually renamed and future
- * automated title generation should be suppressed.
- */
-export async function renameChatThread(
-  threadId: string,
-  userId: string,
-  title: string,
-): Promise<void> {
-  const updated = await globalThis.services.db
-    .update(chatThreads)
-    .set({ title, renamedAt: new Date() })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
-
-  if (updated.length === 0) {
-    throw notFound("Chat thread not found");
-  }
-
-  await publishThreadListChanged(userId);
-}
-
 type ChatMessage = ChatThreadDetail["chatMessages"][number];
 
 function chatMessageStatus(row: {

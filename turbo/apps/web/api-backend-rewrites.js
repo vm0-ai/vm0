@@ -62,6 +62,10 @@ const ZERO_CHAT_THREAD_MARK_READ_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/mark-read$/;
 const ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE = "/api/zero/chat-threads/:id/pin";
 const ZERO_CHAT_THREAD_PIN_PATH_RE = /^\/api\/zero\/chat-threads\/[^/]+\/pin$/;
+const ZERO_CHAT_THREAD_RENAME_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:id/rename";
+const ZERO_CHAT_THREAD_RENAME_PATH_RE =
+  /^\/api\/zero\/chat-threads\/[^/]+\/rename$/;
 const ZERO_CHAT_THREAD_UNPIN_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/unpin";
 const ZERO_CHAT_THREAD_UNPIN_PATH_RE =
@@ -210,6 +214,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id/pin",
     ZERO_CHAT_THREAD_PIN_PATH_RE,
+  ],
+  [
+    ZERO_CHAT_THREAD_RENAME_REWRITE_SOURCE,
+    "/api/zero/chat-threads/:id/rename",
+    ZERO_CHAT_THREAD_RENAME_PATH_RE,
   ],
   [
     ZERO_CHAT_THREAD_UNPIN_REWRITE_SOURCE,
