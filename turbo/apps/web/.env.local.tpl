@@ -46,6 +46,13 @@ GIT_COMMIT_SHA=local-dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0/SECRETS_ENCRYPTION_KEY
 
+# Optional: AWS KMS stored-secret encryption for local/test dual-write.
+SECRETS_KMS_KEY_ID=alias/vm0-secrets-test
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=op://Development/vm0/AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY=op://Development/vm0/AWS_SECRET_ACCESS_KEY
+AWS_SESSION_TOKEN=
+
 # Optional: Slack Integration
 SLACK_CLIENT_ID=op://Development/slack/SLACK_CLIENT_ID
 SLACK_CLIENT_SECRET=op://Development/slack/SLACK_CLIENT_SECRET
