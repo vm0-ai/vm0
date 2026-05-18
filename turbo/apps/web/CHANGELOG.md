@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.374.0](https://github.com/vm0-ai/vm0/compare/web-v12.373.1...web-v12.374.0) (2026-05-18)
+
+
+### Features
+
+* add clerk connector ([#13776](https://github.com/vm0-ai/vm0/issues/13776)) ([f464e29](https://github.com/vm0-ai/vm0/commit/f464e29fc5993d18fff98379772412270107a324))
+
+
+### Refactoring
+
+* cut over cli auth device route ([#13760](https://github.com/vm0-ai/vm0/issues/13760)) ([cd32d09](https://github.com/vm0-ai/vm0/commit/cd32d096bf38b2c177888d3279e172df36a2a60e))
+* cut over cli auth org route ([#13764](https://github.com/vm0-ai/vm0/issues/13764)) ([e1bbb4a](https://github.com/vm0-ai/vm0/commit/e1bbb4a3cd6b836ac71ba5edf6e8340fedc6a06a))
+* cut over cli auth test approve route ([#13768](https://github.com/vm0-ai/vm0/issues/13768)) ([6aaa704](https://github.com/vm0-ai/vm0/commit/6aaa70496ecd4eb096cb00caae16f767b780e642))
+* cut over cli auth test codex oauth route ([#13773](https://github.com/vm0-ai/vm0/issues/13773)) ([1269915](https://github.com/vm0-ai/vm0/commit/1269915601fa6f3baddb41892be90bcc8048c3d9))
+* cut over zero agent custom connectors route ([#13759](https://github.com/vm0-ai/vm0/issues/13759)) ([20eadb8](https://github.com/vm0-ai/vm0/commit/20eadb8a03f5e214051239eafcef770228e64c4c))
+* cut over zero agent instructions route ([#13769](https://github.com/vm0-ai/vm0/issues/13769)) ([a6bea0c](https://github.com/vm0-ai/vm0/commit/a6bea0c17b7f576fbe7f4e5ae36f818985446b96))
+* cut over zero agent user connectors route ([#13762](https://github.com/vm0-ai/vm0/issues/13762)) ([8601aea](https://github.com/vm0-ai/vm0/commit/8601aeafd5a98ebf95f698b9daeeedb2fabaf211))
+* cut over zero chat search route ([#13756](https://github.com/vm0-ai/vm0/issues/13756)) ([24124b8](https://github.com/vm0-ai/vm0/commit/24124b8dacf29a43a393183b590790f9a4260663))
+* cut over zero chat thread mark-read route ([#13771](https://github.com/vm0-ai/vm0/issues/13771)) ([6579b70](https://github.com/vm0-ai/vm0/commit/6579b70a3b3831d5c808d76d4e7cfe1b5be98683))
+* cut over zero chat thread pin route ([#13789](https://github.com/vm0-ai/vm0/issues/13789)) ([e58c64f](https://github.com/vm0-ai/vm0/commit/e58c64fa8a10aea7d7400f9960a31397d651d752))
+* proxy agent composes versions to api ([#13775](https://github.com/vm0-ai/vm0/issues/13775)) ([01daecf](https://github.com/vm0-ai/vm0/commit/01daecf0516c5e56c0cee0fe5c93d24af1150048))
+* proxy agent runs cancel to api ([#13766](https://github.com/vm0-ai/vm0/issues/13766)) ([3b69613](https://github.com/vm0-ai/vm0/commit/3b69613ac0092cdf328a99d031e95ecb56de68d3))
+* proxy agent runs queue to api ([#13755](https://github.com/vm0-ai/vm0/issues/13755)) ([b4d0a3d](https://github.com/vm0-ai/vm0/commit/b4d0a3ddbe86a4fa607a67ac877b55ebefb2e989))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+    * @vm0/core bumped to 8.281.4
+    * @vm0/db bumped to 1.14.11
+
 ## [12.373.1](https://github.com/vm0-ai/vm0/compare/web-v12.373.0...web-v12.373.1) (2026-05-18)
 
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.54.7](https://github.com/vm0-ai/vm0/compare/api-v1.54.6...api-v1.54.7) (2026-05-18)
+
+
+### Refactoring
+
+* cut over cli auth device route ([#13760](https://github.com/vm0-ai/vm0/issues/13760)) ([cd32d09](https://github.com/vm0-ai/vm0/commit/cd32d096bf38b2c177888d3279e172df36a2a60e))
+* cut over cli auth org route ([#13764](https://github.com/vm0-ai/vm0/issues/13764)) ([e1bbb4a](https://github.com/vm0-ai/vm0/commit/e1bbb4a3cd6b836ac71ba5edf6e8340fedc6a06a))
+* cut over cli auth test approve route ([#13768](https://github.com/vm0-ai/vm0/issues/13768)) ([6aaa704](https://github.com/vm0-ai/vm0/commit/6aaa70496ecd4eb096cb00caae16f767b780e642))
+* cut over cli auth test codex oauth route ([#13773](https://github.com/vm0-ai/vm0/issues/13773)) ([1269915](https://github.com/vm0-ai/vm0/commit/1269915601fa6f3baddb41892be90bcc8048c3d9))
+* cut over zero agent custom connectors route ([#13759](https://github.com/vm0-ai/vm0/issues/13759)) ([20eadb8](https://github.com/vm0-ai/vm0/commit/20eadb8a03f5e214051239eafcef770228e64c4c))
+* cut over zero agent instructions route ([#13769](https://github.com/vm0-ai/vm0/issues/13769)) ([a6bea0c](https://github.com/vm0-ai/vm0/commit/a6bea0c17b7f576fbe7f4e5ae36f818985446b96))
+* cut over zero agent user connectors route ([#13762](https://github.com/vm0-ai/vm0/issues/13762)) ([8601aea](https://github.com/vm0-ai/vm0/commit/8601aeafd5a98ebf95f698b9daeeedb2fabaf211))
+* proxy agent composes versions to api ([#13775](https://github.com/vm0-ai/vm0/issues/13775)) ([01daecf](https://github.com/vm0-ai/vm0/commit/01daecf0516c5e56c0cee0fe5c93d24af1150048))
+* proxy agent runs cancel to api ([#13766](https://github.com/vm0-ai/vm0/issues/13766)) ([3b69613](https://github.com/vm0-ai/vm0/commit/3b69613ac0092cdf328a99d031e95ecb56de68d3))
+* proxy agent runs queue to api ([#13755](https://github.com/vm0-ai/vm0/issues/13755)) ([b4d0a3d](https://github.com/vm0-ai/vm0/commit/b4d0a3ddbe86a4fa607a67ac877b55ebefb2e989))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+    * @vm0/core bumped to 8.281.4
+    * @vm0/db bumped to 1.14.11
+
 ## [1.54.6](https://github.com/vm0-ai/vm0/compare/api-v1.54.5...api-v1.54.6) (2026-05-18)
 
 

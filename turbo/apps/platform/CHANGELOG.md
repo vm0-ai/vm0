@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.364.0](https://github.com/vm0-ai/vm0/compare/app-v0.363.1...app-v0.364.0) (2026-05-18)
+
+
+### Features
+
+* add clerk connector ([#13776](https://github.com/vm0-ai/vm0/issues/13776)) ([f464e29](https://github.com/vm0-ai/vm0/commit/f464e29fc5993d18fff98379772412270107a324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+    * @vm0/core bumped to 8.281.4
+
 ## [0.363.1](https://github.com/vm0-ai/vm0/compare/app-v0.363.0...app-v0.363.1) (2026-05-18)
 
 
