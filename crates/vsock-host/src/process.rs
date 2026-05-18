@@ -530,19 +530,17 @@ pub(crate) fn record_spawn_process_result(
 
 pub(crate) fn reject_unexpected_process_response(
     shared: &Arc<Shared>,
-    msg: &RawMessage,
+    seq: u32,
+    msg_type: u8,
 ) -> io::Result<()> {
     let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     let ConnectionState::Connected { process, .. } = &*guard else {
         return Ok(());
     };
-    if process.contains_operation(msg.seq) {
+    if process.contains_operation(seq) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "unexpected response type for spawn_process: 0x{:02X}",
-                msg.msg_type
-            ),
+            format!("unexpected response type for spawn_process: 0x{msg_type:02X}"),
         ));
     }
     Ok(())

@@ -454,6 +454,13 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
+                if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
+                    && process::reject_unexpected_process_response(&shared, msg.seq, msg.msg_type)
+                        .is_err()
+                {
+                    shared.poison_connection();
+                    return;
+                }
                 let mut normal_operation_transition_failed = false;
                 let pending_response = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -483,11 +490,6 @@ async fn reader_loop(
                 }
                 if let Some(pending_response) = pending_response {
                     let _ = pending_response.response_tx.send(msg);
-                } else if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
-                    && process::reject_unexpected_process_response(&shared, &msg).is_err()
-                {
-                    shared.poison_connection();
-                    return;
                 }
             }
         }

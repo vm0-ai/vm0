@@ -1133,7 +1133,7 @@ async fn test_unexpected_spawn_process_response_type_closes_and_cleans_up() {
         .spawn_process("unexpected-response", 0, &[], false, true, None)
         .await
         .unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
