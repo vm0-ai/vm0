@@ -29,6 +29,9 @@ zstd.workspace = true
 
 [dev-dependencies]
 httpmock.workspace = true
+nix = { workspace = true, features = ["inotify"] }
+vsock-host.workspace = true
+vsock-guest = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

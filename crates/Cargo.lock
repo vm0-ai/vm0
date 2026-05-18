@@ -1260,6 +1260,7 @@ dependencies = [
  "http-body 1.0.1",
  "httpmock",
  "libc",
+ "nix",
  "pin-project-lite",
  "process-control-ipc",
  "reqwest",
@@ -1271,6 +1272,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "vsock-guest",
+ "vsock-host",
  "zstd",
 ]
 
