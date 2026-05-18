@@ -197,6 +197,12 @@ const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/secrets/DELETE_ME/extra",
   "/api/zero/secret/DELETE_ME",
 ] as const;
+const ZERO_ORG_REWRITE_SOURCE = "/api/zero/org";
+const ZERO_ORG_PATH = "/api/zero/org";
+const ZERO_ORG_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/org/extra",
+  "/api/zero/orgs",
+] as const;
 const ZERO_ORG_LIST_REWRITE_SOURCE = "/api/zero/org/list";
 const ZERO_ORG_LIST_PATH = "/api/zero/org/list";
 const ZERO_ORG_LIST_NEXT_NEGATIVE_PATHS = [
@@ -739,6 +745,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/user-preferences",
         },
         {
+          source: ZERO_ORG_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/org",
+        },
+        {
           source: ZERO_ORG_LIST_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/org/list",
         },
@@ -1247,6 +1257,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(USER_MODEL_PREFERENCE_PATH)).toStrictEqual({});
     for (const pathname of USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero org rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ORG_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ORG_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/org",
+    });
+
+    const matcher = getPathMatch(ZERO_ORG_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ORG_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ORG_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2007,6 +2040,13 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath("/api/zero/usage/members/extra")).toBe(
       false,
     );
+  });
+
+  it("should match the zero org route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_ORG_PATH)).toBe(true);
+    for (const pathname of ZERO_ORG_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should match the zero org list route for middleware pass-through", async () => {

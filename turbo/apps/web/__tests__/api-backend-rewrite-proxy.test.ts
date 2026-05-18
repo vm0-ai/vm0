@@ -520,6 +520,12 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/lists")).toBe(false);
   });
 
+  it("matches the zero org rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/orgs")).toBe(false);
+  });
+
   it("matches the zero org domains rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/domains")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/org/domains/extra")).toBe(

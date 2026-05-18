@@ -193,6 +193,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/realtime/token", "/api/zero/realtime/token"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
+  ["/api/zero/org", "/api/zero/org"],
   ["/api/zero/org/delete", "/api/zero/org/delete"],
   ["/api/zero/org/domains", "/api/zero/org/domains"],
   ["/api/zero/org/invite", "/api/zero/org/invite"],
