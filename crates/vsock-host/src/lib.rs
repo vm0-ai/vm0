@@ -421,6 +421,10 @@ async fn reader_loop(
                         return;
                     }
                 }
+                if process::record_spawn_process_error(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
             }
 
             if msg.msg_type == MSG_EXEC_OUTPUT {
@@ -1060,8 +1064,8 @@ impl VsockHost {
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
     /// should use [`spawn_process`](Self::spawn_process), which decouples the
-    /// host request/response cycle from the command's lifetime and does not
-    /// leak a guest-side orphan when the host stops waiting.
+    /// host request/response cycle from the command's lifetime and keeps
+    /// host-side lifecycle tracking until the guest reports process exit.
     pub async fn exec(
         &self,
         command: &str,
@@ -1080,7 +1084,9 @@ impl VsockHost {
     /// Spawn a process on the guest and monitor for exit.
     ///
     /// Returns immediately with a handle. Use [`GuestProcessHandle::wait`] to
-    /// wait for completion.
+    /// wait for completion. Dropping the handle does not cancel the guest
+    /// process; the host continues tracking lifecycle frames until process exit
+    /// or connection close.
     ///
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
