@@ -384,15 +384,26 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/org/domain")).toBe(false);
   });
 
+  it("matches the zero me model-providers root rewrite exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/me/model-providers")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/me/model-provider")).toBe(
+      false,
+    );
+  });
+
   it("matches only one segment for zero me model-provider type rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/me/model-providers/claude-code-oauth-token",
       ),
     ).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/me/model-providers")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",

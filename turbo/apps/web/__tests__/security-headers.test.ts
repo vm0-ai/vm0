@@ -89,6 +89,13 @@ const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/user-model-preference/extra",
   "/api/zero/user-preferences",
 ] as const;
+const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
+const ZERO_ME_MODEL_PROVIDERS_PATH = "/api/zero/me/model-providers";
+const ZERO_ME_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/me/model-provider",
+  "/api/zero/me/model-providers/claude-code-oauth-token",
+  "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+] as const;
 const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH =
@@ -572,6 +579,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/user-model-preference",
         },
         {
+          source: ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/me/model-providers",
+        },
+        {
           source: ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/me/model-providers/:type",
@@ -1039,6 +1050,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_ORG_DOMAINS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_ORG_DOMAINS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero me model-providers root rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/me/model-providers",
+    });
+
+    const matcher = getPathMatch(ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ME_MODEL_PROVIDERS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ME_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
