@@ -346,6 +346,12 @@ const ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat/search/extra",
   "/api/zero/chat/searches",
 ] as const;
+const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
+const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
+const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads-extra",
+  "/api/zero/chat-thread",
+] as const;
 const ZERO_CHAT_THREAD_ARTIFACTS_REWRITE_SOURCE =
   "/api/zero/chat-threads/:threadId/artifacts";
 const ZERO_CHAT_THREAD_ARTIFACTS_PATH =
@@ -359,7 +365,6 @@ const ZERO_CHAT_THREAD_DETAIL_PATH =
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000";
 const ZERO_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/extra",
-  "/api/zero/chat-threads",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000",
 ] as const;
 const ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE =
@@ -1031,6 +1036,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/chat/search",
+        },
+        {
+          source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/chat-threads",
         },
         {
           source: ZERO_CHAT_THREAD_ARTIFACTS_REWRITE_SOURCE,
@@ -1963,6 +1972,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_CHAT_SEARCH_PATH)).toStrictEqual({});
     for (const pathname of ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero chat threads collection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREADS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/chat-threads",
+    });
+
+    const matcher = getPathMatch(ZERO_CHAT_THREADS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CHAT_THREADS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3065,6 +3097,13 @@ describe("API backend rewrites", () => {
   it("should match the zero chat search route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_CHAT_SEARCH_PATH)).toBe(true);
     for (const pathname of ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero chat threads collection route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_CHAT_THREADS_PATH)).toBe(true);
+    for (const pathname of ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

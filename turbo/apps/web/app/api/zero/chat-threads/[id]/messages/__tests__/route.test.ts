@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
-import { POST } from "../../../route";
 import {
   createTestRequest,
   createTestCompose,
+  insertTestChatThread,
   insertTestChatMessage,
   addTestRunToThread,
   insertTestAssistantEventMessages,
@@ -30,6 +30,10 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     const { composeId } = await createTestCompose(uniqueId("msg-page"));
     testComposeId = composeId;
   });
+
+  async function createThread(): Promise<string> {
+    return insertTestChatThread(testUserId, testComposeId, "Test thread");
+  }
 
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
@@ -58,16 +62,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should return 404 for a thread owned by another user", async () => {
-    // Create thread as user 1
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    expect(createRes.status).toBe(201);
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     // Switch to user 2
     await context.setupUser({ prefix: "other-user" });
@@ -82,15 +77,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should return empty messages list for a thread with no messages", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    expect(createRes.status).toBe(201);
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     const response = await GET(
       createTestRequest(
@@ -104,14 +91,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should return messages in ascending createdAt order", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     await insertTestChatMessage({
       chatThreadId: threadId,
@@ -146,14 +126,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should paginate using sinceId cursor", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     const msg1 = await insertTestChatMessage({
       chatThreadId: threadId,
@@ -189,14 +162,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("returns the latest messages when no cursor is provided and reports hasHistoryBefore", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     // Insert 3 messages: A, B, C. With limit=2, the endpoint returns the two
     // newest messages (B, C) and reports hasHistoryBefore=true because A
@@ -235,14 +201,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should return older messages using beforeId and report whether more history exists", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     const msg1 = await insertTestChatMessage({
       chatThreadId: threadId,
@@ -278,14 +237,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should return only user message when run has no assistant events", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     const { runId } = await seedTestRun(testUserId, testComposeId, {
       status: "cancelled",
@@ -307,14 +259,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should resolve attach files to permanent /f/ URLs in paged messages", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     await insertTestChatMessage({
       chatThreadId: threadId,
@@ -359,14 +304,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   });
 
   it("should not expose run-level error on event-backed assistant rows", async () => {
-    const createRes = await POST(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: testComposeId }),
-      }),
-    );
-    const { id: threadId } = await createRes.json();
+    const threadId = await createThread();
 
     const { runId } = await seedTestRun(testUserId, testComposeId, {
       status: "running",

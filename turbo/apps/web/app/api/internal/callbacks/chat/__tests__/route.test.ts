@@ -8,13 +8,13 @@ import {
 import {
   createTestCompose,
   createTestCallback,
-  createTestRequest,
   createTestAgentSession,
   createTestSessionWithConversation,
   createTestPushSubscription,
   getPushSubscriptionsByEndpoint,
   createSignedCallbackRequest,
   addTestRunToThread,
+  insertTestChatThread,
   deleteTestChatThread,
   findTestRunRecord,
   getTestChatMessagesByThread,
@@ -26,7 +26,6 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
-import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
@@ -71,7 +70,7 @@ describe("POST /api/internal/callbacks/chat", () => {
     reloadEnv();
   });
 
-  /** Create a thread via route handler, then a run, session, and callback in DB. */
+  /** Create a thread, run, session, and callback in DB. */
   async function setupRunAndThread(
     options: {
       status?: "completed" | "failed" | "running";
@@ -88,19 +87,11 @@ describe("POST /api/internal/callbacks/chat", () => {
   }> {
     const { status = "completed" } = options;
 
-    // Create a chat thread via the route handler
-    const threadResponse = await createThreadHandler(
-      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId,
-          title: "Test thread",
-        }),
-      }),
+    const threadId = await insertTestChatThread(
+      user.userId,
+      agentId,
+      "Test thread",
     );
-    const threadData = await threadResponse.json();
-    const threadId: string = threadData.id;
 
     // Create a run in DB
     const { runId } = await seedTestRun(user.userId, agentId, {

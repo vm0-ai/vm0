@@ -606,6 +606,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat/searches")).toBe(false);
   });
 
+  it("matches the zero chat threads collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/chat-thread")).toBe(false);
+  });
+
   it("matches the zero chat thread detail rewrite path with one dynamic segment", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -617,7 +625,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000",

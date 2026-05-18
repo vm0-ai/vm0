@@ -1,8 +1,5 @@
-import { eq, and, desc, isNull, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { notFound } from "@vm0/api-services/errors";
 import {
@@ -21,24 +18,6 @@ import { listS3Objects } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
 import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
 import { buildFileUrl } from "../uploads/file-url";
-
-function visibleChatMessageCondition() {
-  return sql<boolean>`NOT EXISTS (
-      SELECT 1
-      FROM ${chatMessages} AS revoker
-      WHERE revoker.revokes_message_id = ${chatMessages.id}
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.revokesMessageId} IS NOT NULL
-    )
-    AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NULL
-      AND ${chatMessages.interruptsRunId} IS NOT NULL
-    )`;
-}
 
 /**
  * Create a new chat thread.
@@ -77,113 +56,6 @@ export async function createChatThread(
   }
 
   return thread;
-}
-
-/**
- * List chat threads for a user, ordered by the latest message's createdAt desc
- * (threads with no messages fall back to the thread's own createdAt). This
- * reflects real conversation activity — `chat_threads.updatedAt` only changes
- * on title/draft edits, not on new messages, so sorting by it would bury
- * actively-used threads.
- *
- * When `agentComposeId` is supplied, filters to that agent. Otherwise returns
- * every thread the user owns within `orgId` (cross-org isolation enforced in
- * SQL via the `zero_agents.org_id` join predicate).
- *
- * Joins each thread to its most recent message and returns that message's
- * read/archive state. Threads whose last message is archived are hidden
- * (user intent: archiving the last message dismisses the thread from the
- * list). Threads with no messages yet are kept (last-message columns null).
- *
- * Each row also carries the owning agent's id and avatar_url so the unified
- * view can render per-row avatars without an extra client lookup.
- */
-export async function listChatThreads(
-  userId: string,
-  orgId: string,
-  agentComposeId?: string,
-): Promise<
-  Array<{
-    id: string;
-    title: string | null;
-    agentId: string;
-    agentAvatarUrl: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    pinnedAt: Date | null;
-    renamedAt: Date | null;
-    isRead: boolean;
-    lastMessageArchivedAt: Date | null;
-    running: boolean;
-    hasDraft: boolean;
-  }>
-> {
-  const lastMessage = globalThis.services.db
-    .select({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      archivedAt: chatMessages.archivedAt,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreads.id),
-        visibleChatMessageCondition(),
-      ),
-    )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-    .limit(1)
-    .as("last_message");
-
-  const filters = [
-    eq(chatThreads.userId, userId),
-    eq(zeroAgents.orgId, orgId),
-    isNull(lastMessage.archivedAt),
-  ];
-  if (agentComposeId) {
-    filters.push(eq(chatThreads.agentComposeId, agentComposeId));
-  }
-
-  const threads = await globalThis.services.db
-    .select({
-      id: chatThreads.id,
-      title: chatThreads.title,
-      agentId: chatThreads.agentComposeId,
-      agentAvatarUrl: zeroAgents.avatarUrl,
-      createdAt: chatThreads.createdAt,
-      updatedAt: chatThreads.updatedAt,
-      pinnedAt: chatThreads.pinnedAt,
-      renamedAt: chatThreads.renamedAt,
-      isRead: sql<boolean>`CASE
-        WHEN ${lastMessage.id} IS NULL THEN true
-        ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
-      END`,
-      lastMessageArchivedAt: lastMessage.archivedAt,
-      running: sql<boolean>`EXISTS (
-        SELECT 1
-        FROM ${zeroRuns}
-        INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
-        WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
-          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
-      )`,
-      hasDraft: sql<boolean>`(
-        COALESCE(${chatThreads.draftContent}, '') <> ''
-        OR (
-          ${chatThreads.draftAttachments} IS NOT NULL
-          AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
-        )
-      )`,
-    })
-    .from(chatThreads)
-    .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-    .leftJoinLateral(lastMessage, sql`true`)
-    .where(and(...filters))
-    .orderBy(
-      sql`(${chatThreads.pinnedAt} IS NULL)`,
-      desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
-    );
-
-  return threads;
 }
 
 /**

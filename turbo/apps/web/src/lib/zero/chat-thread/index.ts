@@ -1,6 +1,4 @@
 export {
-  createChatThread,
-  listChatThreads,
   getChatThread,
   getChatThreadMessages,
   updateChatThreadTitle,
