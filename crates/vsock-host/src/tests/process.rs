@@ -1,5 +1,8 @@
+use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use super::support::{
@@ -35,6 +38,12 @@ async fn wait_spawn(handle: GuestProcessHandle) -> io::Result<crate::ProcessExit
     tokio::time::timeout(Duration::from_secs(5), handle.wait())
         .await
         .expect("spawn_process exit should arrive before timeout")
+}
+
+fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+    let waker = std::task::Waker::noop();
+    let mut cx = Context::from_waker(waker);
+    future.poll(&mut cx)
 }
 
 async fn send_process_control_result(
@@ -1452,25 +1461,14 @@ async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
 
     let host = Arc::new(host_from_stream(host_stream).await.unwrap());
     let writer_guard = host.shared.writer.lock().await;
-    let spawn_task = {
-        let host = Arc::clone(&host);
-        tokio::spawn(async move {
-            host.spawn_process("cancel-before-write", 0, &[], false, true, None)
-                .await
-        })
-    };
-
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while registration_counts(&host) == (0, 0, 0) {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("spawn_process should register before waiting for writer lock");
+    let mut spawn = Box::pin(host.spawn_process("cancel-before-write", 0, &[], false, true, None));
+    assert!(
+        matches!(poll_once(spawn.as_mut()), Poll::Pending),
+        "spawn_process should wait for writer lock",
+    );
     assert_eq!(registration_counts(&host), (1, 1, 1));
 
-    spawn_task.abort();
-    let _ = spawn_task.await;
+    drop(spawn);
     assert_eq!(
         registration_counts(&host),
         (0, 0, 0),
@@ -2096,9 +2094,6 @@ async fn test_spawn_process_wait_future_drop_keeps_tracker_busy_until_exit() {
             let exit_payload = vsock_proto::encode_process_exit(55, 0, b"", b"");
             let exit_msg = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &exit_payload).unwrap();
             guest.write_all(&exit_msg).await.unwrap();
-
-            let mut discard = [0u8; 1];
-            let _ = guest.read(&mut discard).await;
         });
     }
 
@@ -2118,16 +2113,13 @@ async fn test_spawn_process_wait_future_drop_keeps_tracker_busy_until_exit() {
     );
 
     send_exit.notify_one();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if normal_operation_readiness(&host) == NormalOperationReadiness::Idle {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("detached process exit should release tracker");
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .expect("detached process exit should release tracker before connection close");
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Closed
+    );
 }
 
 #[tokio::test]
