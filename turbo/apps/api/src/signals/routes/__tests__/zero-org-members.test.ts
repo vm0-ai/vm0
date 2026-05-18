@@ -12,6 +12,8 @@ import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
@@ -136,6 +138,26 @@ const trackCleanup = createFixtureTracker(
 
 function uniqueId(prefix: string): string {
   return `${prefix}_${randomUUID().slice(0, 8)}`;
+}
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: uniqueId("run"),
+    capabilities: [],
+    iat: seconds,
+    exp: seconds + 600,
+  });
 }
 
 async function seedMemberRows(orgId: string, userId: string): Promise<void> {
@@ -307,6 +329,30 @@ describe("GET /api/zero/org/members", () => {
     );
 
     expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("rejects zero tokens", async () => {
+    const token = zeroToken({
+      userId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.members({ headers: { authorization: `Bearer ${token}` } }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "This endpoint is not available for sandbox tokens",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganization,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns members and admin-only data for an admin caller", async () => {
@@ -536,6 +582,31 @@ describe("PATCH /api/zero/org/members", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("rejects zero tokens", async () => {
+    const token = zeroToken({
+      userId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.updateRole({
+        headers: { authorization: `Bearer ${token}` },
+        body: { email: "member@example.com", role: "admin" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "This endpoint is not available for sandbox tokens",
+      code: "FORBIDDEN",
+    });
+    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.updateOrganizationMembership,
+    ).not.toHaveBeenCalled();
+  });
+
   it("returns 400 for an invalid body without updating Clerk", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
@@ -742,6 +813,31 @@ describe("DELETE /api/zero/org/members", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
+  });
+
+  it("rejects zero tokens", async () => {
+    const token = zeroToken({
+      userId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+    const client = setupApp({ context })(zeroOrgMembersContract);
+
+    const response = await accept(
+      client.removeMember({
+        headers: { authorization: `Bearer ${token}` },
+        body: { email: "member@example.com" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "This endpoint is not available for sandbox tokens",
+      code: "FORBIDDEN",
+    });
+    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.deleteOrganizationMembership,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns 400 for an invalid body", async () => {

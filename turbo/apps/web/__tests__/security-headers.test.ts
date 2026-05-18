@@ -227,6 +227,12 @@ const ZERO_ORG_LOGO_NEXT_NEGATIVE_PATHS = [
   "/api/zero/org/logo/extra",
   "/api/zero/org/logos",
 ] as const;
+const ZERO_ORG_MEMBERS_REWRITE_SOURCE = "/api/zero/org/members";
+const ZERO_ORG_MEMBERS_PATH = "/api/zero/org/members";
+const ZERO_ORG_MEMBERS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/org/members/extra",
+  "/api/zero/org/member",
+] as const;
 const ZERO_MEMBER_CREDIT_CAP_REWRITE_SOURCE =
   "/api/zero/org/members/credit-cap";
 const ZERO_MEMBER_CREDIT_CAP_PATH = "/api/zero/org/members/credit-cap";
@@ -736,6 +742,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_ORG_LOGO_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/org/logo",
+        },
+        {
+          source: ZERO_ORG_MEMBERS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/org/members",
         },
         {
           source: ZERO_MEMBER_CREDIT_CAP_REWRITE_SOURCE,
@@ -1414,6 +1424,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero org members rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ORG_MEMBERS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ORG_MEMBERS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/org/members",
+    });
+
+    const matcher = getPathMatch(ZERO_ORG_MEMBERS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ORG_MEMBERS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ORG_MEMBERS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero secrets root rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1957,6 +1990,13 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of ZERO_MEMBER_CREDIT_CAP_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero org members route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_ORG_MEMBERS_PATH)).toBe(true);
+    for (const pathname of ZERO_ORG_MEMBERS_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

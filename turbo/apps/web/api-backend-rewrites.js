@@ -194,6 +194,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/org/leave", "/api/zero/org/leave"],
   ["/api/zero/org/list", "/api/zero/org/list"],
   ["/api/zero/org/logo", "/api/zero/org/logo"],
+  ["/api/zero/org/members", "/api/zero/org/members"],
   ["/api/zero/org/members/credit-cap", "/api/zero/org/members/credit-cap"],
   ["/api/zero/org/membership-requests", "/api/zero/org/membership-requests"],
   ["/api/zero/variables", "/api/zero/variables"],
