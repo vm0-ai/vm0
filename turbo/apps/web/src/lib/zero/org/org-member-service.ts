@@ -424,28 +424,6 @@ export async function removeMember(
 }
 
 /**
- * Leave the org.
- * Admins cannot leave (they must add another admin or delete the org).
- */
-export async function leaveOrg(userId: string, orgId: string, role: OrgRole) {
-  if (role === "admin") {
-    throw forbidden(
-      "Admins cannot leave an org. Add another admin or delete the org.",
-    );
-  }
-
-  // Remove own membership from Clerk
-  const client = await clerkClient();
-  await client.organizations.deleteOrganizationMembership({
-    organizationId: orgId,
-    userId: userId,
-  });
-
-  await cleanupOrgMember(userId, orgId);
-  log.debug("User left org", { orgId, userId });
-}
-
-/**
  * Delete an org.
  * Requires admin role. Deletes from Clerk and cleans up local data.
  */
