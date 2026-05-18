@@ -177,6 +177,13 @@ const ZERO_MEMBER_CREDIT_CAP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/org/members/credit-cap/extra",
   "/api/zero/org/members/credit-caps",
 ] as const;
+const ZERO_ORG_MEMBERSHIP_REQUESTS_REWRITE_SOURCE =
+  "/api/zero/org/membership-requests";
+const ZERO_ORG_MEMBERSHIP_REQUESTS_PATH = "/api/zero/org/membership-requests";
+const ZERO_ORG_MEMBERSHIP_REQUESTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/org/membership-requests/extra",
+  "/api/zero/org/membership-request",
+] as const;
 const REALTIME_TOKEN_REWRITE_SOURCE = "/api/zero/realtime/token";
 const REALTIME_TOKEN_PATH = "/api/zero/realtime/token";
 const REALTIME_TOKEN_NEXT_NEGATIVE_PATHS = [
@@ -622,6 +629,11 @@ describe("API backend rewrites", () => {
           source: ZERO_MEMBER_CREDIT_CAP_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/org/members/credit-cap",
+        },
+        {
+          source: ZERO_ORG_MEMBERSHIP_REQUESTS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/org/membership-requests",
         },
         {
           source: "/api/zero/voice-io/speech",
@@ -1234,6 +1246,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero org membership requests rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_ORG_MEMBERSHIP_REQUESTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_ORG_MEMBERSHIP_REQUESTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/org/membership-requests",
+    });
+
+    const matcher = getPathMatch(ZERO_ORG_MEMBERSHIP_REQUESTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_ORG_MEMBERSHIP_REQUESTS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_ORG_MEMBERSHIP_REQUESTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact voice-io tts rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1557,6 +1592,15 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of ZERO_MEMBER_CREDIT_CAP_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero org membership requests route for middleware pass-through", async () => {
+    expect(
+      matchesApiBackendRewritePath(ZERO_ORG_MEMBERSHIP_REQUESTS_PATH),
+    ).toBe(true);
+    for (const pathname of ZERO_ORG_MEMBERSHIP_REQUESTS_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

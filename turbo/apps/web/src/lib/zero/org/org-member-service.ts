@@ -310,66 +310,6 @@ export async function revokeInvitation(
 }
 
 /**
- * Accept a membership request.
- * Requires admin role.
- * Uses Clerk REST API directly since the backend SDK doesn't expose this method.
- */
-export async function acceptMembershipRequest(
-  orgId: string,
-  role: OrgRole,
-  requestId: string,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can accept membership requests");
-  }
-
-  const secretKey = getClerkSecretKey();
-  const res = await fetch(
-    `${CLERK_API_BASE}/organizations/${orgId}/membership_requests/${requestId}/accept`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${secretKey}` },
-    },
-  );
-
-  if (!res.ok) {
-    throw badRequest("Failed to accept membership request");
-  }
-
-  log.debug("Membership request accepted", { orgId, requestId });
-}
-
-/**
- * Reject a membership request.
- * Requires admin role.
- * Uses Clerk REST API directly since the backend SDK doesn't expose this method.
- */
-export async function rejectMembershipRequest(
-  orgId: string,
-  role: OrgRole,
-  requestId: string,
-) {
-  if (role !== "admin") {
-    throw forbidden("Only admins can reject membership requests");
-  }
-
-  const secretKey = getClerkSecretKey();
-  const res = await fetch(
-    `${CLERK_API_BASE}/organizations/${orgId}/membership_requests/${requestId}/reject`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${secretKey}` },
-    },
-  );
-
-  if (!res.ok) {
-    throw badRequest("Failed to reject membership request");
-  }
-
-  log.debug("Membership request rejected", { orgId, requestId });
-}
-
-/**
  * Clean up org-scoped data when a user leaves or is removed from an org.
  * Called after Clerk membership is revoked.
  */
