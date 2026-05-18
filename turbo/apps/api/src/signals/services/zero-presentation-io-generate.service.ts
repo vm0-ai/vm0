@@ -68,10 +68,33 @@ const PRESENTATION_LAYOUTS = [
   "two_column",
   "quote",
   "closing",
+  "data_hero",
+  "comparison",
+  "timeline",
+  "process",
+  "image_grid",
+  "image_hero",
+  "matrix",
+  "spec_sheet",
+] as const;
+const PRESENTATION_THEME_ROLES = [
+  "hero_light",
+  "hero_dark",
+  "body_light",
+  "body_dark",
+] as const;
+const PRESENTATION_VISUAL_SLOTS = [
+  "none",
+  "hero_16x9",
+  "side_16x10",
+  "grid_16x9",
+  "concept_16x9",
 ] as const;
 
 type PresentationStyle = (typeof PRESENTATION_STYLES)[number];
 type PresentationLayout = (typeof PRESENTATION_LAYOUTS)[number];
+type PresentationThemeRole = (typeof PRESENTATION_THEME_ROLES)[number];
+type PresentationVisualSlot = (typeof PRESENTATION_VISUAL_SLOTS)[number];
 type PresentationPricingCategory =
   (typeof PRESENTATION_PRICING_CATEGORIES)[number];
 type ErrorStatus = 400 | 402 | 500 | 502 | 503;
@@ -123,6 +146,8 @@ interface OpenAiUsage {
 
 interface SlideSpec {
   readonly layout: PresentationLayout;
+  readonly themeRole: PresentationThemeRole;
+  readonly visualSlot: PresentationVisualSlot;
   readonly kicker: string;
   readonly title: string;
   readonly body: string;
@@ -317,6 +342,8 @@ const PRESENTATION_DECK_SCHEMA = {
         additionalProperties: false,
         required: [
           "layout",
+          "themeRole",
+          "visualSlot",
           "kicker",
           "title",
           "body",
@@ -329,6 +356,19 @@ const PRESENTATION_DECK_SCHEMA = {
           layout: {
             type: "string",
             enum: [...PRESENTATION_LAYOUTS],
+            description: "Registered layout name. Use varied layouts.",
+          },
+          themeRole: {
+            type: "string",
+            enum: [...PRESENTATION_THEME_ROLES],
+            description:
+              "Slide rhythm role. Use hero roles for covers, chapter breaks, big statements, and synthesis slides; alternate body roles to avoid visual monotony.",
+          },
+          visualSlot: {
+            type: "string",
+            enum: [...PRESENTATION_VISUAL_SLOTS],
+            description:
+              "Intended image slot and crop. Use none when visualPrompt is empty.",
           },
           kicker: {
             type: "string",
@@ -644,20 +684,50 @@ export const checkPresentationCredits$ = command(
 function presentationInstructions(): string {
   return [
     "You create concise, high-signal web presentations.",
+    "Before writing slides, silently plan the audience, narrative arc, page rhythm, registered layout sequence, visual slots, and quality checks.",
     "Return only the structured deck JSON required by the schema.",
     "Write slide content that can stand on its own in an HTML slideshow.",
     "Prefer specific claims, clear sectioning, and short bullets over long prose.",
+    "Use only the requested style, theme, registered layouts, themeRole values, and visualSlot values.",
+    "Treat theme selection as locked; do not invent custom colors, styles, or layouts.",
+    "Keep the deck visually cohesive: do not alternate light and dark slide treatments mechanically, and prefer light roles unless a high-contrast hero or synthesis slide clearly benefits from a dark role.",
     "For visualPrompt, describe a clean image or abstract composition that supports the slide. Avoid visible text, UI screenshots, logos, charts with labels, or typography in the image.",
+    "When visualSlot is none, visualPrompt must be empty.",
     "Do not include markdown, HTML, JavaScript, speaker notes, or external links.",
   ].join(" ");
 }
 
+function presentationStyleGuidance(style: PresentationStyle): string {
+  if (style === "swiss") {
+    return [
+      "Swiss style rules: information-first, strong grid, asymmetric left alignment, high type contrast, direct claims, one accent color, no gradients, no shadows, no rounded-card look.",
+      "Use data_hero, comparison, timeline, process, matrix, spec_sheet, and image_hero layouts when the material supports facts, product strategy, systems, roadmaps, or methods.",
+    ].join("\n");
+  }
+
+  return [
+    "Editorial style rules: narrative rhythm, magazine-like section breaks, strong headlines, concise body copy, visual breathing room, and human-readable claims.",
+    "Use section, statement, quote, comparison, process, image_grid, and image_hero layouts to create a paced story rather than a uniform bullet deck.",
+  ].join("\n");
+}
+
 function presentationInput(options: PresentationOptions): string {
   const lines = [
+    "Deck-planning workflow:",
+    "1. Infer the audience job-to-be-done, story arc, and hard constraints from the prompt.",
+    "2. Draft a page plan before writing content: slide purpose, registered layout, themeRole, visualSlot, and whether an image is worth spending credits on.",
+    "3. Keep the first slide as a cover and the last slide as a closing or synthesis slide.",
+    "4. Vary layouts while keeping the color system unified; avoid alternating dark and light slide roles unless the narrative needs a clear section break.",
+    "5. Match visualSlot to layout: hero_16x9 for cover/image_hero, side_16x10 for two_column, grid_16x9 for image_grid, concept_16x9 for abstract support visuals, none when no image is needed.",
+    "6. Run a final self-check for concise text, readable standalone slides, locked theme, image-slot consistency, and no unsupported output fields.",
+    "",
     `Create exactly ${options.slideCount} slides.`,
     `Style: ${options.style}. Theme: ${options.theme}.`,
-    `Provide visual prompts for up to ${options.imageCount} image-worthy slides; use an empty visualPrompt for slides that do not need an image.`,
-    "Use varied layouts. The first slide should be a cover and the last slide should be a closing or synthesis slide.",
+    `Available layouts: ${PRESENTATION_LAYOUTS.join(", ")}.`,
+    `Theme roles: ${PRESENTATION_THEME_ROLES.join(", ")}.`,
+    `Visual slots: ${PRESENTATION_VISUAL_SLOTS.join(", ")}.`,
+    `Provide visual prompts for up to ${options.imageCount} image-worthy slides; use visualSlot none and an empty visualPrompt for slides that do not need an image.`,
+    presentationStyleGuidance(options.style),
   ];
 
   if (options.title) {
@@ -805,6 +875,42 @@ function inferLayout(index: number, totalSlides: number): PresentationLayout {
   return "bullets";
 }
 
+function inferThemeRole(
+  layout: PresentationLayout,
+  index: number,
+  totalSlides: number,
+): PresentationThemeRole {
+  if (index === 0) {
+    return "hero_light";
+  }
+  if (index === totalSlides - 1) {
+    return "hero_dark";
+  }
+  if (layout === "section" || layout === "statement" || layout === "quote") {
+    return index % 2 === 0 ? "hero_light" : "hero_dark";
+  }
+  return index % 2 === 0 ? "body_dark" : "body_light";
+}
+
+function inferVisualSlot(
+  layout: PresentationLayout,
+  visualPrompt: string,
+): PresentationVisualSlot {
+  if (!visualPrompt) {
+    return "none";
+  }
+  if (layout === "cover" || layout === "image_hero") {
+    return "hero_16x9";
+  }
+  if (layout === "two_column") {
+    return "side_16x10";
+  }
+  if (layout === "image_grid") {
+    return "grid_16x9";
+  }
+  return "concept_16x9";
+}
+
 function parseSlide(
   value: unknown,
   index: number,
@@ -818,12 +924,20 @@ function parseSlide(
   const layout = includesString(PRESENTATION_LAYOUTS, rawLayout)
     ? rawLayout
     : inferLayout(index, totalSlides);
+  const rawThemeRole = readDeckString(value, "themeRole", 40);
   const title = readDeckString(value, "title", 140);
   const body = readDeckString(value, "body", 700);
   const bullets = readDeckStringArray(value, "bullets");
   const metric = readDeckString(value, "metric", 90);
   const note = readDeckString(value, "note", 180);
   const visualPrompt = readDeckString(value, "visualPrompt", 520);
+  const rawVisualSlot = readDeckString(value, "visualSlot", 40);
+  const themeRole = includesString(PRESENTATION_THEME_ROLES, rawThemeRole)
+    ? rawThemeRole
+    : inferThemeRole(layout, index, totalSlides);
+  const visualSlot = includesString(PRESENTATION_VISUAL_SLOTS, rawVisualSlot)
+    ? rawVisualSlot
+    : inferVisualSlot(layout, visualPrompt);
 
   if (!title && !body && bullets.length === 0) {
     return null;
@@ -831,6 +945,8 @@ function parseSlide(
 
   return {
     layout,
+    themeRole,
+    visualSlot: visualPrompt ? visualSlot : "none",
     kicker: readDeckString(value, "kicker", 60),
     title: title || `Slide ${index + 1}`,
     body,
@@ -902,27 +1018,111 @@ function renderBody(body: string): string {
   return body ? `<p class="body">${htmlEscape(body)}</p>` : "";
 }
 
-function renderVisual(visual: PresentationVisual | undefined): string {
+function classToken(value: string): string {
+  return value.replace(/_/g, "-");
+}
+
+function renderVisual(
+  visual: PresentationVisual | undefined,
+  visualSlot: PresentationVisualSlot,
+): string {
   if (!visual) {
     return "";
   }
 
-  return `<figure class="visual-frame"><img src="${htmlEscape(
+  const slot = classToken(visualSlot);
+  return `<figure class="visual-frame visual-slot-${slot}" data-visual-slot="${htmlEscape(
+    visualSlot,
+  )}"><img src="${htmlEscape(
     visual.url,
   )}" alt="${htmlEscape(visual.alt)}"></figure>`;
+}
+
+function renderStepList(
+  bullets: readonly string[],
+  className: "step-list" | "matrix-list" | "spec-list",
+): string {
+  if (bullets.length === 0) {
+    return "";
+  }
+
+  return `<ol class="${className}">${bullets
+    .map((bullet, index) => {
+      return `<li><span>${String(index + 1).padStart(2, "0")}</span><p>${htmlEscape(
+        bullet,
+      )}</p></li>`;
+    })
+    .join("")}</ol>`;
+}
+
+function renderComparisonBullets(bullets: readonly string[]): string {
+  const splitAt = Math.ceil(bullets.length / 2);
+  return `<div class="comparison-grid"><div>${renderBullets(
+    bullets.slice(0, splitAt),
+  )}</div><div>${renderBullets(bullets.slice(splitAt))}</div></div>`;
 }
 
 function renderSlideMain(
   slide: SlideSpec,
   visual: PresentationVisual | undefined,
 ): string {
-  const visualHtml = renderVisual(visual);
+  const visualHtml = renderVisual(visual, slide.visualSlot);
   if (slide.layout === "cover") {
     return `<div class="cover-block"><div><h1>${htmlEscape(
       slide.title,
     )}</h1>${renderBody(slide.body)}${renderBullets(
       slide.bullets,
     )}</div>${visualHtml}</div>`;
+  }
+
+  if (slide.layout === "data_hero") {
+    return `<div class="data-hero-block">${renderMetric(
+      slide.metric || slide.title,
+    )}<h2>${htmlEscape(slide.title)}</h2>${renderBody(
+      slide.body,
+    )}${renderBullets(slide.bullets)}${visualHtml}</div>`;
+  }
+
+  if (slide.layout === "comparison") {
+    return `<div class="comparison-block"><div><h2>${htmlEscape(
+      slide.title,
+    )}</h2>${renderBody(slide.body)}${renderMetric(
+      slide.metric,
+    )}</div>${renderComparisonBullets(slide.bullets)}${visualHtml}</div>`;
+  }
+
+  if (slide.layout === "timeline" || slide.layout === "process") {
+    return `<div class="process-block"><h2>${htmlEscape(
+      slide.title,
+    )}</h2>${renderBody(slide.body)}${renderStepList(
+      slide.bullets,
+      "step-list",
+    )}${renderMetric(slide.metric)}${visualHtml}</div>`;
+  }
+
+  if (slide.layout === "image_grid") {
+    return `<div class="image-grid-block"><div><h2>${htmlEscape(
+      slide.title,
+    )}</h2>${renderBody(slide.body)}${renderBullets(
+      slide.bullets,
+    )}</div>${visualHtml}</div>`;
+  }
+
+  if (slide.layout === "image_hero") {
+    return `<div class="image-hero-block">${visualHtml}<div><h2>${htmlEscape(
+      slide.title,
+    )}</h2>${renderBody(slide.body)}${renderMetric(
+      slide.metric,
+    )}${renderBullets(slide.bullets)}</div></div>`;
+  }
+
+  if (slide.layout === "matrix" || slide.layout === "spec_sheet") {
+    return `<div class="matrix-block"><h2>${htmlEscape(
+      slide.title,
+    )}</h2>${renderBody(slide.body)}${renderStepList(
+      slide.bullets,
+      slide.layout === "matrix" ? "matrix-list" : "spec-list",
+    )}${renderMetric(slide.metric)}${visualHtml}</div>`;
   }
 
   if (slide.layout === "section" || slide.layout === "statement") {
@@ -964,10 +1164,13 @@ function renderSlide(
 ): string {
   const slideNumber = String(index + 1).padStart(2, "0");
   const total = String(totalSlides).padStart(2, "0");
-  return `<section class="slide slide-${slide.layout}" aria-label="Slide ${
+  const layoutName = slide.layout.split("_").join(" ");
+  return `<section class="slide slide-${classToken(
+    slide.layout,
+  )} slide-theme-${classToken(slide.themeRole)}" aria-label="Slide ${
     index + 1
   } of ${totalSlides}"><header><span>${htmlEscape(
-    slide.kicker || slide.layout.replace("_", " "),
+    slide.kicker || layoutName,
   )}</span><span>${slideNumber} / ${total}</span></header><main>${renderSlideMain(
     slide,
     visual,
@@ -995,6 +1198,15 @@ const DECK_BASE_STYLE = `
       cursor: pointer;
     }
     button:hover { border-color: var(--accent); }
+    .presentation-style-swiss button,
+    .presentation-style-swiss .visual-frame,
+    .presentation-style-swiss .metric {
+      border-radius: 0;
+    }
+    .presentation-style-swiss li::before {
+      border-radius: 0;
+    }
+    .presentation-style-swiss footer { border-top-width: 2px; }
     .viewport {
       width: 100vw;
       height: 100vh;
@@ -1019,14 +1231,34 @@ const DECK_BASE_STYLE = `
       gap: 28px;
       border-right: 1px solid var(--line);
     }
-    .slide::after {
-      content: "";
-      position: absolute;
-      left: 72px;
-      right: 72px;
-      bottom: 58px;
-      height: 6px;
-      background: linear-gradient(90deg, var(--accent) 0 52%, var(--secondary) 52% 70%, var(--line) 70%);
+    .slide-theme-hero-dark,
+    .slide-theme-body-dark {
+      background: color-mix(in srgb, var(--bg) 88%, var(--text));
+      color: var(--text);
+    }
+    .slide-theme-hero-dark header,
+    .slide-theme-hero-dark footer,
+    .slide-theme-body-dark header,
+    .slide-theme-body-dark footer,
+    .slide-theme-hero-dark .body,
+    .slide-theme-body-dark .body,
+    .slide-theme-hero-dark .note,
+    .slide-theme-body-dark .note {
+      color: var(--muted);
+    }
+    .slide-theme-hero-dark .visual-frame,
+    .slide-theme-body-dark .visual-frame {
+      border-color: color-mix(in srgb, var(--line) 72%, var(--text));
+      background: rgba(255, 255, 255, 0.32);
+    }
+    .slide-theme-hero-dark button,
+    .slide-theme-body-dark button {
+      border-color: color-mix(in srgb, var(--line) 72%, var(--text));
+    }
+    .slide-theme-hero-light h1,
+    .slide-theme-hero-dark h1 {
+      font-size: 76px;
+      letter-spacing: 0;
     }
     header, footer {
       display: flex;
@@ -1037,10 +1269,18 @@ const DECK_BASE_STYLE = `
       font-size: 14px;
       line-height: 1.4;
     }
+    footer {
+      min-height: 22px;
+      padding-top: 14px;
+      border-top: 4px solid var(--accent);
+    }
     main {
       min-height: 0;
       display: grid;
-      align-items: center;
+      align-items: safe center;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
     }
     h1, h2, p, ul, figure, blockquote {
       margin: 0;
@@ -1069,6 +1309,7 @@ const DECK_BASE_STYLE = `
       grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
       gap: 54px;
       align-items: end;
+      min-height: 0;
     }
     .visual-frame {
       margin: 28px 0 0;
@@ -1084,6 +1325,21 @@ const DECK_BASE_STYLE = `
       width: 100%;
       height: 100%;
       object-fit: cover;
+    }
+    .visual-slot-side-16x10 {
+      aspect-ratio: 16 / 10;
+    }
+    .visual-slot-grid-16x9 {
+      aspect-ratio: 16 / 9;
+    }
+    .data-hero-block .visual-frame,
+    .process-block .visual-frame,
+    .matrix-block .visual-frame,
+    .statement-block .visual-frame,
+    .list-block .visual-frame {
+      width: min(100%, 760px);
+      height: min(30vh, 300px);
+      aspect-ratio: auto;
     }
     .metric {
       display: inline-flex;
@@ -1126,6 +1382,7 @@ const DECK_BASE_STYLE = `
       grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
       gap: 54px;
       align-items: center;
+      min-height: 0;
     }
     .two-column ul { margin-top: 0; }
     .quote-block {
@@ -1142,6 +1399,110 @@ const DECK_BASE_STYLE = `
       color: var(--accent);
       font-size: 22px;
       font-weight: 700;
+    }
+    .data-hero-block {
+      display: grid;
+      align-content: center;
+      gap: 24px;
+      min-height: 0;
+    }
+    .data-hero-block .metric {
+      margin-top: 0;
+      padding: 0;
+      background: transparent;
+      color: var(--accent);
+      font-size: 112px;
+      line-height: 0.9;
+      font-weight: 780;
+    }
+    .comparison-block {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+      gap: 54px;
+      align-items: center;
+      min-height: 0;
+    }
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 26px;
+    }
+    .comparison-grid ul {
+      margin-top: 0;
+    }
+    .process-block,
+    .matrix-block {
+      display: grid;
+      gap: 26px;
+      align-content: center;
+      min-height: 0;
+    }
+    .step-list,
+    .matrix-list,
+    .spec-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 14px;
+    }
+    .step-list {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .matrix-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .spec-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .step-list li,
+    .matrix-list li,
+    .spec-list li {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 14px;
+      min-height: 92px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      font-size: 19px;
+      line-height: 1.32;
+    }
+    .step-list li::before,
+    .matrix-list li::before,
+    .spec-list li::before {
+      display: none;
+    }
+    .step-list span,
+    .matrix-list span,
+    .spec-list span {
+      color: var(--accent);
+      font-size: 17px;
+      font-weight: 760;
+    }
+    .step-list p,
+    .matrix-list p,
+    .spec-list p {
+      margin: 0;
+    }
+    .image-grid-block {
+      display: grid;
+      grid-template-columns: minmax(0, 0.68fr) minmax(420px, 1fr);
+      gap: 46px;
+      align-items: center;
+      min-height: 0;
+    }
+    .image-grid-block .visual-frame {
+      margin-top: 0;
+    }
+    .image-hero-block {
+      display: grid;
+      grid-template-rows: minmax(0, 0.95fr) auto;
+      gap: 30px;
+      min-height: 0;
+    }
+    .image-hero-block .visual-frame {
+      margin-top: 0;
+      max-height: 54vh;
     }
     .note {
       color: var(--muted);
@@ -1194,11 +1555,6 @@ const DECK_MOBILE_STYLE = `
         padding: 34px 28px 72px;
         gap: 22px;
       }
-      .slide::after {
-        left: 28px;
-        right: 28px;
-        bottom: 54px;
-      }
       h1 {
         font-size: 42px;
         line-height: 1.04;
@@ -1213,9 +1569,28 @@ const DECK_MOBILE_STYLE = `
       blockquote {
         font-size: 34px;
       }
-      .two-column {
+      .data-hero-block .metric {
+        font-size: 64px;
+      }
+      .two-column,
+      .comparison-block,
+      .comparison-grid,
+      .image-grid-block {
         grid-template-columns: 1fr;
         gap: 28px;
+      }
+      .step-list,
+      .matrix-list,
+      .spec-list {
+        grid-template-columns: 1fr;
+      }
+      .data-hero-block .visual-frame,
+      .process-block .visual-frame,
+      .matrix-block .visual-frame,
+      .statement-block .visual-frame,
+      .list-block .visual-frame {
+        width: 100%;
+        height: min(24vh, 220px);
       }
       .cover-block {
         grid-template-columns: 1fr;
@@ -1312,7 +1687,7 @@ function renderDeckHtml(
   <title>${htmlEscape(deck.title)}</title>
   ${renderDeckStyles(theme)}
 </head>
-<body>
+<body class="presentation-style-${classToken(options.style)}">
   <div class="viewport">
     <div class="deck" id="deck">${slidesHtml}</div>
   </div>
@@ -1378,16 +1753,37 @@ function visualAltText(slide: SlideSpec): string {
   return slide.title ? `Visual for ${slide.title}` : "Presentation visual";
 }
 
+function visualSlotInstruction(slot: PresentationVisualSlot): string {
+  if (slot === "hero_16x9") {
+    return "Hero 16:9 image slot with the subject centered in the safe middle area.";
+  }
+  if (slot === "side_16x10") {
+    return "Side 16:10 image slot; keep the main subject clear at medium crop.";
+  }
+  if (slot === "grid_16x9") {
+    return "Grid 16:9 image slot; keep composition simple and crop-safe.";
+  }
+  if (slot === "concept_16x9") {
+    return "Conceptual 16:9 support visual with clean negative space.";
+  }
+  return "No image slot.";
+}
+
 function visualPromptForSlide(params: {
   readonly deck: DeckSpec;
   readonly slide: SlideSpec;
   readonly options: PresentationOptions;
 }): string {
+  const theme = THEME_TOKENS[params.options.theme] ?? DEFAULT_THEME_TOKENS;
   return [
     `Create a 16:9 presentation image for "${params.deck.title}".`,
     `Slide: ${params.slide.title}.`,
+    `Visual slot: ${params.slide.visualSlot}. ${visualSlotInstruction(
+      params.slide.visualSlot,
+    )}`,
     `Visual direction: ${params.slide.visualPrompt}.`,
     `Style: ${params.options.style}, theme ${params.options.theme}.`,
+    `Use this deck palette only: background ${theme.background}, text ${theme.text}, accent ${theme.accent}, secondary ${theme.secondary}, line ${theme.line}. Avoid unrelated neon or high-saturation colors.`,
     "No visible words, labels, charts with text, logos, watermarks, UI screenshots, or typography.",
   ].join(" ");
 }
@@ -1401,13 +1797,18 @@ function selectVisualSlides(
   }
 
   const candidates = deck.slides.flatMap((slide, index) => {
-    return slide.visualPrompt ? [[index, slide] as const] : [];
+    return slide.visualPrompt && slide.visualSlot !== "none"
+      ? [[index, slide] as const]
+      : [];
   });
   const preferredLayouts = new Set<PresentationLayout>([
     "cover",
     "section",
     "statement",
+    "data_hero",
     "two_column",
+    "image_hero",
+    "image_grid",
   ]);
   const preferred = candidates.filter(([, slide]) => {
     return preferredLayouts.has(slide.layout);
