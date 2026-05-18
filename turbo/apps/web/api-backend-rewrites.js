@@ -52,6 +52,7 @@ export const API_BACKEND_REWRITES = [
     AGENT_SESSION_ID_PATH_RE,
   ],
   ["/api/cli/auth/device", "/api/cli/auth/device"],
+  ["/api/cli/auth/org", "/api/cli/auth/org"],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],

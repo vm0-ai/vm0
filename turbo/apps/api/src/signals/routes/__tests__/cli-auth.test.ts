@@ -28,6 +28,7 @@ import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { signPatJwtForTests } from "../../auth/tokens";
@@ -56,6 +57,13 @@ interface DeviceAuthResponseBody {
 interface OAuthErrorBody {
   readonly error: string;
   readonly error_description: string;
+}
+
+interface ApiErrorBody {
+  readonly error: {
+    readonly message: string;
+    readonly code: string;
+  };
 }
 
 interface CliTokenResponseBody {
@@ -98,6 +106,29 @@ async function acceptResponse<TBody>(
   const response = await promise;
   expect(response.status).toBe(expectedStatus);
   return { status: response.status, body: response.body as TBody };
+}
+
+async function postCliAuthOrgRaw(args: {
+  readonly token?: string;
+  readonly body: unknown;
+}): Promise<HttpResponse> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (args.token) {
+    headers.authorization = `Bearer ${args.token}`;
+  }
+
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/cli/auth/org", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(args.body),
+  });
+  return {
+    status: response.status,
+    body: (await response.json()) as unknown,
+  };
 }
 
 describe("CLI auth routes", () => {
@@ -158,14 +189,11 @@ describe("CLI auth routes", () => {
     });
   }
 
-  async function seedOrgMembership(args: {
+  async function seedOrgCache(args: {
     readonly orgId: string;
-    readonly userId: string;
     readonly slug: string;
-    readonly role?: "admin" | "member";
   }): Promise<void> {
     trackOrg(args.orgId);
-    trackUser(args.userId);
     const writeDb = store.set(writeDb$);
     await writeDb
       .insert(orgCache)
@@ -183,6 +211,17 @@ describe("CLI auth routes", () => {
           cachedAt: FAR_FUTURE_CACHE_AT,
         },
       });
+  }
+
+  async function seedOrgMembership(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly slug: string;
+    readonly role?: "admin" | "member";
+  }): Promise<void> {
+    trackUser(args.userId);
+    await seedOrgCache({ orgId: args.orgId, slug: args.slug });
+    const writeDb = store.set(writeDb$);
     await writeDb
       .insert(orgMembersCache)
       .values({
@@ -533,6 +572,110 @@ describe("CLI auth routes", () => {
       ).resolves.toMatchObject([
         expect.objectContaining({ slug: targetSlug, name: "Target Org" }),
       ]);
+    });
+
+    it("returns 401 when no auth is provided", async () => {
+      const response = await acceptResponse<ApiErrorBody>(
+        postCliAuthOrgRaw({ body: { slug: "some-org" } }),
+        401,
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("returns 404 when the org slug does not exist", async () => {
+      const userId = `user_${randomUUID()}`;
+      const sourceOrgId = `org_${randomUUID()}`;
+      await seedOrgMembership({
+        orgId: sourceOrgId,
+        userId,
+        slug: `source-${randomUUID()}`,
+      });
+      context.mocks.clerk.organizations.getOrganization.mockRejectedValue({
+        statusCode: 404,
+      });
+      const token = await seedCliToken({ userId, orgId: sourceOrgId });
+      const client = setupApp({ context })(cliAuthOrgContract);
+
+      const response = await acceptResponse<ApiErrorBody>(
+        client.switchOrg({
+          headers: { authorization: `Bearer ${token}` },
+          body: { slug: `missing-${randomUUID()}` },
+        }),
+        404,
+      );
+
+      expect(response.body.error.code).toBe("not_found");
+    });
+
+    it("returns 403 when the user is not a member of the target org", async () => {
+      const userId = `user_${randomUUID()}`;
+      const sourceOrgId = `org_${randomUUID()}`;
+      await seedOrgMembership({
+        orgId: sourceOrgId,
+        userId,
+        slug: `source-${randomUUID()}`,
+      });
+      const targetOrgId = `org_${randomUUID()}`;
+      const targetSlug = `target-${randomUUID()}`;
+      await seedOrgCache({ orgId: targetOrgId, slug: targetSlug });
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [],
+        },
+      );
+      const token = await seedCliToken({ userId, orgId: sourceOrgId });
+      const client = setupApp({ context })(cliAuthOrgContract);
+
+      const response = await acceptResponse<ApiErrorBody>(
+        client.switchOrg({
+          headers: { authorization: `Bearer ${token}` },
+          body: { slug: targetSlug },
+        }),
+        403,
+      );
+
+      expect(response.body.error.code).toBe("forbidden");
+    });
+
+    it("returns 400 when the slug is missing", async () => {
+      const userId = `user_${randomUUID()}`;
+      const sourceOrgId = `org_${randomUUID()}`;
+      await seedOrgMembership({
+        orgId: sourceOrgId,
+        userId,
+        slug: `source-${randomUUID()}`,
+      });
+      const token = await seedCliToken({ userId, orgId: sourceOrgId });
+
+      const response = await acceptResponse<OAuthErrorBody>(
+        postCliAuthOrgRaw({ token, body: {} }),
+        400,
+      );
+
+      expect(response.body.error).toBe("invalid_request");
+    });
+
+    it("returns 400 when the slug is empty", async () => {
+      const userId = `user_${randomUUID()}`;
+      const sourceOrgId = `org_${randomUUID()}`;
+      await seedOrgMembership({
+        orgId: sourceOrgId,
+        userId,
+        slug: `source-${randomUUID()}`,
+      });
+      const token = await seedCliToken({ userId, orgId: sourceOrgId });
+      const client = setupApp({ context })(cliAuthOrgContract);
+
+      const response = await acceptResponse<OAuthErrorBody>(
+        client.switchOrg({
+          headers: { authorization: `Bearer ${token}` },
+          body: { slug: "" },
+        }),
+        400,
+      );
+
+      expect(response.body.error).toBe("invalid_request");
     });
   });
 
