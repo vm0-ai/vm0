@@ -4,7 +4,6 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 
 /**
  * Read the default agent ID (zero agent UUID) for an org from org_metadata.
@@ -235,48 +234,4 @@ export async function findTestOrgModelProviderByType(
     )
     .limit(1);
   return row ?? null;
-}
-
-/**
- * Read the per-thread selected model override written by the chat-messages send
- * route when the composer's picker is active. Provider IDs should remain null
- * because provider routing is re-resolved per run.
- */
-export async function getTestChatThreadModelOverride(
-  threadId: string,
-): Promise<{
-  modelProviderId: string | null;
-  selectedModel: string | null;
-}> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      modelProviderId: chatThreads.modelProviderId,
-      selectedModel: chatThreads.selectedModel,
-    })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  return {
-    modelProviderId: row?.modelProviderId ?? null,
-    selectedModel: row?.selectedModel ?? null,
-  };
-}
-
-export async function getTestUserSelectedModel(
-  orgId: string,
-  userId: string,
-): Promise<string | null> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-  return row?.selectedModel ?? null;
 }

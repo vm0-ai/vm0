@@ -1617,6 +1617,58 @@ describe("POST /api/zero/chat/messages", () => {
     );
   });
 
+  it("normalizes legacy built-in first-run pins that still carry provider IDs", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first on built-in",
+    });
+    await clearAllDetached();
+    await setRunStatus(first.body.runId!, "completed");
+
+    await writeDb
+      .update(zeroRuns)
+      .set({
+        modelProvider: "vm0",
+        modelProviderId: randomUUID(),
+        modelProviderCredentialScope: "org",
+        selectedModel: "claude-opus-4-7",
+      })
+      .where(eq(zeroRuns.id, first.body.runId!));
+    await writeDb
+      .update(chatThreads)
+      .set({
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: null,
+      })
+      .where(eq(chatThreads.id, first.body.threadId));
+
+    const followUp = await send({
+      agentId: fixture.agentId,
+      prompt: "follow up on legacy thread",
+      threadId: first.body.threadId,
+    });
+    await clearAllDetached();
+
+    const [thread] = await writeDb
+      .select({
+        modelProviderId: chatThreads.modelProviderId,
+        selectedModel: chatThreads.selectedModel,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, first.body.threadId))
+      .limit(1);
+    expect(thread).toStrictEqual({
+      modelProviderId: null,
+      selectedModel: "claude-opus-4-7",
+    });
+    expect(followUp.body.threadId).toBe(first.body.threadId);
+  });
+
   it("re-resolves current policy when the first provider is deleted", async () => {
     const fixture = await track(seedFixture());
     const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6");

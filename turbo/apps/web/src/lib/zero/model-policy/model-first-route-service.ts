@@ -27,7 +27,7 @@ import {
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
 
-export interface ModelFirstRouteDescriptor {
+interface ModelFirstRouteDescriptor {
   selectedModel: SupportedRunModel;
   providerType: ModelProviderType;
   credentialScope: ModelProviderCredentialScope;

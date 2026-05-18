@@ -691,6 +691,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat/searches")).toBe(false);
   });
 
+  it("matches the zero chat messages rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat/messages")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/chat/messages/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/chat/message")).toBe(false);
+  });
+
   it("matches the zero chat threads collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(

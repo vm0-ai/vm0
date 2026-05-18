@@ -86,6 +86,8 @@ const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/instructions$/;
+const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
+const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_CHAT_THREAD_ARTIFACTS_REWRITE_SOURCE =
   "/api/zero/chat-threads/:threadId/artifacts";
 const ZERO_CHAT_THREAD_ARTIFACTS_PATH_RE =
@@ -288,6 +290,11 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/zero/built-in-generations/:path*",
     "/api/zero/built-in-generations/:path*",
+  ],
+  [
+    ZERO_CHAT_MESSAGES_REWRITE_SOURCE,
+    "/api/zero/chat/messages",
+    ZERO_CHAT_MESSAGES_PATH_RE,
   ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
   [

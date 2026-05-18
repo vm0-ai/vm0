@@ -275,7 +275,7 @@ export function buildWebAttachFilesPrompt(
   return blocks.join("\n");
 }
 
-export interface WebChatPriorMessage {
+interface WebChatPriorMessage {
   role: "user" | "assistant";
   content: string;
   attachFiles: string[] | null;

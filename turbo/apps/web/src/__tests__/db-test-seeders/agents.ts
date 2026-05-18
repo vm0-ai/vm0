@@ -340,25 +340,6 @@ export async function setTestZeroAgentModelProvider(
 }
 
 /**
- * Flip the `prefer_personal_provider` flag on a zero_agents row directly.
- * Used by tests that need to exercise the personal-tier resolver branch
- * (#11899) without going through the agent edit API.
- *
- * @why-db-direct The agent UI for this flag isn't implemented yet (Wave 3
- * of Epic #11868); tests need a direct setter to verify runtime plumbing.
- */
-export async function setTestZeroAgentPreferPersonalProvider(
-  agentId: string,
-  preferPersonalProvider: boolean,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(zeroAgents)
-    .set({ preferPersonalProvider })
-    .where(eq(zeroAgents.id, agentId));
-}
-
-/**
  * Ensure a matching zero_agents row exists for a compose.
  * Extracted from createTestCompose — the compose API route doesn't create
  * the zero_agents row; this bridges the gap for tests.
