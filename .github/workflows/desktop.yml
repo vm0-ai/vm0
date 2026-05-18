@@ -68,11 +68,18 @@ jobs:
           desktop_dir="$PWD/apps/desktop"
           app_dir="$desktop_dir/out/Zero-darwin-arm64/Zero.app"
           electron_dir=$(pnpm -F @vm0/desktop exec node -p "require('path').dirname(require.resolve('electron/package.json'))")
-          runtime_app="$electron_dir/dist/Electron.app"
+          ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -e "require('electron')"
+          electron_path=$(ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -p "require('electron')")
+          runtime_app="${electron_path%/Contents/MacOS/Electron}"
           version=$(node -p "require('./apps/desktop/package.json').version")
 
           rm -rf "$desktop_dir/out"
           mkdir -p "$desktop_dir/out/Zero-darwin-arm64"
+          if [ ! -d "$runtime_app" ]; then
+            echo "Electron.app was not downloaded: $runtime_app"
+            find "$electron_dir" -maxdepth 4 -print
+            exit 1
+          fi
           cp -R "$runtime_app" "$app_dir"
 
           mv "$app_dir/Contents/MacOS/Electron" "$app_dir/Contents/MacOS/Zero"
