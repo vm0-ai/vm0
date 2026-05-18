@@ -718,6 +718,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn orphan_reaper_live_firecracker_resets_absent_confirmation() {
+        let fixture = OrphanReapFixture::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        fixture.add_active_orphan(run_id, sandbox_id).await;
+
+        fixture
+            .reap_current_orphans_with_firecrackers(
+                &[],
+                false,
+                ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
+            )
+            .await;
+
+        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_orphan_count(1).await;
+
+        let firecracker = process::FirecrackerProcessInfo {
+            pid: 1234,
+            ppid: Some(1),
+            sandbox_id: sandbox_id.to_string(),
+            base_dir: None,
+        };
+        fixture
+            .reap_current_orphans_with_firecrackers(
+                &[firecracker],
+                false,
+                ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
+            )
+            .await;
+
+        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_orphan_count(1).await;
+
+        fixture
+            .reap_current_orphans_with_firecrackers(
+                &[],
+                false,
+                ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
+            )
+            .await;
+
+        fixture.assert_status(&[], &[run_id]).await;
+        fixture.assert_orphan_count(1).await;
+
+        fixture
+            .reap_current_orphans_with_firecrackers(
+                &[],
+                false,
+                ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
+            )
+            .await;
+
+        fixture.assert_status(&[], &[]).await;
+        fixture.assert_orphan_count(0).await;
+    }
+
+    #[tokio::test]
     async fn orphan_reaper_preserves_active_run_when_firecracker_live() {
         let fixture = OrphanReapFixture::new();
         let run_id = RunId::new_v4();
