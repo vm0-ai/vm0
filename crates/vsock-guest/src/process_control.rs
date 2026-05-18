@@ -1267,34 +1267,51 @@ mod tests {
     #[test]
     fn timed_out_control_sink_is_marked_failed() {
         let sink = Arc::new(ControlSinkState::new());
-        let (stream, _peer) = UnixStream::pair().unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_millis(1)))
-            .unwrap();
-        stream
-            .set_write_timeout(Some(Duration::from_secs(1)))
-            .unwrap();
+        let (stream, peer) = UnixStream::pair().unwrap();
         sink.connect(stream);
         let pending_slot = sink.reserve_pending_slot().unwrap();
+        let (request_read_tx, request_read_rx) = std::sync::mpsc::channel();
+        let (release_peer_tx, release_peer_rx) = std::sync::mpsc::channel();
+        let client = std::thread::spawn(move || {
+            let mut peer = peer;
+            let request = process_control_ipc::read_request(&mut peer).unwrap();
+            assert_eq!(request.message_id, "msg-timeout");
+            assert_eq!(request.payload, b"payload");
+            request_read_tx.send(()).unwrap();
+            let _ = release_peer_rx.recv_timeout(Duration::from_secs(3));
+        });
 
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-        forward_control_request(
-            Arc::clone(&sink),
-            pending_slot,
-            OwnedProcessControlRequest {
-                response_seq: 12,
-                target_seq: 8,
-                deadline: request_deadline(1),
-                control_nonce: NONCE,
-                message_id: "msg-timeout".to_owned(),
-                payload: b"payload".to_vec(),
-            },
-            GuestWriter::new(guest),
-        );
+        let worker = std::thread::spawn({
+            let sink = Arc::clone(&sink);
+            move || {
+                forward_control_request(
+                    sink,
+                    pending_slot,
+                    OwnedProcessControlRequest {
+                        response_seq: 12,
+                        target_seq: 8,
+                        deadline: request_deadline(250),
+                        control_nonce: NONCE,
+                        message_id: "msg-timeout".to_owned(),
+                        payload: b"payload".to_vec(),
+                    },
+                    GuestWriter::new(guest),
+                );
+            }
+        });
+
+        request_read_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("control request should be delivered before response timeout");
 
         let (msg_type, seq, status, message_id, diagnostic) =
             read_process_control_result(&mut host);
+        worker.join().unwrap();
+        let _ = release_peer_tx.send(());
+        client.join().unwrap();
+
         assert_eq!(msg_type, MSG_PROCESS_CONTROL_RESULT);
         assert_eq!(seq, 12);
         assert_eq!(status, ProcessControlStatus::SinkTimeout);
