@@ -67,7 +67,8 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           app_dir="$desktop_dir/out/Zero-darwin-arm64/Zero.app"
-          runtime_app="$desktop_dir/node_modules/electron/dist/Electron.app"
+          electron_dir=$(pnpm -F @vm0/desktop exec node -p "require('path').dirname(require.resolve('electron/package.json'))")
+          runtime_app="$electron_dir/dist/Electron.app"
           version=$(node -p "require('./apps/desktop/package.json').version")
 
           rm -rf "$desktop_dir/out"
