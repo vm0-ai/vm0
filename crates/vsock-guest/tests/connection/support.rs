@@ -202,6 +202,23 @@ pub(crate) fn send_exec_start_with_env(
     stream.write_all(&msg).unwrap();
 }
 
+pub(crate) fn send_exec_start_request(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    request: vsock_proto::ExecStartEncodeRequest<'_>,
+) {
+    let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(request).unwrap();
+    let msg = vsock_proto::encode(MSG_EXEC_START, seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+pub(crate) fn read_error_response(stream: &mut impl std::io::Read, seq: u32) -> String {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_ERROR);
+    assert_eq!(msg.seq, seq);
+    vsock_proto::decode_error(&msg.payload).unwrap().to_owned()
+}
+
 pub(crate) fn send_exec_cancel(stream: &mut impl std::io::Write, seq: u32) {
     let payload = vsock_proto::encode_exec_cancel();
     let msg = vsock_proto::encode(MSG_EXEC_CANCEL, seq, &payload).unwrap();

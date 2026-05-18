@@ -14,8 +14,8 @@ use crate::{
     operation_tracker::{NormalOperationToken, NormalOperationTransitionHandle},
 };
 use vsock_proto::{
-    ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_EXEC_CANCEL,
-    MSG_EXEC_START, RawMessage,
+    ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
+    ExecTermination, ExecTimeoutPolicy, MSG_EXEC_CANCEL, MSG_EXEC_START, RawMessage,
 };
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
@@ -1203,7 +1203,10 @@ async fn start_exec_operation_on_shared_with_tracking(
 
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
-            timeout_ms: request.timeout_ms,
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::Duration {
+                timeout_ms: request.timeout_ms,
+            },
             command: request.command,
             env: request.env,
             sudo: request.sudo,
@@ -1211,6 +1214,7 @@ async fn start_exec_operation_on_shared_with_tracking(
             stdout: request.stdout,
             stderr: request.stderr,
             expected_exit_codes: request.expected_exit_codes,
+            control: ExecControlPolicy::Disabled,
         },
     )
     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;

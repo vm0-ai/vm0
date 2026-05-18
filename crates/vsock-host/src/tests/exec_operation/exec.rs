@@ -26,7 +26,12 @@ async fn test_exec() {
 
         let d = vsock_proto::decode_exec_start(&msgs[0].payload).unwrap();
         assert_eq!(d.command, "echo hello");
-        assert_eq!(d.timeout_ms, 5000);
+        assert_eq!(
+            d.timeout,
+            vsock_proto::ExecTimeoutPolicy::Duration { timeout_ms: 5000 }
+        );
+        assert_eq!(d.lifecycle, vsock_proto::ExecLifecyclePolicy::OneShot);
+        assert_eq!(d.control, vsock_proto::ExecControlPolicy::Disabled);
         assert!(d.env.is_empty());
         assert!(!d.sudo);
         assert_eq!(d.label, "exec");

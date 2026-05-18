@@ -70,6 +70,15 @@ pub const MSG_PROCESS_CONTROL: u8 = 0x13;
 /// Guest-to-host process control delivery result.
 pub const MSG_PROCESS_CONTROL_RESULT: u8 = 0x14;
 
+/// Guest-to-host exec operation start acknowledgement.
+pub const MSG_EXEC_STARTED: u8 = 0x15;
+
+/// Host-to-guest control message for an active exec operation.
+pub const MSG_EXEC_CONTROL: u8 = 0x16;
+
+/// Guest-to-host exec control delivery result.
+pub const MSG_EXEC_CONTROL_RESULT: u8 = 0x17;
+
 /// Guest-to-host protocol error response.
 pub const MSG_ERROR: u8 = 0xFF;
 
@@ -127,5 +136,8 @@ mod tests {
         assert_eq!(MSG_EXEC_OUTPUT, 0x0C);
         assert_eq!(MSG_EXEC_RESULT, 0x0D);
         assert_eq!(MSG_EXEC_CANCEL, 0x0E);
+        assert_eq!(MSG_EXEC_STARTED, 0x15);
+        assert_eq!(MSG_EXEC_CONTROL, 0x16);
+        assert_eq!(MSG_EXEC_CONTROL_RESULT, 0x17);
     }
 }

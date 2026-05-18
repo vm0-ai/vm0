@@ -1,6 +1,9 @@
 use super::*;
 use crate::wire::MAX_PAYLOAD_SIZE;
 
+const ONE_SHOT_DURATION_START_HEADER_LEN: usize = 1 + 1 + 1 + 4 + 1;
+const NONCE: ProcessControlNonce = *b"0123456789abcdef";
+
 #[test]
 fn exec_start_roundtrip_discard_policies() {
     let payload = encode_exec_start(
@@ -18,7 +21,8 @@ fn exec_start_roundtrip_discard_policies() {
     assert_eq!(
         decoded,
         DecodedExecStart {
-            timeout_ms: 5000,
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
             command: "echo ready",
             env: Vec::new(),
             sudo: false,
@@ -26,6 +30,7 @@ fn exec_start_roundtrip_discard_policies() {
             stdout: ExecOutputPolicy::Discard,
             stderr: ExecOutputPolicy::Discard,
             expected_exit_codes: Vec::new(),
+            control: ExecControlPolicy::Disabled,
         }
     );
 }
@@ -43,9 +48,9 @@ fn exec_start_wire_layout_places_label_before_output_policies() {
     )
     .unwrap();
 
-    let label_len_offset = 4 + 1 + 4 + "cmd".len() + 4;
+    let label_len_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4;
     assert_eq!(
-        &payload[label_len_offset..],
+        &payload[label_len_offset..payload.len() - 1],
         &[
             0,
             3,
@@ -78,7 +83,11 @@ fn exec_start_roundtrip_env_sudo_label_and_capture() {
     .unwrap();
 
     let decoded = decode_exec_start(&payload).unwrap();
-    assert_eq!(decoded.timeout_ms, 3000);
+    assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::OneShot);
+    assert_eq!(
+        decoded.timeout,
+        ExecTimeoutPolicy::Duration { timeout_ms: 3000 }
+    );
     assert_eq!(decoded.command, "printenv");
     assert_eq!(
         decoded.env,
@@ -91,6 +100,7 @@ fn exec_start_roundtrip_env_sudo_label_and_capture() {
         ExecOutputPolicy::Capture { limit_bytes: 4096 }
     );
     assert_eq!(decoded.label, "setup");
+    assert_eq!(decoded.control, ExecControlPolicy::Disabled);
 }
 
 #[test]
@@ -124,7 +134,8 @@ fn exec_start_roundtrip_stream_policy_allows_zero_stream_limit() {
 #[test]
 fn exec_start_roundtrip_expected_exit_codes() {
     let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
-        timeout_ms: 1000,
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1000 },
         command: "optional-file",
         env: &[],
         sudo: false,
@@ -132,12 +143,52 @@ fn exec_start_roundtrip_expected_exit_codes() {
         stdout: ExecOutputPolicy::Capture { limit_bytes: 4096 },
         stderr: ExecOutputPolicy::Discard,
         expected_exit_codes: &[66, -9],
+        control: ExecControlPolicy::Disabled,
     })
     .unwrap();
 
     let decoded = decode_exec_start(&payload).unwrap();
     assert_eq!(decoded.label, "read-file");
     assert_eq!(decoded.expected_exit_codes, vec![66, -9]);
+}
+
+#[test]
+fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
+    let payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::Supervised,
+        timeout: ExecTimeoutPolicy::None,
+        command: "daemon",
+        env: &[("A", "B")],
+        sudo: true,
+        label: "supervised",
+        stdout: ExecOutputPolicy::Stream {
+            limit_bytes: 1024,
+            chunk_limit_bytes: 128,
+        },
+        stderr: ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 256,
+            stream_limit_bytes: 512,
+            chunk_limit_bytes: 64,
+        },
+        expected_exit_codes: &[0],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: true,
+        },
+    })
+    .unwrap();
+
+    let decoded = decode_exec_start(&payload).unwrap();
+    assert_eq!(decoded.lifecycle, ExecLifecyclePolicy::Supervised);
+    assert_eq!(decoded.timeout, ExecTimeoutPolicy::None);
+    assert!(decoded.sudo);
+    assert_eq!(
+        decoded.control,
+        ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: true,
+        }
+    );
 }
 
 #[test]
@@ -312,7 +363,7 @@ fn exec_start_rejects_unknown_flags() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    payload[4] = 0x80;
+    payload[ONE_SHOT_DURATION_START_HEADER_LEN - 1] = 0x80;
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -333,7 +384,7 @@ fn exec_start_rejects_invalid_utf8_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    payload[9] = 0xFF;
+    payload[ONE_SHOT_DURATION_START_HEADER_LEN + 4] = 0xFF;
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload("invalid UTF-8 in command"))
@@ -349,7 +400,7 @@ fn exec_start_rejects_invalid_utf8_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let key_offset = 4 + 1 + 4 + "cmd".len() + 4 + 4;
+    let key_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 4;
     payload[key_offset] = 0xFF;
     assert!(matches!(
         decode_exec_start(&payload),
@@ -383,7 +434,15 @@ fn exec_start_rejects_invalid_utf8_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let label_offset = 4 + 1 + 4 + "cmd".len() + 4 + 4 + "K".len() + 4 + "V".len() + 2;
+    let label_offset = ONE_SHOT_DURATION_START_HEADER_LEN
+        + 4
+        + "cmd".len()
+        + 4
+        + 4
+        + "K".len()
+        + 4
+        + "V".len()
+        + 2;
     payload[label_offset] = 0xFF;
     assert!(matches!(
         decode_exec_start(&payload),
@@ -424,7 +483,7 @@ fn exec_start_rejects_malformed_env_count_without_preallocating() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let env_count_offset = 4 + 1 + 4;
+    let env_count_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4;
     payload[env_count_offset..env_count_offset + 4].copy_from_slice(&u32::MAX.to_be_bytes());
 
     assert!(matches!(
@@ -461,7 +520,7 @@ fn exec_start_rejects_env_count_above_limit() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let env_count_offset = 4 + 1 + 4;
+    let env_count_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4;
     payload[env_count_offset..env_count_offset + 4]
         .copy_from_slice(&((MAX_EXEC_ENV_VARS as u32) + 1).to_be_bytes());
 
@@ -478,15 +537,44 @@ fn exec_start_rejects_truncated_fields() {
     assert!(matches!(
         decode_exec_start(&[]),
         Err(ProtocolError::InvalidPayload(
-            "exec start timeout truncated"
+            "exec start version truncated"
         ))
     ));
     assert!(matches!(
-        decode_exec_start(&[0; 4]),
+        decode_exec_start(&[EXEC_START_VERSION_V1]),
+        Err(ProtocolError::InvalidPayload(
+            "exec start lifecycle truncated"
+        ))
+    ));
+    assert!(matches!(
+        decode_exec_start(&[EXEC_START_VERSION_V1, EXEC_LIFECYCLE_ONE_SHOT]),
+        Err(ProtocolError::InvalidPayload(
+            "exec start timeout policy truncated"
+        ))
+    ));
+    assert!(matches!(
+        decode_exec_start(&[
+            EXEC_START_VERSION_V1,
+            EXEC_LIFECYCLE_ONE_SHOT,
+            EXEC_TIMEOUT_DURATION,
+            0,
+            0,
+            0,
+            1,
+        ]),
         Err(ProtocolError::InvalidPayload("exec start flags truncated"))
     ));
     assert!(matches!(
-        decode_exec_start(&[0; 8]),
+        decode_exec_start(&[
+            EXEC_START_VERSION_V1,
+            EXEC_LIFECYCLE_ONE_SHOT,
+            EXEC_TIMEOUT_DURATION,
+            0,
+            0,
+            0,
+            1,
+            0,
+        ]),
         Err(ProtocolError::InvalidPayload(
             "exec start command_len truncated"
         ))
@@ -502,7 +590,7 @@ fn exec_start_rejects_truncated_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    payload.truncate(10);
+    payload.truncate(ONE_SHOT_DURATION_START_HEADER_LEN + 4 + 2);
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -520,7 +608,7 @@ fn exec_start_rejects_truncated_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let env_count_offset = 4 + 1 + 4 + "cmd".len();
+    let env_count_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len();
     payload.truncate(env_count_offset + 3);
     assert!(matches!(
         decode_exec_start(&payload),
@@ -539,7 +627,7 @@ fn exec_start_rejects_truncated_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let label_len_offset = 4 + 1 + 4 + "cmd".len() + 4;
+    let label_len_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4;
     payload.truncate(label_len_offset + 1);
     assert!(matches!(
         decode_exec_start(&payload),
@@ -558,7 +646,7 @@ fn exec_start_rejects_truncated_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let label_start = 4 + 1 + 4 + "cmd".len() + 4 + 2;
+    let label_start = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2;
     payload.truncate(label_start + 1);
     assert!(matches!(
         decode_exec_start(&payload),
@@ -578,7 +666,7 @@ fn exec_start_rejects_invalid_policy_tag() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let stdout_policy_offset = 4 + 1 + 4 + "cmd".len() + 4 + 2;
+    let stdout_policy_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2;
     payload[stdout_policy_offset] = 0x99;
 
     let err = decode_exec_start(&payload).unwrap_err();
@@ -621,7 +709,7 @@ fn exec_start_rejects_zero_stream_chunk_limit() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let chunk_limit_offset = 4 + 1 + 4 + "cmd".len() + 4 + 2 + 1 + 4;
+    let chunk_limit_offset = ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2 + 1 + 4;
     payload[chunk_limit_offset..chunk_limit_offset + 4].copy_from_slice(&0u32.to_be_bytes());
 
     let err = decode_exec_start(&payload).unwrap_err();
@@ -635,7 +723,8 @@ fn exec_start_rejects_zero_stream_chunk_limit() {
 fn exec_start_rejects_expected_exit_count_above_limit() {
     let expected_exit_codes = vec![0; MAX_EXEC_EXPECTED_EXIT_CODES + 1];
     let err = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
-        timeout_ms: 1,
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],
         sudo: false,
@@ -643,6 +732,7 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
         stdout: ExecOutputPolicy::Discard,
         stderr: ExecOutputPolicy::Discard,
         expected_exit_codes: &expected_exit_codes,
+        control: ExecControlPolicy::Disabled,
     })
     .unwrap_err();
     assert!(matches!(
@@ -660,8 +750,8 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let count_offset = payload.len() - 2;
-    payload[count_offset..]
+    let count_offset = payload.len() - 1 - 2;
+    payload[count_offset..count_offset + 2]
         .copy_from_slice(&((MAX_EXEC_EXPECTED_EXIT_CODES as u16) + 1).to_be_bytes());
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -673,7 +763,8 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
 #[test]
 fn exec_start_rejects_truncated_expected_exit_codes() {
     let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
-        timeout_ms: 1,
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms: 1 },
         command: "cmd",
         env: &[],
         sudo: false,
@@ -681,9 +772,10 @@ fn exec_start_rejects_truncated_expected_exit_codes() {
         stdout: ExecOutputPolicy::Discard,
         stderr: ExecOutputPolicy::Discard,
         expected_exit_codes: &[66],
+        control: ExecControlPolicy::Disabled,
     })
     .unwrap();
-    payload.pop();
+    payload.truncate(payload.len() - 2);
 
     let err = decode_exec_start(&payload).unwrap_err();
     assert!(matches!(
@@ -707,7 +799,8 @@ fn exec_start_rejects_truncated_policy_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let stream_chunk_limit_offset = 4 + 1 + 4 + "cmd".len() + 4 + 2 + 1 + 4;
+    let stream_chunk_limit_offset =
+        ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2 + 1 + 4;
     stream_payload.truncate(stream_chunk_limit_offset + 3);
     assert!(matches!(
         decode_exec_start(&stream_payload),
@@ -730,12 +823,229 @@ fn exec_start_rejects_truncated_policy_fields() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    let capture_and_stream_chunk_limit_offset = 4 + 1 + 4 + "cmd".len() + 4 + 2 + 1 + 4 + 4;
+    let capture_and_stream_chunk_limit_offset =
+        ONE_SHOT_DURATION_START_HEADER_LEN + 4 + "cmd".len() + 4 + 2 + 1 + 4 + 4;
     capture_and_stream_payload.truncate(capture_and_stream_chunk_limit_offset + 3);
     assert!(matches!(
         decode_exec_start(&capture_and_stream_payload),
         Err(ProtocolError::InvalidPayload(
             "exec capture-and-stream chunk limit truncated"
+        ))
+    ));
+}
+
+#[test]
+fn exec_start_rejects_invalid_version_lifecycle_timeout_and_control() {
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    payload[0] = 0x02;
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload("exec start version invalid"))
+    ));
+
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    payload[1] = 0xFE;
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start lifecycle invalid"
+        ))
+    ));
+
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    payload[2] = 0xFE;
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start timeout policy invalid"
+        ))
+    ));
+
+    let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::Supervised,
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+    })
+    .unwrap();
+    let control_tag_offset = payload.len() - (1 + 1 + PROCESS_CONTROL_NONCE_LEN);
+    payload[control_tag_offset] = 0xFE;
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start control policy invalid"
+        ))
+    ));
+}
+
+#[test]
+fn exec_start_rejects_control_unknown_flags_and_truncated_nonce() {
+    let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::Supervised,
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+    })
+    .unwrap();
+    let control_flags_offset = payload.len() - (1 + PROCESS_CONTROL_NONCE_LEN);
+    payload[control_flags_offset] = 0x80;
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start control unknown flags"
+        ))
+    ));
+
+    let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
+        lifecycle: ExecLifecyclePolicy::Supervised,
+        timeout: ExecTimeoutPolicy::None,
+        command: "cmd",
+        env: &[],
+        sudo: false,
+        label: "",
+        stdout: ExecOutputPolicy::Discard,
+        stderr: ExecOutputPolicy::Discard,
+        expected_exit_codes: &[],
+        control: ExecControlPolicy::Enabled {
+            control_nonce: NONCE,
+            sink: false,
+        },
+    })
+    .unwrap();
+    payload.pop();
+    assert!(matches!(
+        decode_exec_start(&payload),
+        Err(ProtocolError::InvalidPayload(
+            "exec start control nonce truncated"
+        ))
+    ));
+}
+
+#[test]
+fn exec_started_roundtrip_and_rejects_malformed_payloads() {
+    let payload = encode_exec_started(42).unwrap();
+    assert_eq!(decode_exec_started(&payload).unwrap().pid, 42);
+
+    assert!(matches!(
+        encode_exec_started(0),
+        Err(ProtocolError::InvalidPayload(
+            "exec started pid must be non-zero"
+        ))
+    ));
+    assert!(matches!(
+        decode_exec_started(&[0, 0, 0]),
+        Err(ProtocolError::InvalidPayload("exec started pid truncated"))
+    ));
+    assert!(matches!(
+        decode_exec_started(&[0, 0, 0, 0]),
+        Err(ProtocolError::InvalidPayload(
+            "exec started pid must be non-zero"
+        ))
+    ));
+    let mut trailing = payload;
+    trailing.push(0);
+    assert!(matches!(
+        decode_exec_started(&trailing),
+        Err(ProtocolError::InvalidPayload("exec started trailing bytes"))
+    ));
+}
+
+#[test]
+fn exec_control_roundtrip_and_rejects_malformed_payloads() {
+    let payload = encode_exec_control(7, NONCE, "message", b"body", 5000).unwrap();
+    let decoded = decode_exec_control(&payload).unwrap();
+    assert_eq!(decoded.target_seq, 7);
+    assert_eq!(decoded.request_timeout_ms, 5000);
+    assert_eq!(decoded.control_nonce, NONCE);
+    assert_eq!(decoded.message_id, "message");
+    assert_eq!(decoded.payload, b"body");
+
+    let err = encode_exec_control(0, NONCE, "message", b"body", 5000).unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::InvalidPayload("process_control target_seq must be non-zero")
+    ));
+
+    let mut trailing = payload;
+    trailing.push(0);
+    assert!(matches!(
+        decode_exec_control(&trailing),
+        Err(ProtocolError::InvalidPayload(
+            "process_control trailing bytes"
+        ))
+    ));
+}
+
+#[test]
+fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
+    let payload =
+        encode_exec_control_result(7, NONCE, "message", ExecControlStatus::Delivered, "ok")
+            .unwrap();
+    let decoded = decode_exec_control_result(&payload).unwrap();
+    assert_eq!(decoded.target_seq, 7);
+    assert_eq!(decoded.control_nonce, NONCE);
+    assert_eq!(decoded.message_id, "message");
+    assert_eq!(decoded.status, ExecControlStatus::Delivered);
+    assert_eq!(decoded.diagnostic, "ok");
+
+    let err = encode_exec_control_result(0, NONCE, "message", ExecControlStatus::Delivered, "")
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::InvalidPayload("process_control_result target_seq must be non-zero")
+    ));
+
+    let mut trailing = payload;
+    trailing.push(0);
+    assert!(matches!(
+        decode_exec_control_result(&trailing),
+        Err(ProtocolError::InvalidPayload(
+            "process_control_result trailing bytes"
         ))
     ));
 }

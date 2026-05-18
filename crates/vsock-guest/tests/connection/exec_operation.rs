@@ -2,7 +2,8 @@ use std::io::Write;
 use std::time::Duration;
 
 use vsock_proto::{
-    self, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR, MSG_EXEC_START,
+    self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
+    ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_START,
 };
 
 use super::support::*;
@@ -38,7 +39,8 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
 
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
-            timeout_ms: 5000,
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
             command: "exit 66",
             env: &[],
             sudo: false,
@@ -46,6 +48,7 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[66],
+            control: ExecControlPolicy::Disabled,
         },
     );
     let msg = vsock_proto::encode(MSG_EXEC_START, 102, &payload.unwrap()).unwrap();
@@ -60,6 +63,79 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
     assert_eq!(result.stdout, Some(Vec::new()));
     assert_eq!(result.stderr, Some(Vec::new()));
     assert!(result.diagnostic.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn exec_operation_rejects_unsupported_start_policies() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_exec_start_request(
+        &mut host_stream,
+        103,
+        vsock_proto::ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            command: "sleep 1",
+            env: &[],
+            sudo: false,
+            label: "test",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Disabled,
+        },
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 103),
+        "exec supervised lifecycle is not supported"
+    );
+
+    send_exec_start_request(
+        &mut host_stream,
+        104,
+        vsock_proto::ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::None,
+            command: "sleep 1",
+            env: &[],
+            sudo: false,
+            label: "test",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Disabled,
+        },
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 104),
+        "exec timeout policy none is not supported"
+    );
+
+    send_exec_start_request(
+        &mut host_stream,
+        105,
+        vsock_proto::ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::OneShot,
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+            command: "sleep 1",
+            env: &[],
+            sudo: false,
+            label: "test",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Enabled {
+                control_nonce: *b"0123456789abcdef",
+                sink: false,
+            },
+        },
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 105),
+        "exec control policy is not supported"
+    );
 
     finish_guest_connection(handle, host_stream);
 }
