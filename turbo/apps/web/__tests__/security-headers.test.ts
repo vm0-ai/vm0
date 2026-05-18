@@ -203,6 +203,12 @@ const QUEUE_POSITION_NEXT_NEGATIVE_PATHS = [
   "/api/zero/queue-position/extra",
   "/api/zero/queue-positions",
 ] as const;
+const ZERO_CHAT_SEARCH_REWRITE_SOURCE = "/api/zero/chat/search";
+const ZERO_CHAT_SEARCH_PATH = "/api/zero/chat/search";
+const ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat/search/extra",
+  "/api/zero/chat/searches",
+] as const;
 const ZERO_VARIABLES_REWRITE_SOURCE = "/api/zero/variables";
 const ZERO_VARIABLES_PATH = "/api/zero/variables";
 const ZERO_VARIABLES_NEXT_NEGATIVE_PATHS = ["/api/zero/variable"] as const;
@@ -790,6 +796,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/agents/:id/user-connectors",
         },
         {
+          source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/chat/search",
+        },
+        {
           source: "/api/zero/user-preferences",
           destination: "https://api.example.test/api/zero/user-preferences",
         },
@@ -1352,6 +1362,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(USER_MODEL_PREFERENCE_PATH)).toStrictEqual({});
     for (const pathname of USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero chat search rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_SEARCH_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/chat/search",
+    });
+
+    const matcher = getPathMatch(ZERO_CHAT_SEARCH_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CHAT_SEARCH_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2199,6 +2232,13 @@ describe("API backend rewrites", () => {
   it("should match the zero org route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_ORG_PATH)).toBe(true);
     for (const pathname of ZERO_ORG_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero chat search route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_CHAT_SEARCH_PATH)).toBe(true);
+    for (const pathname of ZERO_CHAT_SEARCH_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

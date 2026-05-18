@@ -412,6 +412,14 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero chat search rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/chat/search")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/chat/search/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/chat/searches")).toBe(false);
+  });
+
   it("matches the push subscriptions rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/push-subscriptions")).toBe(
       true,
