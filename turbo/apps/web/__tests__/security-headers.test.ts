@@ -403,6 +403,15 @@ const ZERO_CHAT_THREAD_ARTIFACTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/artifacts/extra",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/artifacts",
 ] as const;
+const ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:threadId/messages";
+const ZERO_CHAT_THREAD_MESSAGES_PATH =
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages";
+const ZERO_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages/extra",
+  "/api/zero/chat-threads/messages",
+  "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/messages",
+] as const;
 const ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE = "/api/zero/chat-threads/:id";
 const ZERO_CHAT_THREAD_DETAIL_PATH =
   "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000";
@@ -1100,6 +1109,11 @@ describe("API backend rewrites", () => {
           source: ZERO_CHAT_THREAD_ARTIFACTS_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/chat-threads/:threadId/artifacts",
+        },
+        {
+          source: ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/chat-threads/:threadId/messages",
         },
         {
           source: ZERO_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
@@ -2149,6 +2163,32 @@ describe("API backend rewrites", () => {
       threadId: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_CHAT_THREAD_ARTIFACTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for the zero chat thread messages rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/chat-threads/:threadId/messages",
+    });
+
+    const matcher = getPathMatch(ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CHAT_THREAD_MESSAGES_PATH)).toStrictEqual({
+      threadId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

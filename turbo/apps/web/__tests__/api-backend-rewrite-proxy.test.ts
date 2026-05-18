@@ -698,6 +698,29 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero chat thread messages rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/message",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/messages",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero chat thread mark-read rewrite path with one dynamic segment", () => {
     expect(
       matchesApiBackendRewritePath(

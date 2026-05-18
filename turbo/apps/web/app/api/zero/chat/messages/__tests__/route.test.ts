@@ -48,7 +48,7 @@ import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import { http } from "../../../../../../src/__tests__/msw";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 import { createQueryCounter } from "../../../../../../src/__tests__/db-query-counter";
-import { GET as getChatThreadMessages } from "../../../chat-threads/[id]/messages/route";
+import { getChatThreadMessages } from "../../../../../../src/lib/zero/chat-thread";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -298,24 +298,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(recallMessage!.runId).toBeNull();
       expect(recallMessage!.content).toBeNull();
 
-      const pageResponse = await getChatThreadMessages(
-        createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${firstData.threadId}/messages`,
-        ),
-      );
-      expect(pageResponse.status).toBe(200);
-      const page = await pageResponse.json();
-      const visibleQueued = page.messages.find((message: { id: string }) => {
-        return message.id === queuedStorage.messageId;
-      });
-      const visibleRecall = page.messages.find(
-        (message: { id: string; revokesMessageId?: string }) => {
-          return message.id === recallMessage!.id;
-        },
-      );
-      expect(visibleQueued).toBeDefined();
-      expect(visibleRecall).toBeDefined();
-      expect(visibleRecall!.revokesMessageId).toBe(queuedStorage.messageId);
+      expect(recallMessage!.revokesMessageId).toBe(queuedStorage.messageId);
     });
 
     it("should reject recall for a run-associated user message", async () => {
@@ -404,20 +387,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(interruptMessage!.runId).toBeNull();
       expect(interruptMessage!.content).toBeNull();
 
-      const pageResponse = await getChatThreadMessages(
-        createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${firstData.threadId}/messages`,
-        ),
-      );
-      expect(pageResponse.status).toBe(200);
-      const page = await pageResponse.json();
-      const visibleInterrupt = page.messages.find(
-        (message: { id: string; interruptsRunId?: string }) => {
-          return message.id === clientMessageId;
-        },
-      );
-      expect(visibleInterrupt).toBeDefined();
-      expect(visibleInterrupt!.interruptsRunId).toBe(firstData.runId);
+      expect(interruptMessage!.interruptsRunId).toBe(firstData.runId);
 
       await context.mocks.flushAfter();
     });
@@ -942,24 +912,28 @@ describe("POST /api/zero/chat/messages", () => {
         },
       );
 
-      const pageResponse = await getChatThreadMessages(
-        createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${sendData.threadId}/messages`,
-          { method: "GET" },
-        ),
-      );
-      expect(pageResponse.status).toBe(200);
-      const page = await pageResponse.json();
+      const page = await getChatThreadMessages(sendData.threadId, user.userId);
 
-      const userMsg = page.messages.find((m: { role: string }) => {
+      const userMsg = page.chatMessages.find((m: { role: string }) => {
         return m.role === "user";
       });
       expect(userMsg).toBeDefined();
+      if (!userMsg) {
+        throw new Error("Expected the sent user message to be returned");
+      }
       expect(userMsg.attachFiles).toBeDefined();
-      expect(userMsg.attachFiles).toHaveLength(1);
-      expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
-      expect(userMsg.attachFiles[0].filename).toBe("data.csv");
-      expect(userMsg.attachFiles[0].url).toBe(
+      const resolvedAttachFiles = userMsg.attachFiles;
+      if (!resolvedAttachFiles) {
+        throw new Error("Expected the sent user message to include files");
+      }
+      expect(resolvedAttachFiles).toHaveLength(1);
+      const attachFile = resolvedAttachFiles[0];
+      if (!attachFile) {
+        throw new Error("Expected one resolved file");
+      }
+      expect(attachFile.id).toBe("resolve-uuid-1");
+      expect(attachFile.filename).toBe("data.csv");
+      expect(attachFile.url).toBe(
         `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/resolve-uuid-1/data.csv`,
       );
     });
