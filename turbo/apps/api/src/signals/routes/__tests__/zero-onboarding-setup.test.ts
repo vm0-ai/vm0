@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
+import {
+  onboardingSetupContract,
+  onboardingStatusContract,
+} from "@vm0/api-contracts/contracts/onboarding";
 import { createStore, command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -30,6 +33,10 @@ interface OnboardingSetupFixture {
 
 function apiClient() {
   return setupApp({ context })(onboardingSetupContract);
+}
+
+function statusClient() {
+  return setupApp({ context })(onboardingStatusContract);
 }
 
 function authHeaders() {
@@ -317,6 +324,22 @@ describe("POST /api/zero/onboarding/setup", () => {
       { source: "starter_grant", amount: 10_000, remaining: 10_000 },
     ]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(2);
+
+    const status = await accept(
+      statusClient().getStatus({ headers: authHeaders() }),
+      [200],
+    );
+    expect(status.body).toStrictEqual({
+      needsOnboarding: false,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: agentId,
+      defaultAgentMetadata: {
+        displayName: "My Assistant",
+        sound: "professional",
+      },
+    });
   });
 
   it("returns the existing default agent on repeated setup calls", async () => {
