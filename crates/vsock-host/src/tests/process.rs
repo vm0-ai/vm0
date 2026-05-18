@@ -1234,6 +1234,42 @@ async fn test_spawn_process_connection_closed_before_result_cleans_up() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_response_timeout_cleans_registration() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let spawn = read_guest_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+
+        let mut discard = [0u8; 1];
+        let _ = guest.read(&mut discard).await;
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = process_impl::test_support::spawn_process_with_response_timeout(
+        &host.shared,
+        "no-result",
+        true,
+        Duration::ZERO,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "spawn_process response timeout must clean pending process registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn test_malformed_unsolicited_process_frames_are_ignored() {
     let (host_stream, mut guest) = make_pair();
 

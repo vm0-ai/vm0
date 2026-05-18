@@ -16,6 +16,8 @@ use crate::{
     operation_tracker::NormalOperationToken, request_on_shared,
 };
 
+const SPAWN_PROCESS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Event emitted when a spawned process exits.
 #[derive(Debug, Clone)]
 pub struct ProcessExitEvent {
@@ -173,6 +175,10 @@ impl ProcessOperationRegistrationGuard {
 
     fn keep_on_drop(&mut self) {
         self.state = ProcessOperationRegistrationState::KeepOnDrop;
+    }
+
+    fn remove_on_drop(&mut self) {
+        self.state = ProcessOperationRegistrationState::RemoveOnDrop;
     }
 
     fn disarm(&mut self) {
@@ -650,6 +656,15 @@ pub(crate) async fn spawn_process_on_shared(
     shared: &Arc<Shared>,
     request: SpawnProcessOnSharedRequest<'_>,
 ) -> io::Result<GuestProcessHandle> {
+    spawn_process_on_shared_with_response_timeout(shared, request, SPAWN_PROCESS_RESPONSE_TIMEOUT)
+        .await
+}
+
+async fn spawn_process_on_shared_with_response_timeout(
+    shared: &Arc<Shared>,
+    request: SpawnProcessOnSharedRequest<'_>,
+    response_timeout: Duration,
+) -> io::Result<GuestProcessHandle> {
     let SpawnProcessOnSharedRequest {
         command,
         timeout_ms,
@@ -754,7 +769,8 @@ pub(crate) async fn spawn_process_on_shared(
                     "connection closed",
                 ))?
             }
-            _ = tokio::time::sleep(Duration::from_secs(30)) => {
+            _ = tokio::time::sleep(response_timeout) => {
+                registration_guard.remove_on_drop();
                 return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
             }
         }
@@ -798,6 +814,28 @@ pub(crate) async fn spawn_process_on_shared(
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
+
+    pub(crate) async fn spawn_process_with_response_timeout(
+        shared: &Arc<Shared>,
+        command: &str,
+        stream_stdout: bool,
+        response_timeout: Duration,
+    ) -> io::Result<GuestProcessHandle> {
+        spawn_process_on_shared_with_response_timeout(
+            shared,
+            SpawnProcessOnSharedRequest {
+                command,
+                timeout_ms: 0,
+                env: &[],
+                sudo: false,
+                stream_stdout,
+                stdout_log_path: None,
+                control_sink: false,
+            },
+            response_timeout,
+        )
+        .await
+    }
 
     pub(crate) fn drop_started_frame_write_guard(shared: Arc<Shared>) {
         let mut guard = ProcessOperationFrameWriteGuard::new(shared);
