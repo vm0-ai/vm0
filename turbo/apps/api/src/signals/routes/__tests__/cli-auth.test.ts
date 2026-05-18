@@ -485,6 +485,8 @@ describe("CLI auth routes", () => {
 
   beforeEach(() => {
     mockEnv("ENV", "development");
+    mockOptionalEnv("USE_MOCK_CLAUDE", undefined);
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", undefined);
   });
 
   afterEach(async () => {
@@ -1240,6 +1242,31 @@ describe("CLI auth routes", () => {
       );
 
       expect(response.body).toBe("Not found");
+    });
+
+    it("allows protected preview rewrites after Vercel consumes the bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "codex-oauth-preview-rewrite",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+
+      const response = await acceptResponse<TestCodexOauthResponseBody>(
+        client.create({
+          query: {},
+          body: LEGACY_CODEX_OAUTH_BODY,
+        }),
+        200,
+      );
+
+      expect(response.body.orgId).toBe(orgId);
     });
 
     it("rejects invalid JSON bodies with the legacy error", async () => {

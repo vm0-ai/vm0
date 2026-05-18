@@ -1,4 +1,4 @@
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import {
   cliAuthTestApproveContract,
   cliAuthTestCodexOauthContract,
@@ -64,7 +64,20 @@ function stringError(status: 400 | 404, error: string) {
 function testEndpointAllowed(request: {
   header: (name: string) => string | undefined;
 }) {
-  return isTestEndpointAllowed(request);
+  if (isTestEndpointAllowed(request)) {
+    return true;
+  }
+
+  if (env("ENV") === "preview") {
+    // Vercel consumes the protection-bypass header before proxied web-preview
+    // rewrites reach the API preview runtime. Production still stays denied.
+    return (
+      optionalEnv("USE_MOCK_CLAUDE") === "true" &&
+      !!optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET")
+    );
+  }
+
+  return false;
 }
 
 const approveDeviceForTest$ = command(
