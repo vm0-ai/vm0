@@ -1210,6 +1210,34 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
 }
 
 #[tokio::test]
+async fn write_file_observer_error_cleans_pending_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/observer-error.txt",
+            b"hello",
+            false,
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn write_file_chunked_cancelled_before_first_frame_write_does_not_cleanup() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);

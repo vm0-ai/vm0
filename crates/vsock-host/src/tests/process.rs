@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use super::support::{
     host_from_stream, make_pair, mock_handshake, normal_operation_readiness, read_guest_message,
-    read_guest_messages, send_exec_result,
+    read_guest_messages, send_exec_result, setup_host_and_guest,
 };
 use crate::{
     ConnectionState, FrameWriteObserver, GuestProcessHandle, VsockHost,
@@ -1875,6 +1875,43 @@ async fn test_spawn_process_cancel_before_frame_write_cleans_registration() {
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_process_write_observer_error_cleans_registration_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .spawn_process_with_request_and_write_observer(
+            crate::ProcessSpawnRequest {
+                command: "observer-error",
+                timeout_ms: 0,
+                env: &[],
+                sudo: false,
+                stream_stdout: true,
+                stdout_log_path: None,
+            },
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send spawn_process frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(
+        registration_counts(&host),
+        (0, 0, 0),
+        "spawn_process observer error must clean pending registrations",
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
     );
 }
 
