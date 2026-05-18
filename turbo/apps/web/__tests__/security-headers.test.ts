@@ -143,6 +143,13 @@ const ZERO_MEMBER_CREDIT_CAP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/org/members/credit-cap/extra",
   "/api/zero/org/members/credit-caps",
 ] as const;
+const REALTIME_TOKEN_REWRITE_SOURCE = "/api/zero/realtime/token";
+const REALTIME_TOKEN_PATH = "/api/zero/realtime/token";
+const REALTIME_TOKEN_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/realtime/token/extra",
+  "/api/zero/realtime",
+  "/api/zero/realtimes/token",
+] as const;
 const VOICE_IO_TTS_REWRITE_SOURCE = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_PATH = "/api/zero/voice-io/tts";
 const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
@@ -521,6 +528,10 @@ describe("API backend rewrites", () => {
         {
           source: "/api/zero/secrets",
           destination: "https://api.example.test/api/zero/secrets",
+        },
+        {
+          source: REALTIME_TOKEN_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/realtime/token",
         },
         {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
@@ -1143,6 +1154,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero realtime token rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === REALTIME_TOKEN_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: REALTIME_TOKEN_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/realtime/token",
+    });
+
+    const matcher = getPathMatch(REALTIME_TOKEN_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(REALTIME_TOKEN_PATH)).toStrictEqual({});
+    for (const pathname of REALTIME_TOKEN_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only UUID-shaped voice-chat item append rewrites", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1254,6 +1288,13 @@ describe("API backend rewrites", () => {
       matchesApiBackendRewritePath(VOICE_CHAT_TRIGGER_REASONING_PATH),
     ).toBe(true);
     for (const pathname of VOICE_CHAT_TRIGGER_REASONING_REWRITE_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero realtime token path", () => {
+    expect(matchesApiBackendRewritePath(REALTIME_TOKEN_PATH)).toBe(true);
+    for (const pathname of REALTIME_TOKEN_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

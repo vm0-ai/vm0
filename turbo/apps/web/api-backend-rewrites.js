@@ -127,6 +127,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/model-policies", "/api/zero/model-policies"],
+  ["/api/zero/realtime/token", "/api/zero/realtime/token"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
   ["/api/zero/org/domains", "/api/zero/org/domains"],

@@ -333,6 +333,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/model-policy")).toBe(false);
   });
 
+  it("matches the zero realtime token rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/realtime/token")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/realtime/token/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/realtime")).toBe(false);
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),
