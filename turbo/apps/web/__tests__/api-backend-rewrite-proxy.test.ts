@@ -369,6 +369,18 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero member credit cap rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-cap"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-cap/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-caps"),
+    ).toBe(false);
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,

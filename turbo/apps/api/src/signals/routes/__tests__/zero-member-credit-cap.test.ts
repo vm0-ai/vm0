@@ -96,6 +96,40 @@ describe("PUT /api/zero/org/members/credit-cap", () => {
     return store.set(deleteMemberCreditCapFixture$, fixture, context.signal);
   });
 
+  it("returns 401 for unauthenticated request", async () => {
+    const userId = `user_${randomUUID()}`;
+
+    const response = await accept(
+      apiClient().set({
+        body: { userId, creditCap: 5000 },
+        headers: {},
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 401 when the authenticated session has no organization", async () => {
+    const sessionUserId = `user_${randomUUID()}`;
+    const targetUserId = `user_${randomUUID()}`;
+    mocks.clerk.session(sessionUserId, null);
+
+    const response = await accept(
+      apiClient().set({
+        body: { userId: targetUserId, creditCap: 5000 },
+        headers: authHeaders(),
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("sets credit cap as admin", async () => {
     const fixture = await track(
       store.set(seedMemberCreditCapFixture$, {}, context.signal),

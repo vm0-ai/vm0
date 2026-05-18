@@ -14,95 +14,6 @@ interface UsageTotalRow {
 }
 
 /**
- * Get a member's credit cap state.
- * Returns defaults (null cap, enabled) if no row exists.
- */
-export async function getMemberCreditCap(
-  orgId: string,
-  userId: string,
-): Promise<{ creditCap: number | null; creditEnabled: boolean }> {
-  const db = globalThis.services.db;
-
-  const [row] = await db
-    .select({
-      creditCap: orgMembersMetadata.creditCap,
-      creditEnabled: orgMembersMetadata.creditEnabled,
-    })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  if (!row) {
-    return { creditCap: null, creditEnabled: true };
-  }
-
-  return { creditCap: row.creditCap, creditEnabled: row.creditEnabled };
-}
-
-/**
- * Set or clear a member's credit cap.
- * - If cap is null: removes the cap and re-enables the member.
- * - If cap is a number: re-evaluates immediately against current usage.
- */
-export async function setMemberCreditCap(
-  orgId: string,
-  userId: string,
-  cap: number | null,
-): Promise<{ creditCap: number | null; creditEnabled: boolean }> {
-  const db = globalThis.services.db;
-
-  if (cap === null) {
-    // Removing cap — always re-enable
-    await db
-      .insert(orgMembersMetadata)
-      .values({
-        orgId,
-        userId,
-        creditCap: null,
-        creditEnabled: true,
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-        set: {
-          creditCap: null,
-          creditEnabled: true,
-          updatedAt: new Date(),
-        },
-      });
-
-    return { creditCap: null, creditEnabled: true };
-  }
-
-  // Setting a numeric cap — re-evaluate against current usage
-  const usage = await getMemberUsageInBillingPeriod(orgId, userId);
-  const creditEnabled = usage < cap;
-
-  await db
-    .insert(orgMembersMetadata)
-    .values({
-      orgId,
-      userId,
-      creditCap: cap,
-      creditEnabled,
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: {
-        creditCap: cap,
-        creditEnabled,
-        updatedAt: new Date(),
-      },
-    });
-
-  return { creditCap: cap, creditEnabled };
-}
-
-/**
  * Evaluate member caps for affected users after credit processing.
  * Only disables members (never re-enables). Called by usage processors.
  */
@@ -232,22 +143,4 @@ export async function resetMemberCreditFlags(orgId: string): Promise<void> {
         eq(orgMembersMetadata.creditEnabled, false),
       ),
     );
-}
-
-/**
- * Get a member's total processed usage_event credits in the current billing period.
- */
-async function getMemberUsageInBillingPeriod(
-  orgId: string,
-  userId: string,
-): Promise<number> {
-  const billingPeriod = await getOrgBillingPeriod(orgId);
-  if (!billingPeriod) return 0;
-
-  const usageMap = await getProcessedUsageTotalsByUser(orgId, [userId], {
-    start: billingPeriod.start,
-    end: billingPeriod.end,
-  });
-
-  return usageMap.get(userId) ?? 0;
 }
