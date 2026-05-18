@@ -404,8 +404,7 @@ mod tests {
         let mut timed_total = Duration::default();
 
         fn wait_for_fast_child(timeout_ms: u32) -> Duration {
-            let child = Command::new("sleep")
-                .arg("0.02")
+            let child = Command::new("true")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
