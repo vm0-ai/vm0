@@ -1,6 +1,5 @@
-import { NextRequest } from "next/server";
-import { POST as createAgentRoute } from "../agents/route";
 import {
+  createTestCompose,
   createTestOrgModelProvider,
   insertOrgModelPolicy,
 } from "../../../../src/__tests__/api-test-helpers";
@@ -34,24 +33,9 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
     modelProviderId: provider.id,
   });
 
-  // 3. Create agent
-  const agentRes = await createAgentRoute(
-    new NextRequest(`http://localhost:3000/api/zero/agents`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        connectors: [],
-        displayName: "Test Agent",
-        description: "Created by onboardNewOrgAndUser",
-      }),
-    }),
-  );
-  if (!agentRes.ok) {
-    throw new Error(`createAgentRoute failed with status ${agentRes.status}`);
-  }
-  const agent = (await agentRes.json()) as {
-    agentId: string;
-  };
+  // 3. Create a runnable agent compose. The zero agents collection route is
+  // API-backend authoritative; web tests should not import the old handler.
+  const agent = await createTestCompose("test-agent");
 
   return {
     user,

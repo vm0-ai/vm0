@@ -217,6 +217,12 @@ const ZERO_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/model-providers/anthropic-api-key/extra",
   "/api/zero/model-provider/anthropic-api-key",
 ] as const;
+const ZERO_AGENTS_REWRITE_SOURCE = "/api/zero/agents";
+const ZERO_AGENTS_PATH = "/api/zero/agents";
+const ZERO_AGENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000",
+  "/api/zero/agent",
+] as const;
 const ZERO_AGENT_BY_ID_REWRITE_SOURCE = "/api/zero/agents/:id";
 const ZERO_AGENT_BY_ID_PATH =
   "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000";
@@ -886,6 +892,10 @@ describe("API backend rewrites", () => {
           source: ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/model-providers/:type",
+        },
+        {
+          source: ZERO_AGENTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/agents",
         },
         {
           source: ZERO_AGENT_BY_ID_REWRITE_SOURCE,
@@ -2120,6 +2130,29 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_AGENT_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero agents collection rewrite path exactly", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_AGENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_AGENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/agents",
+    });
+
+    const matcher = getPathMatch(ZERO_AGENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_AGENTS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_AGENTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

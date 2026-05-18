@@ -115,7 +115,7 @@ export async function getComposeById(
  *
  * Throws conflict if compose has running/pending runs.
  */
-export async function deleteComposeById(
+async function deleteComposeById(
   composeId: string,
   composeName: string,
   orgId: string,

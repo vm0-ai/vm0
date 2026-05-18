@@ -1,35 +1,10 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-
-/**
- * Read the head compose version content for a compose record.
- * Returns the resolved compose content stored in the version.
- */
-export async function getTestComposeVersionContent(
-  composeId: string,
-): Promise<Record<string, unknown> | null> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select({
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposes.headVersionId, agentComposeVersions.id),
-    )
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return (row?.content as Record<string, unknown>) ?? null;
-}
 
 /**
  * Get the zero_agents UUID by org + agent name.

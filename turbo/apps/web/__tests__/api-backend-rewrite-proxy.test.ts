@@ -569,13 +569,17 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero agents collection rewrite path", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/agents")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/agent")).toBe(false);
+  });
+
   it("matches only one segment for zero agent by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000",
       ),
     ).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/agents")).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/extra",
