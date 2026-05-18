@@ -431,12 +431,12 @@ function QueuedMessagesStrip({
               key={item.id}
               role="listitem"
               aria-label="Queued message"
-              className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+              className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-0.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
             >
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
                 type="button"
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   onRemove?.(item.id);
                 }}
