@@ -341,6 +341,13 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/realtime")).toBe(false);
   });
 
+  it("matches the report error rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/report-error")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/report-error/extra")).toBe(
+      false,
+    );
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

@@ -23,7 +23,6 @@
  * | ts-rest, `createSafeErrorHandler`         | 4xx zod validation      | No (warn-log)         |
  * | ts-rest, `createSafeErrorHandler`         | 400 malformed JSON body | No (warn-log)         |
  * | ts-rest, `createSafeErrorHandler`         | unknown 5xx throw       | Yes (†)               |
- * | ts-rest, `createSilentErrorHandler`       | any                     | No (‡)                |
  * | non-ts-rest route (any thrown error)      | any                     | Yes (onRequestError)  |
  * | Client, 4xx fetch/XHR response            | —                       | No (beforeSend drops) |
  * | Client, 5xx response or JS error          | —                       | Yes                   |
@@ -33,10 +32,6 @@
  *   current factories top out at 422) are `log.error`'d but NOT
  *   Sentry-captured; capture fires only for the final "unknown throw"
  *   branch of `makeErrorHandler`.
- *
- * ‡ `createSilentErrorHandler` is used only by `/api/zero/report-error`
- *   so the client-error sink does not feed its own failures back into
- *   Sentry as fresh issues.
  */
 import "server-only";
 import { createNextHandler, tsr } from "@ts-rest/serverless/next";
@@ -95,25 +90,11 @@ function buildOperationMap(contract: AppRouter): Map<string, string> {
 export function createSafeErrorHandler(
   routeName: string,
 ): (err: unknown) => TsRestResponse | void {
-  return makeErrorHandler(routeName, { reportToSentry: true });
-}
-
-/**
- * Like {@link createSafeErrorHandler} but does NOT forward unhandled errors
- * to Sentry. Use for routes whose *own* purpose is to report errors (e.g.
- * the client-error sink endpoint) — otherwise a failing report can echo
- * back into Sentry as a fresh issue, creating a self-referential loop.
- * Server logs still record the failure at error level.
- */
-export function createSilentErrorHandler(
-  routeName: string,
-): (err: unknown) => TsRestResponse | void {
-  return makeErrorHandler(routeName, { reportToSentry: false });
+  return makeErrorHandler(routeName);
 }
 
 function makeErrorHandler(
   routeName: string,
-  options: { reportToSentry: boolean },
 ): (err: unknown) => TsRestResponse | void {
   const log = logger(`api:${routeName}`);
 
@@ -193,15 +174,13 @@ function makeErrorHandler(
 
     // Non-validation errors: log full details server-side, return generic message
     log.error(`${routeName} error:`, err);
-    if (options.reportToSentry) {
-      // Report to Sentry. Without this, ts-rest-handled 5xx never reaches
-      // Sentry because the error is caught here and a 500 JSON is returned,
-      // so Next.js's onRequestError instrumentation hook never fires.
-      Sentry.captureException(err, {
-        mechanism: { type: "ts-rest-handler", handled: true },
-        captureContext: { tags: { route: routeName } },
-      });
-    }
+    // Report to Sentry. Without this, ts-rest-handled 5xx never reaches
+    // Sentry because the error is caught here and a 500 JSON is returned,
+    // so Next.js's onRequestError instrumentation hook never fires.
+    Sentry.captureException(err, {
+      mechanism: { type: "ts-rest-handler", handled: true },
+      captureContext: { tags: { route: routeName } },
+    });
     return TsRestResponse.fromJson(
       {
         error: {
