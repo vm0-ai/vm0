@@ -1040,7 +1040,7 @@ function ModelPolicyRouteDialog({
               </Select>
             </div>
           ) : (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-background/40 p-3">
+            <div className="flex items-center gap-2">
               {selectedModelIcon && (
                 <ProviderIcon type={selectedModelIcon} size={18} />
               )}
