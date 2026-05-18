@@ -90,7 +90,13 @@
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts", "*.js"],
-      "ignoreDependencies": ["@electron-forge/maker-zip"]
+      "ignoreDependencies": [
+        "@electron-forge/cli",
+        "@electron-forge/maker-zip",
+        "oxlint",
+        "tsup"
+      ],
+      "ignoreBinaries": ["electron-forge", "oxlint", "tsup"]
     },
     "packages/core": {
       "entry": [
