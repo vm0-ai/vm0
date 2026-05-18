@@ -169,6 +169,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
   });
 
+  it("matches the CLI auth token rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cli/auth/token")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/cli/auth/token/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
+  });
+
   it("matches the CLI auth test approve rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cli/auth/test-approve")).toBe(
       true,

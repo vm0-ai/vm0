@@ -141,6 +141,21 @@ async function postCliAuthOrgRaw(args: {
   };
 }
 
+async function postCliAuthTokenRaw(args: {
+  readonly body: unknown;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/cli/auth/token", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(args.body),
+  });
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
 async function postCliAuthTestApproveRaw(args: {
   readonly query?: string;
   readonly body: unknown;
@@ -701,6 +716,38 @@ describe("CLI auth routes", () => {
   });
 
   describe("POST /api/cli/auth/token", () => {
+    it("returns invalid_request for unknown CLI device codes", async () => {
+      const client = setupApp({ context })(cliAuthTokenContract);
+
+      const response = await acceptResponse<OAuthErrorBody>(
+        client.exchange({ body: { device_code: "ZZZZ-ZZZZ" } }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "invalid_request",
+        error_description: "Invalid device code",
+      });
+    });
+
+    it("returns expired_token for expired CLI device codes", async () => {
+      const code = await seedDeviceCode({
+        status: "pending",
+        expiresAt: new Date(nowDate().getTime() - 1000),
+      });
+      const client = setupApp({ context })(cliAuthTokenContract);
+
+      const response = await acceptResponse<OAuthErrorBody>(
+        client.exchange({ body: { device_code: code } }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "expired_token",
+        error_description: "The device code has expired",
+      });
+    });
+
     it("returns authorization_pending for pending CLI device codes", async () => {
       const code = await seedDeviceCode({ status: "pending" });
       const client = setupApp({ context })(cliAuthTokenContract);
@@ -715,6 +762,22 @@ describe("CLI auth routes", () => {
         error_description:
           "The user has not yet completed authorization in the browser",
       });
+    });
+
+    it("returns access_denied and deletes denied CLI device codes", async () => {
+      const code = await seedDeviceCode({ status: "denied" });
+      const client = setupApp({ context })(cliAuthTokenContract);
+
+      const response = await acceptResponse<OAuthErrorBody>(
+        client.exchange({ body: { device_code: code } }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "access_denied",
+        error_description: "The user denied the authorization request",
+      });
+      await expect(fetchDeviceCode(code)).resolves.toBeUndefined();
     });
 
     it("issues a PAT and deletes the device code after authentication", async () => {
@@ -735,6 +798,7 @@ describe("CLI auth routes", () => {
       expect(response.body.access_token).toMatch(/^vm0_pat_/);
       expect(response.body.token_type).toBe("Bearer");
       expect(response.body.expires_in).toBe(90 * 24 * 60 * 60);
+      expect(response.body).not.toHaveProperty("org_slug");
       await expect(fetchDeviceCode(code)).resolves.toBeUndefined();
       await expect(
         fetchCliToken(response.body.access_token),
@@ -742,6 +806,16 @@ describe("CLI auth routes", () => {
         userId,
         name: "CLI Device Flow Authentication",
       });
+    });
+
+    it("returns invalid_request when device_code is missing from the body", async () => {
+      const response = await acceptResponse<OAuthErrorBody>(
+        postCliAuthTokenRaw({ body: {} }),
+        400,
+      );
+
+      expect(response.body.error).toBe("invalid_request");
+      expect(response.body.error_description).toContain("device_code");
     });
   });
 
