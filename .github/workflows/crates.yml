@@ -1361,6 +1361,8 @@ jobs:
               systemctl is-active --quiet "vm0-runner-${svc}" || return 0
               sleep 1
             done
+            # One final check covers units that exit during the last sleep.
+            systemctl is-active --quiet "vm0-runner-${svc}" || return 0
             fail "$svc still active after ${budget}s (stuck on drain?)"
           }
 
