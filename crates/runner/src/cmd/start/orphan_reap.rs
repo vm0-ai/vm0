@@ -401,6 +401,7 @@ mod tests {
                     let (payload, lease) = rejected.into_active_destroy_parts();
                     let _ = payload.stop_and_destroy().await;
                     drop(lease);
+                    self.destroy_all_idle_entries().await;
                     panic!("expected synthetic idle candidate to be accepted by the idle pool");
                 }
             }
