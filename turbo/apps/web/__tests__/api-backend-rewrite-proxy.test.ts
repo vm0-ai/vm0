@@ -525,6 +525,22 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches only one segment for zero agent instructions rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/instructions",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/instructions/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/agents/instructions")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero team rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/team")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/team/extra")).toBe(false);

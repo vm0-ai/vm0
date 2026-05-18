@@ -48,6 +48,10 @@ const AGENT_RUN_CANCEL_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT
 const AGENT_RUN_CANCEL_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/cancel$`,
 );
+const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
+  "/api/zero/agents/:id/instructions";
+const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
+  /^\/api\/zero\/agents\/[^/]+\/instructions$/;
 
 export const API_BACKEND_REWRITES = [
   [
@@ -163,6 +167,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE,
     "/api/zero/agents/:id/user-connectors",
     ZERO_AGENT_USER_CONNECTORS_PATH_RE,
+  ],
+  [
+    ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE,
+    "/api/zero/agents/:id/instructions",
+    ZERO_AGENT_INSTRUCTIONS_PATH_RE,
   ],
   [
     "/api/zero/built-in-generations/:path*",

@@ -1,11 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { gzipSync } from "node:zlib";
 import { POST, GET as listAgents } from "../route";
 import { GET, PUT, PATCH, DELETE } from "../[id]/route";
-import {
-  GET as getInstructions,
-  PUT as putInstructions,
-} from "../[id]/instructions/route";
 import {
   createTestRequest,
   createTestCliToken,
@@ -27,7 +22,6 @@ import {
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
   insertOrgModelPolicy,
-  createTestTarFile,
   createTestZeroSkill,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -149,38 +143,6 @@ function deleteAgent(name: string, token: string) {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     }),
-  );
-}
-
-function getAgentInstructions(name: string, token: string) {
-  return getInstructions(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}/instructions`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
-  );
-}
-
-function putAgentInstructions(
-  name: string,
-  body: { content: string },
-  token: string,
-) {
-  return putInstructions(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}/instructions`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      },
-    ),
   );
 }
 
@@ -658,112 +620,6 @@ describe("Zero Agents API", () => {
     });
   });
 
-  describe("GET /api/zero/agents/:name/instructions", () => {
-    it("should return null content when no instructions uploaded", async () => {
-      const createResponse = await postAgent({}, testCliToken);
-      const created = await createResponse.json();
-
-      const response = await getAgentInstructions(
-        created.agentId,
-        testCliToken,
-      );
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.content).toBeNull();
-    });
-
-    it("should return 404 for unknown agent", async () => {
-      const response = await getAgentInstructions(
-        "00000000-0000-0000-0000-000000000000",
-        testCliToken,
-      );
-
-      expect(response.status).toBe(404);
-    });
-  });
-
-  describe("PUT /api/zero/agents/:name/instructions", () => {
-    it("should update instructions and return agent response", async () => {
-      const createResponse = await postAgent({}, testCliToken);
-      const created = await createResponse.json();
-
-      const response = await putAgentInstructions(
-        created.agentId,
-        { content: "# Updated Instructions\nBe helpful." },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.agentId).toBe(created.agentId);
-    });
-
-    it("should rebuild compose with connector env var templates", async () => {
-      const createResponse = await postAgent({}, testCliToken);
-      const created = await createResponse.json();
-
-      // Update instructions
-      const response = await putAgentInstructions(
-        created.agentId,
-        { content: "# New instructions" },
-        testCliToken,
-      );
-      expect(response.status).toBe(200);
-
-      // Verify compose was rebuilt with connector env var templates
-      const content = await getTestComposeVersionContent(created.agentId);
-      const agents = content?.agents as Record<
-        string,
-        { environment: Record<string, string> }
-      >;
-      const agentEnv = Object.values(agents)[0]!.environment;
-
-      // GA connector env vars should be present (GitHub is GA)
-      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
-      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
-      // Base env vars still present
-      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
-      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
-    });
-
-    it("should preserve custom skills after instructions update", async () => {
-      await createTestZeroSkill(user.orgId, "my-skill");
-
-      const createResponse = await postAgent(
-        { customSkills: ["my-skill"] },
-        testCliToken,
-      );
-      const created = await createResponse.json();
-
-      const response = await putAgentInstructions(
-        created.agentId,
-        { content: "# Updated instructions" },
-        testCliToken,
-      );
-      expect(response.status).toBe(200);
-
-      // Verify skills still in agent record
-      const getRes = await getAgent(created.agentId, testCliToken);
-      const fetched = await getRes.json();
-      expect(fetched.customSkills).toEqual(["my-skill"]);
-
-      // Custom skill volumes are no longer in compose
-      const content = await getTestComposeVersionContent(created.agentId);
-      expect(content?.volumes).toBeUndefined();
-    });
-
-    it("should return 404 for unknown agent", async () => {
-      const response = await putAgentInstructions(
-        "00000000-0000-0000-0000-000000000000",
-        { content: "# Instructions" },
-        testCliToken,
-      );
-
-      expect(response.status).toBe(404);
-    });
-  });
-
   describe("round-trip verification", () => {
     it("should read back agent data after POST via GET", async () => {
       const createRes = await postAgent(
@@ -823,47 +679,6 @@ describe("Zero Agents API", () => {
         }),
       ).toBeUndefined();
     });
-
-    it("should read back instructions content after PUT via GET", async () => {
-      const created = await (await postAgent({}, testCliToken)).json();
-
-      const instructionsContent = "# My Instructions\nBe helpful.";
-      await putAgentInstructions(
-        created.agentId,
-        { content: instructionsContent },
-        testCliToken,
-      );
-
-      // Mock S3 downloads to return what was uploaded
-      const canonicalFilename = "CLAUDE.md";
-      context.mocks.s3.downloadManifest.mockResolvedValueOnce({
-        version: "a".repeat(64),
-        createdAt: new Date().toISOString(),
-        totalSize: instructionsContent.length,
-        fileCount: 1,
-        files: [
-          {
-            path: canonicalFilename,
-            hash: "b".repeat(64),
-            size: instructionsContent.length,
-          },
-        ],
-      });
-      context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
-        gzipSync(
-          createTestTarFile(
-            canonicalFilename,
-            Buffer.from(instructionsContent, "utf-8"),
-          ),
-        ),
-      );
-
-      const getRes = await getAgentInstructions(created.agentId, testCliToken);
-      expect(getRes.status).toBe(200);
-      const fetched = await getRes.json();
-
-      expect(fetched.content).toBe(instructionsContent);
-    });
   });
 
   describe("sandbox token (VM0_TOKEN) access", () => {
@@ -917,29 +732,6 @@ describe("Zero Agents API", () => {
       const response = await putAgent(
         "00000000-0000-0000-0000-000000000000",
         { connectors: [] },
-        sandboxToken,
-      );
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token cannot get instructions", async () => {
-      mockClerk({ userId: null });
-      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
-
-      const response = await getAgentInstructions(
-        "00000000-0000-0000-0000-000000000000",
-        sandboxToken,
-      );
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token cannot update instructions", async () => {
-      mockClerk({ userId: null });
-      const sandboxToken = await createTestSandboxToken(user.userId, "run-123");
-
-      const response = await putAgentInstructions(
-        "00000000-0000-0000-0000-000000000000",
-        { content: "# Instructions" },
         sandboxToken,
       );
       expect(response.status).toBe(403);
@@ -1425,24 +1217,6 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
     });
-
-    it("GET instructions should return 400 for invalid UUID", async () => {
-      const response = await getAgentInstructions("not-a-uuid", testCliToken);
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.code).toBe("BAD_REQUEST");
-    });
-
-    it("PUT instructions should return 400 for invalid UUID", async () => {
-      const response = await putAgentInstructions(
-        "not-a-uuid",
-        { content: "# test" },
-        testCliToken,
-      );
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error.code).toBe("BAD_REQUEST");
-    });
   });
 
   describe("owner/admin permission restriction", () => {
@@ -1481,39 +1255,6 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.displayName).toBe("Owner Updated");
-    });
-
-    it("should allow owner to update default agent instructions even as member", async () => {
-      const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken)
-      ).json();
-
-      const orgId = `org_mock_${user.userId}`;
-      await setDefaultAgentByComposeId(orgId, created.agentId);
-
-      // Re-mock as member and clear cached admin role
-      mockClerk({
-        userId: user.userId,
-        orgId,
-        orgRole: "org:member",
-        clerkOrgs: [
-          {
-            id: orgId,
-            slug: `org-${user.userId.slice(-8)}`,
-            name: `org-${user.userId.slice(-8)}`,
-            role: "org:member",
-          },
-        ],
-      });
-      await clearOrgMembersCacheEntry(orgId, user.userId);
-      const memberToken = await createTestCliToken(user.userId);
-
-      const response = await putAgentInstructions(
-        created.agentId,
-        { content: "# Owner updated instructions" },
-        memberToken,
-      );
-      expect(response.status).toBe(200);
     });
 
     it("should allow admin to patch default agent metadata", async () => {
@@ -1692,38 +1433,6 @@ describe("Zero Agents API", () => {
       const response = await putAgent(
         created.agentId,
         { displayName: "Hacked via PUT" },
-        otherToken,
-      );
-      expect(response.status).toBe(403);
-      const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
-    });
-
-    it("should return 403 when non-owner member updates agent instructions", async () => {
-      // User A (admin) creates agent
-      const created = await (
-        await postAgent({ displayName: "Owned Agent" }, testCliToken)
-      ).json();
-
-      const orgId = `org_mock_${user.userId}`;
-
-      // Create User B as a non-owner member of the same org
-      const otherUser = await context.setupUser({ prefix: "non-owner" });
-      await insertOrgMembersCacheEntry({
-        orgId,
-        userId: otherUser.userId,
-        cachedAt: new Date(),
-      });
-      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
-      const otherToken = await createTestCliToken(
-        otherUser.userId,
-        undefined,
-        orgId,
-      );
-
-      const response = await putAgentInstructions(
-        created.agentId,
-        { content: "# Hacked instructions" },
         otherToken,
       );
       expect(response.status).toBe(403);

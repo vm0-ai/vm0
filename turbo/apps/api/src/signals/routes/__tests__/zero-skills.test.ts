@@ -19,7 +19,7 @@ import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow, now } from "../../../lib/time";
-import { generateCliToken } from "../../auth/tokens";
+import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   deleteSkillsForFixture$,
@@ -43,6 +43,10 @@ const mocks = createZeroRouteMocks(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
 }
 
 async function cliAuthHeaders(
@@ -1431,6 +1435,59 @@ describe("GET /api/zero/agents/:id/instructions", () => {
     });
   });
 
+  it("returns 403 for a sandbox token without agent:read capability", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const runId = `run_${randomUUID()}`;
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId,
+      capabilities: ["file:read"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: { authorization: `Bearer ${token}` },
+        params: { id: randomUUID() },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: agent:read",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 400 for an invalid agent id", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: "not-a-uuid" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "id: Invalid UUID",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("returns null content when no instructions uploaded", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -1449,6 +1506,34 @@ describe("GET /api/zero/agents/:id/instructions", () => {
     const response = await accept(
       instructionsClient().get({
         headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      content: null,
+      filename: "CLAUDE.md",
+    });
+  });
+
+  it("allows an owner CLI token to read instructions", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: await cliAuthHeaders(fixture, "member"),
         params: { id: agentId },
       }),
       [200],
@@ -1509,6 +1594,35 @@ describe("GET /api/zero/agents/:id/instructions", () => {
     expect(response.body).toStrictEqual({
       content: null,
       filename: "CLAUDE.md",
+    });
+  });
+
+  it("returns 404 when a non-owner org member reads a private agent", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        visibility: "private",
+        withComposeVersion: true,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+
+    const response = await accept(
+      instructionsClient().get({
+        headers: authHeaders(),
+        params: { id: agentId },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
     });
   });
 

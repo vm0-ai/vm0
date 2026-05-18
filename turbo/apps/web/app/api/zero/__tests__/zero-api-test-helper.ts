@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { POST as createAgentRoute } from "../agents/route";
-import { PUT as updateInstructionsRoute } from "../agents/[id]/instructions/route";
 import {
   createTestOrgModelProvider,
   insertOrgModelPolicy,
@@ -53,25 +52,6 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
   const agent = (await agentRes.json()) as {
     agentId: string;
   };
-
-  // 4. Upload instructions
-  const instructionsRes = await updateInstructionsRoute(
-    new NextRequest(
-      `http://localhost:3000/api/zero/agents/${agent.agentId}/instructions`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: "# Agent Instructions\nBe helpful.",
-        }),
-      },
-    ),
-  );
-  if (!instructionsRes.ok) {
-    throw new Error(
-      `updateInstructionsRoute failed with status ${instructionsRes.status}`,
-    );
-  }
 
   return {
     user,

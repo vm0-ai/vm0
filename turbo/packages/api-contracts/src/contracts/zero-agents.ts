@@ -213,6 +213,7 @@ export const zeroAgentInstructionsContract = c.router({
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
       200: zeroAgentInstructionsResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -227,6 +228,7 @@ export const zeroAgentInstructionsContract = c.router({
     body: zeroAgentInstructionsRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

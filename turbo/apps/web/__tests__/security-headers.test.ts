@@ -213,6 +213,15 @@ const ZERO_AGENT_USER_CONNECTORS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/agents/user-connectors",
   "/api/zero/agent/550e8400-e29b-41d4-a716-446655440000/user-connectors",
 ] as const;
+const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
+  "/api/zero/agents/:id/instructions";
+const ZERO_AGENT_INSTRUCTIONS_PATH =
+  "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/instructions";
+const ZERO_AGENT_INSTRUCTIONS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/instructions/extra",
+  "/api/zero/agents/instructions",
+  "/api/zero/agent/550e8400-e29b-41d4-a716-446655440000/instructions",
+] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
@@ -832,6 +841,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/chat/search",
+        },
+        {
+          source: ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/agents/:id/instructions",
         },
         {
           source: "/api/zero/user-preferences",
@@ -1941,6 +1955,31 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_AGENT_USER_CONNECTORS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for zero agent instructions rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/agents/:id/instructions",
+    });
+
+    const matcher = getPathMatch(ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_AGENT_INSTRUCTIONS_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_AGENT_INSTRUCTIONS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

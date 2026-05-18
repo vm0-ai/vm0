@@ -8,12 +8,14 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
 import { extractFileFromTarGz } from "../../lib/tar";
+import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 
 interface AgentInstructionsResult {
   readonly content: string | null;
@@ -27,10 +29,11 @@ interface AgentInstructionsResult {
  * storage volume, and extracts the canonical instructions file from the
  * S3 archive. Returns null when the agent is not found.
  */
-export function zeroAgentInstructions(
-  orgId: string,
-  agentId: string,
-): Computed<Promise<AgentInstructionsResult | null>> {
+export function zeroAgentInstructions(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+}): Computed<Promise<AgentInstructionsResult | null>> {
   return computed(async (get): Promise<AgentInstructionsResult | null> => {
     const [compose] = await get(db$)
       .select({
@@ -43,7 +46,14 @@ export function zeroAgentInstructions(
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
-      .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.id, agentId)))
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .where(
+        and(
+          eq(agentComposes.orgId, args.orgId),
+          eq(agentComposes.id, args.agentId),
+          visibleJoinedZeroAgentCondition(args.userId),
+        ),
+      )
       .limit(1);
 
     if (!compose) {

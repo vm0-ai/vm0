@@ -5,13 +5,15 @@ import {
   zeroAgentsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -35,6 +37,39 @@ function authHeaders() {
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+async function cliAuthHeaders(
+  fixture: SkillsFixture,
+  role: "admin" | "member" = "admin",
+): Promise<{ readonly authorization: string }> {
+  const tokenId = randomUUID();
+  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: fixture.userId,
+    name: "Test Token",
+    expiresAt: new Date(now() + 60 * 60 * 1000),
+  });
+  await writeDb
+    .insert(orgMembersCache)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role,
+      cachedAt: new Date(now() + 60 * 1000),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: {
+        role,
+        cachedAt: new Date(now() + 60 * 1000),
+      },
+    });
+
+  return { authorization: `Bearer ${token}` };
 }
 
 function agentsClient() {
@@ -687,6 +722,58 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
     });
   });
 
+  it("returns 403 for a sandbox token without agent:write capability", async () => {
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["agent:read"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await accept(
+      instructionsClient().update({
+        params: { id: randomUUID() },
+        headers: { authorization: `Bearer ${token}` },
+        body: { content: "new instructions" },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: agent:write",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns 400 for an invalid agent id", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      instructionsClient().update({
+        params: { id: "not-a-uuid" },
+        headers: authHeaders(),
+        body: { content: "new instructions" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "id: Invalid UUID",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
   it("updates instructions storage and preserves agent metadata", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
@@ -736,6 +823,67 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
       return file.path;
     });
     expect(paths).toStrictEqual(["CLAUDE.md", "AGENTS.md"]);
+  });
+
+  it("allows an owner CLI token to update instructions", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "CLI Instructions Agent",
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      instructionsClient().update({
+        params: { id: agent.agentId },
+        headers: await cliAuthHeaders(fixture, "member"),
+        body: { content: "Use CLI-authenticated operating notes." },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      displayName: "CLI Instructions Agent",
+    });
+  });
+
+  it("allows an owner member to update private agent instructions", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        visibility: "private",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      instructionsClient().update({
+        params: { id: agent.agentId },
+        headers: authHeaders(),
+        body: { content: "owner update" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId: agent.agentId,
+      ownerId: fixture.userId,
+      visibility: "private",
+    });
   });
 
   it("returns 403 when a non-owner member updates another user's instructions", async () => {
