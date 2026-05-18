@@ -15,6 +15,8 @@ export const agentPhoneCallbackPayloadSchema = z
     messageId: z.string(),
     conversationId: z.string().nullable(),
     channel: z.string().optional(),
+    isGroup: z.boolean().optional(),
+    rootMessageId: z.string().optional(),
     phoneHandle: z.string(),
     fromNumber: z.string(),
     toNumber: z.string(),

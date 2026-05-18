@@ -29,10 +29,11 @@ import {
   linkAgentPhoneUserToVm0User,
   normalizeAgentPhoneHandle,
   publishAgentPhoneUserChanged,
-  resolveAgentPhoneUserLink,
+  resolveAgentPhoneUserLinkForEvent,
   storeInboundAgentPhoneMessage,
   verifyAgentPhoneConnectSignature,
   verifyAgentPhoneWebhook,
+  type AgentPhoneRecentHistoryMessage,
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
 } from "../services/zero-agentphone.service";
@@ -618,12 +619,166 @@ function stringValue(
   return undefined;
 }
 
+function booleanValue(
+  source: Record<string, unknown>,
+  keys: readonly string[],
+): boolean | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true" || normalized === "yes") {
+        return true;
+      }
+      if (normalized === "false" || normalized === "no") {
+        return false;
+      }
+    }
+  }
+  return undefined;
+}
+
+function arrayValue(source: Record<string, unknown>, keys: readonly string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+  return [];
+}
+
 function parseDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) {
     return null;
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isZeroMentionText(value: string): boolean {
+  return /(^|\s)@(zero|vm0)\b/iu.test(value);
+}
+
+function mentionMatchesZero(value: unknown): boolean {
+  if (typeof value === "string") {
+    return isZeroMentionText(value.startsWith("@") ? value : `@${value}`);
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const mention = value as Record<string, unknown>;
+  return ["text", "name", "username", "handle", "value"].some((key) => {
+    const field = mention[key];
+    return typeof field === "string" && mentionMatchesZero(field);
+  });
+}
+
+function extractAgentPhoneIsGroup(
+  body: Record<string, unknown>,
+  data: Record<string, unknown>,
+): boolean {
+  const explicit =
+    booleanValue(data, ["isGroup", "is_group", "group"]) ??
+    booleanValue(body, ["isGroup", "is_group", "group"]);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+
+  const type = (
+    stringValue(data, ["conversationType", "conversation_type", "chatType"]) ??
+    stringValue(body, ["conversationType", "conversation_type", "chatType"]) ??
+    ""
+  ).toLowerCase();
+  if (["group", "group_chat", "imessage_group"].includes(type)) {
+    return true;
+  }
+
+  return (
+    arrayValue(data, ["participants", "participantNumbers", "recipients"])
+      .length > 2 ||
+    arrayValue(body, ["participants", "participantNumbers", "recipients"])
+      .length > 2
+  );
+}
+
+function extractAgentPhoneMentioned(
+  body: Record<string, unknown>,
+  data: Record<string, unknown>,
+  messageBody: string,
+): boolean {
+  const explicit =
+    booleanValue(data, [
+      "mentioned",
+      "isMentioned",
+      "is_mentioned",
+      "mentionsAgent",
+      "mentions_agent",
+    ]) ??
+    booleanValue(body, [
+      "mentioned",
+      "isMentioned",
+      "is_mentioned",
+      "mentionsAgent",
+      "mentions_agent",
+    ]);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+
+  return (
+    arrayValue(data, ["mentions", "mentionedUsers", "mentioned_users"]).some(
+      mentionMatchesZero,
+    ) ||
+    arrayValue(body, ["mentions", "mentionedUsers", "mentioned_users"]).some(
+      mentionMatchesZero,
+    ) ||
+    isZeroMentionText(messageBody)
+  );
+}
+
+function recentHistoryMessage(
+  value: unknown,
+): AgentPhoneRecentHistoryMessage | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const item = value as Record<string, unknown>;
+  const content =
+    stringValue(item, ["content", "message", "body", "text"]) ?? null;
+  const mediaUrl = stringValue(item, ["mediaUrl", "media_url"]);
+  if (!content && !mediaUrl) {
+    return null;
+  }
+
+  return {
+    messageId: stringValue(item, ["messageId", "message_id", "id"]) ?? null,
+    content: content ?? (mediaUrl ? `[AgentPhone file] ${mediaUrl}` : null),
+    direction: stringValue(item, ["direction"]) ?? null,
+    channel: stringValue(item, ["channel"]) ?? null,
+    fromNumber:
+      stringValue(item, ["from", "fromNumber", "from_number"]) ?? null,
+    toNumber: stringValue(item, ["to", "toNumber", "to_number"]) ?? null,
+    at: stringValue(item, ["at", "timestamp", "receivedAt"]) ?? null,
+  };
+}
+
+function extractAgentPhoneRecentHistory(
+  body: Record<string, unknown>,
+  data: Record<string, unknown>,
+): readonly AgentPhoneRecentHistoryMessage[] {
+  return [
+    ...arrayValue(body, ["recentHistory", "recent_history"]),
+    ...arrayValue(data, ["recentHistory", "recent_history"]),
+  ]
+    .map(recentHistoryMessage)
+    .filter((item): item is AgentPhoneRecentHistoryMessage => {
+      return item !== null;
+    });
 }
 
 function extractAgentPhoneEvent(
@@ -653,6 +808,9 @@ function extractAgentPhoneEvent(
     stringValue(data, ["conversationId", "conversation_id"]) ??
     stringValue(body, ["conversationId", "conversation_id"]) ??
     null;
+  const isGroup = extractAgentPhoneIsGroup(body, data);
+  const mentioned = extractAgentPhoneMentioned(body, data, messageBody);
+  const recentHistory = extractAgentPhoneRecentHistory(body, data);
 
   if (!messageId || !agentphoneAgentId || !fromNumber || !toNumber) {
     log.warn("Missing required fields in AgentPhone webhook", {
@@ -672,6 +830,8 @@ function extractAgentPhoneEvent(
     channel,
     messageId,
     conversationId,
+    isGroup,
+    mentioned,
     agentphoneAgentId,
     fromNumber,
     toNumber,
@@ -681,6 +841,7 @@ function extractAgentPhoneEvent(
       parseDate(data.receivedAt) ??
       parseDate(data.received_at) ??
       parseDate(body.timestamp),
+    recentHistory,
   };
 }
 
@@ -696,6 +857,50 @@ function agentPhoneWebhookConfig(): AgentPhoneWebhookConfig | undefined {
     return undefined;
   }
   return { webhookSecret, officialPhoneNumber };
+}
+
+function shouldAcceptAgentPhoneEvent(args: {
+  readonly event: AgentPhoneMessageEvent;
+  readonly config: AgentPhoneWebhookConfig;
+  readonly channel: AgentPhoneChannel;
+  readonly webhookId: string | null;
+}): boolean {
+  if (
+    normalizeAgentPhoneHandle(args.event.toNumber, "sms") !==
+    normalizeAgentPhoneHandle(args.config.officialPhoneNumber, "sms")
+  ) {
+    return false;
+  }
+
+  const normalizedFrom = normalizeAgentPhoneHandle(
+    args.event.fromNumber,
+    args.channel,
+  );
+  log.debug("AgentPhone webhook accepted", {
+    webhookId: args.webhookId,
+    channel: args.channel,
+    fromShape: describeAgentPhoneHandleShape(args.event.fromNumber),
+    fromHandleNormalized: Boolean(normalizedFrom),
+    hasMedia: Boolean(args.event.mediaUrl),
+  });
+
+  if (
+    !normalizedFrom ||
+    !isValidAgentPhoneHandle(normalizedFrom, args.channel)
+  ) {
+    log.warn("AgentPhone webhook from-handle is not usable", {
+      webhookId: args.webhookId,
+      channel: args.channel,
+      fromShape: describeAgentPhoneHandleShape(args.event.fromNumber),
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function shouldDispatchAgentPhoneEvent(event: AgentPhoneMessageEvent): boolean {
+  return !(event.channel === "imessage" && event.isGroup && !event.mentioned);
 }
 
 const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -754,39 +959,18 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   if (
-    normalizeAgentPhoneHandle(event.toNumber, "sms") !==
-    normalizeAgentPhoneHandle(config.officialPhoneNumber, "sms")
+    !shouldAcceptAgentPhoneEvent({
+      event,
+      config,
+      channel: rawChannel,
+      webhookId,
+    })
   ) {
     return okText();
   }
 
-  const normalizedFrom = normalizeAgentPhoneHandle(
-    event.fromNumber,
-    rawChannel,
-  );
-  log.debug("AgentPhone webhook accepted", {
-    webhookId,
-    channel: rawChannel,
-    fromShape: describeAgentPhoneHandleShape(event.fromNumber),
-    fromHandleNormalized: Boolean(normalizedFrom),
-    hasMedia: Boolean(event.mediaUrl),
-  });
-
-  if (!normalizedFrom || !isValidAgentPhoneHandle(normalizedFrom, rawChannel)) {
-    log.warn("AgentPhone webhook from-handle is not usable", {
-      webhookId,
-      channel: rawChannel,
-      fromShape: describeAgentPhoneHandleShape(event.fromNumber),
-    });
-    return okText();
-  }
-
   const writeDb = set(writeDb$);
-  const userLink = await resolveAgentPhoneUserLink(
-    writeDb,
-    event.fromNumber,
-    rawChannel,
-  );
+  const userLink = await resolveAgentPhoneUserLinkForEvent(writeDb, event);
   signal.throwIfAborted();
 
   const stored = await storeInboundAgentPhoneMessage(writeDb, {
@@ -795,6 +979,10 @@ const webhook$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
   signal.throwIfAborted();
   if (!stored.inserted) {
+    return okText();
+  }
+
+  if (!shouldDispatchAgentPhoneEvent(event)) {
     return okText();
   }
 

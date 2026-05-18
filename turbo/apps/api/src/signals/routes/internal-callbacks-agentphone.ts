@@ -5,6 +5,7 @@ import {
   type AgentPhoneCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-agentphone";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
@@ -57,6 +58,12 @@ type GetFeatureOverrides = (
   orgId: string,
   userId: string,
 ) => Promise<Record<string, boolean>>;
+
+type AgentPhoneCallbackCompletionResponse =
+  | { readonly status: 200; readonly body: { readonly success: true } }
+  | { readonly status: 502; readonly body: { readonly error: string } };
+
+type SentAgentPhoneMessage = Awaited<ReturnType<typeof sendAgentPhoneMessage>>;
 
 function successResponse(): {
   readonly status: 200;
@@ -169,12 +176,119 @@ async function staleLinkDisconnected(args: {
   readonly payload: AgentPhoneCallbackPayload;
   readonly channel: AgentPhoneChannel;
 }): Promise<boolean> {
+  if (args.payload.isGroup && args.payload.conversationId) {
+    const [userLink] = await args.db
+      .select({ id: agentphoneUserLinks.id })
+      .from(agentphoneUserLinks)
+      .where(eq(agentphoneUserLinks.id, args.payload.userLinkId))
+      .limit(1);
+    return !userLink;
+  }
+
   const currentUserLink = await resolveAgentPhoneUserLink(
     args.db,
     args.payload.phoneHandle,
     args.channel,
   );
   return currentUserLink?.id !== args.payload.userLinkId;
+}
+
+function agentPhoneCallbackRootMessageId(
+  payload: AgentPhoneCallbackPayload,
+): string {
+  return (
+    payload.rootMessageId ??
+    (payload.isGroup && payload.conversationId
+      ? `group:${payload.conversationId}`
+      : "dm")
+  );
+}
+
+async function sendAgentPhoneCompletionMessage(args: {
+  readonly payload: AgentPhoneCallbackPayload;
+  readonly body: string;
+  readonly signal: AbortSignal;
+}): Promise<
+  | { readonly ok: true; readonly sent: SentAgentPhoneMessage }
+  | {
+      readonly ok: false;
+      readonly response: AgentPhoneCallbackCompletionResponse;
+    }
+> {
+  const sendResult = await settle(
+    sendAgentPhoneMessage(
+      {
+        agentphoneAgentId: args.payload.agentphoneAgentId,
+        ...(args.payload.isGroup && args.payload.conversationId
+          ? {
+              conversationId: args.payload.conversationId,
+              replyToMessageId: args.payload.messageId,
+            }
+          : { toNumber: args.payload.phoneHandle }),
+        body: args.body,
+      },
+      args.signal,
+    ),
+  );
+  if (sendResult.ok) {
+    return { ok: true, sent: sendResult.value };
+  }
+  if (isAgentPhoneApiError(sendResult.error)) {
+    return {
+      ok: false,
+      response: {
+        status: 502 as const,
+        body: {
+          error: `AgentPhone API error: ${
+            sendResult.error.body || `HTTP ${sendResult.error.status}`
+          }`,
+        },
+      },
+    };
+  }
+  throw sendResult.error;
+}
+
+async function recordAgentPhoneCompletion(args: {
+  readonly db: Db;
+  readonly payload: AgentPhoneCallbackPayload;
+  readonly run: RunContext | undefined;
+  readonly status: "completed" | "failed";
+  readonly body: string;
+  readonly sent: SentAgentPhoneMessage;
+  readonly userChannel: AgentPhoneChannel;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await storeOutboundAgentPhoneMessage(args.db, {
+    agentphoneMessageId: args.sent.id,
+    conversationId: args.payload.conversationId,
+    agentphoneAgentId: args.payload.agentphoneAgentId,
+    userLinkId: args.payload.userLinkId,
+    phoneHandle: args.payload.phoneHandle,
+    fromNumber: args.sent.fromNumber ?? args.payload.toNumber,
+    toNumber: args.sent.toNumber ?? args.payload.phoneHandle,
+    body: args.body,
+    channel: args.sent.channel,
+    userChannel: args.userChannel,
+  });
+  args.signal.throwIfAborted();
+
+  if (!args.run) {
+    return;
+  }
+
+  await saveAgentPhoneThreadSession(args.db, {
+    userLinkId: args.payload.userLinkId,
+    conversationId: args.payload.conversationId,
+    rootMessageId: agentPhoneCallbackRootMessageId(args.payload),
+    existingSessionId: args.payload.existingSessionId ?? undefined,
+    newSessionId: args.payload.existingSessionId
+      ? undefined
+      : args.run.sessionId,
+    messageId: args.payload.messageId,
+    runStatus: args.status,
+  });
+  args.signal.throwIfAborted();
 }
 
 async function handleCompletion(args: {
@@ -186,10 +300,7 @@ async function handleCompletion(args: {
   readonly getFeatureOverrides: GetFeatureOverrides;
   readonly formatRunError: FormatRunError;
   readonly signal: AbortSignal;
-}): Promise<
-  | { readonly status: 200; readonly body: { readonly success: true } }
-  | { readonly status: 502; readonly body: { readonly error: string } }
-> {
+}): Promise<AgentPhoneCallbackCompletionResponse> {
   const payloadChannel = args.payload.channel ?? "";
   const userChannel: AgentPhoneChannel = isAgentPhoneChannel(payloadChannel)
     ? payloadChannel
@@ -259,57 +370,26 @@ async function handleCompletion(args: {
     footerText,
   });
 
-  const sendResult = await settle(
-    sendAgentPhoneMessage(
-      {
-        agentphoneAgentId: args.payload.agentphoneAgentId,
-        toNumber: args.payload.phoneHandle,
-        body,
-      },
-      args.signal,
-    ),
-  );
-  if (!sendResult.ok) {
-    if (isAgentPhoneApiError(sendResult.error)) {
-      return {
-        status: 502 as const,
-        body: {
-          error: `AgentPhone API error: ${
-            sendResult.error.body || `HTTP ${sendResult.error.status}`
-          }`,
-        },
-      };
-    }
-    throw sendResult.error;
-  }
-  const sent = sendResult.value;
-  args.signal.throwIfAborted();
-
-  await storeOutboundAgentPhoneMessage(args.db, {
-    agentphoneMessageId: sent.id,
-    conversationId: args.payload.conversationId,
-    agentphoneAgentId: args.payload.agentphoneAgentId,
-    userLinkId: args.payload.userLinkId,
-    phoneHandle: args.payload.phoneHandle,
-    fromNumber: sent.fromNumber ?? args.payload.toNumber,
-    toNumber: sent.toNumber ?? args.payload.phoneHandle,
+  const sendResult = await sendAgentPhoneCompletionMessage({
+    payload: args.payload,
     body,
-    channel: sent.channel,
-    userChannel,
+    signal: args.signal,
   });
+  if (!sendResult.ok) {
+    return sendResult.response;
+  }
   args.signal.throwIfAborted();
 
-  if (run) {
-    await saveAgentPhoneThreadSession(args.db, {
-      userLinkId: args.payload.userLinkId,
-      conversationId: args.payload.conversationId,
-      existingSessionId: args.payload.existingSessionId ?? undefined,
-      newSessionId: args.payload.existingSessionId ? undefined : run.sessionId,
-      messageId: args.payload.messageId,
-      runStatus: args.status,
-    });
-    args.signal.throwIfAborted();
-  }
+  await recordAgentPhoneCompletion({
+    db: args.db,
+    payload: args.payload,
+    run,
+    status: args.status,
+    body,
+    sent: sendResult.sent,
+    userChannel,
+    signal: args.signal,
+  });
 
   return successResponse();
 }
