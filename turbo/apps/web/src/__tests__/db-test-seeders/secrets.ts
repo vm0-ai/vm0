@@ -107,22 +107,48 @@ export async function insertTestUserSecret(params: {
   userId: string;
   name: string;
   value?: string;
+  description?: string | null;
   type?: SecretType;
-}): Promise<void> {
+}): Promise<{
+  id: string;
+  name: string;
+  description: string | null;
+  type: SecretType;
+  createdAt: Date;
+  updatedAt: Date;
+}> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
   const encrypted = encryptSecretValue(
     params.value ?? "test-secret-value",
     SECRETS_ENCRYPTION_KEY,
   );
-  await globalThis.services.db.insert(secrets).values({
-    name: params.name,
-    encryptedValue: encrypted,
-    type: params.type ?? "user",
-    userId: params.userId,
-    orgId: params.orgId,
-    description: "test seed",
-  });
+  const [secret] = await globalThis.services.db
+    .insert(secrets)
+    .values({
+      name: params.name,
+      encryptedValue: encrypted,
+      type: params.type ?? "user",
+      userId: params.userId,
+      orgId: params.orgId,
+      description: params.description ?? "test seed",
+    })
+    .returning({
+      id: secrets.id,
+      name: secrets.name,
+      description: secrets.description,
+      type: secrets.type,
+      createdAt: secrets.createdAt,
+      updatedAt: secrets.updatedAt,
+    });
+
+  if (!secret) {
+    throw new Error("Expected inserted secret to return a row");
+  }
+  return {
+    ...secret,
+    type: secret.type as SecretType,
+  };
 }
 
 /**

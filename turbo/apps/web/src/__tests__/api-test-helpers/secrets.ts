@@ -1,9 +1,7 @@
 import { POST as setVariableRoute } from "../../../app/api/zero/variables/route";
-import { isBadRequest } from "@vm0/api-services/errors";
 import { getAuthContext } from "../../lib/auth/get-auth-context";
-import { initServices } from "../../lib/init-services";
 import { resolveOrg } from "../../lib/zero/org/resolve-org";
-import { setSecret } from "../../lib/zero/secret/secret-service";
+import { insertTestUserSecret } from "../db-test-seeders/secrets";
 import { createTestRequest } from "./core";
 
 // ============================================================================
@@ -30,34 +28,26 @@ export async function createTestSecret(
   createdAt: string;
   updatedAt: string;
 }> {
-  initServices();
   const authCtx = await getAuthContext();
   if (!authCtx) {
     throw new Error("Failed to create secret: not authenticated");
   }
-  try {
-    const { org } = await resolveOrg(authCtx);
-    const secret = await setSecret(
-      org.orgId,
-      authCtx.userId,
-      name,
-      value,
-      description,
-    );
-    return {
-      id: secret.id,
-      name: secret.name,
-      description: secret.description,
-      type: secret.type,
-      createdAt: secret.createdAt.toISOString(),
-      updatedAt: secret.updatedAt.toISOString(),
-    };
-  } catch (error) {
-    if (isBadRequest(error)) {
-      throw new Error("Failed to create secret: Invalid request");
-    }
-    throw error;
-  }
+  const { org } = await resolveOrg(authCtx);
+  const secret = await insertTestUserSecret({
+    orgId: org.orgId,
+    userId: authCtx.userId,
+    name,
+    value,
+    description,
+  });
+  return {
+    id: secret.id,
+    name: secret.name,
+    description: secret.description,
+    type: secret.type,
+    createdAt: secret.createdAt.toISOString(),
+    updatedAt: secret.updatedAt.toISOString(),
+  };
 }
 
 // ============================================================================
