@@ -73,6 +73,51 @@ describe("window policy", () => {
     ).toStrictEqual({ action: "allow-in-app" });
   });
 
+  it("allows Clerk development frontend API navigation inside Electron", () => {
+    expect(
+      isAllowedAppNavigation(
+        "https://mock-instance.clerk.accounts.dev/v1/client",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+  });
+
+  it("opens same-site Clerk frontend API windows inside Electron", () => {
+    expect(
+      decideWindowOpen(
+        "https://clerk.vm0.ai/v1/oauth_callback",
+        allowedOrigins,
+      ),
+    ).toStrictEqual({ action: "allow-in-app" });
+  });
+
+  it("opens Google OAuth windows inside Electron", () => {
+    expect(
+      decideWindowOpen(
+        "https://accounts.google.com/o/oauth2/v2/auth?redirect_uri=https%3A%2F%2Fmock-instance.clerk.accounts.dev%2Fv1%2Foauth_callback&state=abc",
+        allowedOrigins,
+      ),
+    ).toStrictEqual({ action: "allow-in-app" });
+  });
+
+  it("opens GitHub OAuth windows inside Electron", () => {
+    expect(
+      decideWindowOpen(
+        "https://github.com/login/oauth/authorize?client_id=clerk&redirect_uri=https%3A%2F%2Fclerk.vm0.ai%2Fv1%2Foauth_callback&state=abc",
+        allowedOrigins,
+      ),
+    ).toStrictEqual({ action: "allow-in-app" });
+  });
+
+  it("keeps ordinary GitHub links external", () => {
+    expect(
+      decideWindowOpen("https://github.com/vm0-ai/vm0", allowedOrigins),
+    ).toStrictEqual({
+      action: "open-external",
+      url: "https://github.com/vm0-ai/vm0",
+    });
+  });
+
   it("opens ordinary http links externally", () => {
     expect(
       decideWindowOpen("https://example.com/docs", allowedOrigins),
