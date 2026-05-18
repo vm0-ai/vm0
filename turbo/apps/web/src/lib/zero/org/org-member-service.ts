@@ -733,21 +733,3 @@ export async function setOrgDomainVerified(
 
   log.debug("Domain verification updated", { orgId, domainId, verified });
 }
-
-/**
- * Get all orgs accessible to a user (via Clerk organization memberships).
- */
-export async function getUserAccessibleOrgs(
-  userId: string,
-): Promise<Array<{ slug: string; role: string }>> {
-  const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId: userId,
-  });
-  return memberships.data.map((m) => {
-    return {
-      slug: m.organization.slug,
-      role: mapClerkRole(m.role),
-    };
-  });
-}

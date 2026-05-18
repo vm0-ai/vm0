@@ -108,6 +108,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
+  ["/api/zero/org/list", "/api/zero/org/list"],
   ["/api/zero/voice-chat", "/api/zero/voice-chat"],
   ["/api/zero/voice-chat/token", "/api/zero/voice-chat/token"],
   [
