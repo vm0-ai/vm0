@@ -60,6 +60,13 @@ const INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS = [
   "/api/integrations/github/extra",
   "/api/integrations",
 ] as const;
+const STORAGES_DOWNLOAD_REWRITE_SOURCE = "/api/storages/download";
+const STORAGES_DOWNLOAD_PATH = "/api/storages/download";
+const STORAGES_DOWNLOAD_NEXT_NEGATIVE_PATHS = [
+  "/api/storages/download/extra",
+  "/api/storages",
+  "/api/storages/downloads",
+] as const;
 const STORAGES_LIST_REWRITE_SOURCE = "/api/storages/list";
 const STORAGES_LIST_PATH = "/api/storages/list";
 const STORAGES_LIST_NEXT_NEGATIVE_PATHS = [
@@ -376,6 +383,10 @@ describe("API backend rewrites", () => {
         {
           source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
           destination: "https://api.example.test/api/integrations/github",
+        },
+        {
+          source: STORAGES_DOWNLOAD_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/storages/download",
         },
         {
           source: STORAGES_LIST_REWRITE_SOURCE,
@@ -744,6 +755,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(STORAGES_LIST_PATH)).toStrictEqual({});
     for (const pathname of STORAGES_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact storages download rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === STORAGES_DOWNLOAD_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: STORAGES_DOWNLOAD_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/storages/download",
+    });
+
+    const matcher = getPathMatch(STORAGES_DOWNLOAD_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(STORAGES_DOWNLOAD_PATH)).toStrictEqual({});
+    for (const pathname of STORAGES_DOWNLOAD_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

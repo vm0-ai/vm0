@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST as prepareRoute } from "../prepare/route";
-import { GET as downloadRoute } from "../download/route";
 import {
   createTestRequest,
-  createTestVolume,
-  createTestArtifact,
   createTestCompose,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext, uniqueId } from "../../../../src/__tests__/test-helpers";
@@ -80,40 +77,6 @@ describe("Storage capability enforcement", () => {
       );
 
       expect(response.status).toBe(200);
-    });
-  });
-
-  describe("sandbox token access for download", () => {
-    it("should accept agent:read token for volume download", async () => {
-      await createTestVolume("test-vol");
-      const token = await generateSandboxToken(userId, runId, "org-test");
-      mockClerk({ userId: null });
-
-      const response = await downloadRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/download?name=test-vol&type=volume",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      // Auth passed (not 403) — may be 200 or 404 depending on storage state
-      expect(response.status).not.toBe(403);
-    });
-
-    it("should accept sandbox token for artifact download regardless of capability", async () => {
-      await createTestArtifact("test-art");
-      const token = await generateSandboxToken(userId, runId, "org-test");
-      mockClerk({ userId: null });
-
-      const response = await downloadRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/download?name=test-art&type=artifact",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      // Auth passed (not 403) — may be 200 or 404 depending on storage state
-      expect(response.status).not.toBe(403);
     });
   });
 });
