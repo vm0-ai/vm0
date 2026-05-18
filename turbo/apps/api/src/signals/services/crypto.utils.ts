@@ -347,8 +347,13 @@ export async function decryptStoredSecretValueWithMode(
 
 export async function encryptStoredSecretValue(
   plaintext: string,
+  ctx: FeatureSwitchContext = {},
 ): Promise<string> {
   if (!env("SECRETS_KMS_KEY_ID")) {
+    return encryptSecretValue(plaintext);
+  }
+
+  if (!isFeatureEnabled(FeatureSwitchKey.StoredSecretKmsWrite, ctx)) {
     return encryptSecretValue(plaintext);
   }
 
@@ -367,12 +372,13 @@ export async function decryptStoredSecretValue(
 
 export async function encryptStoredSecretsMap(
   secrets: Record<string, string> | null | undefined,
+  ctx: FeatureSwitchContext = {},
 ): Promise<string | null> {
   if (!secrets) {
     return null;
   }
 
-  return await encryptStoredSecretValue(JSON.stringify(secrets));
+  return await encryptStoredSecretValue(JSON.stringify(secrets), ctx);
 }
 
 export async function decryptStoredSecretsMap(

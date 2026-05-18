@@ -122,10 +122,28 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
 
-  it("dual-writes legacy AES and AWS KMS material when KMS is configured", async () => {
+  it("stays legacy-only when KMS env is set but StoredSecretKmsWrite is off", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptStoredSecretValue("secret-value");
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
+      format: "legacy",
+      hasLegacy: true,
+      hasKms: false,
+    });
+    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
+      "secret-value",
+    );
+    expect(fakeKmsClient.calls).toHaveLength(0);
+  });
+
+  it("dual-writes legacy AES and AWS KMS material when KMS env is set and StoredSecretKmsWrite is on", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptStoredSecretValue("secret-value", {
+      overrides: { [FeatureSwitchKey.StoredSecretKmsWrite]: true },
+    });
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
       format: "dual",
@@ -197,10 +215,13 @@ describe("stored secret encryption", () => {
     ).rejects.toThrow("Stored secret ciphertext does not include KMS data");
   });
 
-  it("dual-writes stored secrets maps when KMS is configured", async () => {
+  it("dual-writes stored secrets maps when KMS env is set and StoredSecretKmsWrite is on", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
-    const encrypted = await encryptStoredSecretsMap({ API_KEY: "secret" });
+    const encrypted = await encryptStoredSecretsMap(
+      { API_KEY: "secret" },
+      { overrides: { [FeatureSwitchKey.StoredSecretKmsWrite]: true } },
+    );
 
     expect(encrypted).not.toBeNull();
     if (!encrypted) {
