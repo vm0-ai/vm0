@@ -4,7 +4,7 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { server } from "../../mocks/server";
 import { reloadEnv } from "../../env";
 import { GET as connectorCallbackRoute } from "../../../app/api/connectors/[type]/callback/route";
-import { POST as setSecretRoute } from "../../../app/api/zero/secrets/route";
+import { createTestSecret } from "./secrets";
 import { createTestRequest } from "./core";
 
 // ---------------------------------------------------------------------------
@@ -164,22 +164,11 @@ async function createTestApiTokenConnector(options?: {
   const secretName =
     options?.secretName ?? `${type.toUpperCase().replace(/-/g, "_")}_TOKEN`;
 
-  const request = createTestRequest("http://localhost:3000/api/zero/secrets", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: secretName,
-      value: tokenValue,
-      description: `API token for ${type} connector`,
-    }),
-  });
-  const response = await setSecretRoute(request);
-  if (response.status !== 200 && response.status !== 201) {
-    const data = await response.json();
-    throw new Error(
-      `Failed to create api-token connector user secret: ${data.error?.message ?? response.status}`,
-    );
-  }
+  await createTestSecret(
+    secretName,
+    tokenValue,
+    `API token for ${type} connector`,
+  );
 }
 
 /**

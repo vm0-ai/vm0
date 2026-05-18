@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { DELETE } from "../route";
-import { POST, GET } from "../../route";
 import {
   createTestRequest,
   createTestOrg,
@@ -28,10 +27,6 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function secretUrl(): string {
-  return `http://localhost:3000/api/zero/secrets`;
-}
-
 function secretByNameUrl(name: string): string {
   return `http://localhost:3000/api/zero/secrets/${name}`;
 }
@@ -43,26 +38,20 @@ describe("DELETE /api/zero/secrets/:name", () => {
 
   it("should delete secret successfully", async () => {
     const userId = uniqueId("zsec-del-ok");
-    await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
-    // Create a secret
-    await POST(
-      createTestRequest(secretUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "DELETE_ME",
-          value: "to-be-deleted",
-        }),
-      }),
-    );
+    await insertTestUserSecret({
+      orgId,
+      userId,
+      name: "DELETE_ME",
+      value: "to-be-deleted",
+    });
 
-    // Verify it exists via GET list
-    const listResponse = await GET(
-      createTestRequest(secretUrl(), { method: "GET" }),
-    );
-    const listData = await listResponse.json();
-    expect(listData.secrets).toHaveLength(1);
+    const beforeDelete = await findTestSecretsByOrgAndName({
+      orgId,
+      name: "DELETE_ME",
+    });
+    expect(beforeDelete).toHaveLength(1);
 
     // Delete it
     const deleteResponse = await DELETE(
@@ -72,12 +61,11 @@ describe("DELETE /api/zero/secrets/:name", () => {
     );
     expect(deleteResponse.status).toBe(204);
 
-    // Verify it's gone
-    const listResponse2 = await GET(
-      createTestRequest(secretUrl(), { method: "GET" }),
-    );
-    const listData2 = await listResponse2.json();
-    expect(listData2.secrets).toEqual([]);
+    const afterDelete = await findTestSecretsByOrgAndName({
+      orgId,
+      name: "DELETE_ME",
+    });
+    expect(afterDelete).toEqual([]);
   });
 
   it("should return 404 for nonexistent secret", async () => {

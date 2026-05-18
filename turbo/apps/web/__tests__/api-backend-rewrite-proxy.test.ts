@@ -289,6 +289,12 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero secrets rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/secrets/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),

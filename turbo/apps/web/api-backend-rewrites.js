@@ -105,6 +105,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/queue-position", "/api/zero/queue-position"],
+  ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/team", "/api/zero/team"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import { POST as createComposeRoute } from "../../composes/route";
-import { POST as putSecret } from "../../../zero/secrets/route";
 import { POST as setVariableRoute } from "../../../zero/variables/route";
 import { randomUUID } from "crypto";
 import {
@@ -25,6 +24,7 @@ import {
   findTestRunnerJobEntry,
   findTestStorage,
   getTestAgentSessionWithConversation,
+  createTestSecret,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
 import { GET as getSessionById } from "../../sessions/[id]/route";
@@ -334,18 +334,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should prefer CLI secrets over DB secrets", async () => {
       // Store a secret in the database
       const secretName = `OVERRIDE_SECRET_${Date.now()}`;
-      const createSecretRequest = createTestRequest(
-        "http://localhost:3000/api/zero/secrets",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: secretName,
-            value: "db-value",
-          }),
-        },
-      );
-      await putSecret(createSecretRequest);
+      await createTestSecret(secretName, "db-value");
 
       // Create compose that references the secret
       const { composeId } = await createTestCompose(

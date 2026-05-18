@@ -469,6 +469,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/permission-access-requests",
         },
         {
+          source: "/api/zero/secrets",
+          destination: "https://api.example.test/api/zero/secrets",
+        },
+        {
           source: USER_MODEL_PREFERENCE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/user-model-preference",
@@ -1079,5 +1083,10 @@ describe("API backend rewrites", () => {
     for (const pathname of ZERO_ORG_LIST_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
+  });
+
+  it("should match the zero secrets route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/secrets/extra")).toBe(false);
   });
 });
