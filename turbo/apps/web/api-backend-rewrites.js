@@ -94,6 +94,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/cli/auth/test-approve", "/api/cli/auth/test-approve"],
   ["/api/cli/auth/test-codex-oauth", "/api/cli/auth/test-codex-oauth"],
   ["/api/cli/auth/test-connector", "/api/cli/auth/test-connector"],
+  [
+    "/api/cli/auth/test-enable-connector",
+    "/api/cli/auth/test-enable-connector",
+  ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],

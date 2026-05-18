@@ -249,6 +249,12 @@ const enableTestConnectors$ = command(
     const bodyResult = await get(testEnableConnectorBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
+      if (
+        bodyResult.response.body.error.message ===
+        "Invalid JSON in request body"
+      ) {
+        return stringError(400, "Invalid JSON body");
+      }
       return stringError(400, "composeId and connectorTypes are required");
     }
 

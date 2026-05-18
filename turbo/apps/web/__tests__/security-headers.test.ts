@@ -99,6 +99,14 @@ const CLI_AUTH_TEST_CONNECTOR_NEXT_NEGATIVE_PATHS = [
   "/api/cli/auth/test-connector/extra",
   "/api/cli/auth",
 ] as const;
+const CLI_AUTH_TEST_ENABLE_CONNECTOR_REWRITE_SOURCE =
+  "/api/cli/auth/test-enable-connector";
+const CLI_AUTH_TEST_ENABLE_CONNECTOR_PATH =
+  "/api/cli/auth/test-enable-connector";
+const CLI_AUTH_TEST_ENABLE_CONNECTOR_NEXT_NEGATIVE_PATHS = [
+  "/api/cli/auth/test-enable-connector/extra",
+  "/api/cli/auth",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -679,6 +687,11 @@ describe("API backend rewrites", () => {
         {
           source: CLI_AUTH_TEST_CONNECTOR_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cli/auth/test-connector",
+        },
+        {
+          source: CLI_AUTH_TEST_ENABLE_CONNECTOR_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/cli/auth/test-enable-connector",
         },
         {
           source: "/api/device-token",
@@ -1291,6 +1304,33 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CLI_AUTH_TEST_CONNECTOR_PATH)).toStrictEqual({});
     for (const pathname of CLI_AUTH_TEST_CONNECTOR_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact CLI auth test enable connector rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CLI_AUTH_TEST_ENABLE_CONNECTOR_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CLI_AUTH_TEST_ENABLE_CONNECTOR_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/cli/auth/test-enable-connector",
+    });
+
+    const matcher = getPathMatch(
+      CLI_AUTH_TEST_ENABLE_CONNECTOR_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(CLI_AUTH_TEST_ENABLE_CONNECTOR_PATH)).toStrictEqual({});
+    for (const pathname of CLI_AUTH_TEST_ENABLE_CONNECTOR_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

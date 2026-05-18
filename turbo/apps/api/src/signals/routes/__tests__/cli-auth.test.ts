@@ -179,6 +179,25 @@ async function postCliAuthTestConnectorRaw(args: {
   };
 }
 
+async function postCliAuthTestEnableConnectorRaw(args: {
+  readonly query?: string;
+  readonly body: string;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    `/api/cli/auth/test-enable-connector${args.query ?? ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: args.body,
+    },
+  );
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
 async function postCliAuthTestCodexOauthRaw(args: {
   readonly query?: string;
   readonly body: string;
@@ -1398,6 +1417,169 @@ describe("CLI auth routes", () => {
   });
 
   describe("POST /api/cli/auth/test-enable-connector", () => {
+    it("returns 404 outside allowed test environments", async () => {
+      mockEnv("ENV", "production");
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+
+      const response = await acceptResponse<string>(
+        client.create({
+          query: {},
+          body: {
+            composeId: "00000000-0000-0000-0000-000000000000",
+            connectorTypes: ["github"],
+          },
+        }),
+        404,
+      );
+
+      expect(response.body).toBe("Not found");
+    });
+
+    it("allows protected preview rewrites after Vercel consumes the bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "enable-connector-preview",
+      });
+      mockTestUser({ userId, orgId });
+      const composeId = await seedCompose({ orgId, userId });
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+
+      const response = await acceptResponse<TestEnableConnectorResponseBody>(
+        client.create({
+          query: {},
+          body: { composeId, connectorTypes: ["github"] },
+        }),
+        200,
+      );
+
+      expect(response.body).toStrictEqual({
+        ok: true,
+        composeId,
+        connectorTypes: ["github"],
+      });
+    });
+
+    it("rejects invalid JSON with the legacy error", async () => {
+      const response = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestEnableConnectorRaw({ body: "{ not json" }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({ error: "Invalid JSON body" });
+    });
+
+    it("rejects invalid bodies with the legacy validation error", async () => {
+      const missingFields = await acceptResponse<{ readonly error: string }>(
+        postCliAuthTestEnableConnectorRaw({ body: JSON.stringify({}) }),
+        400,
+      );
+      expect(missingFields.body).toStrictEqual({
+        error: "composeId and connectorTypes are required",
+      });
+
+      const invalidComposeId = await acceptResponse<{
+        readonly error: string;
+      }>(
+        postCliAuthTestEnableConnectorRaw({
+          body: JSON.stringify({
+            composeId: "not-a-uuid",
+            connectorTypes: ["github"],
+          }),
+        }),
+        400,
+      );
+      expect(invalidComposeId.body).toStrictEqual({
+        error: "composeId and connectorTypes are required",
+      });
+
+      const emptyConnectorTypes = await acceptResponse<{
+        readonly error: string;
+      }>(
+        postCliAuthTestEnableConnectorRaw({
+          body: JSON.stringify({
+            composeId: "00000000-0000-0000-0000-000000000000",
+            connectorTypes: [],
+          }),
+        }),
+        400,
+      );
+      expect(emptyConnectorTypes.body).toStrictEqual({
+        error: "composeId and connectorTypes are required",
+      });
+    });
+
+    it("rejects unknown connector types", async () => {
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            composeId: "00000000-0000-0000-0000-000000000000",
+            connectorTypes: ["not-a-real-connector"],
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Unknown connector types: not-a-real-connector",
+      });
+    });
+
+    it("rejects users without a cached test org", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            composeId: "00000000-0000-0000-0000-000000000000",
+            connectorTypes: ["github"],
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "Test user has no org — run test-token first",
+      });
+    });
+
+    it("rejects requests for a compose that does not exist", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "enable-missing-compose",
+      });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+      const composeId = "00000000-0000-0000-0000-000000000000";
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: { composeId, connectorTypes: ["github"] },
+        }),
+        404,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: `Compose not found: ${composeId}`,
+      });
+    });
+
     it("creates a zero agent row and enables requested connectors", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
@@ -1445,6 +1627,31 @@ describe("CLI auth routes", () => {
           .where(eq(zeroAgents.id, composeId))
           .limit(1),
       ).resolves.toHaveLength(1);
+    });
+
+    it("resolves a custom test user email through Clerk", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: "enable-connector-custom-email",
+      });
+      mockTestUser({ userId, orgId });
+      const composeId = await seedCompose({ orgId, userId });
+      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+
+      await acceptResponse<TestEnableConnectorResponseBody>(
+        client.create({
+          query: { email: "custom@test.com" },
+          body: { composeId, connectorTypes: ["github"] },
+        }),
+        200,
+      );
+
+      expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
+      });
     });
   });
 

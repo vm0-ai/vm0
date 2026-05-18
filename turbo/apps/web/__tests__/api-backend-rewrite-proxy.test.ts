@@ -198,6 +198,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
   });
 
+  it("matches the CLI auth test enable connector rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/cli/auth/test-enable-connector"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/cli/auth/test-enable-connector/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
