@@ -11,8 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://hunter.io/api-documentation";
 // Format: 40 hex chars (Hunter API key)
-const PLACEHOLDER_VALUE =
-  "c0ffeesafelocalc0ffeesafelocalc0ffeesafe";
+const PLACEHOLDER_VALUE = "c0ffeesafelocalc0ffeesafelocalc0ffeesafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [
