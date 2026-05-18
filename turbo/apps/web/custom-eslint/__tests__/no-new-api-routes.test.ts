@@ -33,7 +33,7 @@ ruleTester.run("no-new-api-routes", noNewApiRoutes, {
   valid: [
     {
       code: "export async function GET() {}",
-      filename: path.join(webRoot, "app/api/auth/me/route.ts"),
+      filename: path.join(webRoot, WEB_API_ROUTE_BASELINE[0]),
     },
     {
       code: "export async function GET() {}",

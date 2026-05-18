@@ -23,6 +23,7 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
   /^\/api\/zero\/me\/model-providers\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
+  ["/api/auth/me", "/api/auth/me"],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],

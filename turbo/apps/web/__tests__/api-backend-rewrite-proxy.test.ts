@@ -132,6 +132,12 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches the auth me rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/auth/me")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/auth/me/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/auth")).toBe(false);
+  });
+
   it("routes hosted-site deployment endpoints to the API backend", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),

@@ -23,6 +23,12 @@ const { getPathMatch } =
   };
 
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const AUTH_ME_REWRITE_SOURCE = "/api/auth/me";
+const AUTH_ME_PATH = "/api/auth/me";
+const AUTH_ME_NEXT_NEGATIVE_PATHS = [
+  "/api/auth/me/extra",
+  "/api/auth",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -360,6 +366,10 @@ describe("API backend rewrites", () => {
     expect(rewrites).toEqual(
       expect.arrayContaining([
         {
+          source: AUTH_ME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/auth/me",
+        },
+        {
           source: "/api/device-token",
           destination: "https://api.example.test/api/device-token",
         },
@@ -576,6 +586,29 @@ describe("API backend rewrites", () => {
         },
       ]),
     );
+  });
+
+  it("should match only the exact auth me rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AUTH_ME_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AUTH_ME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/auth/me",
+    });
+
+    const matcher = getPathMatch(AUTH_ME_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AUTH_ME_PATH)).toStrictEqual({});
+    for (const pathname of AUTH_ME_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact Stripe CLI auth sessions rewrite", async () => {
