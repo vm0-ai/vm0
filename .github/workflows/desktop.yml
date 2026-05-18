@@ -30,15 +30,9 @@ permissions:
 
 jobs:
   build-macos:
-    name: build-macos-${{ matrix.arch }}
+    name: build-macos-arm64
     runs-on: macos-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        arch:
-          - arm64
-          - x64
     defaults:
       run:
         working-directory: turbo
@@ -70,22 +64,37 @@ jobs:
       - name: Build unsigned macOS artifact
         run: |
           pnpm -F @vm0/desktop build
-          cd apps/desktop
-          pnpm exec electron-forge make --platform darwin --arch=${{ matrix.arch }}
+
+          desktop_dir="$PWD/apps/desktop"
+          app_dir="$desktop_dir/out/Zero-darwin-arm64/Zero.app"
+          runtime_app="$desktop_dir/node_modules/electron/dist/Electron.app"
+          version=$(node -p "require('./apps/desktop/package.json').version")
+
+          rm -rf "$desktop_dir/out"
+          mkdir -p "$desktop_dir/out/Zero-darwin-arm64"
+          cp -R "$runtime_app" "$app_dir"
+
+          mv "$app_dir/Contents/MacOS/Electron" "$app_dir/Contents/MacOS/Zero"
+          mkdir -p "$app_dir/Contents/Resources/app"
+          cp "$desktop_dir/package.json" "$app_dir/Contents/Resources/app/package.json"
+          cp -R "$desktop_dir/dist" "$app_dir/Contents/Resources/app/dist"
+
+          plist="$app_dir/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleName string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.vm0.zero.desktop" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.vm0.zero.desktop" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $version" "$plist"
+
+          ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$desktop_dir/out/Zero-darwin-arm64.zip"
 
       - name: Verify artifact
         id: artifact
         run: |
-          artifact_dir=apps/desktop/out/make/zip/darwin/${{ matrix.arch }}
-          if [ ! -d "$artifact_dir" ]; then
-            echo "Electron Forge artifact directory does not exist: $artifact_dir"
-            find apps/desktop/out -maxdepth 5 -type f -print || true
-            exit 1
-          fi
-
-          artifact_path=$(find "$artifact_dir" -maxdepth 1 -name "*.zip" -print -quit)
-          if [ -z "$artifact_path" ]; then
-            echo "No Electron Forge zip artifact found"
+          artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop zip artifact found"
             find apps/desktop/out -maxdepth 5 -type f -print || true
             exit 1
           fi
@@ -96,7 +105,7 @@ jobs:
       - name: Upload unsigned macOS artifact
         uses: actions/upload-artifact@v7
         with:
-          name: zero-desktop-macos-${{ matrix.arch }}-unsigned
+          name: zero-desktop-macos-arm64-unsigned
           path: turbo/${{ steps.artifact.outputs.path }}
           if-no-files-found: error
           retention-days: 14

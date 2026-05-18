@@ -29,10 +29,9 @@ target platform surface separately, then pass its URL through
 
 The `Desktop` GitHub Actions workflow builds unsigned macOS artifacts for
 internal testing. Run the workflow manually from GitHub Actions, then download
-the `zero-desktop-macos-arm64-unsigned` or `zero-desktop-macos-x64-unsigned`
-artifact.
+the `zero-desktop-macos-arm64-unsigned` artifact.
 
-The downloaded GitHub artifact contains the Electron Forge zip. Unzip both
+The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
 layers, then open `Zero.app`.
 
 These artifacts are intentionally unsigned and unnotarized. macOS Gatekeeper may
