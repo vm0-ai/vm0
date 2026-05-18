@@ -1,18 +1,23 @@
 import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
 import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
-import { POST as upsertOrgModelProviderRoute } from "../../../app/api/zero/model-providers/route";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Personal-tier (BYOK) HTTP routes land in Wave 2 of Epic #11868; until then, user-tier seeders must call the service directly.
+// eslint-disable-next-line web/no-direct-db-in-tests -- Test setup uses production model-provider services after legacy web route removal.
 import {
+  upsertOrgModelProvider,
+  upsertOrgMultiAuthModelProvider,
   upsertUserModelProvider,
   upsertUserMultiAuthModelProvider,
 } from "../../lib/zero/model-provider/model-provider-service";
 import {
   createTestRequest,
   createDefaultComposeConfig,
+  getTestAuthContext,
   type ComposeConfigOptions,
 } from "./core";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
-import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  modelProviderTypeSchema,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { ensureZeroAgentRow } from "../db-test-seeders/agents";
 
 // ---------------------------------------------------------------------------
@@ -56,10 +61,9 @@ export {
 } from "../db-test-assertions/agents";
 
 // ---------------------------------------------------------------------------
-// API-based helpers.
+// Route/service-backed helpers.
 //
-// These call production route handlers (not raw DB) and are valid
-// API-based helpers.
+// These call production route handlers or service entry points, not raw DB.
 // ---------------------------------------------------------------------------
 
 /**
@@ -104,7 +108,7 @@ export async function createTestCompose(
 }
 
 /**
- * Create a test org-level model provider via API route handler.
+ * Create a test org-level model provider via production service setup.
  * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
  *
  * @param type - The provider type
@@ -117,31 +121,18 @@ export async function createTestOrgModelProvider(
   secretValue: string,
   selectedModel?: string,
 ): Promise<{ id: string; type: string; selectedModel: string | null }> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/zero/model-providers",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        secret: secretValue,
-        selectedModel,
-      }),
-    },
+  const { orgId } = await getTestAuthContext();
+  const result = await upsertOrgModelProvider(
+    orgId,
+    modelProviderTypeSchema.parse(type),
+    secretValue,
+    selectedModel,
   );
-  const response = await upsertOrgModelProviderRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create org model provider: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.provider;
+  return result.provider;
 }
 
 /**
- * Create a test org-level multi-auth model provider via API route handler.
+ * Create a test org-level multi-auth model provider via production service setup.
  * This creates an org-scoped provider (using ORG_SENTINEL_USER_ID internally).
  *
  * @param type - The provider type (e.g., "aws-bedrock")
@@ -162,28 +153,21 @@ export async function createTestOrgMultiAuthModelProvider(
   secretNames: string[] | null;
   selectedModel: string | null;
 }> {
-  const request = createTestRequest(
-    "http://localhost:3000/api/zero/model-providers",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        authMethod,
-        secrets,
-        selectedModel,
-      }),
-    },
+  const { orgId } = await getTestAuthContext();
+  const result = await upsertOrgMultiAuthModelProvider(
+    orgId,
+    modelProviderTypeSchema.parse(type),
+    authMethod,
+    secrets,
+    selectedModel,
   );
-  const response = await upsertOrgModelProviderRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create org multi-auth model provider: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.provider;
+  return {
+    id: result.provider.id,
+    type: result.provider.type,
+    authMethod: result.provider.authMethod ?? null,
+    secretNames: result.provider.secretNames ?? null,
+    selectedModel: result.provider.selectedModel,
+  };
 }
 
 /**

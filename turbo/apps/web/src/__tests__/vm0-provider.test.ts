@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { POST } from "../../app/api/zero/model-providers/route";
 import {
-  createTestRequest,
   createTestOrg,
   insertVm0ApiKeys,
   deleteInsertedVm0ApiKeys,
@@ -40,10 +38,6 @@ async function setupOrg(
   return { slug: orgSlug, orgId };
 }
 
-function orgUrl(): string {
-  return `http://localhost:3000/api/zero/model-providers`;
-}
-
 describe("VM0 managed model provider", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -51,54 +45,6 @@ describe("VM0 managed model provider", () => {
 
   afterEach(async () => {
     await deleteInsertedVm0ApiKeys();
-  });
-
-  describe("API route: org slug check", () => {
-    it("should create vm0 provider for vm0 org without secret", async () => {
-      const userId = uniqueId("vm0-create");
-      await setupOrg(userId, "org:admin", "vm0");
-
-      const response = await POST(
-        createTestRequest(orgUrl(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "vm0",
-            selectedModel: "claude-sonnet-4-6",
-          }),
-        }),
-      );
-      expect(response.status).toBe(201);
-
-      const data = await response.json();
-      expect(data.provider.type).toBe("vm0");
-      expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.selectedModel).toBeNull();
-      expect(data.provider.isDefault).toBe(false);
-      expect(data.created).toBe(true);
-    });
-
-    it("should create vm0 provider for any org without secret", async () => {
-      const userId = uniqueId("vm0-any-org");
-      await setupOrg(userId, "org:admin", "my-org");
-
-      const response = await POST(
-        createTestRequest(orgUrl(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "vm0",
-            selectedModel: "claude-opus-4-6",
-          }),
-        }),
-      );
-      expect(response.status).toBe(201);
-
-      const data = await response.json();
-      expect(data.provider.type).toBe("vm0");
-      expect(data.provider.selectedModel).toBeNull();
-      expect(data.created).toBe(true);
-    });
   });
 
   describe("key pool service", () => {

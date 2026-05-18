@@ -177,7 +177,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/logs/search/route.ts",
   "app/api/zero/me/model-providers/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
-  "app/api/zero/model-providers/route.ts",
   "app/api/zero/onboarding/setup/route.ts",
   "app/api/zero/onboarding/status/route.ts",
   "app/api/zero/org/delete/route.ts",
@@ -221,7 +220,7 @@ export const WEB_API_ROUTE_BASELINE = [
 ] as const;
 
 export const WEB_API_ROUTE_BASELINE_HASH =
-  "64d99e1ce6afa0f347884527326be914bf43b3ecaf969c4c9a079f2d398e4b38";
+  "e5cf381929ac785fdba8acca09cc2922dc0475c40b5c733cb7836f1bf248f902";
 
 export function computeWebApiRouteBaselineHash(
   routes: readonly string[] = WEB_API_ROUTE_BASELINE,

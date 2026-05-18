@@ -346,6 +346,20 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero model providers rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/model-providers")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/anthropic-api-key",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/model-provider")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero voice-chat token rewrite exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/voice-chat/token")).toBe(
       true,

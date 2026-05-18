@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
 import { POST as createAgentRoute } from "../agents/route";
 import { PUT as updateInstructionsRoute } from "../agents/[id]/instructions/route";
-import { POST as upsertModelProviderRoute } from "../model-providers/route";
-import { insertOrgModelPolicy } from "../../../../src/__tests__/api-test-helpers";
+import {
+  createTestOrgModelProvider,
+  insertOrgModelPolicy,
+} from "../../../../src/__tests__/api-test-helpers";
 import type { UserContext } from "../../../../src/__tests__/test-helpers";
 
 interface TestContext {
@@ -19,24 +21,10 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
   const orgSlug = `org-${user.userId.slice(-8)}`;
 
   // 2. Upsert model provider
-  const providerRes = await upsertModelProviderRoute(
-    new NextRequest(`http://localhost:3000/api/zero/model-providers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "anthropic-api-key",
-        secret: "sk-ant-test-key",
-      }),
-    }),
+  const provider = await createTestOrgModelProvider(
+    "anthropic-api-key",
+    "sk-ant-test-key",
   );
-  if (!providerRes.ok) {
-    throw new Error(
-      `upsertModelProviderRoute failed with status ${providerRes.status}`,
-    );
-  }
-  const providerData = (await providerRes.json()) as {
-    provider: { id: string };
-  };
 
   await insertOrgModelPolicy({
     orgId: user.orgId,
@@ -44,7 +32,7 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
     isDefault: true,
     defaultProviderType: "anthropic-api-key",
     credentialScope: "org",
-    modelProviderId: providerData.provider.id,
+    modelProviderId: provider.id,
   });
 
   // 3. Create agent

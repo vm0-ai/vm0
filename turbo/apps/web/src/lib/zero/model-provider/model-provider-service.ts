@@ -782,15 +782,6 @@ async function deleteModelProvider(
 // ============================================================================
 
 /**
- * List all org-level model providers
- */
-export function listOrgModelProviders(
-  orgId: string,
-): Promise<ModelProviderInfo[]> {
-  return listModelProviders(orgId, ORG_SENTINEL_USER_ID);
-}
-
-/**
  * Create or update an org-level model provider (single-secret).
  * Uses ORG_SENTINEL_USER_ID for org-scoped storage.
  */

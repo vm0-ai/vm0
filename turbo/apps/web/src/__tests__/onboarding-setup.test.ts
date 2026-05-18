@@ -3,8 +3,11 @@ import { POST } from "../../app/api/zero/onboarding/setup/route";
 import { GET as getOnboardingStatus } from "../../app/api/zero/onboarding/status/route";
 import { GET as listAgents } from "../../app/api/zero/agents/route";
 import { GET as getUserConnectors } from "../../app/api/zero/agents/[id]/user-connectors/route";
-import { GET as listModelProviders } from "../../app/api/zero/model-providers/route";
-import { createTestRequest, getOrgDefaultAgent } from "./api-test-helpers";
+import {
+  createTestRequest,
+  findTestOrgModelProviderByType,
+  getOrgDefaultAgent,
+} from "./api-test-helpers";
 import { testContext } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
 import { clerkClient } from "@clerk/nextjs/server";
@@ -134,16 +137,11 @@ describe("POST /api/zero/onboarding/setup", () => {
     const response = await postSetup({ displayName: "Zero" });
     expect(response.status).toBe(200);
 
-    // Verify model provider via list API
-    const provRes = await listModelProviders(
-      createTestRequest(`${BASE}/model-providers`),
-    );
-    const provData = await provRes.json();
-    const vm0Provider = provData.modelProviders.find((p: { type: string }) => {
-      return p.type === "vm0";
+    const vm0Provider = await findTestOrgModelProviderByType(orgId, "vm0");
+    expect(vm0Provider).toMatchObject({
+      type: "vm0",
+      selectedModel: "claude-sonnet-4-6",
     });
-    expect(vm0Provider).toBeDefined();
-    expect(vm0Provider.selectedModel).toBe("claude-sonnet-4-6");
   });
 
   it("should work with minimal payload (displayName only)", async () => {

@@ -86,6 +86,12 @@ const ZERO_ME_MODEL_PROVIDER_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/me/model-providers/claude-code-oauth-token/oauth/callback",
   "/api/zero/me/model-providers/claude-code-oauth-token/extra",
 ] as const;
+const ZERO_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/model-providers";
+const ZERO_MODEL_PROVIDERS_PATH = "/api/zero/model-providers";
+const ZERO_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/model-providers/anthropic-api-key",
+  "/api/zero/model-provider",
+] as const;
 const PUSH_SUBSCRIPTIONS_REWRITE_SOURCE = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_PATH = "/api/zero/push-subscriptions";
 const PUSH_SUBSCRIPTIONS_NEXT_NEGATIVE_PATHS = [
@@ -491,6 +497,10 @@ describe("API backend rewrites", () => {
           source: ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/me/model-providers/:type",
+        },
+        {
+          source: ZERO_MODEL_PROVIDERS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/model-providers",
         },
         {
           source: "/api/zero/user-preferences",
@@ -902,6 +912,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero model providers rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_MODEL_PROVIDERS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_MODEL_PROVIDERS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/model-providers",
+    });
+
+    const matcher = getPathMatch(ZERO_MODEL_PROVIDERS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_MODEL_PROVIDERS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact voice-io tts rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1128,5 +1161,12 @@ describe("API backend rewrites", () => {
   it("should match the zero secrets route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/secrets/extra")).toBe(false);
+  });
+
+  it("should bypass web middleware only for the exact zero model providers path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_MODEL_PROVIDERS_PATH)).toBe(true);
+    for (const pathname of ZERO_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 });

@@ -210,6 +210,33 @@ export async function getTestModelProviderIdByType(
   return row.id;
 }
 
+export async function findTestOrgModelProviderByType(
+  orgId: string,
+  type: string,
+): Promise<{
+  id: string;
+  type: string;
+  selectedModel: string | null;
+} | null> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, "__org__"),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 /**
  * Read the per-thread selected model override written by the chat-messages send
  * route when the composer's picker is active. Provider IDs should remain null

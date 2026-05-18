@@ -44,7 +44,7 @@ const router = tsr.router(webhookUsageEventContract, {
       await globalThis.services.db
         .insert(usageEvent)
         .values(
-          events.map((event) => {
+          events.map((event: (typeof events)[number]) => {
             return {
               runId: body.runId,
               orgId,
