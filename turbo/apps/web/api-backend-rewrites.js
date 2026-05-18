@@ -57,6 +57,8 @@ const ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/mark-read";
 const ZERO_CHAT_THREAD_MARK_READ_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/mark-read$/;
+const ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE = "/api/zero/chat-threads/:id/pin";
+const ZERO_CHAT_THREAD_PIN_PATH_RE = /^\/api\/zero\/chat-threads\/[^/]+\/pin$/;
 
 export const API_BACKEND_REWRITES = [
   [
@@ -189,6 +191,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id/mark-read",
     ZERO_CHAT_THREAD_MARK_READ_PATH_RE,
+  ],
+  [
+    ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
+    "/api/zero/chat-threads/:id/pin",
+    ZERO_CHAT_THREAD_PIN_PATH_RE,
   ],
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],

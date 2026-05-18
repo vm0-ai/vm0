@@ -263,6 +263,14 @@ const ZERO_CHAT_THREAD_MARK_READ_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat-threads/mark-read",
   "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/mark-read",
 ] as const;
+const ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE = "/api/zero/chat-threads/:id/pin";
+const ZERO_CHAT_THREAD_PIN_PATH =
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/pin";
+const ZERO_CHAT_THREAD_PIN_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/chat-threads/550e8400-e29b-41d4-a716-446655440000/pin/extra",
+  "/api/zero/chat-threads/pin",
+  "/api/zero/chat-thread/550e8400-e29b-41d4-a716-446655440000/pin",
+] as const;
 const ZERO_VARIABLES_REWRITE_SOURCE = "/api/zero/variables";
 const ZERO_VARIABLES_PATH = "/api/zero/variables";
 const ZERO_VARIABLES_NEXT_NEGATIVE_PATHS = ["/api/zero/variable"] as const;
@@ -882,6 +890,10 @@ describe("API backend rewrites", () => {
           source: ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/chat-threads/:id/mark-read",
+        },
+        {
+          source: ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/chat-threads/:id/pin",
         },
         {
           source: "/api/zero/user-preferences",
@@ -1612,6 +1624,31 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_CHAT_THREAD_MARK_READ_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for the zero chat thread pin rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/chat-threads/:id/pin",
+    });
+
+    const matcher = getPathMatch(ZERO_CHAT_THREAD_PIN_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CHAT_THREAD_PIN_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CHAT_THREAD_PIN_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

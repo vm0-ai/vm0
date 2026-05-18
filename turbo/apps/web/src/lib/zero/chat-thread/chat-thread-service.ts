@@ -371,25 +371,6 @@ export async function deleteChatThread(
 }
 
 /**
- * Pin a chat thread to the top of the sidebar list. Idempotent: re-pinning
- * an already-pinned thread refreshes `pinned_at` to the current time.
- */
-export async function pinChatThread(
-  threadId: string,
-  userId: string,
-): Promise<void> {
-  const updated = await globalThis.services.db
-    .update(chatThreads)
-    .set({ pinnedAt: new Date() })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
-
-  if (updated.length === 0) {
-    throw notFound("Chat thread not found");
-  }
-}
-
-/**
  * Clear the pin from a chat thread. Idempotent: unpinning an already-unpinned
  * thread is a no-op write but still succeeds.
  */
