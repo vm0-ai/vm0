@@ -6,6 +6,7 @@ import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 
@@ -224,6 +225,21 @@ describe("GET /api/zero/model-providers", () => {
     expect(response.body.modelProviders).toStrictEqual([]);
   });
 
+  it("allows organization members to list org providers", async () => {
+    const fixture = uniqueOrgUser("zmp-list-member");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+
+    const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    const response = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.modelProviders).toStrictEqual([]);
+  });
+
   it("lists org providers", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -313,12 +329,16 @@ describe("GET /api/zero/model-providers", () => {
       [200],
     );
 
-    const anthropic = response.body.modelProviders.find((provider) => {
-      return provider.type === "anthropic-api-key";
-    });
-    const oauth = response.body.modelProviders.find((provider) => {
-      return provider.type === "claude-code-oauth-token";
-    });
+    const anthropic = response.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.type === "anthropic-api-key";
+      },
+    );
+    const oauth = response.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.type === "claude-code-oauth-token";
+      },
+    );
     expect(anthropic?.isDefault).toBeFalsy();
     expect(oauth?.isDefault).toBeFalsy();
   });
@@ -347,9 +367,11 @@ describe("GET /api/zero/model-providers", () => {
       [200],
     );
 
-    const defaultProvider = response.body.modelProviders.find((provider) => {
-      return provider.isDefault && provider.framework === "claude-code";
-    });
+    const defaultProvider = response.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.isDefault && provider.framework === "claude-code";
+      },
+    );
     expect(defaultProvider).toBeUndefined();
   });
 
@@ -366,10 +388,43 @@ describe("GET /api/zero/model-providers", () => {
       [200],
     );
 
-    const defaultProvider = response.body.modelProviders.find((provider) => {
-      return provider.isDefault && provider.framework === "claude-code";
-    });
+    const defaultProvider = response.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.isDefault && provider.framework === "claude-code";
+      },
+    );
     expect(defaultProvider).toBeUndefined();
+  });
+
+  it("surfaces OAuth refresh state on listed providers", async () => {
+    const fixture = uniqueOrgUser("zmp-list-stale");
+    await track(Promise.resolve({ orgId: fixture.orgId }));
+    await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+      },
+      context.signal,
+    );
+    await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    const response = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    const provider = response.body.modelProviders.find(
+      (candidate: ModelProviderResponse) => {
+        return candidate.type === "codex-oauth-token";
+      },
+    );
+    expect(provider?.needsReconnect).toBeTruthy();
+    expect(provider?.lastRefreshErrorCode).toBe("refresh_token_expired");
   });
 });
 
@@ -579,17 +634,17 @@ describe("POST /api/zero/model-providers", () => {
       [200],
     );
     expect(
-      list.body.modelProviders.filter((provider) => {
+      list.body.modelProviders.filter((provider: ModelProviderResponse) => {
         return provider.isDefault;
       }),
     ).toHaveLength(0);
     expect(
-      list.body.modelProviders.find((provider) => {
+      list.body.modelProviders.find((provider: ModelProviderResponse) => {
         return provider.type === "anthropic-api-key";
       })?.isDefault,
     ).toBeFalsy();
     expect(
-      list.body.modelProviders.find((provider) => {
+      list.body.modelProviders.find((provider: ModelProviderResponse) => {
         return provider.type === "openai-api-key";
       })?.isDefault,
     ).toBeFalsy();
@@ -647,6 +702,9 @@ describe("POST /api/zero/model-providers", () => {
       findOrgModelProviderSecret(fixture.orgId, "CODEX_AUTH_JSON"),
     ).resolves.toBeUndefined();
     await expect(
+      findOrgModelProviderSecret(fixture.orgId, "codex_auth_json"),
+    ).resolves.toBeUndefined();
+    await expect(
       readOrgModelProviderState(fixture.orgId, "codex-oauth-token"),
     ).resolves.toMatchObject({
       workspaceName: "Org Acme",
@@ -700,6 +758,32 @@ describe("POST /api/zero/model-providers", () => {
       [400],
     );
     expect(missing.body.error.code).toBe("BAD_REQUEST");
+
+    const missingRefresh = await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: {
+            CODEX_AUTH_JSON: JSON.stringify({
+              tokens: {
+                access_token: makeJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+                account_id: "ws_acct",
+                id_token: makeIdToken({
+                  accountId: "ws_acct",
+                  planType: "plus",
+                }),
+              },
+            }),
+          },
+        },
+      }),
+      [400],
+    );
+    expect(missingRefresh.body.error.code).toBe(
+      "CODEX_AUTH_JSON_SHAPE_INVALID",
+    );
   });
 
   it("re-paste clears codex reconnect state", async () => {

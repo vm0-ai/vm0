@@ -228,7 +228,7 @@ export async function setSecret(
  * Delete a user secret by name
  * Note: Model-provider secrets are managed via model-provider commands
  */
-export async function deleteSecret(
+async function deleteSecret(
   orgId: string,
   userId: string,
   name: string,

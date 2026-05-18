@@ -15,6 +15,7 @@ WEB_APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PORT=3000
 ENV_LOCAL_FILE="$WEB_APP_DIR/.env.local"
+TUNNEL_URL_FILE="$REPO_ROOT/turbo/.dev-tunnel-url"
 
 # Kill stale background processes from prior runs that may have been orphaned
 # (e.g. previous run SIGKILLed, container stopped, or trap didn't fire).
@@ -40,11 +41,13 @@ kill_stale "/tmp/stripe-listen.pid" "stripe listen .*--forward-to localhost:${PO
 cleanup() {
   kill_stale "/tmp/cloudflared-${PORT}.pid" ""
   kill_stale "/tmp/stripe-listen.pid" ""
+  rm -f "$TUNNEL_URL_FILE"
 }
 trap cleanup EXIT INT TERM
 
 # Start tunnel and capture URL (TUNNEL_HOSTNAME is forwarded if set)
 TUNNEL_URL=$("$REPO_ROOT/scripts/tunnel.sh" "$PORT")
+printf '%s\n' "$TUNNEL_URL" > "$TUNNEL_URL_FILE"
 
 echo ""
 echo -e "\033[0;32m[tunnel]\033[0m Tunnel URL: ${TUNNEL_URL}"
@@ -71,4 +74,4 @@ echo -e "\033[0;35m[stripe]\033[0m Webhook forwarding → localhost:${PORT}/api/
 
 # Start Next.js dev server
 cd "$WEB_APP_DIR"
-exec env VM0_API_URL="$TUNNEL_URL" npx next dev --turbo --port "$PORT"
+env VM0_API_URL="$TUNNEL_URL" npx next dev --turbo --port "$PORT"

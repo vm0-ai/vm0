@@ -17,6 +17,7 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   claimLocalAgentDeviceCode$,
   claimNextLocalAgentHostJob$,
+  closeLocalAgentHost$,
   completeLocalAgentHostJob$,
   createLocalAgentDeviceCode$,
   createLocalAgentHostRealtimeToken$,
@@ -159,6 +160,9 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       hostToken,
       hostName: bodyResult.data.hostName,
       supportedBackends: bodyResult.data.supportedBackends,
+      ...(bodyResult.data.realtimeConnected === undefined
+        ? {}
+        : { realtimeConnected: bodyResult.data.realtimeConnected }),
     },
     signal,
   );
@@ -257,6 +261,22 @@ const hostsDeleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   if (result.status === "not_found") {
     return notFound("Local-agent host not found");
+  }
+
+  return { status: 200 as const, body: { ok: true as const } };
+});
+
+const hostsCloseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const hostToken = parseBearerToken(get(authorization$));
+  if (!hostToken) {
+    return unauthorizedLocalAgent;
+  }
+
+  const result = await set(closeLocalAgentHost$, { hostToken }, signal);
+  signal.throwIfAborted();
+
+  if (!result) {
+    return invalidLocalAgentToken;
   }
 
   return { status: 200 as const, body: { ok: true as const } };
@@ -483,6 +503,10 @@ export const zeroLocalAgentRoutes: readonly RouteEntry[] = [
   {
     route: zeroLocalAgentHostsContract.delete,
     handler: authRoute(localAgentAuthOptions, hostsDeleteInner$),
+  },
+  {
+    route: zeroLocalAgentHostsContract.close,
+    handler: hostsCloseInner$,
   },
   {
     route: zeroLocalAgentRunContract.list,

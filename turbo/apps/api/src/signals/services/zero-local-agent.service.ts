@@ -509,6 +509,7 @@ export const heartbeatLocalAgentHost$ = command(
       readonly hostToken: string;
       readonly hostName: string;
       readonly supportedBackends: readonly LocalAgentBackend[];
+      readonly realtimeConnected?: boolean;
     },
     signal: AbortSignal,
   ): Promise<{ readonly hostId: string } | null> => {
@@ -549,6 +550,69 @@ export const heartbeatLocalAgentHost$ = command(
     }
 
     if (!wasOnline) {
+      await publishLocalAgentHostsChangedSafe(row.userId, signal);
+    }
+
+    if (params.realtimeConnected === false) {
+      L.warn("Local-agent realtime unavailable for host", {
+        hostId: row.id,
+        hostName: normalizeHostName(params.hostName),
+        realtimeConnected: params.realtimeConnected,
+        supportedBackends: normalizeBackends(params.supportedBackends),
+      });
+    }
+
+    return { hostId: row.id };
+  },
+);
+
+export const closeLocalAgentHost$ = command(
+  async (
+    { set },
+    params: {
+      readonly hostToken: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{ readonly hostId: string } | null> => {
+    const writeDb = set(writeDb$);
+    const now = nowDate();
+    const [existing] = await writeDb
+      .select()
+      .from(localAgentHosts)
+      .where(
+        and(
+          eq(localAgentHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(localAgentHosts.revokedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!existing) {
+      return null;
+    }
+
+    const wasOnline = localAgentHostStatus(existing, now) === "online";
+    const [row] = await writeDb
+      .update(localAgentHosts)
+      .set({
+        status: "closed",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(localAgentHosts.id, existing.id),
+          isNull(localAgentHosts.revokedAt),
+        ),
+      )
+      .returning({ id: localAgentHosts.id, userId: localAgentHosts.userId });
+    signal.throwIfAborted();
+
+    if (!row) {
+      return null;
+    }
+
+    if (wasOnline) {
       await publishLocalAgentHostsChangedSafe(row.userId, signal);
     }
 

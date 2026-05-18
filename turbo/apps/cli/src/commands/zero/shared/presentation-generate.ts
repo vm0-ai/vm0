@@ -112,7 +112,7 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful presentation generation
-  - Uses OpenAI gpt-5.5 through the Responses API`,
+  - Uses OpenAI gpt-5.5 for deck text and fal.ai for generated visuals`,
     )
     .action(
       withErrorHandler(async (options: PresentationOptions) => {

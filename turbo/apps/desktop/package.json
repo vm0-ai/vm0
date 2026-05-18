@@ -1,0 +1,29 @@
+{
+  "name": "@vm0/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "productName": "Zero",
+  "description": "Zero desktop shell",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsup src/main.ts src/preload.ts --format cjs --platform node --target node20 --out-dir dist --sourcemap --clean --external electron",
+    "check-types": "tsc --noEmit",
+    "dev": "pnpm build && electron-forge start",
+    "lint": "oxlint src --deny-warnings",
+    "make": "pnpm build && electron-forge make --platform darwin",
+    "package": "pnpm build && electron-forge package --platform darwin",
+    "start": "electron-forge start",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.1",
+    "@electron-forge/maker-zip": "7.11.1",
+    "@types/node": "24.3.0",
+    "@vm0/typescript-config": "workspace:*",
+    "electron": "42.1.0",
+    "oxlint": "^1.57.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}

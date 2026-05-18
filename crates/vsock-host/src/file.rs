@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
@@ -13,8 +13,9 @@ use vsock_proto::{
 
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOutputEvent,
-    ExecOwnedCapturedOutput, ExecResult, ExecStreamRequest, Shared, VsockHost, exec_operation,
-    normal_request_on_shared, request_on_shared_with_composite_operation,
+    ExecOwnedCapturedOutput, ExecResult, ExecStreamRequest, FrameWriteObserver, Shared, VsockHost,
+    exec_operation, normal_request_on_shared_with_write_observer,
+    request_on_shared_with_composite_operation_and_observer,
 };
 
 const COPY_TEMP_CREATE_ATTEMPTS: usize = 16;
@@ -66,6 +67,14 @@ struct CopyFileToTempError {
     terminal_proven: bool,
 }
 
+struct CopyFileToTempRequest<'a> {
+    path: &'a str,
+    stream_limit_bytes: u32,
+    timeout_ms: u32,
+    missing_ok: bool,
+    write_observer: FrameWriteObserver,
+}
+
 impl CopyFileToTempError {
     fn unproven(error: io::Error) -> Self {
         Self {
@@ -106,14 +115,24 @@ struct ChunkedWriteCleanupGuard {
     shared: Option<Arc<Shared>>,
     command: String,
     sudo: bool,
+    write_observer: FrameWriteObserver,
+    cleanup_armed: Arc<AtomicBool>,
 }
 
 impl ChunkedWriteCleanupGuard {
-    fn new(shared: Arc<Shared>, command: String, sudo: bool) -> Self {
+    fn new(
+        shared: Arc<Shared>,
+        command: String,
+        sudo: bool,
+        write_observer: FrameWriteObserver,
+        cleanup_armed: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             shared: Some(shared),
             command,
             sudo,
+            write_observer,
+            cleanup_armed,
         }
     }
 
@@ -125,15 +144,21 @@ impl ChunkedWriteCleanupGuard {
         &mut self,
         normal_operation: &mut CompositeNormalOperation,
     ) -> io::Result<()> {
+        if !self.cleanup_armed.load(Ordering::Acquire) {
+            self.disarm();
+            return Ok(());
+        }
+
         let result = if let Some(shared) = self.shared.as_ref() {
             cleanup_timeout(
-                exec_operation::exec_cleanup_with_composite_on_shared(
+                exec_operation::exec_cleanup_with_composite_on_shared_and_observer(
                     shared,
                     &self.command,
                     CLEANUP_EXEC_TIMEOUT_MS,
                     &[],
                     self.sudo,
                     normal_operation,
+                    self.write_observer.clone(),
                 ),
                 CLEANUP_EXEC_TIMEOUT_MS,
             )
@@ -175,18 +200,23 @@ impl Drop for ChunkedWriteCleanupGuard {
         let Some(shared) = self.shared.take() else {
             return;
         };
+        if !self.cleanup_armed.load(Ordering::Acquire) {
+            return;
+        }
 
         let command = std::mem::take(&mut self.command);
         let sudo = self.sudo;
+        let write_observer = FrameWriteObserver::default();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 let _ = cleanup_timeout(
-                    exec_operation::exec_cleanup_untracked_on_shared(
+                    exec_operation::exec_cleanup_untracked_on_shared_with_write_observer(
                         &shared,
                         &command,
                         CLEANUP_EXEC_TIMEOUT_MS,
                         &[],
                         sudo,
+                        write_observer,
                     ),
                     CLEANUP_EXEC_TIMEOUT_MS,
                 )
@@ -194,6 +224,17 @@ impl Drop for ChunkedWriteCleanupGuard {
             });
         }
     }
+}
+
+fn write_observer_that_arms_cleanup(
+    write_observer: FrameWriteObserver,
+    cleanup_armed: Arc<AtomicBool>,
+) -> FrameWriteObserver {
+    FrameWriteObserver::new(move || {
+        write_observer.record_write_start()?;
+        cleanup_armed.store(true, Ordering::Release);
+        Ok(())
+    })
 }
 
 struct HostTempFileGuard {
@@ -389,6 +430,24 @@ impl VsockHost {
         max_bytes: u64,
         timeout_ms: u32,
     ) -> io::Result<Option<Vec<u8>>> {
+        self.read_file_with_write_observer(
+            path,
+            max_bytes,
+            timeout_ms,
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    /// Read a small file and report when the helper exec frame is about to be
+    /// written to the guest.
+    pub async fn read_file_with_write_observer(
+        &self,
+        path: &str,
+        max_bytes: u64,
+        timeout_ms: u32,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<Option<Vec<u8>>> {
         let stdout_limit_bytes = u32::try_from(max_bytes).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -408,17 +467,20 @@ impl VsockHost {
             path = shell_quote(path)
         );
         let result = self
-            .exec_capture(ExecCaptureRequest {
-                timeout_ms,
-                command: &command,
-                env: &[],
-                sudo: false,
-                label: "read-file",
-                stdout_limit_bytes,
-                stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-                expected_exit_codes: &[MISSING_FILE_EXIT_CODE],
-                wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-            })
+            .exec_capture_with_write_observer(
+                ExecCaptureRequest {
+                    timeout_ms,
+                    command: &command,
+                    env: &[],
+                    sudo: false,
+                    label: "read-file",
+                    stdout_limit_bytes,
+                    stderr_limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+                    expected_exit_codes: &[MISSING_FILE_EXIT_CODE],
+                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+                },
+                write_observer,
+            )
             .await?;
         if result.exit_code == MISSING_FILE_EXIT_CODE {
             return Ok(None);
@@ -449,6 +511,19 @@ impl VsockHost {
         path: &str,
         host_path: &Path,
         options: CopyFileOptions,
+    ) -> io::Result<CopyFileResult> {
+        self.copy_file_with_write_observer(path, host_path, options, FrameWriteObserver::default())
+            .await
+    }
+
+    /// Stream a guest file to a host path and report when the helper exec
+    /// frame is about to be written to the guest.
+    pub async fn copy_file_with_write_observer(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+        write_observer: FrameWriteObserver,
     ) -> io::Result<CopyFileResult> {
         if options.max_bytes == 0 {
             return Err(io::Error::new(
@@ -487,11 +562,14 @@ impl VsockHost {
         let mut normal_operation = CompositeNormalOperation::reserve(&self.shared)?;
         let copy_result = self
             .copy_file_to_temp(
-                path,
+                CopyFileToTempRequest {
+                    path,
+                    stream_limit_bytes,
+                    timeout_ms: options.timeout_ms,
+                    missing_ok: options.missing_ok,
+                    write_observer,
+                },
                 temp_file,
-                stream_limit_bytes,
-                options.timeout_ms,
-                options.missing_ok,
                 &mut normal_operation,
             )
             .await;
@@ -527,13 +605,17 @@ impl VsockHost {
 
     async fn copy_file_to_temp(
         &self,
-        path: &str,
+        request: CopyFileToTempRequest<'_>,
         mut temp_file: tokio::fs::File,
-        stream_limit_bytes: u32,
-        timeout_ms: u32,
-        missing_ok: bool,
         normal_operation: &mut CompositeNormalOperation,
     ) -> Result<CopyFileOutcome, CopyFileToTempError> {
+        let CopyFileToTempRequest {
+            path,
+            stream_limit_bytes,
+            timeout_ms,
+            missing_ok,
+            write_observer,
+        } = request;
         const MISSING_FILE_EXIT_CODE: i32 = 66;
         let command = format!(
             "if test -f {path}; then cat -- {path}; else exit {MISSING_FILE_EXIT_CODE}; fi",
@@ -544,28 +626,30 @@ impl VsockHost {
         } else {
             &[]
         };
-        let mut handle = exec_operation::exec_operation_stream_with_composite_on_shared(
-            &self.shared,
-            ExecStreamRequest {
-                timeout_ms,
-                command: &command,
-                env: &[],
-                sudo: false,
-                label: "copy-file",
-                stdout: ExecOutputPolicy::Stream {
-                    limit_bytes: stream_limit_bytes,
-                    chunk_limit_bytes: COPY_FILE_STREAM_CHUNK_LIMIT,
+        let mut handle =
+            exec_operation::exec_operation_stream_with_composite_on_shared_and_observer(
+                &self.shared,
+                ExecStreamRequest {
+                    timeout_ms,
+                    command: &command,
+                    env: &[],
+                    sudo: false,
+                    label: "copy-file",
+                    stdout: ExecOutputPolicy::Stream {
+                        limit_bytes: stream_limit_bytes,
+                        chunk_limit_bytes: COPY_FILE_STREAM_CHUNK_LIMIT,
+                    },
+                    stderr: ExecOutputPolicy::Capture {
+                        limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
+                    },
+                    expected_exit_codes,
+                    stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
                 },
-                stderr: ExecOutputPolicy::Capture {
-                    limit_bytes: exec_operation::SMALL_EXEC_CAPTURE_LIMIT_BYTES,
-                },
-                expected_exit_codes,
-                stream_queue_capacity: Some(COPY_FILE_STREAM_QUEUE_CAPACITY),
-            },
-            normal_operation,
-        )
-        .await
-        .map_err(CopyFileToTempError::unproven)?;
+                normal_operation,
+                write_observer,
+            )
+            .await
+            .map_err(CopyFileToTempError::unproven)?;
         let mut cancel_on_drop = exec_operation::ExecOperationCancelOnDropGuard::new(&handle);
         let mut stream_rx = handle.take_stream_receiver().ok_or_else(|| {
             CopyFileToTempError::unproven(io::Error::new(
@@ -648,9 +732,29 @@ impl VsockHost {
     ///
     /// Non-sudo writes create missing parent directories on the guest.
     pub async fn write_file(&self, path: &str, content: &[u8], sudo: bool) -> io::Result<()> {
+        self.write_file_with_write_observer(path, content, sudo, FrameWriteObserver::default())
+            .await
+    }
+
+    /// Write a file on the guest and report before each helper frame is
+    /// written to the guest.
+    pub async fn write_file_with_write_observer(
+        &self,
+        path: &str,
+        content: &[u8],
+        sudo: bool,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<()> {
         if content.len() <= WRITE_FILE_CHUNK_LIMIT {
             return self
-                .write_file_chunk(path, content, sudo, false, WriteFileChunkTracking::Tracked)
+                .write_file_chunk(
+                    path,
+                    content,
+                    sudo,
+                    false,
+                    WriteFileChunkTracking::Tracked,
+                    write_observer,
+                )
                 .await;
         }
 
@@ -662,8 +766,16 @@ impl VsockHost {
         let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
         let quoted_tmp = shell_quote(&tmp);
         let rm_tmp = format!("rm -f -- {quoted_tmp}");
-        let mut cleanup_guard =
-            ChunkedWriteCleanupGuard::new(Arc::clone(&self.shared), rm_tmp, sudo);
+        let cleanup_armed = Arc::new(AtomicBool::new(false));
+        let write_observer =
+            write_observer_that_arms_cleanup(write_observer, Arc::clone(&cleanup_armed));
+        let mut cleanup_guard = ChunkedWriteCleanupGuard::new(
+            Arc::clone(&self.shared),
+            rm_tmp,
+            sudo,
+            write_observer.clone(),
+            cleanup_armed,
+        );
 
         let result = async {
             for (i, chunk) in content.chunks(WRITE_FILE_CHUNK_LIMIT).enumerate() {
@@ -673,6 +785,7 @@ impl VsockHost {
                     sudo,
                     i > 0,
                     WriteFileChunkTracking::Composite(&mut normal_operation),
+                    write_observer.clone(),
                 )
                 .await?;
             }
@@ -692,7 +805,7 @@ impl VsockHost {
 
         // Atomic rename temp → target.
         let mv_cmd = format!("mv -f -- {quoted_tmp} {}", shell_quote(path));
-        match exec_operation::exec_capture_with_composite_on_shared(
+        match exec_operation::exec_capture_with_composite_on_shared_and_observer(
             &self.shared,
             ExecCaptureRequest {
                 command: &mv_cmd,
@@ -706,6 +819,7 @@ impl VsockHost {
                 wait_timeout: Duration::from_millis(HELPER_EXEC_TIMEOUT_MS as u64 + 5000),
             },
             &mut normal_operation,
+            write_observer,
         )
         .await
         {
@@ -745,29 +859,32 @@ impl VsockHost {
         sudo: bool,
         append: bool,
         tracking: WriteFileChunkTracking<'_>,
+        write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
         let payload = vsock_proto::encode_write_file(path, content, sudo, append)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
-                normal_request_on_shared(
+                normal_request_on_shared_with_write_observer(
                     &self.shared,
                     MSG_WRITE_FILE,
                     &payload,
                     WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
+                    write_observer,
                 )
                 .await?
             }
             WriteFileChunkTracking::Composite(normal_operation) => {
-                request_on_shared_with_composite_operation(
+                request_on_shared_with_composite_operation_and_observer(
                     &self.shared,
                     MSG_WRITE_FILE,
                     &payload,
                     WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
                     normal_operation,
+                    write_observer,
                 )
                 .await?
             }

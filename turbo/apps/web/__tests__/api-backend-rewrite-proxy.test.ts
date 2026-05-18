@@ -132,6 +132,42 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches only one segment for agent checkpoint rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/agent/checkpoints/checkpoint_123"),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/checkpoints")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/checkpoints/checkpoint_123/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/checkpoint/checkpoint_123"),
+    ).toBe(false);
+  });
+
+  it("matches the auth me rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/auth/me")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/auth/me/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/auth")).toBe(false);
+  });
+
+  it("matches only one segment for agent session by-id rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/sessions/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/sessions")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/sessions/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/session/abc")).toBe(false);
+  });
+
   it("routes hosted-site deployment endpoints to the API backend", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),
@@ -196,6 +232,24 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/integrations")).toBe(false);
   });
 
+  it("matches the storages commit rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/commit")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/commit/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/commits")).toBe(false);
+  });
+
+  it("matches the storages download rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/download")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/download/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/downloads")).toBe(false);
+  });
+
   it("matches the storages list rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/storages/list")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/storages/list/extra")).toBe(
@@ -205,10 +259,98 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/storages/lists")).toBe(false);
   });
 
+  it("matches the storages prepare rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/storages/prepare")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/storages/prepare/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/storages")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/storages/prepared")).toBe(false);
+  });
+
   it("matches the usage rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/usage")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/usage/extra")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/usages")).toBe(false);
+  });
+
+  it("matches the internal event consumer axiom rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axiom/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/axioms"),
+    ).toBe(false);
+  });
+
+  it("matches built-in generation webhook rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/built-in-generation"),
+    ).toBe(false);
+  });
+
+  it("matches the internal event consumer chat assistant rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/chat-assistant",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/chat-assistant/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/chat-assistants",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the internal event consumer telegram typing rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typing",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typing/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/telegram-typings",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the internal event consumer voice chat rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chat"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/event-consumers/voice-chat/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/event-consumers/voice-chats"),
+    ).toBe(false);
   });
 
   it("matches the zero voice-io quota, speech, stt, and tts rewrites exactly", () => {
@@ -269,6 +411,26 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero skills collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/skills")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/skills/extra/path")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/skill")).toBe(false);
+  });
+
+  it("matches the zero skills by-name rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/skills/my-skill")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/skills/my-skill/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/skill/my-skill")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero team rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/team")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/team/extra")).toBe(false);
@@ -289,6 +451,58 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero secrets root rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
+  });
+
+  it("matches the zero model policies rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/model-policies")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/model-policies/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/model-policy")).toBe(false);
+  });
+
+  it("matches the zero realtime token rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/realtime/token")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/realtime/token/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/realtime")).toBe(false);
+  });
+
+  it("matches the report error rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/report-error")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/report-error/extra")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero secrets by-name rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/secret/DELETE_ME")).toBe(
+      false,
+    );
+  });
+
+  it("matches the permission policies rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/permission-policies")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/permission-policies/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/permission-policy")).toBe(
+      false,
+    );
+  });
+
   it("matches the user model preference rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference"),
@@ -296,6 +510,200 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/user-model-preference/extra"),
     ).toBe(false);
+  });
+
+  it("matches the zero org list rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/list")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/list/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/lists")).toBe(false);
+  });
+
+  it("matches the zero org rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/orgs")).toBe(false);
+  });
+
+  it("matches the zero org domains rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/domains")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/domains/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/domain")).toBe(false);
+  });
+
+  it("matches the zero me model-providers root rewrite exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/me/model-providers")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/me/model-provider")).toBe(
+      false,
+    );
+  });
+
+  it("matches only one segment for zero me model-provider type rewrites", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/oauth/authorize",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/claude-code-oauth-token/extra",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the zero model providers rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/model-providers")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/model-providers-extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/model-provider")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero member credit cap rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-cap"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-cap/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/members/credit-caps"),
+    ).toBe(false);
+  });
+
+  it("matches the zero org members rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/members")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/members/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/member")).toBe(false);
+  });
+
+  it("matches the zero org delete rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/delete")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/delete/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/deleted")).toBe(false);
+  });
+
+  it("matches the zero variables rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/variables/extra/nested"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/variable")).toBe(false);
+  });
+
+  it("matches only one segment for zero variable by-name rewrites", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/variables/USER_TOKEN")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/variables")).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/variables/USER_TOKEN/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/variable/USER_TOKEN")).toBe(
+      false,
+    );
+  });
+
+  it("matches the zero onboarding status rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding/status")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/onboarding/status/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
+  });
+
+  it("matches the zero onboarding setup rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding/setup")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/onboarding/setup/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/onboarding")).toBe(false);
+  });
+
+  it("matches the zero org membership requests rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/membership-requests"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/membership-requests/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/org/membership-request"),
+    ).toBe(false);
+  });
+
+  it("matches the zero org invite rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/invite")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/invite/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/invites")).toBe(false);
+  });
+
+  it("matches the zero org leave rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/leave")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/leave/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/leaves")).toBe(false);
+  });
+
+  it("matches the zero model provider type rewrite path by one segment", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/anthropic-api-key",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/codex-oauth-token",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/model-providers/anthropic-api-key/extra",
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the zero org logo rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/org/logo")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/org/logo/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/org/logos")).toBe(false);
   });
 
   it("matches the zero voice-chat token rewrite exactly", () => {

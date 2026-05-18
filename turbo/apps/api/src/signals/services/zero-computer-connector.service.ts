@@ -22,7 +22,7 @@ import {
   safeDelete,
 } from "../external/ngrok-client";
 import { settle } from "../utils";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptStoredSecretValue } from "./crypto.utils";
 
 const log = logger("service:computer-connector");
 
@@ -102,7 +102,7 @@ async function upsertConnectorSecret(
   name: (typeof COMPUTER_CONNECTOR_SECRET_NAMES)[number],
   value: string,
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(value);
+  const encryptedValue = await encryptStoredSecretValue(value);
   await db
     .insert(secrets)
     .values({

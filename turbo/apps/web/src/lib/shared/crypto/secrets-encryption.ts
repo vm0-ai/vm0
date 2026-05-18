@@ -3,6 +3,28 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits for GCM
 const AUTH_TAG_LENGTH = 16; // 128 bits
+const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
+
+function legacyCiphertextFromEnvelope(encryptedData: string): string {
+  if (!encryptedData.startsWith(STORED_SECRET_ENVELOPE_PREFIX)) {
+    return encryptedData;
+  }
+
+  const payload = encryptedData.slice(STORED_SECRET_ENVELOPE_PREFIX.length);
+  const parsed = JSON.parse(
+    Buffer.from(payload, "base64url").toString("utf8"),
+  ) as unknown;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "legacy" in parsed &&
+    typeof parsed.legacy === "string"
+  ) {
+    return parsed.legacy;
+  }
+
+  throw new Error("KMS-only stored secret ciphertext is not supported here");
+}
 
 /**
  * Encrypt a secrets map (key-value pairs) using AES-256-GCM
@@ -69,7 +91,8 @@ export function decryptSecretsMap(
     throw new Error("SECRETS_ENCRYPTION_KEY must be 32 bytes (64 hex chars)");
   }
 
-  const parts = encryptedData.split(":");
+  const legacyEncryptedData = legacyCiphertextFromEnvelope(encryptedData);
+  const parts = legacyEncryptedData.split(":");
   if (parts.length !== 3) {
     throw new Error("Invalid encrypted secrets format");
   }
@@ -144,7 +167,8 @@ export function decryptSecretValue(
     throw new Error("SECRETS_ENCRYPTION_KEY must be 32 bytes (64 hex chars)");
   }
 
-  const parts = encryptedData.split(":");
+  const legacyEncryptedData = legacyCiphertextFromEnvelope(encryptedData);
+  const parts = legacyEncryptedData.split(":");
   if (parts.length !== 3) {
     throw new Error("Invalid encrypted secret format");
   }

@@ -3,7 +3,10 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { zeroAgentPermissionPoliciesContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentPermissionPoliciesContract,
+  zeroAgentsByIdContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -81,8 +84,8 @@ describe("PUT /api/zero/permission-policies", () => {
     expect(response.body.agentId).toBe(agentId);
   });
 
-  it("persists policies across reads (DB read-after-write)", async () => {
-    const fixture = uniqueOrgUser("zpp-persist-db");
+  it("persists policies across agent detail reads", async () => {
+    const fixture = uniqueOrgUser("zpp-persist-read");
     await store.set(
       seedOrgMembership$,
       { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
@@ -101,21 +104,25 @@ describe("PUT /api/zero/permission-policies", () => {
       },
     } as const;
 
-    const client = setupApp({ context })(zeroAgentPermissionPoliciesContract);
-    const response = await client.update({
+    const policyClient = setupApp({ context })(
+      zeroAgentPermissionPoliciesContract,
+    );
+    const updateResponse = await policyClient.update({
       body: { agentId, policies },
       headers: { authorization: "Bearer clerk-session" },
     });
-    expect(response.status).toBe(200);
+    expect(updateResponse.status).toBe(200);
 
-    // Direct DB SELECT verifies the row was persisted, independent of the
-    // PUT response body. Mirrors web case "should persist policies across reads".
-    // The DB stores the flat RawPermissionPolicies form (no `policies` wrapper);
-    // toFirewallPolicies reconstructs the nested wire shape on read.
-    const stored = await readStoredPolicies(agentId);
-    expect(stored?.permissionPolicies).toStrictEqual({
-      slack: { "channels:read": "allow", "chat:write": "ask" },
+    const agentClient = setupApp({ context })(zeroAgentsByIdContract);
+    const readResponse = await agentClient.get({
+      params: { id: agentId },
+      headers: { authorization: "Bearer clerk-session" },
     });
+    expect(readResponse.status).toBe(200);
+    if (readResponse.status !== 200) {
+      return;
+    }
+    expect(readResponse.body.permissionPolicies).toStrictEqual(policies);
   });
 
   it("overwrites previous policies on a second PUT", async () => {
@@ -465,6 +472,32 @@ describe("PUT /api/zero/permission-policies", () => {
     const client = setupApp({ context })(zeroAgentPermissionPoliciesContract);
     const response = await client.update({
       body: { agentId, policies: {} },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body.permissionPolicies).toBeNull();
+  });
+
+  it("returns permissionPolicies as null for new agents", async () => {
+    const fixture = uniqueOrgUser("zpp-new-agent-null");
+    await store.set(
+      seedOrgMembership$,
+      { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
+      context.signal,
+    );
+    const { agentId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await client.get({
+      params: { id: agentId },
       headers: { authorization: "Bearer clerk-session" },
     });
     expect(response.status).toBe(200);

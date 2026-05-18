@@ -60,6 +60,40 @@ pub use process::{
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 
+/// Observer called when a request frame reaches the guest-write boundary.
+///
+/// The callback is synchronous because it runs while the shared writer lock is
+/// held, immediately before frame bytes are written. Keep the callback fast and
+/// do not call back into the same [`VsockHost`], because that can deadlock on
+/// the writer lock. Multi-frame helper operations may invoke the same observer
+/// more than once.
+#[derive(Clone)]
+pub struct FrameWriteObserver {
+    record_write_start: Arc<dyn Fn() -> io::Result<()> + Send + Sync>,
+}
+
+impl FrameWriteObserver {
+    pub fn new(record_write_start: impl Fn() -> io::Result<()> + Send + Sync + 'static) -> Self {
+        Self {
+            record_write_start: Arc::new(record_write_start),
+        }
+    }
+
+    pub fn noop() -> Self {
+        Self::new(|| Ok(()))
+    }
+
+    fn record_write_start(&self) -> io::Result<()> {
+        (self.record_write_start)()
+    }
+}
+
+impl Default for FrameWriteObserver {
+    fn default() -> Self {
+        Self::noop()
+    }
+}
+
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
 pub struct ExecResult {
@@ -68,6 +102,16 @@ pub struct ExecResult {
     pub stderr: Vec<u8>,
     pub stdout_truncated: bool,
     pub stderr_truncated: bool,
+}
+
+/// Request parameters for spawning a process on the guest.
+pub struct ProcessSpawnRequest<'a> {
+    pub command: &'a str,
+    pub timeout_ms: u32,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub stream_stdout: bool,
+    pub stdout_log_path: Option<&'a str>,
 }
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
@@ -152,7 +196,7 @@ enum PendingNormalOperation {
     Composite(NormalOperationTransitionHandle),
 }
 
-struct PendingNormalRequestWriteGuard {
+struct RequestWriteGuard {
     shared: Arc<Shared>,
     write_started: bool,
     write_returned: bool,
@@ -170,7 +214,7 @@ impl Drop for PendingRequestGuard {
     }
 }
 
-impl PendingNormalRequestWriteGuard {
+impl RequestWriteGuard {
     fn new(shared: Arc<Shared>) -> Self {
         Self {
             shared,
@@ -188,7 +232,7 @@ impl PendingNormalRequestWriteGuard {
     }
 }
 
-impl Drop for PendingNormalRequestWriteGuard {
+impl Drop for RequestWriteGuard {
     fn drop(&mut self) {
         if self.write_started && !self.write_returned {
             self.shared.poison_connection();
@@ -421,6 +465,10 @@ async fn reader_loop(
                         return;
                     }
                 }
+                if process::record_spawn_process_error(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
             }
 
             if msg.msg_type == MSG_EXEC_OUTPUT {
@@ -446,6 +494,13 @@ async fn reader_loop(
             } else {
                 if msg.msg_type == MSG_SPAWN_PROCESS_RESULT
                     && process::record_spawn_process_result(&shared, &msg).is_err()
+                {
+                    shared.poison_connection();
+                    return;
+                }
+                if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
+                    && process::reject_unexpected_process_response(&shared, msg.seq, msg.msg_type)
+                        .is_err()
                 {
                     shared.poison_connection();
                     return;
@@ -500,6 +555,24 @@ async fn request_on_shared(
     request_raw_on_shared(shared, msg_type, seq, payload, timeout).await
 }
 
+async fn write_request_frame(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    before_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
+    let mut writer = shared.writer.lock().await;
+    before_write()?;
+    write_guard.mark_started();
+    if let Err(error) = writer.write_all(data).await {
+        write_guard.mark_returned();
+        shared.poison_connection();
+        return Err(error);
+    }
+    write_guard.mark_returned();
+    Ok(())
+}
+
 /// Send a request with a pre-allocated sequence number.
 async fn request_raw_on_shared(
     shared: &Arc<Shared>,
@@ -540,9 +613,11 @@ async fn request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    // The guard removes the pending entry on write failure, timeout, or
-    // cancellation before reader_loop dispatches a response.
-    shared.writer.lock().await.write_all(&data).await?;
+    // The pending guard removes the pending entry on write failure, timeout,
+    // or cancellation before reader_loop dispatches a response. The write
+    // helper separately poisons the connection if cancellation interrupts an
+    // in-progress frame write.
+    write_request_frame(shared, &data, || Ok(())).await?;
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -561,47 +636,37 @@ async fn request_raw_on_shared(
     }
 }
 
-async fn normal_request_on_shared(
+async fn normal_request_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     msg_type: u8,
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
+    write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
-    normal_request_raw_on_shared(shared, msg_type, seq, payload, terminal_msg_types, timeout).await
-}
-
-async fn request_on_shared_with_composite_operation(
-    shared: &Arc<Shared>,
-    msg_type: u8,
-    payload: &[u8],
-    terminal_msg_types: &'static [u8],
-    timeout: Duration,
-    normal_operation: &mut CompositeNormalOperation,
-) -> io::Result<RawMessage> {
-    let seq = shared.next_seq();
-    request_raw_on_shared_with_composite_operation(
+    normal_request_raw_on_shared_with_write_observer(
         shared,
         msg_type,
         seq,
         payload,
         terminal_msg_types,
         timeout,
-        normal_operation,
+        write_observer,
     )
     .await
 }
 
-async fn request_raw_on_shared_with_composite_operation(
+async fn request_on_shared_with_composite_operation_and_observer(
     shared: &Arc<Shared>,
     msg_type: u8,
-    seq: u32,
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
     normal_operation: &mut CompositeNormalOperation,
+    write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
+    let seq = shared.next_seq();
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
@@ -631,18 +696,11 @@ async fn request_raw_on_shared_with_composite_operation(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    normal_operation.mark_possible_guest_write_started()?;
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(&data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
-    write_guard.mark_returned();
-    drop(writer);
-    drop(write_guard);
+    write_request_frame(shared, &data, || {
+        normal_operation.mark_possible_guest_write_started()?;
+        write_observer.record_write_start()
+    })
+    .await?;
 
     tokio::select! {
         biased;
@@ -658,13 +716,14 @@ async fn request_raw_on_shared_with_composite_operation(
     }
 }
 
-async fn normal_request_raw_on_shared(
+async fn normal_request_raw_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     msg_type: u8,
     seq: u32,
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
+    write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -694,18 +753,11 @@ async fn normal_request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    mark_pending_normal_operation_possible_guest_write(shared, seq)?;
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(&data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
-    write_guard.mark_returned();
-    drop(writer);
-    drop(write_guard);
+    write_request_frame(shared, &data, || {
+        mark_pending_normal_operation_possible_guest_write(shared, seq)?;
+        write_observer.record_write_start()
+    })
+    .await?;
 
     tokio::select! {
         biased;
@@ -1060,8 +1112,8 @@ impl VsockHost {
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
     /// should use [`spawn_process`](Self::spawn_process), which decouples the
-    /// host request/response cycle from the command's lifetime and does not
-    /// leak a guest-side orphan when the host stops waiting.
+    /// host request/response cycle from the command's lifetime and keeps
+    /// host-side lifecycle tracking until the guest reports process exit.
     pub async fn exec(
         &self,
         command: &str,
@@ -1077,10 +1129,27 @@ impl VsockHost {
         exec_operation::exec_capture_on_shared(&self.shared, request).await
     }
 
+    /// Execute a capture-style command and report when its start frame is
+    /// about to be written to the guest.
+    pub async fn exec_capture_with_write_observer(
+        &self,
+        request: ExecCaptureRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ExecResult> {
+        exec_operation::exec_capture_on_shared_with_write_observer(
+            &self.shared,
+            request,
+            write_observer,
+        )
+        .await
+    }
+
     /// Spawn a process on the guest and monitor for exit.
     ///
     /// Returns immediately with a handle. Use [`GuestProcessHandle::wait`] to
-    /// wait for completion.
+    /// wait for completion. Dropping the handle does not cancel the guest
+    /// process; the host continues tracking lifecycle frames until process exit
+    /// or connection close.
     ///
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
@@ -1097,6 +1166,35 @@ impl VsockHost {
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<GuestProcessHandle> {
+        self.spawn_process_with_request_and_write_observer(
+            ProcessSpawnRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+            },
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    /// Spawn a process and report when its request frame is about to be
+    /// written to the guest.
+    pub async fn spawn_process_with_request_and_write_observer(
+        &self,
+        request: ProcessSpawnRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<GuestProcessHandle> {
+        let ProcessSpawnRequest {
+            command,
+            timeout_ms,
+            env,
+            sudo,
+            stream_stdout,
+            stdout_log_path,
+        } = request;
         process::spawn_process_on_shared(
             &self.shared,
             process::SpawnProcessOnSharedRequest {
@@ -1107,6 +1205,7 @@ impl VsockHost {
                 stream_stdout,
                 stdout_log_path,
                 control_sink: false,
+                write_observer,
             },
         )
         .await
@@ -1123,6 +1222,35 @@ impl VsockHost {
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<GuestProcessHandle> {
+        self.spawn_process_with_control_sink_request_and_write_observer(
+            ProcessSpawnRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+            },
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    /// Spawn a process with an operation-bound control sink and report when
+    /// its request frame is about to be written to the guest.
+    pub async fn spawn_process_with_control_sink_request_and_write_observer(
+        &self,
+        request: ProcessSpawnRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<GuestProcessHandle> {
+        let ProcessSpawnRequest {
+            command,
+            timeout_ms,
+            env,
+            sudo,
+            stream_stdout,
+            stdout_log_path,
+        } = request;
         process::spawn_process_on_shared(
             &self.shared,
             process::SpawnProcessOnSharedRequest {
@@ -1133,6 +1261,7 @@ impl VsockHost {
                 stream_stdout,
                 stdout_log_path,
                 control_sink: true,
+                write_observer,
             },
         )
         .await

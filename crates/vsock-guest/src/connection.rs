@@ -8,7 +8,7 @@ use std::time::Duration;
 use vsock_proto::{
     self, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
     MSG_PROCESS_CONTROL, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_SPAWN_PROCESS, MSG_WRITE_FILE,
+    MSG_SPAWN_PROCESS, MSG_WRITE_FILE, RawMessage,
 };
 
 use crate::error::to_io_error;
@@ -17,11 +17,14 @@ use crate::exec_operation::{
     start_exec_operation,
 };
 use crate::handlers::{
-    MessageOutcome, decode_write_file_message, handle_decoded_write_file_message, handle_message,
+    MessageOutcome, decode_write_file_message, handle_basic_message,
+    handle_decoded_write_file_message,
 };
 use crate::log::log;
-use crate::monitor::{SpawnProcessRequest, handle_spawn_process};
-use crate::process_control::{ProcessControlRegistry, handle_process_control};
+use crate::monitor::{SpawnProcessRequest, handle_spawn_process as run_spawn_process};
+use crate::process_control::{
+    ProcessControlRegistry, handle_process_control as route_process_control,
+};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -33,6 +36,12 @@ const VSOCK_CID_HOST: u32 = 2;
 const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
 enum ConnectionEnd {
     Closed,
+    Shutdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchOutcome {
+    Continue,
     Shutdown,
 }
 
@@ -72,6 +81,23 @@ fn reject_operation_if_quiescing(
         Ok(true)
     } else {
         Ok(false)
+    }
+}
+
+fn require_non_zero_sequence(
+    seq: u32,
+    operation_name: &'static str,
+    writer: &GuestWriter,
+) -> io::Result<bool> {
+    if seq == 0 {
+        send_error_response(
+            0,
+            &format!("{operation_name} requires non-zero sequence"),
+            writer,
+        )?;
+        Ok(false)
+    } else {
+        Ok(true)
     }
 }
 
@@ -137,6 +163,183 @@ fn handle_resume_operations(
 
     operation_state.resume();
     send_empty_response(MSG_OPERATIONS_RESUMED, seq, writer)
+}
+
+struct ConnectionDispatcher {
+    writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
+    exec_operation_registry: ExecOperationRegistry,
+    process_control_registry: ProcessControlRegistry,
+    operation_state: OperationState,
+}
+
+impl ConnectionDispatcher {
+    fn new(writer: GuestWriter, connection_cancel: Arc<AtomicBool>) -> Self {
+        Self {
+            writer,
+            connection_cancel,
+            exec_operation_registry: ExecOperationRegistry::default(),
+            process_control_registry: ProcessControlRegistry::default(),
+            operation_state: OperationState::default(),
+        }
+    }
+
+    fn dispatch(&self, msg: &RawMessage) -> io::Result<DispatchOutcome> {
+        match msg.msg_type {
+            MSG_EXEC_START => self.handle_exec_start(msg)?,
+            MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
+            MSG_SPAWN_PROCESS => self.handle_spawn_process(msg)?,
+            MSG_PROCESS_CONTROL => self.handle_process_control(msg)?,
+            MSG_WRITE_FILE => self.handle_write_file(msg)?,
+            MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
+            MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
+            _ => return self.handle_basic_message(msg),
+        }
+
+        Ok(DispatchOutcome::Continue)
+    }
+
+    fn handle_exec_start(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "exec start", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let decoded = vsock_proto::decode_exec_start(&msg.payload).map_err(to_io_error)?;
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        start_exec_operation(
+            ExecOperationWorkerRequest::from_decoded(msg.seq, decoded),
+            operation_guard,
+            self.writer.clone(),
+            self.connection_cancel.clone(),
+            self.exec_operation_registry.clone(),
+        )
+    }
+
+    fn handle_exec_cancel(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "exec cancel", &self.writer)? {
+            return Ok(());
+        }
+        vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
+        cancel_exec_operation(&self.exec_operation_registry, msg.seq);
+        Ok(())
+    }
+
+    fn handle_spawn_process(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "spawn process", &self.writer)? {
+            return Ok(());
+        }
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let d = vsock_proto::decode_spawn_process(&msg.payload).map_err(to_io_error)?;
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        let process_control_registration =
+            match self
+                .process_control_registry
+                .register(msg.seq, d.control_nonce, d.control_sink)
+            {
+                Ok(registration) => registration,
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    operation_guard.release();
+                    send_error_response(msg.seq, "process operation already active", &self.writer)?;
+                    return Ok(());
+                }
+                Err(error) => {
+                    operation_guard.release();
+                    send_error_response(
+                        msg.seq,
+                        &format!("process control setup failed: {error}"),
+                        &self.writer,
+                    )?;
+                    return Ok(());
+                }
+            };
+        let (process_control_guard, process_control_bootstrap_endpoint) = (
+            Some(process_control_registration.guard),
+            process_control_registration.bootstrap_endpoint,
+        );
+        // handle_spawn_process writes the response itself (before spawning the
+        // streaming thread) to preserve the result-before-streaming protocol
+        // invariant.
+        run_spawn_process(
+            SpawnProcessRequest {
+                timeout_ms: d.timeout_ms,
+                command: d.command,
+                env: &d.env,
+                sudo: d.sudo,
+                stream_stdout: d.stream_stdout,
+                stdout_log_path: d.stdout_log_path,
+                process_control_guard,
+                process_control_bootstrap_endpoint,
+            },
+            msg.seq,
+            operation_guard,
+            self.writer.clone(),
+            self.connection_cancel.clone(),
+        )
+    }
+
+    fn handle_process_control(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "process control", &self.writer)? {
+            return Ok(());
+        }
+        route_process_control(
+            msg.seq,
+            &msg.payload,
+            &self.process_control_registry,
+            &self.writer,
+        )
+    }
+
+    fn handle_write_file(&self, msg: &RawMessage) -> io::Result<()> {
+        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
+            return Ok(());
+        }
+        let decoded = decode_write_file_message(msg)?;
+        let Some(operation_guard) =
+            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
+        else {
+            return Ok(());
+        };
+        let response = handle_decoded_write_file_message(msg.seq, decoded)?;
+        self.writer.write_frame_after_lock(&response, || {
+            operation_guard.release();
+        })
+    }
+
+    fn handle_quiesce_operations(&self, msg: &RawMessage) -> io::Result<()> {
+        handle_quiesce_operations(msg.seq, &msg.payload, &self.operation_state, &self.writer)
+    }
+
+    fn handle_resume_operations(&self, msg: &RawMessage) -> io::Result<()> {
+        handle_resume_operations(msg.seq, &msg.payload, &self.operation_state, &self.writer)
+    }
+
+    fn handle_basic_message(&self, msg: &RawMessage) -> io::Result<DispatchOutcome> {
+        match handle_basic_message(msg)? {
+            MessageOutcome::Response(response) => {
+                self.writer.write_frame(&response)?;
+                Ok(DispatchOutcome::Continue)
+            }
+            MessageOutcome::Shutdown(response) => {
+                if let Err(e) = self.writer.write_frame(&response) {
+                    log("WARN", &format!("Failed to send shutdown_ack: {e}"));
+                }
+                log("INFO", "Shutdown complete, exiting");
+                Ok(DispatchOutcome::Shutdown)
+            }
+        }
+    }
 }
 
 /// Connect to vsock (Linux only - this binary runs inside Firecracker VM)
@@ -205,9 +408,6 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
-    let exec_operation_registry = ExecOperationRegistry::default();
-    let process_control_registry = ProcessControlRegistry::default();
-    let operation_state = OperationState::default();
 
     let mut decoder = vsock_proto::Decoder::new();
 
@@ -218,6 +418,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     }
     log("INFO", "Sent ready signal");
 
+    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone());
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
@@ -232,133 +433,8 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
             .decode(buf.get(..n).unwrap_or_default())
             .map_err(to_io_error)?
         {
-            // Exec operation messages run in background threads to avoid
-            // blocking the event loop. A blocking child process (e.g. reading a
-            // pipe fd) would otherwise stall all subsequent messages.
-            if msg.msg_type == MSG_EXEC_START {
-                if msg.seq == 0 {
-                    send_error_response(0, "exec start requires non-zero sequence", &writer)?;
-                    continue;
-                }
-                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
-                    continue;
-                }
-                let decoded = vsock_proto::decode_exec_start(&msg.payload).map_err(to_io_error)?;
-                let Some(operation_guard) =
-                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
-                else {
-                    continue;
-                };
-                start_exec_operation(
-                    ExecOperationWorkerRequest::from_decoded(msg.seq, decoded),
-                    operation_guard,
-                    writer.clone(),
-                    connection_cancel.clone(),
-                    exec_operation_registry.clone(),
-                )?;
-            } else if msg.msg_type == MSG_EXEC_CANCEL {
-                if msg.seq == 0 {
-                    send_error_response(0, "exec cancel requires non-zero sequence", &writer)?;
-                    continue;
-                }
-                vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
-                cancel_exec_operation(&exec_operation_registry, msg.seq);
-            } else if msg.msg_type == MSG_SPAWN_PROCESS {
-                if msg.seq == 0 {
-                    send_error_response(0, "spawn process requires non-zero sequence", &writer)?;
-                    continue;
-                }
-                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
-                    continue;
-                }
-                let d = vsock_proto::decode_spawn_process(&msg.payload).map_err(to_io_error)?;
-                let Some(operation_guard) =
-                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
-                else {
-                    continue;
-                };
-                let process_control_registration = match process_control_registry.register(
-                    msg.seq,
-                    d.control_nonce,
-                    d.control_sink,
-                ) {
-                    Ok(registration) => registration,
-                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                        operation_guard.release();
-                        send_error_response(msg.seq, "process operation already active", &writer)?;
-                        continue;
-                    }
-                    Err(error) => {
-                        operation_guard.release();
-                        send_error_response(
-                            msg.seq,
-                            &format!("process control setup failed: {error}"),
-                            &writer,
-                        )?;
-                        continue;
-                    }
-                };
-                let (process_control_guard, process_control_bootstrap_endpoint) = (
-                    Some(process_control_registration.guard),
-                    process_control_registration.bootstrap_endpoint,
-                );
-                // handle_spawn_process writes the response itself (before
-                // spawning the streaming thread) to prevent a race where
-                // stdout chunks could arrive at the host before the result.
-                handle_spawn_process(
-                    SpawnProcessRequest {
-                        timeout_ms: d.timeout_ms,
-                        command: d.command,
-                        env: &d.env,
-                        sudo: d.sudo,
-                        stream_stdout: d.stream_stdout,
-                        stdout_log_path: d.stdout_log_path,
-                        process_control_guard,
-                        process_control_bootstrap_endpoint,
-                    },
-                    msg.seq,
-                    operation_guard,
-                    writer.clone(),
-                    connection_cancel.clone(),
-                )?;
-            } else if msg.msg_type == MSG_PROCESS_CONTROL {
-                if msg.seq == 0 {
-                    send_error_response(0, "process control requires non-zero sequence", &writer)?;
-                    continue;
-                }
-                handle_process_control(msg.seq, &msg.payload, &process_control_registry, &writer)?;
-            } else if msg.msg_type == MSG_WRITE_FILE {
-                if reject_operation_if_quiescing(&operation_state, msg.seq, &writer)? {
-                    continue;
-                }
-                let decoded = decode_write_file_message(&msg)?;
-                let Some(operation_guard) =
-                    acquire_operation_guard(&operation_state, msg.seq, &writer)?
-                else {
-                    continue;
-                };
-                let response = handle_decoded_write_file_message(msg.seq, decoded)?;
-                let result = writer.write_frame_after_lock(&response, || {
-                    operation_guard.release();
-                });
-                result?;
-            } else if msg.msg_type == MSG_QUIESCE_OPERATIONS {
-                handle_quiesce_operations(msg.seq, &msg.payload, &operation_state, &writer)?;
-            } else if msg.msg_type == MSG_RESUME_OPERATIONS {
-                handle_resume_operations(msg.seq, &msg.payload, &operation_state, &writer)?;
-            } else {
-                match handle_message(&msg)? {
-                    MessageOutcome::Response(response) => {
-                        writer.write_frame(&response)?;
-                    }
-                    MessageOutcome::Shutdown(response) => {
-                        if let Err(e) = writer.write_frame(&response) {
-                            log("WARN", &format!("Failed to send shutdown_ack: {e}"));
-                        }
-                        log("INFO", "Shutdown complete, exiting");
-                        return Ok(ConnectionEnd::Shutdown);
-                    }
-                }
+            if dispatcher.dispatch(&msg)? == DispatchOutcome::Shutdown {
+                return Ok(ConnectionEnd::Shutdown);
             }
         }
     }

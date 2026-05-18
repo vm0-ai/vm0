@@ -15,6 +15,7 @@ const SKIP_I18N_PREFIXES = [
   "/_next/",
   "/cli-auth",
   "/connector/",
+  "/desktop-auth",
   "/slack/",
   "/sign-in",
   "/sign-in-token",

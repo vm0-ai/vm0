@@ -150,7 +150,7 @@ export async function listLocalBrowserHosts(): Promise<LocalBrowserHostListRespo
   const config = await getLocalBrowserClientConfig();
   const client = initClient(zeroLocalBrowserHostsContract, config);
 
-  const result = await client.list({});
+  const result = await client.list({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

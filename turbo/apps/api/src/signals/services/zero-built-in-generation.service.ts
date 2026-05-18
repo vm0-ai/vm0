@@ -40,6 +40,26 @@ interface CreateBuiltInGenerationJobArgs {
   readonly request: Record<string, unknown>;
 }
 
+interface BuiltInGenerationRequestInternal {
+  readonly admissionId?: string;
+  readonly provider?: "openai" | "fal";
+  readonly providerJobId?: string;
+  readonly providerStatusUrl?: string;
+  readonly providerResponseUrl?: string;
+  readonly providerTask?: string;
+  readonly presentation?: unknown;
+}
+
+export interface BuiltInGenerationWebhookJob {
+  readonly id: string;
+  readonly type: BuiltInGenerationType;
+  readonly status: BuiltInGenerationStatus;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string | null;
+  readonly request: Record<string, unknown>;
+}
+
 interface BuiltInGenerationJobRow {
   readonly id: string;
   readonly type: BuiltInGenerationType;
@@ -52,12 +72,75 @@ interface BuiltInGenerationJobRow {
   readonly completedAt: Date | null;
 }
 
+const BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY = "__builtInGeneration";
+
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function compactObject(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => {
+      return entry !== undefined;
+    }),
+  );
+}
+
+export function builtInGenerationRequestWithInternal(
+  request: Record<string, unknown>,
+  internal: BuiltInGenerationRequestInternal,
+): Record<string, unknown> {
+  return {
+    ...request,
+    [BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY]: compactObject({
+      admissionId: internal.admissionId,
+      provider: internal.provider,
+      providerJobId: internal.providerJobId,
+      providerStatusUrl: internal.providerStatusUrl,
+      providerResponseUrl: internal.providerResponseUrl,
+      providerTask: internal.providerTask,
+      presentation: internal.presentation,
+    }),
+  };
+}
+
+export function readBuiltInGenerationRequestInternal(
+  request: unknown,
+): BuiltInGenerationRequestInternal {
+  if (!isRecord(request)) {
+    return {};
+  }
+  const value = request[BUILT_IN_GENERATION_INTERNAL_REQUEST_KEY];
+  if (!isRecord(value)) {
+    return {};
+  }
+  return {
+    admissionId:
+      typeof value.admissionId === "string" ? value.admissionId : undefined,
+    provider:
+      value.provider === "openai" || value.provider === "fal"
+        ? value.provider
+        : undefined,
+    providerJobId:
+      typeof value.providerJobId === "string" ? value.providerJobId : undefined,
+    providerStatusUrl:
+      typeof value.providerStatusUrl === "string"
+        ? value.providerStatusUrl
+        : undefined,
+    providerResponseUrl:
+      typeof value.providerResponseUrl === "string"
+        ? value.providerResponseUrl
+        : undefined,
+    providerTask:
+      typeof value.providerTask === "string" ? value.providerTask : undefined,
+    presentation: value.presentation,
+  };
 }
 
 function serializeBuiltInGenerationJob(
@@ -260,6 +343,76 @@ export const markBuiltInGenerationRunning$ = command(
         ),
       );
     signal.throwIfAborted();
+  },
+);
+
+export const mergeBuiltInGenerationJobInternal$ = command(
+  async (
+    { set },
+    args: {
+      readonly generationId: string;
+      readonly internal: BuiltInGenerationRequestInternal;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    const [job] = await writeDb
+      .select({ request: builtInGenerationJobs.request })
+      .from(builtInGenerationJobs)
+      .where(eq(builtInGenerationJobs.id, args.generationId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!job || !isRecord(job.request)) {
+      return;
+    }
+
+    const current = readBuiltInGenerationRequestInternal(job.request);
+    await writeDb
+      .update(builtInGenerationJobs)
+      .set({
+        request: builtInGenerationRequestWithInternal(job.request, {
+          ...current,
+          ...args.internal,
+        }),
+        updatedAt: nowDate(),
+      })
+      .where(eq(builtInGenerationJobs.id, args.generationId));
+    signal.throwIfAborted();
+  },
+);
+
+export const getBuiltInGenerationWebhookJob$ = command(
+  async (
+    { set },
+    generationId: string,
+    signal: AbortSignal,
+  ): Promise<BuiltInGenerationWebhookJob | null> => {
+    const writeDb = set(writeDb$);
+    const [job] = await writeDb
+      .select({
+        id: builtInGenerationJobs.id,
+        type: builtInGenerationJobs.type,
+        status: builtInGenerationJobs.status,
+        orgId: builtInGenerationJobs.orgId,
+        userId: builtInGenerationJobs.userId,
+        runId: builtInGenerationJobs.runId,
+        request: builtInGenerationJobs.request,
+      })
+      .from(builtInGenerationJobs)
+      .where(
+        and(
+          eq(builtInGenerationJobs.id, generationId),
+          inArray(builtInGenerationJobs.status, [
+            ...ACTIVE_BUILT_IN_GENERATION_STATUSES,
+          ]),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!job || !isRecord(job.request)) {
+      return null;
+    }
+    return { ...job, request: job.request };
   },
 );
 

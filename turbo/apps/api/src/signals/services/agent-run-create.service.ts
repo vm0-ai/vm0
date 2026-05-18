@@ -53,6 +53,7 @@ import {
   isSupportedFramework,
   type SupportedFramework,
 } from "@vm0/core/frameworks";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
@@ -105,7 +106,7 @@ import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
 import { settle, tapError } from "../utils";
 import {
-  decryptSecretValue,
+  decryptStoredSecretValue,
   encryptSecretValue,
   encryptSecretsMap,
 } from "./crypto.utils";
@@ -860,6 +861,7 @@ async function multiAuthModelProviderEnvironment(
     readonly type: ModelProviderType;
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.authMethod) {
@@ -885,7 +887,10 @@ async function multiAuthModelProviderEnvironment(
     );
   const storedSecrets: Record<string, string> = {};
   for (const row of secretRows) {
-    storedSecrets[row.name] = decryptSecretValue(row.encryptedValue);
+    storedSecrets[row.name] = await decryptStoredSecretValue(
+      row.encryptedValue,
+      args.featureSwitchContext,
+    );
   }
 
   const forwardableSecrets: Record<string, string> = {};
@@ -974,6 +979,7 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface ModelProviderEnvironmentRow {
@@ -1044,6 +1050,7 @@ async function resolveCandidateModelProviderEnvironment(
       type: row.type,
       authMethod: row.authMethod,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
+      featureSwitchContext: args.featureSwitchContext,
     });
   }
 
@@ -1055,7 +1062,10 @@ async function resolveCandidateModelProviderEnvironment(
     row.id,
     row.type,
     config,
-    decryptSecretValue(row.encryptedValue),
+    await decryptStoredSecretValue(
+      row.encryptedValue,
+      args.featureSwitchContext,
+    ),
     args.selectedModelOverride ?? row.selectedModel,
   );
 }
@@ -1161,6 +1171,7 @@ async function loadReferencedSecrets(
     readonly content: AgentComposeContent;
     readonly runSecrets: Record<string, string> | undefined;
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<Record<string, string> | undefined> {
   const environment = firstAgent(args.content)?.environment;
@@ -1207,7 +1218,10 @@ async function loadReferencedSecrets(
   for (const row of rows) {
     const target =
       row.userId === ORG_SENTINEL_USER_ID ? orgSecrets : userSecrets;
-    target[row.name] = decryptSecretValue(row.encryptedValue);
+    target[row.name] = await decryptStoredSecretValue(
+      row.encryptedValue,
+      args.featureSwitchContext,
+    );
   }
 
   const filteredSecrets = filterDbSecretsByConnectorPermissions({
@@ -1340,6 +1354,7 @@ async function loadOauthConnectorContext(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ConnectorRuntimeContext> {
   const connectorRows = await db
@@ -1388,7 +1403,10 @@ async function loadOauthConnectorContext(
     );
   const connectorSecrets: Record<string, string> = {};
   for (const row of secretRows) {
-    connectorSecrets[row.name] = decryptSecretValue(row.encryptedValue);
+    connectorSecrets[row.name] = await decryptStoredSecretValue(
+      row.encryptedValue,
+      args.featureSwitchContext,
+    );
   }
 
   const resolvedSecrets: Record<string, string> = {};
@@ -1457,6 +1475,7 @@ async function loadCustomConnectorContext(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedCustomConnectorIds: readonly string[] | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<CustomConnectorRuntimeContext> {
   if (args.allowedCustomConnectorIds?.length === 0) {
@@ -1513,7 +1532,10 @@ async function loadCustomConnectorContext(
         };
       }),
     });
-    secrets[secretKey] = decryptSecretValue(row.encryptedValue);
+    secrets[secretKey] = await decryptStoredSecretValue(
+      row.encryptedValue,
+      args.featureSwitchContext,
+    );
   }
 
   return { firewalls, secrets: compactRecord(secrets) };
@@ -2794,11 +2816,17 @@ interface PreparedRunContext {
 async function resolveRunModelProvider(
   db: Db,
   args: CreateAgentRunArgs,
-  content: AgentComposeContent,
-  framework: SupportedFramework,
-  signal: AbortSignal,
+  options: {
+    readonly content: AgentComposeContent;
+    readonly framework: SupportedFramework;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly signal: AbortSignal;
+  },
 ): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
-  const hasFrameworkKey = hasExplicitFrameworkApiKey(content, framework);
+  const hasFrameworkKey = hasExplicitFrameworkApiKey(
+    options.content,
+    options.framework,
+  );
   const hasProviderOverride =
     args.modelProviderId !== undefined ||
     args.modelProviderCredentialScope !== undefined;
@@ -2808,14 +2836,15 @@ async function resolveRunModelProvider(
     ? await resolveModelProviderEnvironment(db, {
         orgId: args.orgId,
         userId: args.userId,
-        framework,
+        framework: options.framework,
         modelProviderId: args.modelProviderId,
         modelProviderCredentialScope: args.modelProviderCredentialScope,
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
+        featureSwitchContext: options.featureSwitchContext,
       })
     : null;
-  signal.throwIfAborted();
+  options.signal.throwIfAborted();
 
   if (!shouldResolveModelProvider || modelProvider) {
     return modelProvider;
@@ -2826,15 +2855,84 @@ async function resolveRunModelProvider(
       userId: args.userId,
       orgId: args.orgId,
     });
-    signal.throwIfAborted();
+    options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
     }
   }
 
   return providerUnavailable(
-    `No model provider configured and ${frameworkApiKeyEnv(framework)} is not declared in compose environment`,
+    `No model provider configured and ${frameworkApiKeyEnv(options.framework)} is not declared in compose environment`,
   );
+}
+
+async function loadRunFeatureSwitchContext(
+  get: ComputedGetter,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  signal: AbortSignal,
+): Promise<FeatureSwitchContext> {
+  const overrides = await get(
+    userFeatureSwitchOverrides(args.orgId, args.userId),
+  );
+  signal.throwIfAborted();
+  return { orgId: args.orgId, userId: args.userId, overrides };
+}
+
+async function loadRunConnectorContexts(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes?: readonly ConnectorType[];
+    readonly allowedCustomConnectorIds?: readonly string[];
+  },
+  featureSwitchContext: FeatureSwitchContext,
+): Promise<{
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+}> {
+  const [
+    oauthConnectorContext,
+    apiTokenConnectorTypes,
+    customConnectorContext,
+  ] = await Promise.all([
+    loadOauthConnectorContext(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      featureSwitchContext,
+    }),
+    loadApiTokenConnectorTypes(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+    }),
+    loadCustomConnectorContext(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+      featureSwitchContext,
+    }),
+  ]);
+  const allowedApiTokenConnectorTypes = args.allowedConnectorTypes
+    ? apiTokenConnectorTypes.filter((type) => {
+        return args.allowedConnectorTypes?.includes(type);
+      })
+    : apiTokenConnectorTypes;
+  return {
+    connectorContext: {
+      ...oauthConnectorContext,
+      connectorTypes: [
+        ...new Set([
+          ...oauthConnectorContext.connectorTypes,
+          ...allowedApiTokenConnectorTypes,
+        ]),
+      ],
+    },
+    customConnectorContext,
+  };
 }
 
 async function prepareRunContext(
@@ -2856,6 +2954,12 @@ async function prepareRunContext(
   if (captureGate) {
     return captureGate;
   }
+
+  const featureSwitchContext = await loadRunFeatureSwitchContext(
+    get,
+    args,
+    signal,
+  );
 
   const mergedVars = await loadMergedVariables(db, {
     orgId: args.orgId,
@@ -2881,6 +2985,7 @@ async function prepareRunContext(
     content: resolved.content,
     runSecrets: body.secrets,
     allowedConnectorTypes: args.allowedConnectorTypes,
+    featureSwitchContext,
   });
   signal.throwIfAborted();
   body = { ...body, secrets: mergedSecrets };
@@ -2904,13 +3009,12 @@ async function prepareRunContext(
   );
   signal.throwIfAborted();
 
-  const modelProvider = await resolveRunModelProvider(
-    db,
-    args,
-    resolved.content,
-    requestedFramework,
+  const modelProvider = await resolveRunModelProvider(db, args, {
+    content: resolved.content,
+    framework: requestedFramework,
+    featureSwitchContext,
     signal,
-  );
+  });
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
@@ -2918,41 +3022,9 @@ async function prepareRunContext(
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
 
-  const [
-    oauthConnectorContext,
-    apiTokenConnectorTypes,
-    customConnectorContext,
-  ] = await Promise.all([
-    loadOauthConnectorContext(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      allowedConnectorTypes: args.allowedConnectorTypes,
-    }),
-    loadApiTokenConnectorTypes(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-    }),
-    loadCustomConnectorContext(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-    }),
-  ]);
+  const { connectorContext, customConnectorContext } =
+    await loadRunConnectorContexts(db, args, featureSwitchContext);
   signal.throwIfAborted();
-  const allowedApiTokenConnectorTypes = args.allowedConnectorTypes
-    ? apiTokenConnectorTypes.filter((type) => {
-        return args.allowedConnectorTypes?.includes(type);
-      })
-    : apiTokenConnectorTypes;
-  const connectorContext: ConnectorRuntimeContext = {
-    ...oauthConnectorContext,
-    connectorTypes: [
-      ...new Set([
-        ...oauthConnectorContext.connectorTypes,
-        ...allowedApiTokenConnectorTypes,
-      ]),
-    ],
-  };
 
   const artifacts = artifactsForRun({
     resolved,

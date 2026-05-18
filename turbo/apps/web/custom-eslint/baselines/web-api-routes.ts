@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 /**
  * Existing Next.js API routes in apps/web at the point web route growth was
  * frozen. New API routes should be implemented in apps/api instead.
@@ -7,14 +5,8 @@ import { createHash } from "node:crypto";
  * When a route is migrated out of apps/web, remove its entry here as part of
  * the same change. Do not add new entries; the no-new-api-routes rule checks
  * that this baseline only shrinks relative to the branch's git base.
- *
- * Intentional exception: model policy routes live in apps/web while the rest of
- * Zero's bearer-token web API still authenticates through requireAuth/resolveOrg
- * in the Next.js runtime.
- *
  */
 export const WEB_API_ROUTE_BASELINE = [
-  "app/api/agent/checkpoints/[id]/route.ts",
   "app/api/agent/composes/[id]/instructions/route.ts",
   "app/api/agent/composes/[id]/metadata/route.ts",
   "app/api/agent/composes/[id]/route.ts",
@@ -31,8 +23,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/[id]/telemetry/system-log/route.ts",
   "app/api/agent/runs/queue/route.ts",
   "app/api/agent/runs/route.ts",
-  "app/api/agent/sessions/[id]/route.ts",
-  "app/api/auth/me/route.ts",
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
   "app/api/cli/auth/test-approve/route.ts",
@@ -66,17 +56,10 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/internal/callbacks/slack/org/route.ts",
   "app/api/internal/callbacks/telegram/route.ts",
   "app/api/internal/callbacks/voice-chat/route.ts",
-  "app/api/internal/event-consumers/axiom/route.ts",
-  "app/api/internal/event-consumers/chat-assistant/route.ts",
-  "app/api/internal/event-consumers/telegram-typing/route.ts",
-  "app/api/internal/event-consumers/voice-chat/route.ts",
   "app/api/runners/heartbeat/route.ts",
   "app/api/runners/jobs/[id]/claim/route.ts",
   "app/api/runners/poll/route.ts",
   "app/api/runners/realtime/token/route.ts",
-  "app/api/storages/commit/route.ts",
-  "app/api/storages/download/route.ts",
-  "app/api/storages/prepare/route.ts",
   "app/api/telegram/register/route.ts",
   "app/api/telegram/setup-status/route.ts",
   "app/api/telegram/webhook/[telegramBotId]/route.ts",
@@ -180,26 +163,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",
-  "app/api/zero/me/model-providers/[type]/route.ts",
-  "app/api/zero/me/model-providers/route.ts",
-  "app/api/zero/model-policies/route.ts",
-  "app/api/zero/model-providers/[type]/route.ts",
-  "app/api/zero/model-providers/route.ts",
-  "app/api/zero/onboarding/setup/route.ts",
-  "app/api/zero/onboarding/status/route.ts",
-  "app/api/zero/org/delete/route.ts",
-  "app/api/zero/org/domains/route.ts",
-  "app/api/zero/org/invite/route.ts",
-  "app/api/zero/org/leave/route.ts",
-  "app/api/zero/org/list/route.ts",
-  "app/api/zero/org/logo/route.ts",
-  "app/api/zero/org/members/credit-cap/route.ts",
-  "app/api/zero/org/members/route.ts",
-  "app/api/zero/org/membership-requests/route.ts",
-  "app/api/zero/org/route.ts",
-  "app/api/zero/permission-policies/route.ts",
-  "app/api/zero/realtime/token/route.ts",
-  "app/api/zero/report-error/route.ts",
   "app/api/zero/runs/[id]/cancel/route.ts",
   "app/api/zero/runs/[id]/context/route.ts",
   "app/api/zero/runs/[id]/network/route.ts",
@@ -213,10 +176,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/schedules/[name]/route.ts",
   "app/api/zero/schedules/route.ts",
   "app/api/zero/schedules/run/route.ts",
-  "app/api/zero/secrets/[name]/route.ts",
-  "app/api/zero/secrets/route.ts",
-  "app/api/zero/skills/[name]/route.ts",
-  "app/api/zero/skills/route.ts",
   "app/api/zero/slack/channels/route.ts",
   "app/api/zero/slack/commands/route.ts",
   "app/api/zero/slack/connect/route.ts",
@@ -225,18 +184,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/slack/oauth/callback/route.ts",
   "app/api/zero/slack/oauth/connect/route.ts",
   "app/api/zero/slack/oauth/install/route.ts",
-  "app/api/zero/variables/[name]/route.ts",
-  "app/api/zero/variables/route.ts",
 ] as const;
-
-export const WEB_API_ROUTE_BASELINE_HASH =
-  "caab0d8f841348ed8005920427fe4a90c46907370d3f578f056b854efbf24d96";
-
-export function computeWebApiRouteBaselineHash(
-  routes: readonly string[] = WEB_API_ROUTE_BASELINE,
-): string {
-  return createHash("sha256").update(routes.join("\n")).digest("hex");
-}
 
 export const WEB_API_ROUTE_BASELINE_SET = new Set<string>(
   WEB_API_ROUTE_BASELINE,

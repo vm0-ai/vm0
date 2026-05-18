@@ -31,8 +31,7 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     return body.response;
   }
 
-  // Clerk side effect — sends the invitation email server-side.
-  // Mirrors apps/web/src/lib/zero/org/org-member-service.ts:inviteMember.
+  // Clerk side effect: sends the invitation email server-side.
   const client = get(clerk$);
   await client.organizations.createOrganizationInvitation({
     organizationId: auth.orgId,
@@ -62,8 +61,7 @@ const revokeInner$ = command(async ({ get }, signal: AbortSignal) => {
     return body.response;
   }
 
-  // Clerk side effect — revokes the pending invitation server-side.
-  // Mirrors apps/web/src/lib/zero/org/org-member-service.ts:revokeInvitation.
+  // Clerk side effect: revokes the pending invitation server-side.
   const client = get(clerk$);
   await client.organizations.revokeOrganizationInvitation({
     organizationId: auth.orgId,

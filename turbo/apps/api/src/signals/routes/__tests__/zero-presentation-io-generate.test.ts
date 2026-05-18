@@ -20,9 +20,7 @@ import { now } from "../../external/time";
 import {
   IMAGE_IO_MODEL,
   imagePricingKey,
-  OPENAI_IMAGE_GENERATION_URL,
   type ImageModel,
-  type ImageUsage,
 } from "../../services/zero-image-io-generate.service";
 import {
   OPENAI_PRESENTATION_GENERATION_URL,
@@ -50,14 +48,21 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-storages";
 const IMAGE_BYTES = Buffer.from("fake visual image bytes");
+const FAL_GPT_IMAGE_1_URL = "https://fal.run/fal-ai/gpt-image-1/text-to-image";
+const FAL_GPT_IMAGE_1_5_URL = "https://fal.run/fal-ai/gpt-image-1.5";
+const FAL_PRESENTATION_MEDIA_URL =
+  "https://fal.media/files/test/presentation-visual.webp";
 const PRESENTATION_PRICING_CATEGORIES = [
   "tokens.input",
   "tokens.output",
 ] as const;
 const IMAGE_PRICING_CATEGORIES = [
-  "tokens.input.text",
-  "tokens.input.image",
-  "tokens.output.image",
+  "output_image.low.standard",
+  "output_image.low.large",
+  "output_image.medium.standard",
+  "output_image.medium.large",
+  "output_image.high.standard",
+  "output_image.high.large",
 ] as const;
 const SELECTED_IMAGE_MODEL = "gpt-image-1.5" satisfies ImageModel;
 
@@ -214,15 +219,9 @@ function expectedCredits(
 
 function expectedImageCredits(
   model: ImageModel,
-  usage: ImageUsage,
+  rows: readonly (readonly [ImagePricingCategory, number])[],
   pricing: ReadonlyMap<string, ImagePricingSnapshot>,
 ): number {
-  const rows: readonly (readonly [ImagePricingCategory, number])[] = [
-    ["tokens.input.text", usage.textInputTokens],
-    ["tokens.input.image", usage.imageInputTokens],
-    ["tokens.output.image", usage.imageOutputTokens],
-  ];
-
   return rows.reduce((total, [category, quantity]) => {
     if (quantity <= 0) {
       return total;
@@ -233,6 +232,79 @@ function expectedImageCredits(
     }
     return total + Math.ceil((quantity * row.unitPrice) / row.unitSize);
   }, 0);
+}
+
+function imagePricingDefaults(
+  model: ImageModel,
+): Readonly<
+  Record<ImagePricingCategory, Omit<ImagePricingSnapshot, "provider">>
+> {
+  if (model === "gpt-image-1.5") {
+    return {
+      "output_image.low.standard": {
+        category: "output_image.low.standard",
+        unitPrice: 11,
+        unitSize: 1,
+      },
+      "output_image.low.large": {
+        category: "output_image.low.large",
+        unitPrice: 16,
+        unitSize: 1,
+      },
+      "output_image.medium.standard": {
+        category: "output_image.medium.standard",
+        unitPrice: 41,
+        unitSize: 1,
+      },
+      "output_image.medium.large": {
+        category: "output_image.medium.large",
+        unitPrice: 61,
+        unitSize: 1,
+      },
+      "output_image.high.standard": {
+        category: "output_image.high.standard",
+        unitPrice: 160,
+        unitSize: 1,
+      },
+      "output_image.high.large": {
+        category: "output_image.high.large",
+        unitPrice: 240,
+        unitSize: 1,
+      },
+    };
+  }
+  return {
+    "output_image.low.standard": {
+      category: "output_image.low.standard",
+      unitPrice: 13,
+      unitSize: 1,
+    },
+    "output_image.low.large": {
+      category: "output_image.low.large",
+      unitPrice: 19,
+      unitSize: 1,
+    },
+    "output_image.medium.standard": {
+      category: "output_image.medium.standard",
+      unitPrice: 50,
+      unitSize: 1,
+    },
+    "output_image.medium.large": {
+      category: "output_image.medium.large",
+      unitPrice: 76,
+      unitSize: 1,
+    },
+    "output_image.high.standard": {
+      category: "output_image.high.standard",
+      unitPrice: 200,
+      unitSize: 1,
+    },
+    "output_image.high.large": {
+      category: "output_image.high.large",
+      unitPrice: 300,
+      unitSize: 1,
+    },
+  };
 }
 
 async function ensurePresentationPricing(): Promise<{
@@ -332,42 +404,36 @@ async function ensureImagePricing(model: ImageModel = IMAGE_IO_MODEL): Promise<{
     }
   }
 
-  const defaults: Readonly<
-    Record<ImagePricingCategory, Omit<ImagePricingSnapshot, "provider">>
-  > = {
-    "tokens.input.text": {
-      category: "tokens.input.text",
-      unitPrice: 6000,
-      unitSize: 1_000_000,
-    },
-    "tokens.input.image": {
-      category: "tokens.input.image",
-      unitPrice: 9600,
-      unitSize: 1_000_000,
-    },
-    "tokens.output.image": {
-      category: "tokens.output.image",
-      unitPrice: 36_000,
-      unitSize: 1_000_000,
-    },
-  };
+  const defaults = imagePricingDefaults(model);
 
   const insertedRows: ImagePricingKey[] = [];
   for (const category of IMAGE_PRICING_CATEGORIES) {
     if (!pricing.has(imagePricingKey(model, category))) {
       const row = defaults[category];
-      await writeDb.insert(usagePricing).values({
-        kind: "image",
-        provider: model,
-        category,
-        unitPrice: row.unitPrice,
-        unitSize: row.unitSize,
-      });
+      const inserted = await writeDb
+        .insert(usagePricing)
+        .values({
+          kind: "image",
+          provider: model,
+          category,
+          unitPrice: row.unitPrice,
+          unitSize: row.unitSize,
+        })
+        .onConflictDoNothing({
+          target: [
+            usagePricing.kind,
+            usagePricing.provider,
+            usagePricing.category,
+          ],
+        })
+        .returning({ category: usagePricing.category });
       pricing.set(imagePricingKey(model, category), {
         provider: model,
         ...row,
       });
-      insertedRows.push({ provider: model, category });
+      if (inserted.length > 0) {
+        insertedRows.push({ provider: model, category });
+      }
     }
   }
 
@@ -676,16 +742,10 @@ describe("POST /api/zero/presentation-io/generate", () => {
       outputTokens: 620,
       totalTokens: 2420,
     };
-    const imageUsage: ImageUsage = {
-      textInputTokens: 900,
-      imageInputTokens: 120,
-      imageOutputTokens: 1800,
-      totalTokens: 2820,
-    };
     const textCreditsCharged = expectedCredits(usage, pricing);
     const imageCreditsCharged = expectedImageCredits(
       SELECTED_IMAGE_MODEL,
-      imageUsage,
+      [["output_image.medium.large", 1]],
       imagePricing,
     );
     const creditsCharged = textCreditsCharged + imageCreditsCharged;
@@ -717,30 +777,24 @@ describe("POST /api/zero/presentation-io/generate", () => {
           },
         });
       }),
-      http.post(OPENAI_IMAGE_GENERATION_URL, async ({ request }) => {
+      http.post(FAL_GPT_IMAGE_1_5_URL, async ({ request }) => {
         observedImageAuthorization = request.headers.get("authorization");
         observedImageBody = await request.json();
         return HttpResponse.json({
-          data: [
+          images: [
             {
-              b64_json: IMAGE_BYTES.toString("base64"),
-              revised_prompt: "A clean modular bridge over a production grid.",
+              url: FAL_PRESENTATION_MEDIA_URL,
+              width: 1536,
+              height: 1024,
+              content_type: "image/webp",
             },
           ],
-          output_format: "webp",
-          size: "1536x1024",
-          quality: "medium",
-          background: "opaque",
-          usage: {
-            total_tokens: imageUsage.totalTokens,
-            input_tokens:
-              imageUsage.textInputTokens + imageUsage.imageInputTokens,
-            output_tokens: imageUsage.imageOutputTokens,
-            input_tokens_details: {
-              text_tokens: imageUsage.textInputTokens,
-              image_tokens: imageUsage.imageInputTokens,
-            },
-          },
+          prompt: "A clean modular bridge over a production grid.",
+        });
+      }),
+      http.get(FAL_PRESENTATION_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/webp" },
         });
       }),
     );
@@ -824,15 +878,14 @@ describe("POST /api/zero/presentation-io/generate", () => {
         }),
       },
     });
-    expect(observedImageAuthorization).toBe("Bearer test-openai-key");
+    expect(observedImageAuthorization).toBe("Key test-fal-key");
     expect(observedImageBody).toMatchObject({
-      model: SELECTED_IMAGE_MODEL,
-      n: 1,
-      size: "1536x1024",
+      image_size: "1536x1024",
+      num_images: 1,
       quality: "medium",
       background: "opaque",
       output_format: "webp",
-      moderation: "auto",
+      openai_api_key: "test-openai-key",
     });
     expect(observedImageBody).toMatchObject({
       prompt: expect.stringContaining("API Migration Plan"),
@@ -1001,7 +1054,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
           eq(usageEvent.provider, SELECTED_IMAGE_MODEL),
         ),
       );
-    expect(imageUsageRows).toHaveLength(3);
+    expect(imageUsageRows).toHaveLength(1);
     expect(imageUsageRows).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1009,34 +1062,10 @@ describe("POST /api/zero/presentation-io/generate", () => {
           idempotencyKey: builtInGenerationUsageIdempotencyKey({
             generationId,
             scope: "presentation-visual:0",
-            category: "tokens.input.text",
+            category: "output_image.medium.large",
           }),
-          category: "tokens.input.text",
-          quantity: imageUsage.textInputTokens,
-          status: "processed",
-          billingError: null,
-        }),
-        expect.objectContaining({
-          runId,
-          idempotencyKey: builtInGenerationUsageIdempotencyKey({
-            generationId,
-            scope: "presentation-visual:0",
-            category: "tokens.input.image",
-          }),
-          category: "tokens.input.image",
-          quantity: imageUsage.imageInputTokens,
-          status: "processed",
-          billingError: null,
-        }),
-        expect.objectContaining({
-          runId,
-          idempotencyKey: builtInGenerationUsageIdempotencyKey({
-            generationId,
-            scope: "presentation-visual:0",
-            category: "tokens.output.image",
-          }),
-          category: "tokens.output.image",
-          quantity: imageUsage.imageOutputTokens,
+          category: "output_image.medium.large",
+          quantity: 1,
           status: "processed",
           billingError: null,
         }),
@@ -1057,7 +1086,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
         calledPresentationGeneration = true;
         return HttpResponse.json({});
       }),
-      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         calledImageGeneration = true;
         return HttpResponse.json({});
       }),
@@ -1118,7 +1147,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
           },
         });
       }),
-      http.post(OPENAI_IMAGE_GENERATION_URL, () => {
+      http.post(FAL_GPT_IMAGE_1_URL, () => {
         calledImageGeneration = true;
         return new HttpResponse("image generation timed out", { status: 504 });
       }),

@@ -1,0 +1,119 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+
+concurrency:
+  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: build-macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: turbo
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Type check desktop
+        run: pnpm -F @vm0/desktop check-types
+
+      - name: Lint desktop
+        run: pnpm -F @vm0/desktop lint
+
+      - name: Test desktop
+        run: pnpm -F @vm0/desktop test
+
+      - name: Build unsigned macOS artifact
+        run: |
+          pnpm -F @vm0/desktop build
+
+          desktop_dir="$PWD/apps/desktop"
+          app_dir="$desktop_dir/out/Zero-darwin-arm64/Zero.app"
+          electron_dir=$(pnpm -F @vm0/desktop exec node -p "require('path').dirname(require.resolve('electron/package.json'))")
+          ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -e "require('electron')"
+          electron_path=$(ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -p "require('electron')")
+          runtime_app="${electron_path%/Contents/MacOS/Electron}"
+          version=$(node -p "require('./apps/desktop/package.json').version")
+
+          rm -rf "$desktop_dir/out"
+          mkdir -p "$desktop_dir/out/Zero-darwin-arm64"
+          if [ ! -d "$runtime_app" ]; then
+            echo "Electron.app was not downloaded: $runtime_app"
+            find "$electron_dir" -maxdepth 4 -print
+            exit 1
+          fi
+          cp -R "$runtime_app" "$app_dir"
+
+          mv "$app_dir/Contents/MacOS/Electron" "$app_dir/Contents/MacOS/Zero"
+          mkdir -p "$app_dir/Contents/Resources/app"
+          cp "$desktop_dir/package.json" "$app_dir/Contents/Resources/app/package.json"
+          cp -R "$desktop_dir/dist" "$app_dir/Contents/Resources/app/dist"
+
+          plist="$app_dir/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleName string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Zero" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.vm0.zero.desktop" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.vm0.zero.desktop" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $version" "$plist"
+
+          ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$desktop_dir/out/Zero-darwin-arm64.zip"
+
+      - name: Verify artifact
+        id: artifact
+        run: |
+          artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload unsigned macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: zero-desktop-macos-arm64-unsigned
+          path: turbo/${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14

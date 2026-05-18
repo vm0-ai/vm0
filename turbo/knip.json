@@ -52,6 +52,7 @@
         "src/signals/context/wait-until.ts",
         "src/signals/external/clerk.ts",
         "src/signals/external/env.ts",
+        "src/scripts/**/*.ts",
         "custom-eslint/index.ts",
         "custom-eslint/**/*.{test,spec}.ts",
         "src/**/*.{test,spec}.ts"
@@ -81,6 +82,22 @@
       "project": ["src/**/*.ts", "*.config.mjs"],
       "ignoreDependencies": ["eslint", "oxlint", "wrangler"],
       "ignoreBinaries": ["eslint", "oxlint", "wrangler"]
+    },
+    "apps/desktop": {
+      "entry": [
+        "forge.config.js",
+        "src/main.ts",
+        "src/preload.ts",
+        "src/**/*.{test,spec}.ts"
+      ],
+      "project": ["src/**/*.ts", "*.js"],
+      "ignoreDependencies": [
+        "@electron-forge/cli",
+        "@electron-forge/maker-zip",
+        "oxlint",
+        "tsup"
+      ],
+      "ignoreBinaries": ["electron-forge", "oxlint", "tsup"]
     },
     "packages/core": {
       "entry": [

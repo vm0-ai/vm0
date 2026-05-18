@@ -52,43 +52,127 @@ pub(crate) struct CowPoolConfig {
     pub golden_cow: Option<PathBuf>,
 }
 
+struct SlotWorkspaceCleanup {
+    /// Unique slot ID. Used as workspace directory name before checkout.
+    id: String,
+    /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
+    workspace: PathBuf,
+    #[cfg(test)]
+    teardown_gate: Option<SlotTeardownGate>,
+}
+
+impl SlotWorkspaceCleanup {
+    fn new(id: String, workspace: PathBuf) -> Self {
+        Self {
+            id,
+            workspace,
+            #[cfg(test)]
+            teardown_gate: None,
+        }
+    }
+
+    fn remove_best_effort(self) -> PathBuf {
+        let Self {
+            id,
+            workspace,
+            #[cfg(test)]
+            teardown_gate,
+        } = self;
+        #[cfg(test)]
+        if let Some(teardown_gate) = teardown_gate {
+            let _ = teardown_gate.started.send(workspace.clone());
+            let _ = teardown_gate.release.recv();
+        }
+        match std::fs::remove_dir_all(&workspace) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(id = %id, error = %e, "failed to delete pool workspace dir");
+            }
+        }
+        workspace
+    }
+}
+
+#[cfg(test)]
+struct SlotTeardownGate {
+    started: oneshot::Sender<PathBuf>,
+    release: std::sync::mpsc::Receiver<()>,
+}
+
 /// A pre-warmed one-shot slot: workspace directory + COW file.
 ///
 /// The caller must create the NBD device on acquire via
 /// `DevicePoolHandle::create_cow_device()`.
 pub(crate) struct PrewarmedSlot {
     /// Unique slot ID. Used as workspace directory name before checkout.
-    pub id: String,
+    id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
-    pub workspace: PathBuf,
+    workspace: PathBuf,
+    cleanup: Option<SlotWorkspaceCleanup>,
     #[cfg(test)]
     pub(crate) drop_notify: Option<oneshot::Sender<PathBuf>>,
 }
 
 impl PrewarmedSlot {
+    pub(crate) fn new(id: String, workspace: PathBuf) -> Self {
+        let cleanup = SlotWorkspaceCleanup::new(id.clone(), workspace.clone());
+        Self {
+            id,
+            workspace,
+            cleanup: Some(cleanup),
+            #[cfg(test)]
+            drop_notify: None,
+        }
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+
+    pub(crate) fn disarm_after_workspace_rename(mut self) {
+        self.cleanup.take();
+    }
+
+    #[cfg(test)]
+    fn set_teardown_gate(
+        &mut self,
+        started: oneshot::Sender<PathBuf>,
+        release: std::sync::mpsc::Receiver<()>,
+    ) {
+        if let Some(cleanup) = self.cleanup.as_mut() {
+            cleanup.teardown_gate = Some(SlotTeardownGate { started, release });
+        }
+    }
+
     /// Path to the COW file inside the workspace.
     #[cfg(test)]
     fn cow_file(&self) -> PathBuf {
-        self.workspace.join("cow.img")
+        self.workspace().join("cow.img")
     }
 
-    fn remove_workspace(&self) {
-        match std::fs::remove_dir_all(&self.workspace) {
-            Ok(()) => {}
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => {
-                warn!(id = %self.id, error = %e, "failed to delete pool workspace dir");
-            }
+    #[cfg(test)]
+    fn notify_teardown(&mut self, workspace: PathBuf) {
+        if let Some(drop_notify) = self.drop_notify.take() {
+            let _ = drop_notify.send(workspace);
         }
     }
+
+    #[cfg(not(test))]
+    fn notify_teardown(&mut self, _workspace: PathBuf) {}
 }
 
 impl Drop for PrewarmedSlot {
     fn drop(&mut self) {
-        self.remove_workspace();
-        #[cfg(test)]
-        if let Some(drop_notify) = self.drop_notify.take() {
-            let _ = drop_notify.send(self.workspace.clone());
+        // Fallback cleanup for forgotten, cancelled, or unwound slots. Normal
+        // async cleanup paths should use `destroy_slot_async`.
+        if let Some(cleanup) = self.cleanup.take() {
+            let workspace = cleanup.remove_best_effort();
+            self.notify_teardown(workspace);
         }
     }
 }
@@ -96,8 +180,8 @@ impl Drop for PrewarmedSlot {
 impl std::fmt::Debug for PrewarmedSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrewarmedSlot")
-            .field("id", &self.id)
-            .field("workspace", &self.workspace)
+            .field("id", &self.id())
+            .field("workspace", &self.workspace())
             .finish_non_exhaustive()
     }
 }
@@ -273,7 +357,7 @@ impl CowPoolActor {
                     }
                 }
                 completion = self.pool.pending.join_next(), if has_pending => {
-                    self.pool.handle_creation_join(completion);
+                    self.pool.handle_creation_join(completion).await;
                 }
                 () = sleep_until_deadline(retry_deadline), if retry_deadline.is_some() => {
                     self.pool.warm_retry_at = None;
@@ -445,7 +529,7 @@ impl CowPool {
     fn assign_slot_to_waiter(&mut self, mut slot: PrewarmedSlot) -> AssignOutcome {
         while let Some(waiter) = self.waiters.pop_front() {
             let waited_ms = waiter.requested_at.elapsed().as_millis() as u64;
-            let slot_id = slot.id.clone();
+            let slot_id = slot.id().to_owned();
             match waiter.respond_to.send(Ok(slot)) {
                 Ok(()) => {
                     info!(
@@ -511,7 +595,7 @@ impl CowPool {
         true
     }
 
-    fn handle_creation_join(
+    async fn handle_creation_join(
         &mut self,
         completion: Option<Result<SlotCreationOutcome, tokio::task::JoinError>>,
     ) {
@@ -520,7 +604,7 @@ impl CowPool {
             return;
         };
         match completion {
-            Ok(outcome) => self.handle_creation_outcome(outcome),
+            Ok(outcome) => self.handle_creation_outcome(outcome).await,
             Err(e) => {
                 self.handle_creation_failure(CowPoolError::CowFileCreation(format!("join: {e}")));
             }
@@ -529,16 +613,16 @@ impl CowPool {
         self.maybe_finish_warmup();
     }
 
-    fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
+    async fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
         let elapsed_ms = outcome.elapsed.as_millis() as u64;
         match outcome.result {
             Ok(slot) => {
-                let slot_id = slot.id.clone();
+                let slot_id = slot.id().to_owned();
                 self.warm_retry_at = None;
                 if self.active {
                     self.ready.push_back(slot);
                 } else {
-                    drop(slot);
+                    destroy_slot_async(slot).await;
                 }
                 info!(
                     id = %slot_id,
@@ -625,11 +709,11 @@ impl CowPool {
         self.finish_warmup_waiters();
 
         while let Some(slot) = self.ready.pop_front() {
-            destroy_slot(slot);
+            destroy_slot_async(slot).await;
         }
 
         while let Some(completion) = self.pending.join_next().await {
-            self.handle_cleanup_completion(completion);
+            self.handle_cleanup_completion(completion).await;
         }
 
         info!(
@@ -652,7 +736,7 @@ impl CowPool {
         }
     }
 
-    fn handle_cleanup_completion(
+    async fn handle_cleanup_completion(
         &mut self,
         completion: Result<SlotCreationOutcome, tokio::task::JoinError>,
     ) {
@@ -662,12 +746,13 @@ impl CowPool {
                 elapsed,
                 ..
             }) => {
+                let slot_id = slot.id().to_owned();
                 info!(
-                    id = %slot.id,
+                    id = %slot_id,
                     elapsed_ms = elapsed.as_millis() as u64,
                     "dropping late COW slot during cleanup"
                 );
-                drop(slot);
+                destroy_slot_async(slot).await;
             }
             Ok(SlotCreationOutcome {
                 result: Err(e),
@@ -723,7 +808,7 @@ fn default_slot_spawner() -> SlotSpawner {
 }
 
 // ---------------------------------------------------------------------------
-// Slot creation / destruction (runs in spawn_blocking)
+// Slot creation and teardown helpers
 // ---------------------------------------------------------------------------
 
 /// Create a pre-warmed slot: workspace directory + COW file.
@@ -738,12 +823,7 @@ fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
         return Err(e);
     }
 
-    Ok(PrewarmedSlot {
-        id,
-        workspace,
-        #[cfg(test)]
-        drop_notify: None,
-    })
+    Ok(PrewarmedSlot::new(id, workspace))
 }
 
 /// Create the COW file: sparse-copy from golden image or allocate fresh.
@@ -790,11 +870,27 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
     Ok(())
 }
 
-/// Best-effort teardown of a pre-warmed slot.
+/// Best-effort synchronous teardown of a pre-warmed slot.
 ///
 /// Removes the workspace directory (which contains the COW file).
-pub(crate) fn destroy_slot(slot: PrewarmedSlot) {
-    drop(slot);
+pub(crate) fn destroy_slot_sync(mut slot: PrewarmedSlot) {
+    if let Some(cleanup) = slot.cleanup.take() {
+        let workspace = cleanup.remove_best_effort();
+        slot.notify_teardown(workspace);
+    }
+}
+
+/// Best-effort teardown of a pre-warmed slot on Tokio's blocking pool.
+///
+/// The blocking task is spawned before this returns so dropping the returned
+/// future cannot make the slot fall back to synchronous `Drop` on the caller.
+pub(crate) fn destroy_slot_async(slot: PrewarmedSlot) -> impl std::future::Future<Output = ()> {
+    let teardown = tokio::task::spawn_blocking(move || destroy_slot_sync(slot));
+    async move {
+        if let Err(e) = teardown.await {
+            warn!(error = %e, "COW slot teardown task failed");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -818,11 +914,7 @@ mod tests {
         let workspace = dir.join(id);
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"cow").unwrap();
-        PrewarmedSlot {
-            id: id.to_owned(),
-            workspace,
-            drop_notify: None,
-        }
+        PrewarmedSlot::new(id.to_owned(), workspace)
     }
 
     fn test_slot_with_drop_notify(
@@ -833,6 +925,22 @@ mod tests {
         let mut slot = test_slot(dir, id);
         slot.drop_notify = Some(drop_notify);
         (slot, dropped)
+    }
+
+    fn test_slot_with_teardown_gate(
+        dir: &Path,
+        id: &str,
+    ) -> (
+        PrewarmedSlot,
+        oneshot::Receiver<PathBuf>,
+        std::sync::mpsc::Sender<()>,
+        oneshot::Receiver<PathBuf>,
+    ) {
+        let (teardown_started, started) = oneshot::channel();
+        let (release, teardown_release) = std::sync::mpsc::channel();
+        let (mut slot, dropped) = test_slot_with_drop_notify(dir, id);
+        slot.set_teardown_gate(teardown_started, teardown_release);
+        (slot, started, release, dropped)
     }
 
     fn test_pool_with_spawner(
@@ -1069,7 +1177,7 @@ mod tests {
             .unwrap();
 
         let slot = second.await.unwrap().unwrap();
-        assert_eq!(slot.id, "survives-cancel");
+        assert_eq!(slot.id(), "survives-cancel");
         drop(slot);
         handle.cleanup().await;
     }
@@ -1335,6 +1443,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cleanup_waits_for_ready_slot_teardown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (controller, spawner) = ControlledSpawner::new();
+        let pool =
+            test_pool_with_spawner(test_config(tmp.path()), 1, 1, 4, Duration::ZERO, spawner);
+        let handle = CowPoolHandle::new_for_test(pool);
+
+        let warmup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.warmup().await }
+        });
+        wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
+
+        let (slot, teardown_started, release_teardown, dropped) =
+            test_slot_with_teardown_gate(tmp.path(), "ready-cleanup-waits");
+        let workspace = slot.workspace().to_owned();
+        controller.take_request().send(Ok(slot)).unwrap();
+        warmup.await.unwrap();
+        assert!(workspace.exists());
+
+        let cleanup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        assert_eq!(teardown_started.await.unwrap(), workspace);
+        assert!(workspace.exists());
+        assert!(!cleanup.is_finished());
+
+        release_teardown.send(()).unwrap();
+        cleanup.await.unwrap();
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+    }
+
+    #[tokio::test]
     async fn cleanup_rejects_waiters_and_drops_late_pending_slot() {
         let tmp = tempfile::tempdir().unwrap();
         let (controller, spawner) = ControlledSpawner::new();
@@ -1358,10 +1501,17 @@ mod tests {
         let result = acquire.await.unwrap();
         assert!(matches!(result, Err(CowPoolError::NotActive)));
 
-        let late_slot = test_slot(tmp.path(), "late");
-        let late_workspace = late_slot.workspace.clone();
+        let (late_slot, teardown_started, release_teardown, dropped) =
+            test_slot_with_teardown_gate(tmp.path(), "late");
+        let late_workspace = late_slot.workspace().to_owned();
         controller.take_request().send(Ok(late_slot)).unwrap();
+        assert_eq!(teardown_started.await.unwrap(), late_workspace);
+        assert!(late_workspace.exists());
+        assert!(!cleanup.is_finished());
+
+        release_teardown.send(()).unwrap();
         cleanup.await.unwrap();
+        assert_eq!(dropped.await.unwrap(), late_workspace);
         assert!(!late_workspace.exists());
         assert!(matches!(
             handle.acquire().await,
@@ -1417,7 +1567,7 @@ mod tests {
         wait_for_snapshot(&handle, |snapshot| snapshot.pending == 1).await;
 
         let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "ready-drop");
-        let workspace = slot.workspace.clone();
+        let workspace = slot.workspace().to_owned();
         controller.take_request().send(Ok(slot)).unwrap();
         warmup.await.unwrap();
         assert!(workspace.exists());
@@ -1448,7 +1598,7 @@ mod tests {
         assert!(acquire.await.unwrap_err().is_cancelled());
 
         let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "pending-drop");
-        let workspace = slot.workspace.clone();
+        let workspace = slot.workspace().to_owned();
         drop(handle);
         controller.take_request().send(Ok(slot)).unwrap();
 
@@ -1483,7 +1633,7 @@ mod tests {
         });
 
         let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "concurrent-cleanup");
-        let workspace = slot.workspace.clone();
+        let workspace = slot.workspace().to_owned();
         controller.take_request().send(Ok(slot)).unwrap();
 
         cleanup_one.await.unwrap();
@@ -1525,7 +1675,7 @@ mod tests {
         assert!(cleanup_waiter.await.unwrap_err().is_cancelled());
 
         let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "cancelled-cleanup");
-        let workspace = slot.workspace.clone();
+        let workspace = slot.workspace().to_owned();
         controller.take_request().send(Ok(slot)).unwrap();
 
         assert_eq!(dropped.await.unwrap(), workspace);
@@ -1557,7 +1707,7 @@ mod tests {
             async move { handle.cleanup().await }
         });
         let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "cancelled-warmup");
-        let workspace = slot.workspace.clone();
+        let workspace = slot.workspace().to_owned();
         controller.take_request().send(Ok(slot)).unwrap();
 
         cleanup.await.unwrap();
@@ -1710,9 +1860,9 @@ mod tests {
             golden_cow: Some(golden),
         };
         let slot = create_slot(&config).unwrap();
-        assert!(slot.workspace.join("cow.img").exists());
+        assert!(slot.workspace().join("cow.img").exists());
         assert!(!PathBuf::from(format!("{}.bitmap", slot.cow_file().display())).exists());
-        destroy_slot(slot);
+        destroy_slot_sync(slot);
     }
 
     #[test]
@@ -1724,17 +1874,48 @@ mod tests {
         assert!(cow_file.exists());
         let meta = std::fs::metadata(&cow_file).unwrap();
         assert_eq!(meta.len(), 64 * 1024 * 1024);
-        destroy_slot(slot);
+        destroy_slot_sync(slot);
     }
 
     #[test]
-    fn destroy_slot_removes_workspace() {
+    fn destroy_slot_sync_removes_workspace() {
         let tmp = tempfile::tempdir().unwrap();
         let config = test_config(tmp.path());
         let slot = create_slot(&config).unwrap();
-        let ws = slot.workspace.clone();
+        let ws = slot.workspace().to_owned();
         assert!(ws.exists());
-        destroy_slot(slot);
+        destroy_slot_sync(slot);
         assert!(!ws.exists());
+    }
+
+    #[tokio::test]
+    async fn prewarmed_slot_drop_fallback_removes_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (slot, dropped) = test_slot_with_drop_notify(tmp.path(), "drop-fallback");
+        let workspace = slot.workspace().to_owned();
+
+        assert!(workspace.exists());
+        drop(slot);
+
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
+    }
+
+    #[tokio::test]
+    async fn destroy_slot_async_starts_teardown_before_returned_future_is_polled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (slot, teardown_started, release_teardown, dropped) =
+            test_slot_with_teardown_gate(tmp.path(), "eager-teardown");
+        let workspace = slot.workspace().to_owned();
+
+        let teardown = destroy_slot_async(slot);
+        assert_eq!(teardown_started.await.unwrap(), workspace);
+        assert!(workspace.exists());
+
+        drop(teardown);
+        release_teardown.send(()).unwrap();
+
+        assert_eq!(dropped.await.unwrap(), workspace);
+        assert!(!workspace.exists());
     }
 }

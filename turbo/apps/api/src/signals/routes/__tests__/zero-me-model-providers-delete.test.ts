@@ -135,4 +135,68 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
   });
+
+  it("does not delete another user's provider in the same organization", async () => {
+    const orgId = `org_zmmp_cross_${randomUUID().slice(0, 8)}`;
+    const alice = {
+      orgId,
+      userId: `user_alice_${randomUUID().slice(0, 8)}`,
+    };
+    const bob = {
+      orgId,
+      userId: `user_bob_${randomUUID().slice(0, 8)}`,
+    };
+    await track(Promise.resolve(alice));
+    await track(Promise.resolve(bob));
+    await store.set(
+      seedUserModelProvider$,
+      {
+        orgId,
+        userId: alice.userId,
+        type: "claude-code-oauth-token",
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(bob.userId, orgId);
+
+    const client = setupApp({ context })(
+      zeroPersonalModelProvidersByTypeContract,
+    );
+    const response = await accept(
+      client.delete({
+        params: { type: "claude-code-oauth-token" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Resource not found", code: "NOT_FOUND" },
+    });
+
+    const writeDb = store.set(writeDb$);
+    const aliceProviders = await writeDb
+      .select({ id: modelProviders.id })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, alice.userId),
+          eq(modelProviders.type, "claude-code-oauth-token"),
+        ),
+      );
+    expect(aliceProviders).toHaveLength(1);
+
+    const aliceSecrets = await writeDb
+      .select({ id: secrets.id })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, orgId),
+          eq(secrets.userId, alice.userId),
+          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
+        ),
+      );
+    expect(aliceSecrets).toHaveLength(1);
+  });
 });

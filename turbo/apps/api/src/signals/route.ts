@@ -30,6 +30,7 @@ import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { cronVoiceChatCleanupRoutes } from "./routes/cron-voice-chat-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
+import { desktopAuthRoutes } from "./routes/desktop-auth";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { generateImageRoutes } from "./routes/generate-image";
 import { apiHealth$ } from "./routes/health";
@@ -60,6 +61,7 @@ import { webhooksAgentEventsRoutes } from "./routes/webhooks-agent-events";
 import { webhooksAgentFirewallAuthRoutes } from "./routes/webhooks-agent-firewall-auth";
 import { webhooksAgentHealthUsageTelemetryRoutes } from "./routes/webhooks-agent-health-usage-telemetry";
 import { webhooksAgentStorageRoutes } from "./routes/webhooks-agent-storage";
+import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-generations";
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
@@ -187,6 +189,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
+  ...desktopAuthRoutes,
   ...healthAuthProbeRoutes,
   ...githubOauthRoutes,
   ...internalCallbacksAgentRoutes,
@@ -207,6 +210,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...userExportRoutes,
   ...vercelSandboxSmokeRoutes,
   ...webhooksClerkRoutes,
+  ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,

@@ -138,4 +138,68 @@ describe("GET /api/zero/me/model-providers", () => {
       "claude-code-oauth-token",
     );
   });
+
+  it("does not list another user's model-first provider in the same organization", async () => {
+    const orgId = `org_zmmp_list_cross_${randomUUID().slice(0, 8)}`;
+    const alice = await trackUsers(
+      Promise.resolve({
+        orgId,
+        userId: `user_alice_${randomUUID().slice(0, 8)}`,
+      }),
+    );
+    const bob = await trackUsers(
+      Promise.resolve({
+        orgId,
+        userId: `user_bob_${randomUUID().slice(0, 8)}`,
+      }),
+    );
+    const aliceProvider = await store.set(
+      seedUserModelProvider$,
+      {
+        orgId,
+        userId: alice.userId,
+        type: "claude-code-oauth-token",
+        isDefault: false,
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      },
+      context.signal,
+    );
+    const bobProvider = await store.set(
+      seedUserModelProvider$,
+      {
+        orgId,
+        userId: bob.userId,
+        type: "claude-code-oauth-token",
+        isDefault: false,
+        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(alice.userId, orgId);
+
+    const client = setupApp({ context })(
+      zeroPersonalModelProvidersMainContract,
+    );
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.modelProviders).toHaveLength(1);
+    expect(response.body.modelProviders[0]?.id).toBe(aliceProvider.id);
+    expect(response.body.modelProviders[0]?.id).not.toBe(bobProvider.id);
+
+    mocks.clerk.session(bob.userId, orgId);
+    const bobResponse = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(bobResponse.body.modelProviders).toHaveLength(1);
+    expect(bobResponse.body.modelProviders[0]?.id).toBe(bobProvider.id);
+    expect(bobResponse.body.modelProviders[0]?.id).not.toBe(aliceProvider.id);
+  });
 });

@@ -1,6 +1,8 @@
-import { POST as storagePrepareRoute } from "../../../app/api/storages/prepare/route";
-import { POST as storageCommitRoute } from "../../../app/api/storages/commit/route";
-import { createTestRequest } from "./core";
+import { getTestAuthContext } from "./core";
+import {
+  commitPreparedTestStorage,
+  prepareTestStorage,
+} from "../db-test-seeders/storage";
 
 // ---------------------------------------------------------------------------
 // Re-exports: DB-direct seeders.
@@ -30,10 +32,10 @@ export {
 } from "../db-test-assertions/storage";
 
 // ---------------------------------------------------------------------------
-// API-based helpers.
+// Storage flow helpers.
 //
-// These call API route handlers (prepare/commit flow) and are valid
-// API-based helpers that belong in this tier.
+// The prepare and commit routes now live in apps/api, so these helpers seed the
+// storage metadata directly when a committed version is needed by web tests.
 // ---------------------------------------------------------------------------
 
 interface TestFile {
@@ -54,8 +56,9 @@ interface CreateTestStorageOptions {
 }
 
 /**
- * Create a test storage (artifact or volume) via API route handlers.
- * Uses the prepare/commit flow that the CLI uses.
+ * Create a test storage (artifact or volume).
+ * Seeds the prepare-side storage record directly, then inserts commit-side
+ * metadata when the caller needs a committed version.
  *
  * Internal helper - use createTestArtifact for testing.
  *
@@ -86,33 +89,16 @@ async function createTestStorage(
         },
       ]);
 
-  // Step 1: Prepare upload
-  const prepareRequest = createTestRequest(
-    "http://localhost:3000/api/storages/prepare",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: name,
-        storageType,
-        files,
-      }),
-    },
-  );
+  const { userId, orgId } = await getTestAuthContext();
+  const { storageId, versionId } = await prepareTestStorage({
+    userId,
+    orgId,
+    name,
+    type: storageType,
+    files,
+  });
 
-  const prepareResponse = await storagePrepareRoute(prepareRequest);
-  if (!prepareResponse.ok) {
-    const error = await prepareResponse.json();
-    throw new Error(
-      `Failed to prepare storage: ${error.error?.message || prepareResponse.status}`,
-    );
-  }
-
-  const prepareData = await prepareResponse.json();
-  const { versionId, existing } = prepareData;
-
-  // If version already exists (deduplication), skip commit
-  if (existing || options?.skipCommit) {
+  if (options?.skipCommit) {
     return {
       versionId,
       name,
@@ -123,33 +109,14 @@ async function createTestStorage(
     };
   }
 
-  // Step 2: Commit (S3 upload is mocked, so we just commit directly)
-  const commitRequest = createTestRequest(
-    "http://localhost:3000/api/storages/commit",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        storageName: name,
-        storageType,
-        versionId,
-        files,
-      }),
-    },
-  );
-
-  const commitResponse = await storageCommitRoute(commitRequest);
-  if (!commitResponse.ok) {
-    const error = await commitResponse.json();
-    throw new Error(
-      `Failed to commit storage: ${error.error?.message || commitResponse.status}`,
-    );
-  }
-
-  const commitData = await commitResponse.json();
+  const commitData = await commitPreparedTestStorage({
+    storageId,
+    versionId,
+    files,
+  });
   return {
-    versionId: commitData.versionId,
-    name: commitData.storageName,
+    versionId,
+    name,
     size: commitData.size,
     fileCount: commitData.fileCount,
   };

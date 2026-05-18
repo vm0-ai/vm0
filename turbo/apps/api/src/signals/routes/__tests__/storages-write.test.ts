@@ -343,6 +343,79 @@ describe("POST /api/storages/prepare", () => {
     expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
+  it("returns 400 when one file exceeds the per-file size schema limit", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody({
+          files: [
+            validFile({
+              path: "large-file.bin",
+              size: MAX_FILE_SIZE_BYTES + 1,
+            }),
+          ],
+        }),
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("computes the same version ID regardless of file order", async () => {
+    await useClerkSession();
+    const name = storageName("order-independent");
+    const filesOrderAB = [
+      validFile({ path: "a.txt", hash: TEST_HASH, size: 100 }),
+      validFile({ path: "b.txt", hash: SECOND_TEST_HASH, size: 200 }),
+    ];
+    const filesOrderBA = [...filesOrderAB].reverse();
+
+    const first = await prepareOk(
+      prepareBody({ storageName: name, files: filesOrderAB }),
+    );
+    const second = await prepareOk(
+      prepareBody({ storageName: name, files: filesOrderBA }),
+    );
+
+    expect(first.versionId).toBe(second.versionId);
+  });
+
+  it("computes different version IDs when file content or path changes", async () => {
+    await useClerkSession();
+    const name = storageName("content-hash");
+
+    const original = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "data.txt", hash: TEST_HASH, size: 100 })],
+      }),
+    );
+    const changedContent = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [
+          validFile({
+            path: "data.txt",
+            hash: SECOND_TEST_HASH,
+            size: 100,
+          }),
+        ],
+      }),
+    );
+    const changedPath = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "renamed.txt", hash: TEST_HASH, size: 100 })],
+      }),
+    );
+
+    expect(changedContent.versionId).not.toBe(original.versionId);
+    expect(changedPath.versionId).not.toBe(original.versionId);
+  });
+
   it("scopes sandbox tokens through the run organization", async () => {
     const fixture = await seedRunScopedFixture();
     await trackStorageOrg(Promise.resolve({ orgId: fixture.orgId }));
@@ -419,6 +492,36 @@ describe("POST /api/storages/prepare", () => {
 });
 
 describe("POST /api/storages/commit", () => {
+  it("returns 401 when the request is unauthenticated", async () => {
+    const response = await accept(
+      commitClient().commit({ body: commitBody({}), headers: {} }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("returns 400 for invalid request bodies", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      commitClient().commit({
+        body: {
+          storageType: "artifact",
+          versionId: "0".repeat(64),
+          files: [],
+        } as never,
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("storageName");
+  });
+
   it("returns 404 when storage does not exist", async () => {
     await useClerkSession();
 
@@ -569,6 +672,34 @@ describe("POST /api/storages/commit", () => {
     ]);
   });
 
+  it("verifies uploaded S3 objects using org-id keys", async () => {
+    const auth = await useClerkSession();
+    const body = prepareBody({ storageName: storageName("s3-key-prefix") });
+    const prepared = await prepareOk(body);
+
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+    await commitOk(
+      commitBody({
+        storageName: body.storageName,
+        storageType: body.storageType,
+        versionId: prepared.versionId,
+        files: body.files,
+      }),
+    );
+
+    expect(s3SendInputs()).toStrictEqual([
+      {
+        Bucket: BUCKET,
+        Key: `${auth.orgId}/artifact/${body.storageName}/${prepared.versionId}/manifest.json`,
+      },
+      {
+        Bucket: BUCKET,
+        Key: `${auth.orgId}/artifact/${body.storageName}/${prepared.versionId}/archive.tar.gz`,
+      },
+    ]);
+  });
+
   it("returns deduplicated=true when committing an existing version", async () => {
     await useClerkSession();
     const body = prepareBody({ storageName: storageName("dedupe") });
@@ -589,5 +720,34 @@ describe("POST /api/storages/commit", () => {
 
     expect(response.deduplicated).toBeTruthy();
     expect(response.versionId).toBe(prepared.versionId);
+  });
+
+  it("returns 409 when an existing version is missing S3 files", async () => {
+    await useClerkSession();
+    const body = prepareBody({ storageName: storageName("missing-existing") });
+    const prepared = await prepareOk(body);
+    const commit = commitBody({
+      storageName: body.storageName,
+      storageType: body.storageType,
+      versionId: prepared.versionId,
+      files: body.files,
+    });
+
+    context.mocks.s3.send.mockResolvedValue({});
+    await commitOk(commit);
+
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockRejectedValueOnce(notFoundError());
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await accept(
+      commitClient().commit({ body: commit, headers: authHeaders() }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "S3 files missing for existing version - please retry upload",
+      code: "S3_FILES_MISSING",
+    });
   });
 });

@@ -10,9 +10,9 @@ use vsock_proto::{
 };
 
 use super::support::{
-    drop_started_pending_normal_request_write_guard, fence_normal_operations, host_from_stream,
-    make_pair, mock_handshake, normal_operation_readiness, poison_connection, read_guest_message,
-    send_exec_result, setup_host_and_guest,
+    drop_idle_request_write_guard, drop_started_request_write_guard, fence_normal_operations,
+    host_from_stream, is_connected, make_pair, mock_handshake, normal_operation_readiness,
+    poison_connection, read_guest_message, send_exec_result, setup_host_and_guest,
 };
 use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
 
@@ -253,6 +253,7 @@ async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
         .await
         .unwrap()
         .unwrap();
+    assert!(is_connected(&host));
     send_late_ack.send(()).unwrap();
     host.resume_operations(Duration::from_secs(2))
         .await
@@ -392,10 +393,23 @@ async fn connection_poison_marks_normal_operations_not_parkable() {
 }
 
 #[tokio::test]
-async fn cancelled_normal_request_frame_write_poisons_connection() {
+async fn cancelled_request_before_frame_write_does_not_poison_connection() {
     let (host, _guest) = setup_host_and_guest().await;
 
-    drop_started_pending_normal_request_write_guard(&host);
+    drop_idle_request_write_guard(&host);
+
+    assert!(is_connected(&host));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn cancelled_request_frame_write_poisons_connection() {
+    let (host, _guest) = setup_host_and_guest().await;
+
+    drop_started_request_write_guard(&host);
 
     host.wait_until_closed(Duration::from_secs(5))
         .await

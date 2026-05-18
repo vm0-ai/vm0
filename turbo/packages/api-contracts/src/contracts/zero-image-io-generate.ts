@@ -22,13 +22,6 @@ export const zeroImageIoGenerateRequestSchema = z
   })
   .passthrough();
 
-export const zeroImageIoUsageSchema = z.object({
-  textInputTokens: z.number(),
-  imageInputTokens: z.number(),
-  imageOutputTokens: z.number(),
-  totalTokens: z.number(),
-});
-
 export const zeroImageIoGenerateResponseSchema = z.object({
   id: z.string(),
   filename: z.string(),
@@ -46,7 +39,6 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   moderation: z.string().optional(),
   safetyTolerance: z.string().optional(),
   revisedPrompt: z.string().optional(),
-  usage: zeroImageIoUsageSchema.optional(),
   billingCategory: z.string().optional(),
   billingQuantity: z.number().optional(),
   sourceUrl: z.string().optional(),

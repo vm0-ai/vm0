@@ -95,35 +95,6 @@ export async function getAuthContext(
     }
 
     if (isSandboxToken(token)) {
-      // TODO: Remove vm0_sandbox_ CLI backward compat after transition (~June 2026)
-      // Try CLI JWT (backward compat: old vm0_sandbox_ prefix with scope "cli")
-      const cliAuth = verifyCliToken(token);
-      if (cliAuth) {
-        const resolved = await resolveCliTokenFromDb(cliAuth);
-        if (!resolved) return null;
-        // Resolve org role so downstream admin checks work correctly
-        if (resolved.orgId) {
-          const membership = await getMemberRole(
-            resolved.orgId,
-            resolved.userId,
-          );
-          if (!membership) {
-            // User no longer a member — omit orgId to force resolveOrg rejection
-            return { userId: resolved.userId, tokenType: "pat" };
-          }
-          return {
-            userId: resolved.userId,
-            orgId: resolved.orgId,
-            orgRole: membership.role,
-            tokenType: "pat",
-          };
-        }
-        return {
-          userId: resolved.userId,
-          orgId: resolved.orgId,
-          tokenType: "pat",
-        };
-      }
       return authenticateSandboxToken(token, options);
     }
     // Unknown Bearer shape (e.g. a Clerk session JWT forwarded by the

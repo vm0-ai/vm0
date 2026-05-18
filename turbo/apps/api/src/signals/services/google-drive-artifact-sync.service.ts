@@ -5,6 +5,7 @@ import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
@@ -19,7 +20,8 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, type ReadonlyDb } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { settle } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptStoredSecretValue } from "./crypto.utils";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL =
@@ -80,6 +82,7 @@ async function loadDriveTokens(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<ConnectorTokens | null> {
   const [connector] = await db
     .select({ needsReconnect: connectors.needsReconnect })
@@ -122,9 +125,12 @@ async function loadDriveTokens(
   }
 
   return {
-    accessToken: decryptSecretValue(accessEncrypted),
+    accessToken: await decryptStoredSecretValue(
+      accessEncrypted,
+      featureSwitchContext,
+    ),
     refreshToken: refreshEncrypted
-      ? decryptSecretValue(refreshEncrypted)
+      ? await decryptStoredSecretValue(refreshEncrypted, featureSwitchContext)
       : null,
     needsReconnect: connector.needsReconnect,
   };
@@ -305,7 +311,14 @@ export function googleDriveArtifactStatusLookup(args: {
       return { type: "disconnected" };
     }
     const db = get(db$);
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    });
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
     }
@@ -693,7 +706,15 @@ export const syncArtifactToGoogleDrive$ = command(
   > => {
     const db = get(db$);
 
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    });
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return badRequestMessage("Connect Google Drive before syncing artifacts");

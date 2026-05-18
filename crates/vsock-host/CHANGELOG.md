@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.0...vsock-host-v0.17.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* make vsock-host request writes cancel-safe ([#13716](https://github.com/vm0-ai/vm0/issues/13716)) ([c93fb73](https://github.com/vm0-ai/vm0/commit/c93fb73692f3ff6338a9a43c237c472a8772d7a5))
+
+
+### Refactoring
+
+* align process control timeout semantics ([#13598](https://github.com/vm0-ai/vm0/issues/13598)) ([9f56eae](https://github.com/vm0-ai/vm0/commit/9f56eae01348c91ec3df805d0a3c0566aacc9dbf))
+* track composite vsock file operations ([#13593](https://github.com/vm0-ai/vm0/issues/13593)) ([c0e7ea1](https://github.com/vm0-ai/vm0/commit/c0e7ea197a8ff23f793020848f9152c227c59231))
+* track spawn process lifetime in vsock-host ([#13659](https://github.com/vm0-ai/vm0/issues/13659)) ([142aa7e](https://github.com/vm0-ai/vm0/commit/142aa7e51f8514d41a31e695c493c6dfb4ea7894))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.16.1...vsock-host-v0.17.0) (2026-05-17)
 
 

@@ -729,17 +729,13 @@ describe("sandbox-token", () => {
       expect(isSandboxToken(token)).toBe(false);
     });
 
-    it("should verify CLI token with legacy vm0_sandbox_ prefix (backward compat)", async () => {
+    it("should reject CLI token with legacy vm0_sandbox_ prefix", async () => {
       const token = await generateCliToken("user-123", "org-789", "token-id-1");
-      // Replace vm0_pat_ prefix with vm0_sandbox_ to simulate old token
       const legacyToken =
         SANDBOX_TOKEN_PREFIX + token.slice(PAT_TOKEN_PREFIX.length);
       const auth = verifyCliToken(legacyToken);
 
-      expect(auth).not.toBeNull();
-      expect(auth?.userId).toBe("user-123");
-      expect(auth?.orgId).toBe("org-789");
-      expect(auth?.tokenId).toBe("token-id-1");
+      expect(auth).toBeNull();
     });
   });
 });

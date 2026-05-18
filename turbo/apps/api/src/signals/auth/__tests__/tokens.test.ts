@@ -96,4 +96,19 @@ describe("auth tokens", () => {
       jobId: "job_compose",
     });
   });
+
+  it("rejects CLI-scoped tokens behind the sandbox prefix", () => {
+    const nowSeconds = currentSecond();
+    const legacyCliToken = signSandboxJwtForTests({
+      scope: "cli",
+      userId: "user_legacy",
+      orgId: "org_legacy",
+      tokenId: "token_legacy",
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
+
+    expect(isSandboxToken(legacyCliToken)).toBeTruthy();
+    expect(verifyCliToken(legacyCliToken)).toBeNull();
+  });
 });

@@ -62,7 +62,7 @@ export const zeroAgentSchedules = pgTable(
     description: text("description"),
     appendSystemPrompt: text("append_system_prompt"),
     vars: jsonb("vars").$type<Record<string, string>>(),
-    // Secrets encrypted with AES-256-GCM (same pattern as runner_job_queue)
+    // Secrets encrypted with the API stored-secret encryption envelope.
     encryptedSecrets: text("encrypted_secrets"),
 
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),

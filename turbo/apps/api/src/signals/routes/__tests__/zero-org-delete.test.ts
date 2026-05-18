@@ -13,6 +13,8 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
@@ -57,6 +59,26 @@ const trackCleanup = createFixtureTracker(
 
 function uniqueId(prefix: string): string {
   return `${prefix}_${randomUUID().slice(0, 8)}`;
+}
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: uniqueId("run"),
+    capabilities: [],
+    iat: seconds,
+    exp: seconds + 600,
+  });
 }
 
 async function seedOrg(args: {
@@ -199,6 +221,36 @@ describe("POST /api/zero/org/delete", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
+  });
+
+  it("rejects zero tokens", async () => {
+    const token = zeroToken({
+      userId: uniqueId("user"),
+      orgId: uniqueId("org"),
+    });
+    const client = setupApp({ context })(zeroOrgDeleteContract);
+
+    const response = await accept(
+      client.delete({
+        headers: { authorization: `Bearer ${token}` },
+        body: { slug: "delete-test" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "This endpoint is not available for sandbox tokens",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganization,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.getOrganizationMembershipList,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.clerk.organizations.deleteOrganization,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns 400 for an invalid body", async () => {

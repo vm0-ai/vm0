@@ -7,11 +7,7 @@ import {
   type MockInstance,
 } from "vitest";
 import { http, HttpResponse } from "msw";
-import type { NextRequest } from "next/server";
 import { POST } from "../route";
-import { POST as axiomConsumerPOST } from "../../../../internal/event-consumers/axiom/route";
-import { POST as chatAssistantConsumerPOST } from "../../../../internal/event-consumers/chat-assistant/route";
-import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -30,22 +26,64 @@ import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
-/**
- * Forward an MSW-intercepted fetch to the matching Next.js route handler so
- * the real end-to-end flow (HMAC-signed dispatch → consumer route → service
- * call) runs inside the test. Without this, MSW would reject the internal
- * fetch (onUnhandledRequest: "error") and the real consumer logic would
- * never execute.
- */
-async function forwardToConsumer(
-  request: Request,
-  handler: (req: NextRequest) => Promise<Response>,
-): Promise<Response> {
-  const response = await handler(request as NextRequest);
-  return new HttpResponse(response.body, {
-    status: response.status,
-    headers: response.headers,
+async function handleAxiomApiConsumer(request: Request): Promise<Response> {
+  const body = (await request.json()) as {
+    readonly runId: string;
+    readonly events: readonly {
+      readonly sequenceNumber: number;
+      readonly type: string;
+      readonly [key: string]: unknown;
+    }[];
+    readonly context: { readonly userId: string };
+  };
+
+  const axiomEvents = body.events.map((event) => {
+    return {
+      runId: body.runId,
+      userId: body.context.userId,
+      sequenceNumber: event.sequenceNumber,
+      eventType: event.type,
+      eventData: event,
+    };
   });
+
+  const ingested = axiomModule.ingestToAxiom(
+    axiomModule.getDatasetName(axiomModule.DATASETS.AGENT_RUN_EVENTS),
+    axiomEvents,
+  );
+  if (!ingested) {
+    return HttpResponse.json(
+      { error: "Axiom agent-run-events dataset is not configured" },
+      { status: 503 },
+    );
+  }
+
+  try {
+    await axiomModule.flushAxiom({ throwOnError: true, client: "sessions" });
+  } catch {
+    return HttpResponse.json(
+      { error: "Axiom agent-run-events flush failed" },
+      { status: 503 },
+    );
+  }
+
+  return HttpResponse.json({ received: body.events.length });
+}
+
+async function handleChatAssistantApiConsumer(
+  request: Request,
+): Promise<Response> {
+  const body = (await request.json()) as {
+    readonly events?: readonly unknown[];
+  };
+
+  return HttpResponse.json({
+    processed: Array.isArray(body.events) ? body.events.length : 0,
+  });
+}
+
+function handleTelegramTypingApiConsumer(): Response {
+  return HttpResponse.json({ scheduled: true });
 }
 
 const context = testContext();
@@ -97,19 +135,19 @@ describe("POST /api/webhooks/agent/events", () => {
       http.post(
         "http://localhost:3000/api/internal/event-consumers/axiom",
         ({ request }) => {
-          return forwardToConsumer(request, axiomConsumerPOST);
+          return handleAxiomApiConsumer(request);
         },
       ),
       http.post(
         "http://localhost:3000/api/internal/event-consumers/chat-assistant",
         ({ request }) => {
-          return forwardToConsumer(request, chatAssistantConsumerPOST);
+          return handleChatAssistantApiConsumer(request);
         },
       ),
       http.post(
         "http://localhost:3000/api/internal/event-consumers/telegram-typing",
-        ({ request }) => {
-          return forwardToConsumer(request, telegramTypingConsumerPOST);
+        () => {
+          return handleTelegramTypingApiConsumer();
         },
       ),
       http.post(

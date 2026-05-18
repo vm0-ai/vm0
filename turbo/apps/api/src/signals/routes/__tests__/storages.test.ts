@@ -634,6 +634,72 @@ describe("GET /api/storages/download", () => {
     });
   });
 
+  it("downloads artifacts through a sandbox token run organization", async () => {
+    const fixture = await seedRunScopedFixture();
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://mock-presigned-url",
+    );
+    const storage = await trackStorage(
+      seedStorage({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "sandbox-artifact-download",
+        type: "artifact",
+        versions: [{ size: 61, fileCount: 6 }],
+      }),
+    );
+    const token = sandboxToken(fixture);
+
+    const response = await downloadClient().download({
+      query: { name: storage.name, type: "artifact" },
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body).toStrictEqual({
+      url: "https://mock-presigned-url",
+      versionId: storage.versionIds[0],
+      fileCount: 6,
+      size: 61,
+    });
+  });
+
+  it("downloads volumes through a sandbox token run organization", async () => {
+    const fixture = await seedRunScopedFixture();
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://mock-presigned-url",
+    );
+    const storage = await trackStorage(
+      seedStorage({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "sandbox-volume-download",
+        type: "volume",
+        versions: [{ size: 71, fileCount: 7 }],
+      }),
+    );
+    const token = sandboxToken(fixture);
+
+    const response = await downloadClient().download({
+      query: { name: storage.name, type: "volume" },
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body).toStrictEqual({
+      url: "https://mock-presigned-url",
+      versionId: storage.versionIds[0],
+      fileCount: 7,
+      size: 71,
+    });
+  });
+
   it("returns 404 when storage has no versions", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

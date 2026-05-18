@@ -36,7 +36,7 @@
 //! | 0x10 | G→H       | operations_quiesced    | (empty) |
 //! | 0x11 | H→G       | resume_operations | (empty) |
 //! | 0x12 | G→H       | operations_resumed | (empty) |
-//! | 0x13 | H→G       | process_control | `[4B target_seq][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
+//! | 0x13 | H→G       | process_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
 //! | 0x14 | G→H       | process_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
@@ -50,6 +50,10 @@
 //! `process_control_result.status` uses 0=delivered, 1=inactive,
 //! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
 //! 6=sink_timeout, 7=queue_full, and 8=sink_error.
+//! `process_control.request_timeout_ms` is the caller-visible budget, counted
+//! from guest receipt through local sink connection, request write, and response
+//! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
+//! saturate values that do not fit in `u32`.
 
 mod error;
 mod frame;

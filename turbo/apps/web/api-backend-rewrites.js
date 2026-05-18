@@ -17,8 +17,40 @@ const ZERO_VOICE_CHAT_TRIGGER_REASONING_REWRITE_SOURCE = `${ZERO_VOICE_CHAT_SESS
 const ZERO_VOICE_CHAT_TRIGGER_REASONING_PATH_RE = new RegExp(
   `^/api/zero/voice-chat/${UUID_PATH_SEGMENT_PATTERN}/trigger-reasoning$`,
 );
+const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/me/model-providers/:type";
+const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
+  /^\/api\/zero\/me\/model-providers\/[^/]+$/;
+const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
+const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
+const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
+const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
+const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
+const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
+const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
+const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
+const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
+const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
+const AGENT_CHECKPOINT_PATH_RE = /^\/api\/agent\/checkpoints\/[^/]+$/;
+const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
+  "/api/zero/model-providers/:type";
+const ZERO_MODEL_PROVIDER_TYPE_PATH_RE =
+  /^\/api\/zero\/model-providers\/[^/]+$/;
 
 export const API_BACKEND_REWRITES = [
+  [
+    AGENT_CHECKPOINT_REWRITE_SOURCE,
+    "/api/agent/checkpoints/:id",
+    AGENT_CHECKPOINT_PATH_RE,
+  ],
+  ["/api/auth/me", "/api/auth/me"],
+  ["/api/desktop-auth/handoff", "/api/desktop-auth/handoff"],
+  ["/api/desktop-auth/consume", "/api/desktop-auth/consume"],
+  [
+    AGENT_SESSION_ID_REWRITE_SOURCE,
+    "/api/agent/sessions/:id",
+    AGENT_SESSION_ID_PATH_RE,
+  ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
@@ -28,8 +60,15 @@ export const API_BACKEND_REWRITES = [
   ["/api/github/oauth/install", "/api/github/oauth/install"],
   ["/api/integrations/github", "/api/integrations/github"],
   ["/api/logs/search", "/api/logs/search"],
+  ["/api/storages/commit", "/api/storages/commit"],
+  ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],
+  ["/api/storages/prepare", "/api/storages/prepare"],
   ["/api/usage", "/api/usage"],
+  [
+    "/api/webhooks/built-in-generations/:path*",
+    "/api/webhooks/built-in-generations/:path*",
+  ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
@@ -39,6 +78,22 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/internal/event-consumers/agentphone-typing",
     "/api/internal/event-consumers/agentphone-typing",
+  ],
+  [
+    "/api/internal/event-consumers/axiom",
+    "/api/internal/event-consumers/axiom",
+  ],
+  [
+    "/api/internal/event-consumers/chat-assistant",
+    "/api/internal/event-consumers/chat-assistant",
+  ],
+  [
+    "/api/internal/event-consumers/telegram-typing",
+    "/api/internal/event-consumers/telegram-typing",
+  ],
+  [
+    "/api/internal/event-consumers/voice-chat",
+    "/api/internal/event-consumers/voice-chat",
   ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
@@ -58,6 +113,12 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/host/deployments/:deploymentId/complete",
   ],
   ["/api/zero/host/deployments/prepare", "/api/zero/host/deployments/prepare"],
+  [ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE, "/api/zero/me/model-providers"],
+  [
+    ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+    "/api/zero/me/model-providers/:type",
+    ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE,
+  ],
   [
     "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
     "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
@@ -65,12 +126,20 @@ export const API_BACKEND_REWRITES = [
   [
     "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
     "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
+  ],
+  ["/api/zero/model-providers", "/api/zero/model-providers"],
+  [
+    ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
+    "/api/zero/model-providers/:type",
+    ZERO_MODEL_PROVIDER_TYPE_PATH_RE,
   ],
   [
     "/api/zero/built-in-generations/:path*",
     "/api/zero/built-in-generations/:path*",
   ],
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
+  ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
+  ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
   ["/api/zero/local-browser/:path*", "/api/zero/local-browser/:path*"],
   ["/api/zero/presentation-io/generate", "/api/zero/presentation-io/generate"],
   ["/api/zero/local-agent/:path*", "/api/zero/local-agent/:path*"],
@@ -103,11 +172,43 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/permission-access-requests",
     "/api/zero/permission-access-requests",
   ],
+  ["/api/zero/permission-policies", "/api/zero/permission-policies"],
   ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/queue-position", "/api/zero/queue-position"],
+  ["/api/zero/secrets", "/api/zero/secrets"],
+  ["/api/zero/report-error", "/api/zero/report-error"],
+  [
+    ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/secrets/:name",
+    ZERO_SECRETS_BY_NAME_PATH_RE,
+  ],
+  ["/api/zero/skills", "/api/zero/skills"],
+  [
+    ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/skills/:name",
+    ZERO_SKILLS_BY_NAME_PATH_RE,
+  ],
   ["/api/zero/team", "/api/zero/team"],
+  ["/api/zero/model-policies", "/api/zero/model-policies"],
+  ["/api/zero/realtime/token", "/api/zero/realtime/token"],
   ["/api/zero/user-model-preference", "/api/zero/user-model-preference"],
   ["/api/zero/user-preferences", "/api/zero/user-preferences"],
+  ["/api/zero/org", "/api/zero/org"],
+  ["/api/zero/org/delete", "/api/zero/org/delete"],
+  ["/api/zero/org/domains", "/api/zero/org/domains"],
+  ["/api/zero/org/invite", "/api/zero/org/invite"],
+  ["/api/zero/org/leave", "/api/zero/org/leave"],
+  ["/api/zero/org/list", "/api/zero/org/list"],
+  ["/api/zero/org/logo", "/api/zero/org/logo"],
+  ["/api/zero/org/members", "/api/zero/org/members"],
+  ["/api/zero/org/members/credit-cap", "/api/zero/org/members/credit-cap"],
+  ["/api/zero/org/membership-requests", "/api/zero/org/membership-requests"],
+  ["/api/zero/variables", "/api/zero/variables"],
+  [
+    ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/variables/:name",
+    ZERO_VARIABLE_BY_NAME_PATH_RE,
+  ],
   ["/api/zero/voice-chat", "/api/zero/voice-chat"],
   ["/api/zero/voice-chat/token", "/api/zero/voice-chat/token"],
   [

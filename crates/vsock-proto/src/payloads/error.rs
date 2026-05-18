@@ -1,16 +1,15 @@
+use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
 use crate::read::read_u16_at;
 
 /// Encode error payload: `[2B error_len][error]`.
 ///
-/// Error message is truncated to 65535 bytes if longer.
+/// Error message is truncated to at most 65535 bytes at a UTF-8 boundary.
 pub fn encode_error(message: &str) -> Vec<u8> {
-    let msg = message.as_bytes();
-    let msg_len = msg.len().min(u16::MAX as usize) as u16;
+    let (msg, msg_len) = truncate_utf8_to_u16_bytes(message);
     let mut p = Vec::with_capacity(2 + msg_len as usize);
     p.extend_from_slice(&msg_len.to_be_bytes());
-    // msg_len <= msg.len() is guaranteed by .min() above
-    p.extend_from_slice(msg.get(..msg_len as usize).unwrap_or(msg));
+    p.extend_from_slice(msg);
     p
 }
 
@@ -36,5 +35,59 @@ mod tests {
         let payload = encode_error("something went wrong");
         let msg = decode_error(&payload).unwrap();
         assert_eq!(msg, "something went wrong");
+    }
+
+    #[test]
+    fn error_payload_truncates_oversized_ascii_to_u16_max() {
+        let message = "A".repeat(u16::MAX as usize + 1);
+        let payload = encode_error(&message);
+
+        assert_eq!(payload.len(), 2 + u16::MAX as usize);
+        assert_eq!(payload.get(..2), Some(u16::MAX.to_be_bytes().as_slice()));
+
+        let msg = decode_error(&payload).unwrap();
+        assert_eq!(msg.len(), u16::MAX as usize);
+        assert!(msg.bytes().all(|byte| byte == b'A'));
+    }
+
+    #[test]
+    fn error_payload_keeps_utf8_character_ending_at_u16_max() {
+        let prefix = "A".repeat(u16::MAX as usize - "é".len());
+        let expected = format!("{prefix}é");
+        let message = format!("{expected}B");
+        let payload = encode_error(&message);
+
+        let declared_len = u16::from_be_bytes(payload.get(..2).unwrap().try_into().unwrap());
+        assert_eq!(declared_len as usize, expected.len());
+        assert_eq!(payload.len(), 2 + expected.len());
+
+        let msg = decode_error(&payload).unwrap();
+        assert_eq!(msg, expected);
+    }
+
+    #[test]
+    fn error_payload_truncates_oversized_utf8_at_character_boundary() {
+        let emoji = "\u{1F600}";
+        let prefix = "A".repeat(u16::MAX as usize - (emoji.len() - 1));
+        let message = format!("{prefix}{emoji}");
+        let payload = encode_error(&message);
+
+        let declared_len = u16::from_be_bytes(payload.get(..2).unwrap().try_into().unwrap());
+        assert_eq!(declared_len as usize, prefix.len());
+        assert_eq!(payload.len(), 2 + prefix.len());
+
+        let msg = decode_error(&payload).unwrap();
+        assert_eq!(msg, prefix);
+    }
+
+    #[test]
+    fn decode_error_rejects_invalid_utf8() {
+        let payload = [0, 1, 0xC3];
+        let err = decode_error(&payload).unwrap_err();
+
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("invalid UTF-8 in error")
+        ));
     }
 }

@@ -13,7 +13,7 @@ vi.mock("next-intl/middleware", () => {
   };
 });
 
-import { localeGuardLayer, runLayers } from "../proxy.layers";
+import { classifyRoute, localeGuardLayer, runLayers } from "../proxy.layers";
 
 /**
  * Helper to run the localeGuardLayer through the real runLayers pipeline.
@@ -77,6 +77,11 @@ describe("localeGuardLayer", () => {
     it("should pass through for static file routes", async () => {
       const response = await runGuard("https://www.vm0.ai/_next/static/chunk");
       expect(response.status).toBe(200);
+    });
+
+    it("should keep desktop auth outside locale processing", () => {
+      expect(classifyRoute("/desktop-auth/consume")).toBe("skip");
+      expect(classifyRoute("/desktop-auth/callback")).toBe("skip");
     });
   });
 

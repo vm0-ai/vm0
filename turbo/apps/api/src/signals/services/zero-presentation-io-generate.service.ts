@@ -165,6 +165,15 @@ interface GeneratedPresentationVisualImage {
   readonly generation: ParsedImageGeneration;
 }
 
+interface PresentationVisualGenerationTask {
+  readonly key: string;
+  readonly slideIndex: number;
+  readonly slide: SlideSpec;
+  readonly prompt: string;
+  readonly alt: string;
+  readonly imageOptions: ImageOptions;
+}
+
 interface RecordedPresentation {
   readonly id: string;
   readonly filename: string;
@@ -1411,7 +1420,7 @@ function selectVisualSlides(
 
 function visualImageSizeForModel(model: ImageModel): string {
   const config = imageModelConfig(model);
-  if (config.provider === "openai" && config.sizeMode === "standard") {
+  if (config.sizeMode === "standard") {
     return "1536x1024";
   }
   return "1536x864";
@@ -1444,6 +1453,34 @@ function createVisualImageOptions(
     enhancePrompt: false,
   });
   return options;
+}
+
+function createPresentationVisualGenerationTasks(
+  generation: ParsedPresentationGeneration,
+  options: PresentationOptions,
+): readonly PresentationVisualGenerationTask[] | ErrorResponse {
+  const candidates = selectVisualSlides(generation.deck, options.imageCount);
+  const tasks: PresentationVisualGenerationTask[] = [];
+  for (const [slideIndex, slide] of candidates) {
+    const prompt = visualPromptForSlide({
+      deck: generation.deck,
+      slide,
+      options,
+    });
+    const imageOptions = createVisualImageOptions(prompt, options.imageModel);
+    if ("status" in imageOptions) {
+      return imageOptions;
+    }
+    tasks.push({
+      key: String(slideIndex),
+      slideIndex,
+      slide,
+      prompt,
+      alt: visualAltText(slide),
+      imageOptions,
+    });
+  }
+  return tasks;
 }
 
 function presentationVisualImageTimeoutMs(deadlineAtMs: number | undefined) {

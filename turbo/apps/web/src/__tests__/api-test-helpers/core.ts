@@ -109,7 +109,7 @@ export async function getTestAuthContext(): Promise<{
   userId: string;
   orgId: string;
 }> {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   if (!userId) throw new Error("Mock Clerk userId is null");
-  return { userId, orgId: `org_mock_${userId}` };
+  return { userId, orgId: orgId ?? `org_mock_${userId}` };
 }

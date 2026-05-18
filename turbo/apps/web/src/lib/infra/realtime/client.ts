@@ -25,25 +25,6 @@ function getUserChannelName(userId: string): string {
 }
 
 /**
- * Generate an Ably token for a platform user's channel (subscribe only).
- * Used by the frontend to subscribe to invalidation signals.
- */
-export async function generatePlatformUserToken(
-  userId: string,
-): Promise<Ably.TokenRequest> {
-  const channelName = getUserChannelName(userId);
-  const tokenRequest = await getAblyClient().auth.createTokenRequest({
-    capability: {
-      [channelName]: ["subscribe"],
-    },
-    ttl: 3600000, // 1 hour
-    clientId: userId,
-  });
-  log.debug(`Generated platform token for user:${userId}`);
-  return tokenRequest;
-}
-
-/**
  * Publish an invalidation signal to specific users' channels.
  * Used by server-side code to notify frontend clients that data has changed.
  * An optional `payload` can be included for richer signals (e.g. read cursors).

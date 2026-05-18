@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
@@ -22,8 +21,6 @@ export const VIDEO_IO_MODEL = "fal-ai/veo3.1/fast";
 export const FAL_VIDEO_QUEUE_URL = `https://queue.fal.run/${VIDEO_IO_MODEL}`;
 
 const VIDEO_IO_MAX_PROMPT_LENGTH = 32_000;
-const FAL_POLL_INTERVAL_MS = 2000;
-const FAL_MAX_POLLS = 180;
 
 const USAGE_KIND = "video";
 const VIDEO_AUDIO_CATEGORY = "output_video_seconds.audio";
@@ -342,10 +339,6 @@ function videoInternalError(message: string) {
 
 function badGateway(message: string, code: string) {
   return { status: 502 as const, body: errorBody(message, code) };
-}
-
-function gatewayTimeout(message: string, code: string) {
-  return { status: 504 as const, body: errorBody(message, code) };
 }
 
 export function videoServiceUnavailable(message: string, code: string) {
@@ -724,8 +717,13 @@ export async function submitFalVideoGeneration(
   options: VideoOptions,
   falKey: string,
   signal: AbortSignal,
+  webhookUrl?: string,
 ): Promise<FalQueueHandle | VideoErrorResponse> {
-  const response = await fetch(falVideoQueueUrl(options.model), {
+  const queueUrl = new URL(falVideoQueueUrl(options.model));
+  if (webhookUrl) {
+    queueUrl.searchParams.set("fal_webhook", webhookUrl);
+  }
+  const response = await fetch(queueUrl, {
     method: "POST",
     headers: falHeaders(falKey),
     body: JSON.stringify(falVideoInput(options)),
@@ -742,62 +740,6 @@ export async function submitFalVideoGeneration(
     return badGateway("Fal returned no queue handle", "NO_QUEUE_HANDLE");
   }
   return handle;
-}
-
-function readFalStatus(value: unknown): {
-  readonly status: string | undefined;
-  readonly responseUrl: string | undefined;
-} {
-  if (!isRecord(value)) {
-    return { status: undefined, responseUrl: undefined };
-  }
-  return {
-    status: typeof value.status === "string" ? value.status : undefined,
-    responseUrl:
-      typeof value.response_url === "string" ? value.response_url : undefined,
-  };
-}
-
-export async function waitForFalVideoResult(
-  handle: FalQueueHandle,
-  falKey: string,
-  signal: AbortSignal,
-): Promise<unknown | VideoErrorResponse> {
-  let responseUrl = handle.responseUrl;
-  for (let poll = 0; poll < FAL_MAX_POLLS; poll++) {
-    const statusResponse = await fetch(handle.statusUrl, {
-      method: "GET",
-      headers: { Authorization: `Key ${falKey}` },
-      signal,
-    });
-    if (!statusResponse.ok) {
-      return videoInternalError("Video generation status check failed");
-    }
-
-    const statusBody: unknown = await statusResponse.json();
-    const status = readFalStatus(statusBody);
-    responseUrl = status.responseUrl ?? responseUrl;
-
-    if (status.status === "COMPLETED") {
-      const resultResponse = await fetch(responseUrl, {
-        method: "GET",
-        headers: { Authorization: `Key ${falKey}` },
-        signal,
-      });
-      if (!resultResponse.ok) {
-        return videoInternalError("Video generation result fetch failed");
-      }
-      return await resultResponse.json();
-    }
-
-    if (status.status === "FAILED" || status.status === "ERROR") {
-      return videoInternalError("Video generation failed");
-    }
-
-    await delay(FAL_POLL_INTERVAL_MS, undefined, { signal });
-  }
-
-  return gatewayTimeout("Video generation timed out", "GENERATION_TIMEOUT");
 }
 
 function parseFalFile(value: unknown): FalFile | null {

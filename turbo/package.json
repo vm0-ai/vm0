@@ -100,7 +100,8 @@
       "@tiptap/extension-paragraph": "3.21.0",
       "@tiptap/extension-text": "3.21.0",
       "@tiptap/extension-underline": "3.21.0",
-      "@tiptap/suggestion": "3.21.0"
+      "@tiptap/suggestion": "3.21.0",
+      "@types/node": "24.3.0"
     }
   },
   "packageManager": "pnpm@10.33.4",

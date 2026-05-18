@@ -25,18 +25,12 @@ const IMAGE_RESULT = {
   url: "http://localhost:3000/f/user-1/image-file-id/image-image-fi.png",
   creditsCharged: 65,
   model: "gpt-image-1",
-  provider: "openai",
+  provider: "fal",
   imageSize: "1024x1024",
   quality: "medium",
   background: "opaque",
   outputFormat: "png",
   moderation: "auto",
-  usage: {
-    textInputTokens: 1000,
-    imageInputTokens: 0,
-    imageOutputTokens: 2000,
-    totalTokens: 3000,
-  },
 };
 
 describe("zero built-in generate image command", () => {
@@ -121,7 +115,7 @@ describe("zero built-in generate image command", () => {
     expect(stdout).toContain("Moderation: low");
     expect(stdout).toContain("Credits charged: 65");
     expect(stdout).toContain("Model: gpt-image-1");
-    expect(stdout).toContain("Provider: openai");
+    expect(stdout).toContain("Provider: fal");
   });
 
   it("should pass fal model controls to the image API", async () => {
@@ -139,7 +133,6 @@ describe("zero built-in generate image command", () => {
           billingQuantity: 2,
           safetyTolerance: "5",
           seed: 123,
-          usage: undefined,
         });
       }),
     );
@@ -208,7 +201,7 @@ describe("zero built-in generate image command", () => {
       url: IMAGE_RESULT.url,
       creditsCharged: 65,
       model: IMAGE_RESULT.model,
-      provider: "openai",
+      provider: "fal",
       imageSize: "1024x1024",
       quality: "medium",
       outputFormat: "png",
@@ -287,8 +280,9 @@ describe("zero built-in generate image command", () => {
     expect(helpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");
-    expect(helpOutput).toContain("--compression 0-100");
-    expect(helpOutput).toContain("Moderation: auto or low");
+    expect(helpOutput).toContain("--compression <0-100>");
+    expect(helpOutput).toContain("Moderation strictness: auto or low");
+    expect(helpOutput).toContain("Uses fal.ai for all image model execution");
     expect(helpOutput).toContain("--seed");
     expect(helpOutput).toContain("--safety-tolerance");
     expect(helpOutput).toContain("not support transparent");

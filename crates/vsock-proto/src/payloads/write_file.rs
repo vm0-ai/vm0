@@ -1,3 +1,4 @@
+use super::truncate_utf8_to_u16_bytes;
 use crate::error::ProtocolError;
 use crate::read::{read_u8_at, read_u16_at, read_u32_at};
 use crate::wire::{WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO};
@@ -35,15 +36,13 @@ pub fn encode_write_file(
 
 /// Encode write_file_result payload: `[1B success][2B error_len][error]`.
 ///
-/// Error message is truncated to 65535 bytes if longer.
+/// Error message is truncated to at most 65535 bytes at a UTF-8 boundary.
 pub fn encode_write_file_result(success: bool, error: &str) -> Vec<u8> {
-    let err = error.as_bytes();
-    let err_len = err.len().min(u16::MAX as usize) as u16;
+    let (err, err_len) = truncate_utf8_to_u16_bytes(error);
     let mut p = Vec::with_capacity(3 + err_len as usize);
     p.push(u8::from(success));
     p.extend_from_slice(&err_len.to_be_bytes());
-    // err_len <= err.len() is guaranteed by .min() above
-    p.extend_from_slice(err.get(..err_len as usize).unwrap_or(err));
+    p.extend_from_slice(err);
     p
 }
 
@@ -160,6 +159,22 @@ mod tests {
         let (success, error) = decode_write_file_result(&payload).unwrap();
         assert!(!success);
         assert_eq!(error, "permission denied");
+    }
+
+    #[test]
+    fn write_file_result_truncates_oversized_utf8_at_character_boundary() {
+        let prefix = "A".repeat(u16::MAX as usize - 1);
+        let error = format!("{prefix}é");
+        let payload = encode_write_file_result(false, &error);
+
+        assert_eq!(payload.first(), Some(&0));
+        let declared_len = u16::from_be_bytes(payload.get(1..3).unwrap().try_into().unwrap());
+        assert_eq!(declared_len as usize, prefix.len());
+        assert_eq!(payload.len(), 3 + prefix.len());
+
+        let (success, decoded_error) = decode_write_file_result(&payload).unwrap();
+        assert!(!success);
+        assert_eq!(decoded_error, prefix);
     }
 
     #[test]

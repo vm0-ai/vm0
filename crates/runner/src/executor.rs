@@ -683,8 +683,8 @@ async fn run_in_sandbox(
             Some(stderr)
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
-            // error file written by the guest-agent (for checkpoint or
-            // no-history finalization failures).
+            // error file written by the guest-agent for final failure
+            // handoff.
             read_guest_error_file(sandbox, context.run_id).await
         }
     } else {
@@ -696,9 +696,9 @@ async fn run_in_sandbox(
 
 /// Read a structured error file from the guest filesystem.
 ///
-/// The guest-agent writes run-finalization errors to
-/// `/tmp/vm0-checkpoint-error-{run_id}` so the runner can surface them even
-/// though stdout/stderr are redirected to the system log file.
+/// The guest-agent writes final failure messages to
+/// `/tmp/vm0-checkpoint-error-{run_id}` so the runner can surface them through
+/// `/complete` even though stdout/stderr are redirected to the system log file.
 ///
 /// NOTE: This path must match the convention in `crates/guest-agent/src/paths.rs`
 /// (`checkpoint_error_file()`). The runner and guest-agent are separate binaries

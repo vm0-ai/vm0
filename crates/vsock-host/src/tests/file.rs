@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -12,11 +13,12 @@ use vsock_proto::{
 
 use super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
-    normal_operation_readiness, operation_count, read_guest_message, send_exec_output,
-    send_exec_result, send_raw_exec_result, send_stream_exec_result, setup_host_and_guest,
+    normal_operation_readiness, operation_count, pending_request_count, read_guest_message,
+    send_exec_output, send_exec_result, send_raw_exec_result, send_stream_exec_result,
+    setup_host_and_guest,
 };
 use crate::file as file_impl;
-use crate::{CopyFileOptions, operation_tracker::NormalOperationReadiness};
+use crate::{CopyFileOptions, FrameWriteObserver, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn copy_file_rejects_max_bytes_above_stream_budget() {
@@ -1169,10 +1171,23 @@ async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
 async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
     let write_task = {
         let host = Arc::clone(&host);
-        tokio::spawn(async move { host.write_file("/tmp/blocked.txt", b"hello", false).await })
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/blocked.txt",
+                b"hello",
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
     };
 
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -1184,12 +1199,121 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
     .unwrap();
     write_task.abort();
     let _ = write_task.await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
 
     drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_observer_error_cleans_pending_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/observer-error.txt",
+            b"hello",
+            false,
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn write_file_chunked_cancelled_before_first_frame_write_does_not_cleanup() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let content = vec![0xABu8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big-blocked.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while pending_request_count(&host) != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_chunked_rejects_invalid_path_before_cleanup_or_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let path = format!("/{}", "a".repeat(u16::MAX as usize));
+    let content = vec![0u8; file_impl::test_support::WRITE_FILE_CHUNK_LIMIT + 1];
+
+    let err = host
+        .write_file_with_write_observer(
+            &path,
+            &content,
+            false,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert_eq!(operation_count(&host), 0);
+
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 
@@ -1691,6 +1815,82 @@ async fn write_file_chunked_cleanup_error_retries_untracked_on_drop() {
         &[],
     )
     .await;
+}
+
+#[tokio::test]
+async fn write_file_chunked_cleanup_retry_does_not_reuse_write_observer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+
+    let chunk_limit = file_impl::test_support::WRITE_FILE_CHUNK_LIMIT;
+    let content = vec![0xABu8; chunk_limit + 100];
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/big.bin",
+                &content,
+                false,
+                FrameWriteObserver::new(move || {
+                    let count = write_start_count.fetch_add(1, Ordering::SeqCst);
+                    if count >= 3 {
+                        return Err(io::Error::other("write observer is no longer active"));
+                    }
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    let first = read_guest_message(&mut guest).await;
+    assert_eq!(first.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(true, "");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, first.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let second = read_guest_message(&mut guest).await;
+    assert_eq!(second.msg_type, MSG_WRITE_FILE);
+    let payload = vsock_proto::encode_write_file_result(false, "disk full");
+    guest
+        .write_all(&vsock_proto::encode(MSG_WRITE_FILE_RESULT, second.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let cleanup = read_guest_message(&mut guest).await;
+    assert_eq!(cleanup.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&cleanup.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    let payload = vsock_proto::encode_error("cleanup unavailable");
+    guest
+        .write_all(&vsock_proto::encode(MSG_ERROR, cleanup.seq, &payload).unwrap())
+        .await
+        .unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("disk full"));
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
+
+    let retry = tokio::time::timeout(Duration::from_secs(2), read_guest_message(&mut guest))
+        .await
+        .expect("cleanup retry was not sent after observer became inactive");
+    assert_eq!(retry.msg_type, MSG_EXEC_START);
+    let decoded = vsock_proto::decode_exec_start(&retry.payload).unwrap();
+    assert_eq!(decoded.label, "exec-cleanup");
+    assert!(decoded.command.contains("rm -f --"));
+    send_exec_result(
+        &mut guest,
+        retry.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        &[],
+        &[],
+    )
+    .await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 3);
 }
 
 #[tokio::test]

@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   PROVIDER_HANDLERS,
   type ProviderEnv,
@@ -21,10 +22,11 @@ import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 import {
-  decryptSecretValue,
   decryptSecretsMap,
-  encryptSecretValue,
+  decryptStoredSecretValue,
+  encryptStoredSecretValue,
 } from "./crypto.utils";
+import { loadUserFeatureSwitchOverrides } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
@@ -123,6 +125,7 @@ interface SecretTokenLookupArgs {
   readonly userId: string;
   readonly sourceType: OAuthSecretSource;
   readonly sourceUserId?: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
@@ -153,6 +156,7 @@ interface SyncRefreshTokensArgs {
   readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshExpiredTokensArgs {
@@ -175,6 +179,7 @@ interface RefreshBatchContext {
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
   readonly envVarsByConnector: Map<string, readonly string[]>;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface BasicArgContext {
@@ -245,26 +250,32 @@ function currentProviderEnv(): ProviderEnv {
   ) as ProviderEnv;
 }
 
-async function getSecretValue(
-  db: Db,
-  orgId: string,
-  userId: string,
-  name: string,
-  type: SecretType,
-): Promise<string | null> {
-  const [row] = await db
+async function getSecretValue(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly type: SecretType;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<string | null> {
+  const [row] = await args.db
     .select({ encryptedValue: secretsTable.encryptedValue })
     .from(secretsTable)
     .where(
       and(
-        eq(secretsTable.orgId, orgId),
-        eq(secretsTable.userId, userId),
-        eq(secretsTable.name, name),
-        eq(secretsTable.type, type),
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.name, args.name),
+        eq(secretsTable.type, args.type),
       ),
     )
     .limit(1);
-  return row ? decryptSecretValue(row.encryptedValue) : null;
+  return row
+    ? await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      )
+    : null;
 }
 
 async function upsertSecretValue(
@@ -277,7 +288,7 @@ async function upsertSecretValue(
     readonly type: SecretType;
   },
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(args.value);
   await db
     .insert(secretsTable)
     .values({
@@ -314,13 +325,18 @@ async function getConnectorRefreshToken(
   }
 
   const secretName = handler.getRefreshSecretName();
-  const token = await getSecretValue(
-    args.db,
-    args.orgId,
-    resolveSecretUserId(args.sourceType, args.userId, args.sourceUserId),
-    secretName,
-    args.sourceType,
-  );
+  const token = await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+    name: secretName,
+    type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
   return token ? { secretName, token } : null;
 }
 
@@ -332,13 +348,18 @@ async function getConnectorAccessToken(
     return null;
   }
 
-  return await getSecretValue(
-    args.db,
-    args.orgId,
-    resolveSecretUserId(args.sourceType, args.userId, args.sourceUserId),
-    handler.getSecretName(),
-    args.sourceType,
-  );
+  return await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+    name: handler.getSecretName(),
+    type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
 }
 
 async function syncRefreshTokensFromDb(
@@ -357,6 +378,7 @@ async function syncRefreshTokensFromDb(
         userId: args.userId,
         sourceType: metadata.sourceType,
         sourceUserId: metadata.sourceUserId,
+        featureSwitchContext: args.featureSwitchContext,
       });
     }),
   );
@@ -821,6 +843,7 @@ async function refreshSelectedTokens(
         sourceUserId: metadata.sourceUserId,
         metadataKey: metadata.metadataKey,
         connectorSecrets: context.secrets,
+        featureSwitchContext: context.featureSwitchContext,
       });
       if (!freshToken) {
         L.warn(
@@ -862,6 +885,7 @@ async function syncSkippedTokens(
           userId: context.userId,
           sourceType: metadata.sourceType,
           sourceUserId: metadata.sourceUserId,
+          featureSwitchContext: context.featureSwitchContext,
         }),
       };
     }),
@@ -941,6 +965,17 @@ async function refreshExpiredTokens(
     return emptyRefreshResult;
   }
 
+  const featureSwitchOverrides = await loadUserFeatureSwitchOverrides(
+    args.db,
+    orgId,
+    args.auth.userId,
+  );
+  const featureSwitchContext = {
+    orgId,
+    userId: args.auth.userId,
+    overrides: featureSwitchOverrides,
+  } satisfies FeatureSwitchContext;
+
   const connectorTypes = [...new Set(refreshable.values())];
   const metadataByConnector = buildMetadataByConnector(
     refreshable,
@@ -967,6 +1002,7 @@ async function refreshExpiredTokens(
     userId: args.auth.userId,
     secrets: args.secrets,
     metadataByConnector,
+    featureSwitchContext,
   });
 
   const context = {
@@ -977,6 +1013,7 @@ async function refreshExpiredTokens(
     secrets: args.secrets,
     metadataByConnector,
     envVarsByConnector,
+    featureSwitchContext,
   } satisfies RefreshBatchContext;
   const refreshResults = await refreshSelectedTokens(context, toRefresh);
   const skippedTypes = connectorTypes.filter((connectorType) => {

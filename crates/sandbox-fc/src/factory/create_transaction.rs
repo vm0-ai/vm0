@@ -17,7 +17,7 @@ pub(super) trait CreateRollbackCleanup {
     async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool;
     async fn release_network(&self, network: &mut Option<NetnsLease>);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
-    fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
+    async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
 }
 
 pub(super) struct FactoryCreateRollbackCleanup {
@@ -54,8 +54,8 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
         }
     }
 
-    fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-        crate::cow_pool::destroy_slot(slot);
+    async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+        crate::cow_pool::destroy_slot_async(slot).await;
     }
 }
 
@@ -113,12 +113,14 @@ impl SandboxCreateTransaction {
     pub(super) fn slot_workspace(&self) -> sandbox::Result<PathBuf> {
         self.slot
             .as_ref()
-            .map(|slot| slot.workspace.clone())
+            .map(|slot| slot.workspace().to_owned())
             .ok_or_else(|| create_transaction_invalid_state("missing COW slot before rename"))
     }
 
     pub(super) fn slot_renamed_to(&mut self, workspace: PathBuf) {
-        self.slot.take();
+        if let Some(slot) = self.slot.take() {
+            slot.disarm_after_workspace_rename();
+        }
         self.workspace = Some(workspace);
     }
 
@@ -246,7 +248,7 @@ impl SandboxCreateTransaction {
             }
         }
         if let Some(slot) = self.slot.take() {
-            cleanup.destroy_slot(slot);
+            cleanup.destroy_slot(slot).await;
         }
     }
 
@@ -313,7 +315,7 @@ impl Drop for SandboxCreateTransaction {
         );
 
         if let Some(slot) = self.slot.take() {
-            crate::cow_pool::destroy_slot(slot);
+            crate::cow_pool::destroy_slot_sync(slot);
         }
         if self.send_async_leaked_resources() {
             return;
@@ -502,9 +504,16 @@ mod tests {
             self.removed_notify.notify_waiters();
         }
 
-        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id));
-            crate::cow_pool::destroy_slot(slot);
+        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id()));
+            self.entered.fetch_add(1, Ordering::SeqCst);
+            self.entered_notify.notify_waiters();
+
+            self.wait_until_released().await;
+
+            crate::cow_pool::destroy_slot_async(slot).await;
+            self.removed.fetch_add(1, Ordering::SeqCst);
+            self.removed_notify.notify_waiters();
         }
     }
 
@@ -529,9 +538,9 @@ mod tests {
             self.record(format!("remove_dir:{kind}:{name}"));
         }
 
-        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id));
-            crate::cow_pool::destroy_slot(slot);
+        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id()));
+            crate::cow_pool::destroy_slot_async(slot).await;
         }
     }
 
@@ -556,18 +565,14 @@ mod tests {
             let _ = tokio::fs::remove_dir_all(path).await;
         }
 
-        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
-            self.record(format!("destroy_slot:{}", slot.id));
-            crate::cow_pool::destroy_slot(slot);
+        async fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id()));
+            crate::cow_pool::destroy_slot_async(slot).await;
         }
     }
 
     fn test_slot(id: &str, workspace: PathBuf) -> crate::cow_pool::PrewarmedSlot {
-        crate::cow_pool::PrewarmedSlot {
-            id: id.into(),
-            workspace,
-            drop_notify: None,
-        }
+        crate::cow_pool::PrewarmedSlot::new(id.into(), workspace)
     }
 
     fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
@@ -595,6 +600,38 @@ mod tests {
         let cleanup = RecordingCreateRollbackCleanup::default();
 
         tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_before_rename_waits_for_slot_teardown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()));
+        let cleanup = BlockingRemoveDirCleanup::default();
+        let rollback_cleanup = cleanup.clone();
+        let rollback = tokio::spawn(async move {
+            let mut tx = tx;
+            tx.rollback(&rollback_cleanup).await;
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered(1))
+            .await
+            .unwrap();
+        assert!(slot_workspace.exists());
+        assert!(!rollback.is_finished());
+
+        cleanup.release();
+        rollback.await.unwrap();
+        cleanup.wait_removed(1).await;
 
         assert!(!slot_workspace.exists());
         assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);

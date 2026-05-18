@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.102.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.0...runner-rs-v0.102.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* manage runner memory prefetch lifecycle ([#13719](https://github.com/vm0-ai/vm0/issues/13719)) ([462dda5](https://github.com/vm0-ai/vm0/commit/462dda5e4af14a62569a2b84add4e899aa879c94))
+* preserve codex jsonl failure diagnostics ([#13713](https://github.com/vm0-ai/vm0/issues/13713)) ([7fe2ece](https://github.com/vm0-ai/vm0/commit/7fe2ece7cb75ee6606e4cfb522cc28a19117acf3))
+
 ## [0.102.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.6...runner-rs-v0.102.0) (2026-05-17)
 
 

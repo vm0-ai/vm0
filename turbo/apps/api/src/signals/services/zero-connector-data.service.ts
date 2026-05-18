@@ -22,7 +22,10 @@ import {
   type ConnectorAuthMethodType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
+import {
+  getAllFeatureStates,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -41,7 +44,10 @@ import {
 } from "../external/ngrok-client";
 import { publishUserSignal } from "../external/realtime";
 import { bestEffort } from "../utils";
-import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
+import {
+  decryptStoredSecretValue,
+  encryptStoredSecretValue,
+} from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
 
@@ -495,6 +501,7 @@ async function revokeExistingConnectorToken(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: ConnectorType;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const accessTokenName = revocableConnectorAccessTokenName(args.type);
@@ -524,7 +531,10 @@ async function revokeExistingConnectorToken(args: {
   await bestEffort(
     revokeConnectorToken({
       type: args.type,
-      accessToken: decryptSecretValue(accessTokenSecret.encryptedValue),
+      accessToken: await decryptStoredSecretValue(
+        accessTokenSecret.encryptedValue,
+        args.featureSwitchContext,
+      ),
     }),
   );
   args.signal.throwIfAborted();
@@ -635,7 +645,7 @@ async function deleteApiTokenConnectorLocalState(args: {
 
 export const deleteZeroConnectorLocalState$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -644,6 +654,15 @@ export const deleteZeroConnectorLocalState$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const featureSwitchContext = {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    } satisfies FeatureSwitchContext;
     let deleted = false;
 
     const [existing] = await writeDb
@@ -689,6 +708,7 @@ export const deleteZeroConnectorLocalState$ = command(
           orgId: args.orgId,
           userId: args.userId,
           type: args.type,
+          featureSwitchContext,
           signal,
         });
       }
@@ -747,7 +767,7 @@ async function upsertConnectorSecret(
     readonly description: string;
   },
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(args.value);
   await db
     .insert(secrets)
     .values({
@@ -895,7 +915,7 @@ export const upsertOAuthConnector$ = command(
 
 export const deleteComputerConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -903,6 +923,15 @@ export const deleteComputerConnector$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const featureSwitchContext = {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    } satisfies FeatureSwitchContext;
 
     const [connector] = await writeDb
       .select({
@@ -965,7 +994,11 @@ export const deleteComputerConnector$ = command(
       signal.throwIfAborted();
 
       if (domainIdSecret) {
-        const domainId = decryptSecretValue(domainIdSecret.encryptedValue);
+        const domainId = await decryptStoredSecretValue(
+          domainIdSecret.encryptedValue,
+          featureSwitchContext,
+        );
+        signal.throwIfAborted();
         await safeDelete(
           () => {
             return deleteReservedDomain(apiKey, domainId);

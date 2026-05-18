@@ -3,8 +3,125 @@ import { randomUUID } from "crypto";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { initServices } from "../../lib/init-services";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { hashFileContent } from "../../lib/infra/storage/content-hash";
+import {
+  computeContentHashFromHashes,
+  hashFileContent,
+} from "../../lib/infra/storage/content-hash";
 import { uniqueId } from "../test-helpers";
+
+interface TestStorageFile {
+  readonly path: string;
+  readonly hash: string;
+  readonly size: number;
+}
+
+/**
+ * Insert the storage metadata that the prepare route would create, without
+ * inserting a version. This is used by tests for the remaining web commit route
+ * after `/api/storages/prepare` moved behind the API backend rewrite.
+ *
+ * @why-db-direct The web prepare route has been removed; commit tests still
+ * need a prepared storage row before exercising the web commit handler.
+ */
+export async function prepareTestStorage(params: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly name: string;
+  readonly type: "volume" | "artifact";
+  readonly files: readonly TestStorageFile[];
+}): Promise<{ readonly storageId: string; readonly versionId: string }> {
+  initServices();
+  const storageUserId =
+    params.type === "volume" ? VOLUME_ORG_USER_ID : params.userId;
+  const [storage] = await globalThis.services.db
+    .insert(storages)
+    .values({
+      userId: storageUserId,
+      orgId: params.orgId,
+      name: params.name,
+      type: params.type,
+      s3Prefix: `${params.orgId}/${params.type}/${params.name}`,
+      size: 0,
+      fileCount: 0,
+    })
+    .onConflictDoUpdate({
+      target: [storages.orgId, storages.userId, storages.name, storages.type],
+      set: { updatedAt: new Date() },
+    })
+    .returning();
+
+  if (!storage) {
+    throw new Error("Failed to create storage");
+  }
+
+  return {
+    storageId: storage.id,
+    versionId: computeContentHashFromHashes(
+      storage.id,
+      params.files.map((file) => {
+        return { path: file.path, hash: file.hash, size: file.size };
+      }),
+    ),
+  };
+}
+
+/**
+ * Insert the storage version metadata that the commit route would create after
+ * S3 upload verification. This is used by web tests that need committed
+ * storage records after both `/api/storages/prepare` and `/api/storages/commit`
+ * moved behind API backend rewrites.
+ *
+ * @why-db-direct The web prepare and commit routes have been removed; web
+ * tests still need storage fixtures without depending on apps/api route
+ * handlers.
+ */
+export async function commitPreparedTestStorage(params: {
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly files: readonly TestStorageFile[];
+}): Promise<{ readonly size: number; readonly fileCount: number }> {
+  initServices();
+  const totalSize = params.files.reduce((sum, file) => {
+    return sum + file.size;
+  }, 0);
+  const fileCount = params.files.length;
+
+  await globalThis.services.db.transaction(async (tx) => {
+    const [storage] = await tx
+      .select()
+      .from(storages)
+      .where(eq(storages.id, params.storageId))
+      .limit(1);
+
+    if (!storage) {
+      throw new Error(`Storage "${params.storageId}" not found`);
+    }
+
+    await tx
+      .insert(storageVersions)
+      .values({
+        id: params.versionId,
+        storageId: params.storageId,
+        s3Key: `${storage.s3Prefix}/${params.versionId}`,
+        size: totalSize,
+        fileCount,
+        createdBy: "user",
+      })
+      .onConflictDoNothing();
+
+    await tx
+      .update(storages)
+      .set({
+        headVersionId: params.versionId,
+        size: totalSize,
+        fileCount,
+        updatedAt: new Date(),
+      })
+      .where(eq(storages.id, params.storageId));
+  });
+
+  return { size: totalSize, fileCount };
+}
 
 /**
  * Create a volume storage directly in the DB for a specific org.

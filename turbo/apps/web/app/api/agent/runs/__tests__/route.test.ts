@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { GET, POST } from "../route";
 import { POST as createComposeRoute } from "../../composes/route";
-import { POST as putSecret } from "../../../zero/secrets/route";
-import { POST as setVariableRoute } from "../../../zero/variables/route";
 import { randomUUID } from "crypto";
 import {
   createTestRequest,
@@ -25,9 +23,10 @@ import {
   findTestRunnerJobEntry,
   findTestStorage,
   getTestAgentSessionWithConversation,
+  getTestAgentSessionArtifacts,
+  createTestSecret,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../webhooks/agent/checkpoints/route";
-import { GET as getSessionById } from "../../sessions/[id]/route";
 import { POST as completeWebhook } from "../../../webhooks/agent/complete/route";
 import { POST as pollRoute } from "../../../runners/poll/route";
 import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
@@ -48,6 +47,7 @@ import {
   seedTestRun,
   seedStalePendingRun,
 } from "../../../../../src/__tests__/db-test-seeders/runs";
+import { insertTestUserVariable } from "../../../../../src/__tests__/db-test-seeders/secrets";
 import { reloadEnv } from "../../../../../src/env";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Route-level setup for feature-switch override state
@@ -334,18 +334,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     it("should prefer CLI secrets over DB secrets", async () => {
       // Store a secret in the database
       const secretName = `OVERRIDE_SECRET_${Date.now()}`;
-      const createSecretRequest = createTestRequest(
-        "http://localhost:3000/api/zero/secrets",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: secretName,
-            value: "db-value",
-          }),
-        },
-      );
-      await putSecret(createSecretRequest);
+      await createTestSecret(secretName, "db-value");
 
       // Create compose that references the secret
       const { composeId } = await createTestCompose(
@@ -1433,19 +1422,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
      * Helper to create a server-stored variable
      */
     async function createVariable(name: string, value: string): Promise<void> {
-      const request = createTestRequest(
-        "http://localhost:3000/api/zero/variables",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, value }),
-        },
-      );
-      const response = await setVariableRoute(request);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Failed to create variable: ${error.error?.message}`);
-      }
+      await insertTestUserVariable({
+        orgId: user.orgId,
+        userId: user.userId,
+        name,
+        value,
+      });
     }
 
     it("should succeed when required vars are stored on server (not provided via CLI)", async () => {
@@ -1780,16 +1762,13 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await findTestRunRecord(data.runId);
       expect(run?.sessionId).toBeTruthy();
 
-      const sessionRequest = createTestRequest(
-        `http://localhost:3000/api/agent/sessions/${run!.sessionId!}`,
-      );
-      const sessionResponse = await getSessionById(sessionRequest);
-      const sessionBody = await sessionResponse.json();
-      expect(sessionResponse.status).toBe(200);
-      expect(sessionBody.artifactNames).toEqual(
-        expect.arrayContaining([primary, "memory"]),
-      );
-      expect(sessionBody.artifactNames).toHaveLength(2);
+      const artifacts = await getTestAgentSessionArtifacts(run!.sessionId!);
+      expect(
+        artifacts.map((artifact) => {
+          return artifact.name;
+        }),
+      ).toEqual(expect.arrayContaining([primary, "memory"]));
+      expect(artifacts).toHaveLength(2);
     });
   });
 
