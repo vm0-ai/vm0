@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.373.0](https://github.com/vm0-ai/vm0/compare/web-v12.372.0...web-v12.373.0) (2026-05-18)
+
+
+### Features
+
+* add gemini connector ([#13611](https://github.com/vm0-ai/vm0/issues/13611)) ([721f52e](https://github.com/vm0-ai/vm0/commit/721f52eb908d10fa0e55320189c2cdc05ba35f5a))
+* add moss connector ([#13608](https://github.com/vm0-ai/vm0/issues/13608)) ([c424718](https://github.com/vm0-ai/vm0/commit/c424718cffecac857b8872d9b1f09aad936651e7))
+* add sponge connector ([#13609](https://github.com/vm0-ai/vm0/issues/13609)) ([9c648cc](https://github.com/vm0-ai/vm0/commit/9c648cc1c2bd7d010dc24215110e92c92cefc628))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.4
+    * @vm0/connectors bumped to 1.17.0
+    * @vm0/core bumped to 8.281.2
+    * @vm0/db bumped to 1.14.9
+
 ## [12.372.0](https://github.com/vm0-ai/vm0/compare/web-v12.371.3...web-v12.372.0) (2026-05-17)
 
 

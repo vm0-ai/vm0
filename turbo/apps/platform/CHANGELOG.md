@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.363.0](https://github.com/vm0-ai/vm0/compare/app-v0.362.0...app-v0.363.0) (2026-05-18)
+
+
+### Features
+
+* add gemini connector ([#13611](https://github.com/vm0-ai/vm0/issues/13611)) ([721f52e](https://github.com/vm0-ai/vm0/commit/721f52eb908d10fa0e55320189c2cdc05ba35f5a))
+* add moss connector ([#13608](https://github.com/vm0-ai/vm0/issues/13608)) ([c424718](https://github.com/vm0-ai/vm0/commit/c424718cffecac857b8872d9b1f09aad936651e7))
+* add sponge connector ([#13609](https://github.com/vm0-ai/vm0/issues/13609)) ([9c648cc](https://github.com/vm0-ai/vm0/commit/9c648cc1c2bd7d010dc24215110e92c92cefc628))
+* **composer:** stack queued messages card behind the composer ([#13518](https://github.com/vm0-ai/vm0/issues/13518)) ([72cbf9c](https://github.com/vm0-ai/vm0/commit/72cbf9c9b4ccf6fad0d0f50a69dbe5b23ff1e66f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.4
+    * @vm0/connectors bumped to 1.17.0
+    * @vm0/core bumped to 8.281.2
+
 ## [0.362.0](https://github.com/vm0-ai/vm0/compare/app-v0.361.0...app-v0.362.0) (2026-05-17)
 
 
