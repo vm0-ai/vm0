@@ -152,7 +152,7 @@ enum PendingNormalOperation {
     Composite(NormalOperationTransitionHandle),
 }
 
-struct PendingNormalRequestWriteGuard {
+struct RequestWriteGuard {
     shared: Arc<Shared>,
     write_started: bool,
     write_returned: bool,
@@ -170,7 +170,7 @@ impl Drop for PendingRequestGuard {
     }
 }
 
-impl PendingNormalRequestWriteGuard {
+impl RequestWriteGuard {
     fn new(shared: Arc<Shared>) -> Self {
         Self {
             shared,
@@ -188,7 +188,7 @@ impl PendingNormalRequestWriteGuard {
     }
 }
 
-impl Drop for PendingNormalRequestWriteGuard {
+impl Drop for RequestWriteGuard {
     fn drop(&mut self) {
         if self.write_started && !self.write_returned {
             self.shared.poison_connection();
@@ -511,6 +511,24 @@ async fn request_on_shared(
     request_raw_on_shared(shared, msg_type, seq, payload, timeout).await
 }
 
+async fn write_request_frame(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    before_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
+    let mut writer = shared.writer.lock().await;
+    before_write()?;
+    write_guard.mark_started();
+    if let Err(error) = writer.write_all(data).await {
+        write_guard.mark_returned();
+        shared.poison_connection();
+        return Err(error);
+    }
+    write_guard.mark_returned();
+    Ok(())
+}
+
 /// Send a request with a pre-allocated sequence number.
 async fn request_raw_on_shared(
     shared: &Arc<Shared>,
@@ -551,9 +569,11 @@ async fn request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    // The guard removes the pending entry on write failure, timeout, or
-    // cancellation before reader_loop dispatches a response.
-    shared.writer.lock().await.write_all(&data).await?;
+    // The pending guard removes the pending entry on write failure, timeout,
+    // or cancellation before reader_loop dispatches a response. The write
+    // helper separately poisons the connection if cancellation interrupts an
+    // in-progress frame write.
+    write_request_frame(shared, &data, || Ok(())).await?;
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -642,18 +662,10 @@ async fn request_raw_on_shared_with_composite_operation(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    normal_operation.mark_possible_guest_write_started()?;
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(&data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
-    write_guard.mark_returned();
-    drop(writer);
-    drop(write_guard);
+    write_request_frame(shared, &data, || {
+        normal_operation.mark_possible_guest_write_started()
+    })
+    .await?;
 
     tokio::select! {
         biased;
@@ -705,18 +717,10 @@ async fn normal_request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    mark_pending_normal_operation_possible_guest_write(shared, seq)?;
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(&data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
-    write_guard.mark_returned();
-    drop(writer);
-    drop(write_guard);
+    write_request_frame(shared, &data, || {
+        mark_pending_normal_operation_possible_guest_write(shared, seq)
+    })
+    .await?;
 
     tokio::select! {
         biased;
