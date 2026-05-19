@@ -4,6 +4,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { mockEnv } from "../../../lib/env";
@@ -26,6 +27,16 @@ function apiClient() {
 
 function cronHeaders(secret = "test-cron-secret") {
   return { authorization: `Bearer ${secret}` };
+}
+
+async function rawCronRequest(
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  const app = createApp({ signal: context.signal });
+  return await app.request("/api/cron/aggregate-usage", {
+    method: "GET",
+    headers,
+  });
 }
 
 async function cleanupFixture(fixture: UsageFixture): Promise<void> {
@@ -86,6 +97,16 @@ describe("GET /api/cron/aggregate-usage", () => {
     });
   });
 
+  it("rejects requests with a missing authorization header", async () => {
+    const response = await rawCronRequest();
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("aggregates previous-day completed runs and is idempotent", async () => {
     const fixture = await track(
       store.set(seedUsageFixture$, {}, context.signal),
@@ -133,7 +154,9 @@ describe("GET /api/cron/aggregate-usage", () => {
   });
 
   it("returns a successful empty aggregation when no runs match", async () => {
-    await track(store.set(seedUsageFixture$, {}, context.signal));
+    const fixture = await track(
+      store.set(seedUsageFixture$, {}, context.signal),
+    );
 
     const response = await accept(
       apiClient().aggregate({ headers: cronHeaders() }),
@@ -144,5 +167,6 @@ describe("GET /api/cron/aggregate-usage", () => {
       date: "2026-05-11",
       aggregated: expect.any(Number),
     });
+    await expect(findUsageDaily(fixture, "2026-05-11")).resolves.toBeNull();
   });
 });

@@ -245,49 +245,6 @@ export async function seedTestRun(
 }
 
 /**
- * Seed a completed agent run with controlled timestamps.
- *
- * @why-db-direct PostgreSQL defaultNow() controls createdAt which cannot be
- * set through the API or JavaScript fake timers. Tests for date-range logic
- * (cron aggregation, usage API boundaries) need runs placed at specific
- * historical dates.
- */
-export async function seedCompletedTestRun(options: {
-  composeVersionId: string;
-  userId: string;
-  createdAt: Date;
-  startedAt: Date;
-  completedAt: Date;
-}): Promise<string> {
-  initServices();
-
-  const { orgId, composeId } = await getOrgAndComposeFromVersion(
-    options.composeVersionId,
-  );
-  const sessionId = await ensureTestAgentSession({
-    userId: options.userId,
-    orgId,
-    agentComposeId: composeId,
-  });
-
-  const [row] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId: options.userId,
-      orgId,
-      agentComposeVersionId: options.composeVersionId,
-      status: "completed",
-      prompt: "test",
-      sessionId,
-      createdAt: options.createdAt,
-      startedAt: options.startedAt,
-      completedAt: options.completedAt,
-    })
-    .returning({ id: agentRuns.id });
-  return row!.id;
-}
-
-/**
  * Seed a stale pending run directly into the database.
  *
  * @why-db-direct The API immediately transitions runs to "running" or "failed"
