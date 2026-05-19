@@ -718,9 +718,6 @@ async fn run_in_sandbox(
             warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
         }
     }
-    let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
-    let err = result.as_ref().err().map(|e| e.to_string());
-    telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
     let exit = match result {
         Ok(exit) => exit,
         Err(e) => {
@@ -730,14 +727,14 @@ async fn run_in_sandbox(
                 && check_host_oom(pid).await
             {
                 warn!(run_id = %context.run_id, pid, "host OOM kill detected for firecracker");
-                return Ok(AgentExecutionResult::failure(
-                    1,
-                    "Firecracker VM killed by host OOM killer \
-                         (cgroup memory limit exceeded)"
-                        .to_string(),
-                    None,
-                ));
+                let error = "Firecracker VM killed by host OOM killer \
+                             (cgroup memory limit exceeded)"
+                    .to_string();
+                telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
+                return Ok(AgentExecutionResult::failure(1, error, None));
             }
+            let error = e.to_string();
+            telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
             return Err(e.into());
         }
     };
@@ -766,11 +763,9 @@ async fn run_in_sandbox(
                 warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
                 // Return exit code 1 with descriptive message instead of raw 137,
                 // so callers see a clear error rather than an opaque signal code.
-                return Ok(AgentExecutionResult::failure(
-                    1,
-                    "Agent process killed by OOM killer",
-                    None,
-                ));
+                let error = "Agent process killed by OOM killer";
+                telemetry.record("agent_execute", t.elapsed(), false, Some(error));
+                return Ok(AgentExecutionResult::failure(1, error, None));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -804,12 +799,22 @@ async fn run_in_sandbox(
         None
     };
 
-    Ok(match failure {
+    let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
         },
         None => AgentExecutionResult::success(),
-    })
+    };
+    telemetry.record(
+        "agent_execute",
+        t.elapsed(),
+        agent_result.failure.is_none(),
+        agent_result
+            .failure
+            .as_ref()
+            .map(|failure| failure.error.as_str()),
+    );
+    Ok(agent_result)
 }
 
 /// Read a structured error file from the guest filesystem.
@@ -3453,6 +3458,41 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_records_agent_execute_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(7));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+        let cancel = tokio_util::sync::CancellationToken::new();
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            cancel,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 7);
+        let ops = telemetry.pending_ops_snapshot();
+        let agent_execute = ops
+            .iter()
+            .find(|op| op.0 == "agent_execute")
+            .expect("agent_execute telemetry should be recorded");
+        assert!(!agent_execute.1);
+        assert_eq!(agent_execute.2.as_deref(), Some("Agent exited with code 7"));
     }
 
     #[tokio::test]

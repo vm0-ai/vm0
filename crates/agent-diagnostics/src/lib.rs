@@ -19,8 +19,8 @@ pub struct FailureDiagnostic {
     pub claude_num_turns: Option<u64>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
-    pub prompt_bytes: usize,
-    pub first_line_bytes: usize,
+    pub prompt_bytes: u64,
+    pub first_line_bytes: u64,
 }
 
 impl FailureDiagnostic {
@@ -152,8 +152,8 @@ impl PromptShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PromptMetadata {
     pub prompt_shape: PromptShape,
-    pub prompt_bytes: usize,
-    pub first_line_bytes: usize,
+    pub prompt_bytes: u64,
+    pub first_line_bytes: u64,
 }
 
 impl PromptMetadata {
@@ -172,8 +172,8 @@ impl PromptMetadata {
 
         Self {
             prompt_shape,
-            prompt_bytes: prompt.len(),
-            first_line_bytes: first_line.len(),
+            prompt_bytes: prompt.len() as u64,
+            first_line_bytes: first_line.len() as u64,
         }
     }
 }

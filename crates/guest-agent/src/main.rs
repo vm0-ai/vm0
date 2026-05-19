@@ -997,6 +997,171 @@ mod tests {
             .block_on(complete_execution_skips_recovery_checkpoint_for_no_history_inner());
     }
 
+    #[test]
+    fn complete_execution_writes_event_upload_failure_diagnostic() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_writes_event_upload_failure_diagnostic_inner());
+    }
+
+    #[test]
+    fn complete_execution_writes_checkpoint_failure_diagnostic() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
+    }
+
+    async fn complete_execution_writes_event_upload_failure_diagnostic_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "/event-upload-failure");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::write(paths::event_error_flag(), "").unwrap();
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            "Some events failed to send, marking run as failed"
+        );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+        assert_eq!(
+            diagnostic.session_history_status,
+            SessionHistoryStatus::Missing
+        );
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        let error = std::fs::read_to_string(paths::checkpoint_error_file()).unwrap();
+        assert!(error.contains("Checkpoint failed"), "got: {error}");
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+        assert_eq!(
+            diagnostic.session_history_status,
+            SessionHistoryStatus::Missing
+        );
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
