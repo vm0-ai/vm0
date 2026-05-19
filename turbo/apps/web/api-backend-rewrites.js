@@ -53,6 +53,9 @@ const ZERO_RUNS_AGENT_EVENTS_PATH_RE = new RegExp(
 );
 const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
 const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
+const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
+  "/api/test/telegram-mock/:botToken/:method";
+const TEST_TELEGRAM_MOCK_PATH_RE = /^\/api\/test\/telegram-mock\/[^/]+\/[^/]+$/;
 const ZERO_SCHEDULES_RUN_REWRITE_SOURCE = "/api/zero/schedules/run";
 const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
   "/api/zero/schedules/:name/disable";
@@ -457,6 +460,11 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/test/slack-mock/users.info", "/api/test/slack-mock/users.info"],
   ["/api/test/slack-mock/views.publish", "/api/test/slack-mock/views.publish"],
+  [
+    TEST_TELEGRAM_MOCK_REWRITE_SOURCE,
+    "/api/test/telegram-mock/:botToken/:method",
+    TEST_TELEGRAM_MOCK_PATH_RE,
+  ],
   ["/api/test/slack-state", "/api/test/slack-state"],
   ["/api/test/telegram-state", "/api/test/telegram-state"],
   [

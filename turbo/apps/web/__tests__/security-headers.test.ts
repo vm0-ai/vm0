@@ -409,6 +409,14 @@ const TEST_SLACK_MOCK_VIEWS_PUBLISH_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-mock/views",
   "/api/test/slack-mock/views.published",
 ] as const;
+const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
+  "/api/test/telegram-mock/:botToken/:method";
+const TEST_TELEGRAM_MOCK_PATH = "/api/test/telegram-mock/bot123/sendMessage";
+const TEST_TELEGRAM_MOCK_NEXT_NEGATIVE_PATHS = [
+  "/api/test/telegram-mock/bot123/sendMessage/extra",
+  "/api/test/telegram-mock/bot123",
+  "/api/test/telegram-mock",
+] as const;
 const CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_PATH = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_NEXT_NEGATIVE_PATHS = [
@@ -1616,6 +1624,11 @@ describe("API backend rewrites", () => {
           source: TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/test/slack-mock/users.info",
+        },
+        {
+          source: TEST_TELEGRAM_MOCK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/telegram-mock/:botToken/:method",
         },
         {
           source: CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE,
@@ -3863,6 +3876,33 @@ describe("API backend rewrites", () => {
 
     expect(matcher(TEST_TELEGRAM_STATE_PATH)).toStrictEqual({});
     for (const pathname of TEST_TELEGRAM_STATE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match one bot token and one method for the test Telegram mock rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_TELEGRAM_MOCK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_TELEGRAM_MOCK_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/test/telegram-mock/:botToken/:method",
+    });
+
+    const matcher = getPathMatch(TEST_TELEGRAM_MOCK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(TEST_TELEGRAM_MOCK_PATH)).toStrictEqual({
+      botToken: "bot123",
+      method: "sendMessage",
+    });
+    for (const pathname of TEST_TELEGRAM_MOCK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

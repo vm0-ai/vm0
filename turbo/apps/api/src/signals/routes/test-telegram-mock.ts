@@ -29,19 +29,24 @@ function stripBotPrefix(token: string): string {
   return token.startsWith("bot") ? token.slice(3) : token;
 }
 
-function parseJsonObject(rawBody: string): Record<string, unknown> | null {
+function parseJsonValue(rawBody: string): unknown | null {
   if (rawBody.length === 0) {
     return null;
   }
 
   const parsed = safeJsonParse(rawBody);
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
-  }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
-function readChatId(body: Record<string, unknown> | null): number {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readChatId(bodyJson: unknown): number {
+  const body = asRecord(bodyJson);
   const raw = body?.chat_id;
   if (typeof raw === "number") {
     return raw;
@@ -55,7 +60,8 @@ function readChatId(body: Record<string, unknown> | null): number {
   return Number(TELEGRAM_E2E_FIXTURES.chatId);
 }
 
-function readLogChatId(body: Record<string, unknown> | null): string | null {
+function readLogChatId(bodyJson: unknown): string | null {
+  const body = asRecord(bodyJson);
   const raw = body?.chat_id;
   if (typeof raw === "number" || typeof raw === "string") {
     return String(raw);
@@ -74,7 +80,7 @@ async function logTelegramMockCall({
   readonly method: string;
   readonly botToken: string;
   readonly rawBody: string;
-  readonly bodyJson: Record<string, unknown> | null;
+  readonly bodyJson: unknown;
 }): Promise<void> {
   await settle(
     db.insert(e2eTelegramMockCallLog).values({
@@ -101,7 +107,7 @@ const postTestTelegramMock$ = command(
     const rawBody = await request.raw.clone().text();
     signal.throwIfAborted();
 
-    const body = parseJsonObject(rawBody);
+    const body = parseJsonValue(rawBody);
     await logTelegramMockCall({
       db: set(writeDb$),
       method,
@@ -111,6 +117,7 @@ const postTestTelegramMock$ = command(
     });
     signal.throwIfAborted();
 
+    const bodyRecord = asRecord(body);
     const chatId = readChatId(body);
 
     switch (method) {
@@ -127,7 +134,8 @@ const postTestTelegramMock$ = command(
         return ok({
           message_id: Math.floor(now() % 1_000_000_000),
           chat: { id: chatId },
-          text: typeof body?.text === "string" ? body.text : undefined,
+          text:
+            typeof bodyRecord?.text === "string" ? bodyRecord.text : undefined,
         });
       }
       case "sendChatAction":
@@ -139,7 +147,7 @@ const postTestTelegramMock$ = command(
       }
       case "getFile": {
         return ok({
-          file_id: String(body?.file_id ?? "e2e-file"),
+          file_id: String(bodyRecord?.file_id ?? "e2e-file"),
           file_unique_id: "e2e-file-unique",
           file_path: "photos/e2e-file.jpg",
         });

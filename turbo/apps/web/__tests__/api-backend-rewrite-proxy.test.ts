@@ -378,6 +378,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches one bot token and one method for the test Telegram mock rewrite", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/telegram-mock/bot123/sendMessage",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/telegram-mock/bot123/sendMessage/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/telegram-mock/bot123")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/test/telegram-mock")).toBe(false);
+  });
+
   it("matches the cron aggregate insights rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-insights")).toBe(
       true,

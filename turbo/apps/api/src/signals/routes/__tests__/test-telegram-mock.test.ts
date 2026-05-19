@@ -287,4 +287,31 @@ describe("POST /api/test/telegram-mock/:botToken/:method", () => {
       bodyJson: null,
     });
   });
+
+  it("logs parsed non-object JSON values while using the fixture chat id", async () => {
+    mockEnv("ENV", "development");
+    const token = await randomBotToken();
+
+    const response = await requestApp(
+      `/api/test/telegram-mock/bot${token}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(["not", "an", "object"]),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TelegramOkResponse>(response);
+    const result = body.result as TelegramMessageResult;
+    expect(result.chat.id).toBe(Number(TELEGRAM_E2E_FIXTURES.chatId));
+    expect(result.text).toBeUndefined();
+    await expect(latestCall(token)).resolves.toMatchObject({
+      method: "sendMessage",
+      botToken: token,
+      chatId: null,
+      body: JSON.stringify(["not", "an", "object"]),
+      bodyJson: ["not", "an", "object"],
+    });
+  });
 });
