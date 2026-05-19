@@ -2,6 +2,7 @@ import { command, state, type Command, type Setter } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
+import { clerk$ } from "./auth.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
@@ -155,6 +156,13 @@ async function runWithChannel({
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    if (!clerk.user) {
+      return;
+    }
+
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
 

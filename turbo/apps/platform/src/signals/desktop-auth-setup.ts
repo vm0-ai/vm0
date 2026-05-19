@@ -94,6 +94,6 @@ export const setupDesktopAuthConsumePage$ = command(
     await clerk.setActive({ session: signIn.createdSessionId });
     signal.throwIfAborted();
 
-    set(detachedNavigateTo$, "/", { replace: true });
+    window.location.replace("/");
   },
 );

@@ -3,9 +3,13 @@ import { resolveDesktopConfig } from "./config";
 import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
+  createDesktopAuthStartGate,
   isDesktopAuthStartNavigation,
+  isDesktopSignedOutNavigation,
+  parseDesktopAuthCallbackArgv,
   parseDesktopAuthCallback,
 } from "./desktop-auth";
+import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 describe("resolveDesktopConfig", () => {
@@ -136,13 +140,32 @@ describe("desktop auth", () => {
     );
   });
 
-  it("detects app sign-in navigation that should open in the system browser", () => {
+  it("deduplicates repeated desktop auth start attempts", () => {
+    let now = 1_000;
+    const gate = createDesktopAuthStartGate(() => now);
+
+    expect(gate.shouldOpen()).toBe(true);
+    expect(gate.shouldOpen()).toBe(false);
+
+    now += 30_000;
+    expect(gate.shouldOpen()).toBe(true);
+    expect(gate.shouldOpen()).toBe(false);
+
+    now += 30_000;
+    gate.suppressRetry();
+    expect(gate.shouldOpen()).toBe(false);
+
+    now += 30_000;
+    expect(gate.shouldOpen()).toBe(true);
+  });
+
+  it("detects explicit desktop auth start navigation", () => {
     expect(
       isDesktopAuthStartNavigation(
         "https://app.vm0.ai/sign-in",
         allowedOrigins,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isDesktopAuthStartNavigation(
         "https://app.vm0.ai/desktop-auth/start",
@@ -157,10 +180,63 @@ describe("desktop auth", () => {
     ).toBe(false);
   });
 
+  it("detects app sign-in navigation that should show the signed-out page", () => {
+    expect(
+      isDesktopSignedOutNavigation(
+        "https://app.vm0.ai/sign-in",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopSignedOutNavigation(
+        "https://www.vm0.ai/sign-up?redirect_url=https%3A%2F%2Fapp.vm0.ai%2F",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopSignedOutNavigation(
+        "https://app.vm0.ai/desktop-auth/start",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+    expect(
+      isDesktopSignedOutNavigation(
+        "https://accounts.google.com/signin",
+        allowedOrigins,
+      ),
+    ).toBe(false);
+  });
+
+  it("builds a local signed-out page with an explicit auth start link", () => {
+    const pageUrl = buildSignedOutPageUrl(
+      "https://app.vm0.ai/desktop-auth/start",
+    );
+    const html = decodeURIComponent(pageUrl.split(",")[1] ?? "");
+
+    expect(pageUrl.startsWith("data:text/html;charset=utf-8,")).toBe(true);
+    expect(html).toContain('href="https://app.vm0.ai/desktop-auth/start"');
+    expect(html).toContain("Sign in to Zero");
+  });
+
   it("parses a valid desktop callback code", () => {
     expect(
       parseDesktopAuthCallback(`vm0://auth/callback?code=${code}`),
     ).toStrictEqual({ code });
+  });
+
+  it("parses desktop callbacks from launch arguments", () => {
+    expect(
+      parseDesktopAuthCallbackArgv([
+        "/Applications/Zero.app/Contents/MacOS/Zero",
+        `vm0://auth/callback?code=${code}`,
+      ]),
+    ).toStrictEqual({ code });
+    expect(
+      parseDesktopAuthCallbackArgv([
+        "/Applications/Zero.app/Contents/MacOS/Zero",
+        "--some-flag",
+      ]),
+    ).toBe(null);
   });
 
   it("rejects unsafe desktop callbacks", () => {

@@ -67,6 +67,12 @@ describe("desktop auth setup", () => {
   });
 
   it("consumes a desktop callback code into the Electron web session through the platform router", async () => {
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
     server.use(
       mockApi(desktopAuthConsumeContract.consume, ({ body, respond }) => {
         expect(body).toStrictEqual({ code: "desktop-code" });
@@ -89,5 +95,6 @@ describe("desktop auth setup", () => {
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
       session: "test-created-session-id",
     });
+    expect(replace).toHaveBeenCalledWith("/");
   });
 });

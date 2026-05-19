@@ -1,19 +1,26 @@
 import path from "node:path";
-import { app, BrowserWindow, shell, type WebContents } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { resolveDesktopConfig } from "./config";
 import {
   DESKTOP_AUTH_PROTOCOL,
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
+  createDesktopAuthStartGate,
   isDesktopAuthStartNavigation,
+  isDesktopSignedOutNavigation,
+  parseDesktopAuthCallbackArgv,
   parseDesktopAuthCallback,
 } from "./desktop-auth";
+import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
 const APP_NAME = "Zero";
 const config = resolveDesktopConfig();
+const desktopAuthStartUrl = buildDesktopAuthStartUrl(config.platformUrl);
+const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
+const desktopAuthStartGate = createDesktopAuthStartGate();
 
 function preloadPath(): string {
   return path.join(__dirname, "preload.js");
@@ -28,8 +35,60 @@ function openDesktopAuthStart(rawUrl: string): boolean {
     return false;
   }
 
-  openExternal(buildDesktopAuthStartUrl(config.platformUrl));
+  if (desktopAuthStartGate.shouldOpen()) {
+    openExternal(desktopAuthStartUrl);
+  }
   return true;
+}
+
+function openDesktopAuthCallback(rawUrl: string): boolean {
+  const callback = parseDesktopAuthCallback(rawUrl);
+  if (!callback) {
+    return false;
+  }
+
+  desktopAuthStartGate.suppressRetry();
+
+  if (!app.isReady()) {
+    pendingDesktopAuthCode = callback.code;
+    return true;
+  }
+
+  void openDesktopAuthConsume(callback.code);
+  return true;
+}
+
+function showSignedOutPage(window: BrowserWindow): void {
+  void window.loadURL(signedOutPageUrl);
+}
+
+function shouldShowSignedOutPage(rawUrl: string): boolean {
+  return isDesktopSignedOutNavigation(rawUrl, config.allowedAppOrigins);
+}
+
+interface PreventableNavigationEvent {
+  readonly preventDefault: () => void;
+}
+
+function handleAuthNavigation(
+  window: BrowserWindow,
+  event: PreventableNavigationEvent,
+  url: string,
+): boolean {
+  if (openDesktopAuthCallback(url)) {
+    event.preventDefault();
+    return true;
+  }
+  if (openDesktopAuthStart(url)) {
+    event.preventDefault();
+    return true;
+  }
+  if (shouldShowSignedOutPage(url)) {
+    event.preventDefault();
+    showSignedOutPage(window);
+    return true;
+  }
+  return false;
 }
 
 function browserWindowOptions() {
@@ -46,9 +105,18 @@ function browserWindowOptions() {
   } satisfies Electron.BrowserWindowConstructorOptions;
 }
 
-function installChildWindowPolicy(webContents: WebContents): void {
+function installChildWindowPolicy(window: BrowserWindow): void {
+  const { webContents } = window;
+
   webContents.setWindowOpenHandler(({ url }) => {
+    if (openDesktopAuthCallback(url)) {
+      return { action: "deny" };
+    }
     if (openDesktopAuthStart(url)) {
+      return { action: "deny" };
+    }
+    if (shouldShowSignedOutPage(url)) {
+      showSignedOutPage(window);
       return { action: "deny" };
     }
 
@@ -62,8 +130,7 @@ function installChildWindowPolicy(webContents: WebContents): void {
 
 function installMainWindowPolicy(window: BrowserWindow): void {
   window.webContents.on("will-navigate", (event, url) => {
-    if (openDesktopAuthStart(url)) {
-      event.preventDefault();
+    if (handleAuthNavigation(window, event, url)) {
       return;
     }
 
@@ -77,8 +144,22 @@ function installMainWindowPolicy(window: BrowserWindow): void {
     }
   });
 
+  window.webContents.on("will-redirect", (event) => {
+    if (!event.isMainFrame) {
+      return;
+    }
+    handleAuthNavigation(window, event, event.url);
+  });
+
   window.webContents.setWindowOpenHandler(({ url }) => {
+    if (openDesktopAuthCallback(url)) {
+      return { action: "deny" };
+    }
     if (openDesktopAuthStart(url)) {
+      return { action: "deny" };
+    }
+    if (shouldShowSignedOutPage(url)) {
+      showSignedOutPage(window);
       return { action: "deny" };
     }
 
@@ -96,7 +177,7 @@ function installMainWindowPolicy(window: BrowserWindow): void {
   });
 
   window.webContents.on("did-create-window", (childWindow) => {
-    installChildWindowPolicy(childWindow.webContents);
+    installChildWindowPolicy(childWindow);
   });
 }
 
@@ -135,17 +216,34 @@ async function openDesktopAuthConsume(code: string): Promise<void> {
 }
 
 function handleDesktopAuthCallback(rawUrl: string): void {
-  const callback = parseDesktopAuthCallback(rawUrl);
+  openDesktopAuthCallback(rawUrl);
+}
+
+function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
+  const callback = parseDesktopAuthCallbackArgv(argv);
   if (!callback) {
-    return;
+    return false;
   }
 
+  desktopAuthStartGate.suppressRetry();
   if (!app.isReady()) {
     pendingDesktopAuthCode = callback.code;
-    return;
+    return true;
   }
 
   void openDesktopAuthConsume(callback.code);
+  return true;
+}
+
+function queueDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
+  const callback = parseDesktopAuthCallbackArgv(argv);
+  if (!callback) {
+    return false;
+  }
+
+  desktopAuthStartGate.suppressRetry();
+  pendingDesktopAuthCode = callback.code;
+  return true;
 }
 
 function registerDesktopAuthProtocol(): void {
@@ -172,31 +270,48 @@ if (process.platform !== "darwin") {
 
 app.name = APP_NAME;
 
-app.on("open-url", (event, url) => {
-  event.preventDefault();
-  handleDesktopAuthCallback(url);
-});
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-void app.whenReady().then(async () => {
-  registerDesktopAuthProtocol();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    if (handleDesktopAuthCallbackArgv(argv)) {
+      return;
+    }
 
-  const pendingCode = pendingDesktopAuthCode;
-  pendingDesktopAuthCode = null;
-  await createMainWindow(
-    pendingCode
-      ? buildDesktopAuthConsumeUrl(config.platformUrl, pendingCode)
-      : undefined,
-  );
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
     }
   });
-});
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    handleDesktopAuthCallback(url);
+  });
+
+  void app.whenReady().then(async () => {
+    registerDesktopAuthProtocol();
+    queueDesktopAuthCallbackArgv(process.argv);
+
+    const pendingCode = pendingDesktopAuthCode;
+    pendingDesktopAuthCode = null;
+    await createMainWindow(
+      pendingCode
+        ? buildDesktopAuthConsumeUrl(config.platformUrl, pendingCode)
+        : undefined,
+    );
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        void createMainWindow();
+      }
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+}
