@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.377.1](https://github.com/vm0-ai/vm0/compare/web-v12.377.0...web-v12.377.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* preserve web origin for api backend rewrites ([#14000](https://github.com/vm0-ai/vm0/issues/14000)) ([610c5d6](https://github.com/vm0-ai/vm0/commit/610c5d6a58b2dc94c8383af2583e97c64611b02e))
+
+
+### Refactoring
+
+* proxy test slack assistant status route to api ([#14005](https://github.com/vm0-ai/vm0/issues/14005)) ([5e0a824](https://github.com/vm0-ai/vm0/commit/5e0a824db687448e190945315d5d86e0e231f65a))
+
 ## [12.377.0](https://github.com/vm0-ai/vm0/compare/web-v12.376.1...web-v12.377.0) (2026-05-19)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.57.1](https://github.com/vm0-ai/vm0/compare/api-v1.57.0...api-v1.57.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* preserve web origin for api backend rewrites ([#14000](https://github.com/vm0-ai/vm0/issues/14000)) ([610c5d6](https://github.com/vm0-ai/vm0/commit/610c5d6a58b2dc94c8383af2583e97c64611b02e))
+
+
+### Refactoring
+
+* proxy test slack assistant status route to api ([#14005](https://github.com/vm0-ai/vm0/issues/14005)) ([5e0a824](https://github.com/vm0-ai/vm0/commit/5e0a824db687448e190945315d5d86e0e231f65a))
+
 ## [1.57.0](https://github.com/vm0-ai/vm0/compare/api-v1.56.1...api-v1.57.0) (2026-05-19)
 
 
