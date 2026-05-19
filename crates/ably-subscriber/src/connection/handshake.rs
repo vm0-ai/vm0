@@ -3,16 +3,17 @@ use std::collections::HashMap;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite;
 
-use crate::connection::endpoint::build_ws_url;
-use crate::connection::errors::{
-    channel_detached_message, error_or_unknown, protocol_disconnect_reason, protocol_error_message,
-};
-use crate::connection::state::ConnState;
-use crate::connection::transport::{WsRead, WsWrite, connect_and_split};
 use crate::protocol::{
     ErrorInfo, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg, error_code,
 };
 use crate::types::{Error, TimingConfig, TokenDetails};
+
+use super::endpoint::build_ws_url;
+use super::errors::{
+    channel_detached_message, error_or_unknown, protocol_disconnect_reason, protocol_error_message,
+};
+use super::state::ConnState;
+use super::transport::{WsRead, WsWrite, connect_and_split};
 
 pub(super) async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Error> {
     while let Some(frame) = ws_read.next().await {

@@ -1,6 +1,7 @@
 use crate::TokenRequest;
-use crate::connection::endpoint::{PROTOCOL_VERSION, is_localhost};
 use crate::types::{Error, TokenDetails};
+
+use super::endpoint::{PROTOCOL_VERSION, is_localhost};
 
 /// Exchange a TokenRequest for a TokenDetails via Ably's REST API.
 pub(crate) async fn exchange_token(

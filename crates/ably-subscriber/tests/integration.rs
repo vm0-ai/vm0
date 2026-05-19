@@ -2546,7 +2546,7 @@ async fn token_renewal_error_backpressure_closes_socket_before_subscription_clos
 // ---------------------------------------------------------------------------
 
 // current_thread runtime is a determinism requirement: we rely on the
-// subscriber task's synchronous inner loop (connection.rs processes a batched
+// subscriber task's synchronous event-loop dispatch processes a batched
 // ProtocolMessage's Vec<AblyMessage> with no await between try_send calls)
 // being uninterruptible by the consumer task. On a multi_thread runtime,
 // the consumer on another OS thread could drain the channel between two
@@ -2650,7 +2650,7 @@ async fn backpressure_drops_messages() {
     }
     assert_eq!(
         received, CAP,
-        "batch of {BURST} into a cap-{CAP} channel should deliver exactly {CAP} and drop the rest, got {received} — if this regressed, check connection.rs message-dispatch loop is still synchronous (no .await between try_send calls)"
+        "batch of {BURST} into a cap-{CAP} channel should deliver exactly {CAP} and drop the rest, got {received} — if this regressed, check event-loop message dispatch is still synchronous (no .await between try_send calls)"
     );
 
     sentinel_gate_tx
