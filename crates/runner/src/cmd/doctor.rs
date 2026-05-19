@@ -988,14 +988,7 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
     };
 
     for line in output.lines() {
-        // ip netns list output: "vm0-ns-00-0a (id: 42)" or just "vm0-ns-00-0a"
-        let ns_name = line.split_whitespace().next().unwrap_or("");
-        if !ns_name.starts_with("vm0-ns-") {
-            continue;
-        }
-
-        // Extract pool index from name: vm0-ns-{pool_idx}-{ns_idx}
-        if let Some(pool_idx) = parse_pool_index(ns_name) {
+        if let Some((ns_name, pool_idx)) = parse_netns_list_line(line) {
             let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
             if is_lock_free(&lock_path).await {
                 warnings.push(Warning::OrphanNamespace {
@@ -1007,6 +1000,14 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
     }
 
     warnings
+}
+
+/// Parse `ip netns list` output line and return the namespace plus pool index.
+fn parse_netns_list_line(line: &str) -> Option<(&str, u32)> {
+    // ip netns list output: "vm0-ns-00-0a (id: 42)" or just "vm0-ns-00-0a"
+    let ns_name = line.split_whitespace().next()?;
+    let parsed = sandbox_fc::parse_netns_name(ns_name)?;
+    Some((ns_name, parsed.pool_index))
 }
 
 /// Scan for NBD devices whose owning process has exited without disconnecting.
@@ -1023,13 +1024,6 @@ async fn detect_nbd_orphans() -> Vec<Warning> {
         .into_iter()
         .map(|(device_index, pid)| Warning::OrphanNbdDevice { device_index, pid })
         .collect()
-}
-
-/// Parse pool index from namespace name: `vm0-ns-{XX}-{XX}` → pool_idx as u32.
-fn parse_pool_index(ns_name: &str) -> Option<u32> {
-    let rest = ns_name.strip_prefix("vm0-ns-")?;
-    let pool_hex = rest.split('-').next()?;
-    u32::from_str_radix(pool_hex, 16).ok()
 }
 
 /// Try non-blocking flock to check if a lock file is free (not held by anyone).
@@ -1251,17 +1245,26 @@ mod tests {
     }
 
     #[test]
-    fn parse_pool_index_valid() {
-        assert_eq!(parse_pool_index("vm0-ns-00-0a"), Some(0));
-        assert_eq!(parse_pool_index("vm0-ns-3f-ff"), Some(63));
-        assert_eq!(parse_pool_index("vm0-ns-0a-00"), Some(10));
+    fn parse_netns_list_line_valid() {
+        assert_eq!(
+            parse_netns_list_line("vm0-ns-00-0a (id: 42)"),
+            Some(("vm0-ns-00-0a", 0))
+        );
+        assert_eq!(
+            parse_netns_list_line("vm0-ns-3f-ff"),
+            Some(("vm0-ns-3f-ff", 63))
+        );
     }
 
     #[test]
-    fn parse_pool_index_invalid() {
-        assert_eq!(parse_pool_index("not-a-ns"), None);
-        assert_eq!(parse_pool_index("vm0-ns-"), None);
-        assert_eq!(parse_pool_index("vm0-ns-zz-00"), None);
+    fn parse_netns_list_line_ignores_malformed_names() {
+        assert_eq!(parse_netns_list_line("not-a-ns"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-00"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-00-extra"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-00-zz"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-00-0a-extra"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-40-00"), None);
     }
 
     fn status_info(active: Vec<(&str, &str)>, idle_sandboxes: Vec<&str>) -> StatusInfo {
