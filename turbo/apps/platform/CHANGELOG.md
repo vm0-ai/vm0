@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.365.1](https://github.com/vm0-ai/vm0/compare/app-v0.365.0...app-v0.365.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* handle desktop auth routes in platform ([#13874](https://github.com/vm0-ai/vm0/issues/13874)) ([37c79cd](https://github.com/vm0-ai/vm0/commit/37c79cdb68b4e66688fe56bf7bdb7a06e45de822))
+
+
+### Refactoring
+
+* reduce connector registry coupling ([#13919](https://github.com/vm0-ai/vm0/issues/13919)) ([59beef3](https://github.com/vm0-ai/vm0/commit/59beef398677629082e27347e3ec9d4292273904))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.9
+    * @vm0/connectors bumped to 1.19.1
+    * @vm0/core bumped to 8.281.7
+
 ## [0.365.0](https://github.com/vm0-ai/vm0/compare/app-v0.364.1...app-v0.365.0) (2026-05-19)
 
 

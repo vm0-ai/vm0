@@ -1,5 +1,52 @@
 # Changelog
 
+## [12.375.1](https://github.com/vm0-ai/vm0/compare/web-v12.375.0...web-v12.375.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* gate Google Ads with Consent Mode v2 default-denied ([#13835](https://github.com/vm0-ai/vm0/issues/13835)) ([691af7c](https://github.com/vm0-ai/vm0/commit/691af7c0c617b0079edc3aecb581f7bcccabb903))
+* route desktop auth through dedicated start page ([#13853](https://github.com/vm0-ai/vm0/issues/13853)) ([d56a3a7](https://github.com/vm0-ai/vm0/commit/d56a3a75b7d0e9efc63902ea434a2ee66dc883b0))
+
+
+### Refactoring
+
+* cut over connector authorize route ([#13849](https://github.com/vm0-ai/vm0/issues/13849)) ([4c64323](https://github.com/vm0-ai/vm0/commit/4c64323d305e79d7b7d94504aa260cb658902ef0))
+* cut over connector callback route ([#13870](https://github.com/vm0-ai/vm0/issues/13870)) ([891f0e0](https://github.com/vm0-ai/vm0/commit/891f0e0e3e99780babd2de9008c3f66115ee0aab))
+* cut over cron aggregate insights route ([#13848](https://github.com/vm0-ai/vm0/issues/13848)) ([82277bb](https://github.com/vm0-ai/vm0/commit/82277bb43f3908209c59b18e6564aae79417686a))
+* cut over cron aggregate usage route ([#13857](https://github.com/vm0-ai/vm0/issues/13857)) ([702c608](https://github.com/vm0-ai/vm0/commit/702c608c98f6f1b6ff89e5454115066188f9bf30))
+* cut over cron cleanup sandboxes route ([#13869](https://github.com/vm0-ai/vm0/issues/13869)) ([645bc3e](https://github.com/vm0-ai/vm0/commit/645bc3ec0ef785b0e7c5a4f35d1e22038d034dd6))
+* cut over cron drain email outbox route ([#13892](https://github.com/vm0-ai/vm0/issues/13892)) ([436dd3e](https://github.com/vm0-ai/vm0/commit/436dd3e6d8812b11c3b608ecf41f16c1868682bb))
+* cut over cron execute schedules route ([#13917](https://github.com/vm0-ai/vm0/issues/13917)) ([7d2cbcf](https://github.com/vm0-ai/vm0/commit/7d2cbcfe26e6a9899ce15c0bb6b0bd027566405f))
+* cut over zero chat messages route ([#13833](https://github.com/vm0-ai/vm0/issues/13833)) ([e418e5f](https://github.com/vm0-ai/vm0/commit/e418e5f413ea1f329347d19d854863fcec2606ec))
+* cut over zero chat thread messages route ([#13813](https://github.com/vm0-ai/vm0/issues/13813)) ([2dc8c60](https://github.com/vm0-ai/vm0/commit/2dc8c60315f7ab271f37141af2d35cd7b2e53945))
+* cut over zero computer-use host route ([#13871](https://github.com/vm0-ai/vm0/issues/13871)) ([481fc14](https://github.com/vm0-ai/vm0/commit/481fc1419a9e6b914f1cf02f5ca6b389160fffdb))
+* cut over zero computer-use register route ([#13894](https://github.com/vm0-ai/vm0/issues/13894)) ([e557bc0](https://github.com/vm0-ai/vm0/commit/e557bc0cc56a7d2c52d56768649c8953b45c5212))
+* cut over zero computer-use unregister route ([#13903](https://github.com/vm0-ai/vm0/issues/13903)) ([67a4d58](https://github.com/vm0-ai/vm0/commit/67a4d58a7407953da33ffc3320d8121c56dec385))
+* migrate zero schedules delete rewrite ([#13916](https://github.com/vm0-ai/vm0/issues/13916)) ([744855b](https://github.com/vm0-ai/vm0/commit/744855bc0d747c409541d99972fb2bace11fcc91))
+* migrate zero schedules disable rewrite ([#13893](https://github.com/vm0-ai/vm0/issues/13893)) ([d85d815](https://github.com/vm0-ai/vm0/commit/d85d81530163bcea32def347d7e53be362d7032a))
+* migrate zero schedules enable rewrite ([#13901](https://github.com/vm0-ai/vm0/issues/13901)) ([254613d](https://github.com/vm0-ai/vm0/commit/254613d01e03262267a2e613019220298a6e0ee6))
+* proxy agent run agent telemetry to api ([#13837](https://github.com/vm0-ai/vm0/issues/13837)) ([8ebb64a](https://github.com/vm0-ai/vm0/commit/8ebb64adffb25b0a9299a65d94756fb7a01f344e))
+* proxy agent run metrics telemetry to api ([#13839](https://github.com/vm0-ai/vm0/issues/13839)) ([dbb116b](https://github.com/vm0-ai/vm0/commit/dbb116bc015eea2b85a7da6ef2cbc8ca4060093a))
+* proxy agent run network telemetry to api ([#13843](https://github.com/vm0-ai/vm0/issues/13843)) ([4618a93](https://github.com/vm0-ai/vm0/commit/4618a933da41f3a9c452e53d9b0f7eeab708d313))
+* proxy agent run system log to api ([#13860](https://github.com/vm0-ai/vm0/issues/13860)) ([da415f7](https://github.com/vm0-ai/vm0/commit/da415f70b60b60f0e351cdf7b7f29d46f50c963c))
+* proxy agent run telemetry to api ([#13854](https://github.com/vm0-ai/vm0/issues/13854)) ([1b6f965](https://github.com/vm0-ai/vm0/commit/1b6f965a530256f63ab4a514fd103e4560d60e8a))
+* proxy agent runs to api ([#13875](https://github.com/vm0-ai/vm0/issues/13875)) ([4633caa](https://github.com/vm0-ai/vm0/commit/4633caabd24cb0e482305ee5c1e0f8d1be442650))
+* proxy zero api key detail to api ([#13858](https://github.com/vm0-ai/vm0/issues/13858)) ([a7f71f7](https://github.com/vm0-ai/vm0/commit/a7f71f7e9d33d255386fc5415e79228270919c9b))
+* proxy zero api keys root to api ([#13850](https://github.com/vm0-ai/vm0/issues/13850)) ([5800f07](https://github.com/vm0-ai/vm0/commit/5800f07f6ed2ef88e8cad6c21e5cf205e3cfefc3))
+* reduce connector registry coupling ([#13919](https://github.com/vm0-ai/vm0/issues/13919)) ([59beef3](https://github.com/vm0-ai/vm0/commit/59beef398677629082e27347e3ec9d4292273904))
+* use runtime connector availability helper ([#13905](https://github.com/vm0-ai/vm0/issues/13905)) ([43d6bc8](https://github.com/vm0-ai/vm0/commit/43d6bc84d7cc06039868b6049bec2a17c6c363b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.9
+    * @vm0/connectors bumped to 1.19.1
+    * @vm0/core bumped to 8.281.7
+    * @vm0/db bumped to 1.14.14
+
 ## [12.375.0](https://github.com/vm0-ai/vm0/compare/web-v12.374.1...web-v12.375.0) (2026-05-19)
 
 

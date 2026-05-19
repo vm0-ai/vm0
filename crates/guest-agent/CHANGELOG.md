@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.1...guest-agent-v0.32.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* add runner failure diagnostics ([#13880](https://github.com/vm0-ai/vm0/issues/13880)) ([3fc6515](https://github.com/vm0-ai/vm0/commit/3fc6515e53564de4668ae551ce4caaebcb943d74))
+
 ## [0.32.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.0...guest-agent-v0.32.1) (2026-05-18)
 
 
