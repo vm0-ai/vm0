@@ -162,23 +162,3 @@ export async function listTestVoiceChatTasks(
     .from(voiceChatTasks)
     .where(eq(voiceChatTasks.sessionId, sessionId));
 }
-
-/**
- * Read all items for a session for callback side-effect assertions.
- * @why-db-direct Callback tests need to assert task_result and system_note
- * items written by the callback handler; there is no public list-items API
- * that returns all roles for a session.
- */
-export async function listTestVoiceChatItems(
-  sessionId: string,
-): Promise<{ id: string; role: string; content: string | null }[]> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: voiceChatItems.id,
-      role: voiceChatItems.role,
-      content: voiceChatItems.content,
-    })
-    .from(voiceChatItems)
-    .where(eq(voiceChatItems.sessionId, sessionId));
-}

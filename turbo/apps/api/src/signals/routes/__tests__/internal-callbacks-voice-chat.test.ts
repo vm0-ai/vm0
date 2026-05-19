@@ -96,8 +96,11 @@ async function seedVoiceChatCallbackFixture(args: {
   return { ...fixture, agentId, sessionId, runId, taskId, callbackId };
 }
 
-function signedHeaders(rawBody: string, secret = TEST_CALLBACK_SECRET) {
-  const timestamp = Math.floor(now() / 1000);
+function signedHeaders(
+  rawBody: string,
+  secret = TEST_CALLBACK_SECRET,
+  timestamp = Math.floor(now() / 1000),
+) {
   return {
     "Content-Type": "application/json",
     "X-VM0-Signature": computeHmacSignature(rawBody, secret, timestamp),
@@ -108,12 +111,13 @@ function signedHeaders(rawBody: string, secret = TEST_CALLBACK_SECRET) {
 async function postSignedCallback(
   body: Record<string, unknown>,
   secret?: string,
+  timestamp?: number,
 ): Promise<Response> {
   const rawBody = JSON.stringify(body);
   const app = createApp({ signal: context.signal });
   return await app.request(PATH, {
     method: "POST",
-    headers: signedHeaders(rawBody, secret),
+    headers: signedHeaders(rawBody, secret, timestamp),
     body: rawBody,
   });
 }
@@ -265,6 +269,55 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
     });
   });
 
+  it("rejects requests with expired timestamps", async () => {
+    const fixture = await seedVoiceChatCallbackFixture({});
+    const expiredTimestamp = Math.floor(now() / 1000) - 10 * 60;
+
+    const response = await postSignedCallback(
+      {
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "completed",
+        payload: { taskId: fixture.taskId },
+      },
+      TEST_CALLBACK_SECRET,
+      expiredTimestamp,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Timestamp expired",
+    });
+    await expect(getTask(fixture.taskId)).resolves.toMatchObject({
+      status: "queued",
+    });
+  });
+
+  it("returns 404 for callbacks without a matching callback record", async () => {
+    const response = await postSignedCallback({
+      runId: randomUUID(),
+      status: "completed",
+      payload: { taskId: randomUUID() },
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Callback not found",
+    });
+  });
+
+  it("rejects callback bodies missing runId", async () => {
+    const response = await postSignedCallback({
+      status: "completed",
+      payload: { taskId: randomUUID() },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Missing runId",
+    });
+  });
+
   it("returns 400 when payload is missing taskId", async () => {
     const fixture = await seedVoiceChatCallbackFixture({});
 
@@ -309,6 +362,41 @@ describe("POST /api/internal/callbacks/voice-chat", () => {
           item.role === "system_note" &&
           item.taskId === fixture.taskId &&
           item.content?.toLowerCase().includes("agent mismatch") === true
+        );
+      }),
+    ).toBeTruthy();
+    await clearAllDetached();
+  });
+
+  it("completes the task with an empty result when output extraction fails", async () => {
+    const fixture = await seedVoiceChatCallbackFixture({});
+    context.mocks.axiom.query.mockRejectedValueOnce(new Error("axiom down"));
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { taskId: fixture.taskId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+
+    const task = await getTask(fixture.taskId);
+    expect(task).toMatchObject({
+      status: "done",
+      error: null,
+      result: null,
+    });
+    expect(task?.assistantMessages).toStrictEqual([]);
+
+    const items = await listItems(fixture.sessionId);
+    expect(
+      items.some((item) => {
+        return (
+          item.role === "task_result" &&
+          item.taskId === fixture.taskId &&
+          item.content === "[task returned empty result]"
         );
       }),
     ).toBeTruthy();
