@@ -1193,6 +1193,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero runs context rewrite path only for UUID run IDs", () => {
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/runs/${ZERO_RUN_ID}/context`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/runs/queue/context")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/runs/not-a-uuid/context"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/runs/${ZERO_RUN_ID}/context/extra`,
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero runs runner rewrite path only for UUID run IDs", () => {
     expect(
       matchesApiBackendRewritePath(`/api/zero/runs/${ZERO_RUN_ID}/runner`),
