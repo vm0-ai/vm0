@@ -91,7 +91,7 @@ function useDynamicTestOAuthAuthorize(): () => void {
     expect(args.clientId).toBeUndefined();
     return {
       url: `https://dynamic-oauth.test/authorize?state=${args.state}`,
-      oauthContext: "dynamic-oauth-context",
+      oauthContext: "dynamic-oauth-context; tenant=example",
     };
   };
 
@@ -220,7 +220,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(
       cookies.some((cookie) => {
         return cookie.startsWith(
-          "connector_oauth_context=dynamic-oauth-context",
+          "connector_oauth_context=dynamic-oauth-context%3B%20tenant%3Dexample",
         );
       }),
     ).toBeTruthy();

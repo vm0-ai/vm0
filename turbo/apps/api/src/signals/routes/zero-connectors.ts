@@ -140,7 +140,7 @@ function buildCookieHeader(
   maxAge: number,
 ): string {
   const parts = [
-    `${name}=${value}`,
+    `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${maxAge}`,
     "Path=/",
     "HttpOnly",
