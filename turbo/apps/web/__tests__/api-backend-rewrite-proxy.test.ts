@@ -602,6 +602,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
+  it("matches the internal Telegram callback rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/telegram"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/telegram/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

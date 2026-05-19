@@ -8,10 +8,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { isOfficialTelegramBotId } from "./official";
-import { ensureOrgModelPolicies } from "../model-policy/org-model-policy-service";
 import { escapeHtml } from "./format";
 
 function telegramUserMention(telegramUserId: string, label: string): string {
@@ -45,41 +42,6 @@ function displayLabel(row: {
   return row.composeName.trim() || "zero";
 }
 
-async function resolveComposeLabel(
-  composeId: string,
-): Promise<string | undefined> {
-  const [row] = await globalThis.services.db
-    .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  return row ? displayLabel(row) : undefined;
-}
-
-async function resolveTelegramRespondedByLabel(
-  installationId: string,
-  composeId: string,
-): Promise<string | undefined> {
-  if (isOfficialTelegramBotId(installationId)) return undefined;
-
-  const [installation] = await globalThis.services.db
-    .select({ defaultComposeId: telegramInstallations.defaultComposeId })
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, installationId))
-    .limit(1);
-
-  if (installation?.defaultComposeId === composeId) return undefined;
-
-  const label = await resolveComposeLabel(composeId);
-  return label ? `Responded by ${escapeHtml(label)}` : undefined;
-}
-
 async function resolveRunSelectedModel(
   runId: string,
 ): Promise<string | undefined> {
@@ -90,48 +52,6 @@ async function resolveRunSelectedModel(
     .limit(1);
 
   return row?.selectedModel ?? undefined;
-}
-
-async function resolveWorkspaceDefaultModel(
-  orgId: string,
-): Promise<string | undefined> {
-  const policies = await ensureOrgModelPolicies(orgId);
-  return (
-    policies.find((policy) => {
-      return policy.isDefault;
-    })?.model ?? undefined
-  );
-}
-
-async function resolveAgentReplyModelLabel(
-  orgId: string,
-  runId: string,
-): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(runId);
-  const model = selectedModel ?? (await resolveWorkspaceDefaultModel(orgId));
-
-  return model ? escapeHtml(getModelDisplayName(model)) : undefined;
-}
-
-export async function resolveTelegramAgentReplyFooterText(params: {
-  orgId: string;
-  runId: string;
-  installationId: string;
-  chatId: string;
-  rootMessageId: string | null | undefined;
-  userLinkId: string;
-  agentId: string;
-}): Promise<string | undefined> {
-  const [respondedBy, modelLabel] = await Promise.all([
-    resolveTelegramRespondedByLabel(params.installationId, params.agentId),
-    resolveAgentReplyModelLabel(params.orgId, params.runId),
-  ]);
-
-  const parts: string[] = [];
-  if (respondedBy) parts.push(respondedBy);
-  if (modelLabel) parts.push(modelLabel);
-
-  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 async function resolveRunAgentLabel(

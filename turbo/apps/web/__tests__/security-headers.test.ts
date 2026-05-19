@@ -508,6 +508,13 @@ const INTERNAL_CALLBACKS_SLACK_ORG_NEXT_NEGATIVE_PATHS = [
   "/api/internal/callbacks/slack",
   "/api/internal/callbacks",
 ] as const;
+const INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE =
+  "/api/internal/callbacks/telegram";
+const INTERNAL_CALLBACKS_TELEGRAM_PATH = "/api/internal/callbacks/telegram";
+const INTERNAL_CALLBACKS_TELEGRAM_NEXT_NEGATIVE_PATHS = [
+  "/api/internal/callbacks/telegram/extra",
+  "/api/internal/callbacks",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -1688,6 +1695,11 @@ describe("API backend rewrites", () => {
           source: INTERNAL_CALLBACKS_SLACK_ORG_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/internal/callbacks/slack/org",
+        },
+        {
+          source: INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/internal/callbacks/telegram",
         },
         {
           source: "/api/internal/callbacks/agentphone",
@@ -3195,6 +3207,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(INTERNAL_CALLBACKS_SLACK_ORG_PATH)).toStrictEqual({});
     for (const pathname of INTERNAL_CALLBACKS_SLACK_ORG_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact internal Telegram callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/internal/callbacks/telegram",
+    });
+
+    const matcher = getPathMatch(INTERNAL_CALLBACKS_TELEGRAM_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(INTERNAL_CALLBACKS_TELEGRAM_PATH)).toStrictEqual({});
+    for (const pathname of INTERNAL_CALLBACKS_TELEGRAM_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

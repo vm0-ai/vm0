@@ -352,6 +352,7 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/callbacks/schedule/loop",
   ],
   ["/api/internal/callbacks/slack/org", "/api/internal/callbacks/slack/org"],
+  ["/api/internal/callbacks/telegram", "/api/internal/callbacks/telegram"],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/cron/aggregate-model-stats",
