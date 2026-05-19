@@ -1,43 +1,118 @@
 import {
+  index,
+  integer,
+  jsonb,
   pgTable,
-  uuid,
   text,
   timestamp,
   uniqueIndex,
-  index,
+  uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * Computer-use hosts table
- * Stores registered computer-use host sessions with ngrok resource IDs.
- * Each user in an org can have at most one active host registration.
- */
+type JsonObject = Record<string, unknown>;
+
+export interface ComputerUsePermissions {
+  readonly accessibility: boolean;
+  readonly screenRecording: boolean;
+}
+
 export const computerUseHosts = pgTable(
   "computer_use_hosts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    domain: text("domain").notNull(),
-    token: text("token").notNull(),
-
-    // ngrok resource IDs for cleanup on unregister
-    ngrokBotUserId: text("ngrok_bot_user_id"),
-    ngrokCredentialId: text("ngrok_credential_id"),
-    ngrokEndpointId: text("ngrok_endpoint_id"),
-    ngrokDomainId: text("ngrok_domain_id"),
-
-    expiresAt: timestamp("expires_at").notNull(),
+    displayName: text("display_name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    appVersion: text("app_version").notNull(),
+    osVersion: text("os_version").notNull(),
+    supportedCapabilities: jsonb("supported_capabilities")
+      .$type<string[]>()
+      .default([])
+      .notNull(),
+    permissions: jsonb("permissions")
+      .$type<ComputerUsePermissions>()
+      .default({ accessibility: false, screenRecording: false })
+      .notNull(),
+    status: text("status").default("online").notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      uniqueIndex("idx_computer_use_hosts_org_user").on(
+      uniqueIndex("idx_computer_use_hosts_token_hash").on(table.tokenHash),
+      index("idx_computer_use_hosts_org_user").on(table.orgId, table.userId),
+      index("idx_computer_use_hosts_last_seen").on(table.lastSeenAt),
+    ];
+  },
+);
+
+export const computerUseCommands = pgTable(
+  "computer_use_commands",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    hostId: uuid("host_id").references(() => {
+      return computerUseHosts.id;
+    }),
+    kind: text("kind").notNull(),
+    status: text("status").default("queued").notNull(),
+    payload: jsonb("payload").$type<JsonObject>().default({}).notNull(),
+    result: jsonb("result").$type<JsonObject>(),
+    error: text("error"),
+    timeoutMs: integer("timeout_ms"),
+    claimedAt: timestamp("claimed_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_computer_use_commands_host_status").on(
+        table.hostId,
+        table.status,
+      ),
+      index("idx_computer_use_commands_org_user").on(table.orgId, table.userId),
+      index("idx_computer_use_commands_created").on(table.createdAt),
+    ];
+  },
+);
+
+export const computerUseCommandAuditEvents = pgTable(
+  "computer_use_command_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    commandId: uuid("command_id")
+      .references(() => {
+        return computerUseCommands.id;
+      })
+      .notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    runId: text("run_id"),
+    hostId: uuid("host_id").references(() => {
+      return computerUseHosts.id;
+    }),
+    kind: text("kind").notNull(),
+    app: text("app"),
+    event: text("event").notNull(),
+    approvalOutcome: text("approval_outcome"),
+    redactedResult: jsonb("redacted_result").$type<JsonObject>(),
+    error: jsonb("error").$type<JsonObject>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      index("idx_computer_use_command_audit_command").on(table.commandId),
+      index("idx_computer_use_command_audit_org_user").on(
         table.orgId,
         table.userId,
       ),
-      index("idx_computer_use_hosts_org").on(table.orgId),
+      index("idx_computer_use_command_audit_created").on(table.createdAt),
     ];
   },
 );

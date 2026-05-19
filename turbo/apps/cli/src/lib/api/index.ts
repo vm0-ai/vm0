@@ -192,9 +192,12 @@ export {
 
 // Domain modules - Zero Computer Use
 export {
-  registerComputerUseHost,
-  unregisterComputerUseHost,
-  getComputerUseHost,
+  createComputerUseReadCommand,
+  createComputerUseWriteCommand,
+  deleteComputerUseHost,
+  getComputerUseCommand,
+  listComputerUseAuditEvents,
+  listComputerUseHosts,
 } from "./domains/zero-computer-use";
 
 // Domain modules - Zero Local Agent

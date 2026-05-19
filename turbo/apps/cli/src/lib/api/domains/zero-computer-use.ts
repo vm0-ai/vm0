@@ -1,69 +1,204 @@
 import { initClient } from "@ts-rest/core";
-import {
-  zeroComputerUseRegisterContract,
-  zeroComputerUseUnregisterContract,
-  zeroComputerUseHostContract,
+import type {
+  ComputerUseAuditEventListResponse,
+  ComputerUseCommandCreateResponse,
+  ComputerUseCommandResponse,
+  ComputerUseHostDeleteResponse,
+  ComputerUseHostListResponse,
+  ComputerUseReadCommandKind,
+  ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { getClientConfig, handleError } from "../core/client-factory";
+import {
+  zeroComputerUseAuditEventsContract,
+  zeroComputerUseCommandContract,
+  zeroComputerUseHostsContract,
+  zeroComputerUseWriteCommandContract,
+} from "@vm0/api-contracts/contracts/zero-computer-use";
+import {
+  ApiRequestError,
+  getBaseUrl,
+  handleError,
+} from "../core/client-factory";
+import { getActiveToken } from "../config";
 
-/**
- * Register a computer-use host (POST /api/zero/computer-use/register)
- */
-export async function registerComputerUseHost(): Promise<{
-  id: string;
-  domain: string;
-  token: string;
-  ngrokToken: string;
-  endpointPrefix: string;
-}> {
-  const config = await getClientConfig();
-  const client = initClient(zeroComputerUseRegisterContract, config);
+function normalizeConfiguredUrl(value: string): string {
+  return value.startsWith("http") ? value : `https://${value}`;
+}
 
-  const result = await client.register({});
+function resolveComputerUseApiBaseUrl(baseUrl: string): string {
+  const override = process.env.VM0_API_BACKEND_URL;
+  if (override) {
+    return normalizeConfiguredUrl(override).replace(/\/$/, "");
+  }
+
+  const url = new URL(baseUrl);
+  if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
+    url.hostname = "api.vm0.ai";
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+function buildHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+  return headers;
+}
+
+async function getComputerUseClientConfig() {
+  const baseUrl = resolveComputerUseApiBaseUrl(await getBaseUrl());
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  return {
+    baseUrl,
+    baseHeaders: buildHeaders(token),
+    jsonQuery: false as const,
+  };
+}
+
+interface ComputerUseCommandParams<
+  Kind extends ComputerUseReadCommandKind | ComputerUseWriteCommandKind,
+> {
+  readonly kind: Kind;
+  readonly hostId?: string;
+  readonly hostName?: string;
+  readonly app?: string;
+  readonly snapshotId?: string;
+  readonly elementId?: string;
+  readonly x?: number;
+  readonly y?: number;
+  readonly button?: "left" | "right" | "middle";
+  readonly clickCount?: number;
+  readonly direction?: "up" | "down" | "left" | "right";
+  readonly pages?: number;
+  readonly value?: string;
+  readonly text?: string;
+  readonly key?: string;
+  readonly action?: string;
+  readonly timeoutMs?: number;
+}
+
+function commandBody<
+  Kind extends ComputerUseReadCommandKind | ComputerUseWriteCommandKind,
+>(params: ComputerUseCommandParams<Kind>) {
+  return {
+    kind: params.kind,
+    timeoutMs: params.timeoutMs ?? 15_000,
+    ...(params.hostId ? { hostId: params.hostId } : {}),
+    ...(params.hostName ? { hostName: params.hostName } : {}),
+    ...(params.app ? { app: params.app } : {}),
+    ...(params.snapshotId ? { snapshotId: params.snapshotId } : {}),
+    ...(params.elementId ? { elementId: params.elementId } : {}),
+    ...(params.x !== undefined ? { x: params.x } : {}),
+    ...(params.y !== undefined ? { y: params.y } : {}),
+    ...(params.button ? { button: params.button } : {}),
+    ...(params.clickCount !== undefined
+      ? { clickCount: params.clickCount }
+      : {}),
+    ...(params.direction ? { direction: params.direction } : {}),
+    ...(params.pages !== undefined ? { pages: params.pages } : {}),
+    ...(params.value !== undefined ? { value: params.value } : {}),
+    ...(params.text !== undefined ? { text: params.text } : {}),
+    ...(params.key ? { key: params.key } : {}),
+    ...(params.action ? { action: params.action } : {}),
+  };
+}
+
+export async function createComputerUseReadCommand(
+  params: ComputerUseCommandParams<ComputerUseReadCommandKind>,
+): Promise<ComputerUseCommandCreateResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseCommandContract, config);
+  const result = await client.create({ body: commandBody(params) });
 
   if (result.status === 200) {
     return result.body;
   }
 
-  handleError(result, "Failed to register computer-use host");
+  handleError(result, "Failed to create computer-use command");
 }
 
-/**
- * Unregister a computer-use host (DELETE /api/zero/computer-use/unregister)
- */
-export async function unregisterComputerUseHost(): Promise<void> {
-  const config = await getClientConfig();
-  const client = initClient(zeroComputerUseUnregisterContract, config);
-
-  const result = await client.unregister({});
-
-  if (result.status === 204) {
-    return;
-  }
-
-  handleError(result, "Failed to unregister computer-use host");
-}
-
-/**
- * Get the active computer-use host (GET /api/zero/computer-use/host)
- * Returns null if no active host exists (404)
- */
-export async function getComputerUseHost(): Promise<{
-  domain: string;
-  token: string;
-} | null> {
-  const config = await getClientConfig();
-  const client = initClient(zeroComputerUseHostContract, config);
-
-  const result = await client.getHost({ headers: {} });
+export async function createComputerUseWriteCommand(
+  params: ComputerUseCommandParams<ComputerUseWriteCommandKind>,
+): Promise<ComputerUseCommandCreateResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseWriteCommandContract, config);
+  const result = await client.create({ body: commandBody(params) });
 
   if (result.status === 200) {
     return result.body;
   }
 
-  if (result.status === 404) {
-    return null;
+  handleError(result, "Failed to create computer-use write command");
+}
+
+export async function getComputerUseCommand(
+  commandId: string,
+): Promise<ComputerUseCommandResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseCommandContract, config);
+  const result = await client.get({ params: { commandId } });
+
+  if (result.status === 200) {
+    return result.body;
   }
 
-  handleError(result, "Failed to get computer-use host");
+  handleError(result, "Failed to get computer-use command");
+}
+
+export async function listComputerUseHosts(): Promise<ComputerUseHostListResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseHostsContract, config);
+  const result = await client.list({ headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list computer-use hosts");
+}
+
+export async function deleteComputerUseHost(
+  hostId: string,
+): Promise<ComputerUseHostDeleteResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseHostsContract, config);
+  const result = await client.delete({ params: { hostId } });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to revoke computer-use host");
+}
+
+export async function listComputerUseAuditEvents(params: {
+  readonly limit?: number;
+  readonly commandId?: string;
+  readonly hostId?: string;
+  readonly runId?: string;
+}): Promise<ComputerUseAuditEventListResponse> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseAuditEventsContract, config);
+  const result = await client.list({
+    query: {
+      limit: params.limit ?? 50,
+      ...(params.commandId ? { commandId: params.commandId } : {}),
+      ...(params.hostId ? { hostId: params.hostId } : {}),
+      ...(params.runId ? { runId: params.runId } : {}),
+    },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to list computer-use audit events");
 }

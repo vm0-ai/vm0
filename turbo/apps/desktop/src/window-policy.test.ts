@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { renderAccessibilityTree } from "./computer-use-accessibility";
+import {
+  buildComputerUseRuntimeBody,
+  resolveComputerUseApiBaseUrl,
+} from "./computer-use-host";
+import {
+  buildComputerUsePageHtml,
+  COMPUTER_USE_FEATURE_SWITCH_KEY,
+} from "./computer-use-page";
 import { resolveDesktopConfig } from "./config";
 import {
   buildDesktopAuthConsumeUrl,
@@ -327,5 +336,104 @@ describe("desktop auth", () => {
     expect(buildDesktopAuthConsumeUrl(platformUrl, code)).toBe(
       `https://app.vm0.ai/desktop-auth/consume?code=${code}`,
     );
+  });
+});
+
+describe("computer use desktop page", () => {
+  it("renders feature switch and permission state", () => {
+    const html = buildComputerUsePageHtml({
+      featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
+      permissions: { accessibility: true, screenRecording: false },
+      host: {
+        status: "online",
+        hostId: "host_123",
+        lastHeartbeatAt: "2026-05-19T00:00:00.000Z",
+        lastCommandAt: null,
+        lastError: null,
+        pendingApprovals: [
+          {
+            commandId: "cmd_123",
+            kind: "element.click",
+            app: "Safari",
+            createdAt: "2026-05-19T00:01:00.000Z",
+          },
+        ],
+        recentAuditEvents: [
+          {
+            commandId: "cmd_123",
+            kind: "element.click",
+            app: "Safari",
+            event: "created",
+            approvalOutcome: null,
+            createdAt: "2026-05-19T00:01:00.000Z",
+          },
+        ],
+      },
+    });
+
+    expect(html).toContain("Computer Use");
+    expect(html).toContain("computerUse");
+    expect(html).toContain("Accessibility");
+    expect(html).toContain("Screen Recording");
+    expect(html).toContain("Granted");
+    expect(html).toContain("Needs setup");
+    expect(html).toContain("host_123");
+    expect(html).toContain("Pending approvals");
+    expect(html).toContain("Recent command history");
+    expect(html).toContain("cmd_123");
+  });
+});
+
+describe("computer use desktop runtime", () => {
+  it("derives the API backend URL from platform URLs", () => {
+    expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm0.ai"))).toBe(
+      "https://api.vm0.ai",
+    );
+    expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm7.ai"))).toBe(
+      "https://api.vm7.ai",
+    );
+    expect(
+      resolveComputerUseApiBaseUrl(new URL("https://staging-app.vm6.ai")),
+    ).toBe("https://staging-api.vm6.ai");
+  });
+
+  it("serializes the Desktop host runtime body", () => {
+    expect(
+      buildComputerUseRuntimeBody({
+        displayName: "Zero Desktop",
+        appVersion: "0.1.0",
+        permissions: { accessibility: true, screenRecording: false },
+      }),
+    ).toMatchObject({
+      hostName: "Zero Desktop",
+      appVersion: "0.1.0",
+      permissions: { accessibility: true, screenRecording: false },
+    });
+  });
+
+  it("renders model-readable accessibility state", () => {
+    const text = renderAccessibilityTree({
+      app: "Safari",
+      snapshotId: "snap_1",
+      elements: [
+        {
+          id: "w0",
+          role: "AXWindow",
+          name: "Example",
+          children: [
+            {
+              id: "w0.e0",
+              role: "AXButton",
+              name: "Open",
+              actions: ["AXPress"],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(text).toContain("snapshot_id=snap_1");
+    expect(text).toContain('w0 AXWindow "Example"');
+    expect(text).toContain('w0.e0 AXButton "Open" actions=AXPress');
   });
 });

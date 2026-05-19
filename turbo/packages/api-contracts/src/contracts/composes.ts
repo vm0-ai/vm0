@@ -125,7 +125,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "connector:read": { group: "Connectors", label: "View connected services" },
     "computer-use:write": {
       group: "Computer Use",
-      label: "Control remote desktop",
+      label: "Control desktop apps",
     },
     "file:read": { group: "Files", label: "Download uploaded files" },
     "file:write": { group: "Files", label: "Upload files" },

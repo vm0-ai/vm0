@@ -1,77 +1,487 @@
 import { Command } from "commander";
-import { hostStartCommand, hostStopCommand } from "./host";
+import type {
+  ComputerUseAuditEvent,
+  ComputerUseCommandResponse,
+  ComputerUseReadCommandKind,
+  ComputerUseWriteCommandKind,
+} from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
-  clientScreenshotCommand,
-  clientZoomCommand,
-  clientInfoCommand,
-  clientLeftClickCommand,
-  clientRightClickCommand,
-  clientMiddleClickCommand,
-  clientDoubleClickCommand,
-  clientTripleClickCommand,
-  clientLeftClickDragCommand,
-  clientLeftMouseDownCommand,
-  clientLeftMouseUpCommand,
-  clientScrollCommand,
-  clientReadClipboardCommand,
-  clientWriteClipboardCommand,
-  clientKeyCommand,
-  clientHoldKeyCommand,
-  clientTypeCommand,
-  clientOpenAppCommand,
-  clientMouseMoveCommand,
-  clientCursorPositionCommand,
-} from "./client";
+  createComputerUseReadCommand,
+  createComputerUseWriteCommand,
+  deleteComputerUseHost,
+  getComputerUseCommand,
+  listComputerUseAuditEvents,
+  listComputerUseHosts,
+} from "../../../lib/api";
+import { withErrorHandler } from "../../../lib/command/with-error-handler";
 
-const hostCommand = new Command()
-  .name("host")
-  .description("Manage computer-use host daemon")
-  .addCommand(hostStartCommand)
-  .addCommand(hostStopCommand);
+interface ComputerUseCommandOptions {
+  readonly host?: string;
+  readonly hostId?: string;
+  readonly timeout?: string;
+}
 
-const clientCommand = new Command()
-  .name("client")
-  .description("Interact with remote computer-use host")
-  .addCommand(clientScreenshotCommand)
-  .addCommand(clientZoomCommand)
-  .addCommand(clientInfoCommand)
-  .addCommand(clientLeftClickCommand)
-  .addCommand(clientRightClickCommand)
-  .addCommand(clientMiddleClickCommand)
-  .addCommand(clientDoubleClickCommand)
-  .addCommand(clientTripleClickCommand)
-  .addCommand(clientLeftClickDragCommand)
-  .addCommand(clientLeftMouseDownCommand)
-  .addCommand(clientLeftMouseUpCommand)
-  .addCommand(clientScrollCommand)
-  .addCommand(clientReadClipboardCommand)
-  .addCommand(clientWriteClipboardCommand)
-  .addCommand(clientKeyCommand)
-  .addCommand(clientHoldKeyCommand)
-  .addCommand(clientTypeCommand)
-  .addCommand(clientOpenAppCommand)
-  .addCommand(clientMouseMoveCommand)
-  .addCommand(clientCursorPositionCommand);
+interface ComputerUseAppOptions extends ComputerUseCommandOptions {
+  readonly app: string;
+}
 
-clientCommand.addHelpText(
-  "after",
-  `
-Coordinate System:
-  All coordinates use macOS logical points, not physical pixels.
-  On Retina displays, logical size = physical size / scaleFactor.
-  Run "info" to check your screen's logical dimensions.
+interface ComputerUseClickOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
+  readonly element?: string;
+  readonly x?: string;
+  readonly y?: string;
+  readonly button?: "left" | "right" | "middle";
+  readonly clickCount?: string;
+}
 
-Examples:
-  zero computer-use client screenshot
-  zero computer-use client zoom --x 0 --y 0 --width 500 --height 500
-  zero computer-use client info
-  zero computer-use client left-click 500 300
-  zero computer-use client scroll 500 300 down 5
-  zero computer-use client key "cmd+c"`,
+interface ComputerUseScrollOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
+  readonly element: string;
+  readonly direction: "up" | "down" | "left" | "right";
+  readonly pages?: string;
+}
+
+interface ComputerUseSetValueOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
+  readonly element: string;
+  readonly value: string;
+}
+
+interface ComputerUsePerformActionOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
+  readonly element: string;
+  readonly action: string;
+}
+
+interface ComputerUseTypeTextOptions extends ComputerUseAppOptions {
+  readonly text: string;
+}
+
+interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
+  readonly key: string;
+}
+
+interface AuditListOptions {
+  readonly limit?: string;
+  readonly commandId?: string;
+  readonly hostId?: string;
+  readonly runId?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function parseTimeoutSeconds(value: string | undefined): number {
+  if (!value) return 30;
+  const seconds = Number.parseInt(value, 10);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error("Timeout must be a positive number of seconds");
+  }
+  return seconds;
+}
+
+function parseOptionalNonNegativeInteger(
+  value: string | undefined,
+  label: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return parsed;
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  label: string,
+): number {
+  if (value === undefined) {
+    throw new Error(`${label} is required`);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parsePositiveNumber(
+  value: string | undefined,
+  label: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive number`);
+  }
+  return parsed;
+}
+
+function parseMouseButton(
+  value: string | undefined,
+): "left" | "right" | "middle" {
+  if (value === "left" || value === "right" || value === "middle") {
+    return value;
+  }
+  throw new Error("button must be left, right, or middle");
+}
+
+function parseLimit(value: string | undefined): number {
+  if (value === undefined) {
+    return 50;
+  }
+  const parsed = parsePositiveInteger(value, "limit");
+  if (parsed > 200) {
+    throw new Error("limit must be 200 or less");
+  }
+  return parsed;
+}
+
+function resultText(command: ComputerUseCommandResponse): string {
+  if (!command.result) {
+    return "";
+  }
+  return JSON.stringify(command.result, null, 2);
+}
+
+async function waitForCommand(
+  commandId: string,
+  timeoutSeconds: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() <= deadline) {
+    const command = await getComputerUseCommand(commandId);
+    if (
+      command.status === "pending_approval" ||
+      command.status === "queued" ||
+      command.status === "running"
+    ) {
+      if (process.stdout.isTTY) {
+        process.stdout.write(".");
+      }
+      await sleep(1_000);
+      continue;
+    }
+
+    if (process.stdout.isTTY) {
+      process.stdout.write("\n");
+    }
+
+    if (command.status === "failed") {
+      throw new Error(
+        command.error
+          ? `${command.error.code}: ${command.error.message}`
+          : "Computer-use command failed",
+      );
+    }
+
+    const text = resultText(command);
+    if (text) {
+      console.log(text);
+    }
+    return;
+  }
+
+  throw new Error(`Computer-use command timed out: ${commandId}`);
+}
+
+async function runReadCommand(
+  kind: ComputerUseReadCommandKind,
+  options: ComputerUseCommandOptions,
+  payload: { readonly app?: string } = {},
+): Promise<void> {
+  const timeoutSeconds = parseTimeoutSeconds(options.timeout);
+  const created = await createComputerUseReadCommand({
+    kind,
+    timeoutMs: timeoutSeconds * 1000,
+    ...(options.host ? { hostName: options.host } : {}),
+    ...(options.hostId ? { hostId: options.hostId } : {}),
+    ...payload,
+  });
+  await waitForCommand(created.commandId, timeoutSeconds);
+}
+
+async function runWriteCommand(
+  kind: ComputerUseWriteCommandKind,
+  options: ComputerUseCommandOptions,
+  payload: {
+    readonly app: string;
+    readonly snapshotId?: string;
+    readonly elementId?: string;
+    readonly x?: number;
+    readonly y?: number;
+    readonly button?: "left" | "right" | "middle";
+    readonly clickCount?: number;
+    readonly direction?: "up" | "down" | "left" | "right";
+    readonly pages?: number;
+    readonly value?: string;
+    readonly text?: string;
+    readonly key?: string;
+    readonly action?: string;
+  },
+): Promise<void> {
+  const timeoutSeconds = parseTimeoutSeconds(options.timeout);
+  const created = await createComputerUseWriteCommand({
+    kind,
+    timeoutMs: timeoutSeconds * 1000,
+    ...(options.host ? { hostName: options.host } : {}),
+    ...(options.hostId ? { hostId: options.hostId } : {}),
+    ...payload,
+  });
+  await waitForCommand(created.commandId, timeoutSeconds);
+}
+
+function addTargetOptions(command: Command): Command {
+  return command
+    .option("--host <name>", "Run on a named computer-use host")
+    .option("--host-id <id>", "Run on a specific computer-use host id")
+    .option("--timeout <seconds>", "Maximum time to wait", "30");
+}
+
+function appOption(command: Command): Command {
+  return command.requiredOption("--app <name>", "Target app name or bundle id");
+}
+
+function formatAuditEvent(event: ComputerUseAuditEvent): string {
+  return [
+    `${event.createdAt} ${event.event} ${event.kind}`,
+    `command=${event.commandId}`,
+    event.hostId ? `host=${event.hostId}` : null,
+    event.app ? `app=${event.app}` : null,
+    event.approvalOutcome ? `approval=${event.approvalOutcome}` : null,
+  ]
+    .filter((part): part is string => {
+      return part !== null;
+    })
+    .join(" ");
+}
+
+const listAppsCommand = addTargetOptions(
+  new Command()
+    .name("list-apps")
+    .description("List apps available to the Desktop Computer Use host")
+    .action(
+      withErrorHandler(async (options: ComputerUseCommandOptions) => {
+        await runReadCommand("apps.list", options);
+      }),
+    ),
 );
+
+const getAppStateCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("get-app-state")
+      .description("Get screenshot and accessibility state for an app")
+      .action(
+        withErrorHandler(async (options: ComputerUseAppOptions) => {
+          await runReadCommand("app.state", options, { app: options.app });
+        }),
+      ),
+  ),
+);
+
+const clickCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("click")
+      .description("Click an accessibility element or screenshot coordinate")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
+      .option("--element <id>", "Element id from get-app-state")
+      .option("--x <points>", "Screenshot x coordinate fallback")
+      .option("--y <points>", "Screenshot y coordinate fallback")
+      .option("--button <button>", "Mouse button", "left")
+      .option("--click-count <count>", "Number of clicks", "1")
+      .action(
+        withErrorHandler(async (options: ComputerUseClickOptions) => {
+          const x = parseOptionalNonNegativeInteger(options.x, "x");
+          const y = parseOptionalNonNegativeInteger(options.y, "y");
+          await runWriteCommand("element.click", options, {
+            app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
+            ...(options.element ? { elementId: options.element } : {}),
+            ...(x !== undefined ? { x } : {}),
+            ...(y !== undefined ? { y } : {}),
+            button: parseMouseButton(options.button),
+            clickCount: parsePositiveInteger(options.clickCount, "click-count"),
+          });
+        }),
+      ),
+  ),
+);
+
+const scrollCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("scroll")
+      .description("Scroll an accessibility element")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
+      .requiredOption("--element <id>", "Element id from get-app-state")
+      .requiredOption(
+        "--direction <direction>",
+        "Scroll direction: up, down, left, or right",
+      )
+      .option("--pages <count>", "Number of pages to scroll", "1")
+      .action(
+        withErrorHandler(async (options: ComputerUseScrollOptions) => {
+          await runWriteCommand("element.scroll", options, {
+            app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
+            elementId: options.element,
+            direction: options.direction,
+            pages: parsePositiveNumber(options.pages, "pages"),
+          });
+        }),
+      ),
+  ),
+);
+
+const setValueCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("set-value")
+      .description("Set the value of a settable accessibility element")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
+      .requiredOption("--element <id>", "Element id from get-app-state")
+      .requiredOption("--value <text>", "Value to assign")
+      .action(
+        withErrorHandler(async (options: ComputerUseSetValueOptions) => {
+          await runWriteCommand("element.set_value", options, {
+            app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
+            elementId: options.element,
+            value: options.value,
+          });
+        }),
+      ),
+  ),
+);
+
+const typeTextCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("type-text")
+      .description("Type literal text into the target app")
+      .requiredOption("--text <text>", "Text to type")
+      .action(
+        withErrorHandler(async (options: ComputerUseTypeTextOptions) => {
+          await runWriteCommand("keyboard.type_text", options, {
+            app: options.app,
+            text: options.text,
+          });
+        }),
+      ),
+  ),
+);
+
+const pressKeyCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("press-key")
+      .description("Press a key or key combination in the target app")
+      .requiredOption("--key <key>", "Key or key combination to press")
+      .action(
+        withErrorHandler(async (options: ComputerUsePressKeyOptions) => {
+          await runWriteCommand("keyboard.press_key", options, {
+            app: options.app,
+            key: options.key,
+          });
+        }),
+      ),
+  ),
+);
+
+const performActionCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("perform-action")
+      .description("Invoke a secondary accessibility action")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
+      .requiredOption("--element <id>", "Element id from get-app-state")
+      .requiredOption("--action <name>", "Accessibility action name")
+      .action(
+        withErrorHandler(async (options: ComputerUsePerformActionOptions) => {
+          await runWriteCommand("element.perform_action", options, {
+            app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
+            elementId: options.element,
+            action: options.action,
+          });
+        }),
+      ),
+  ),
+);
+
+const openAppCommand = appOption(
+  addTargetOptions(
+    new Command()
+      .name("open-app")
+      .description("Open or activate an app on the Desktop host")
+      .action(
+        withErrorHandler(async (options: ComputerUseAppOptions) => {
+          await runWriteCommand("app.open", options, { app: options.app });
+        }),
+      ),
+  ),
+);
+
+const hostsCommand = new Command()
+  .name("hosts")
+  .description("List linked Desktop Computer Use hosts")
+  .action(
+    withErrorHandler(async () => {
+      const { hosts } = await listComputerUseHosts();
+      console.log(JSON.stringify({ hosts }, null, 2));
+    }),
+  );
+
+const revokeHostCommand = new Command()
+  .name("revoke-host")
+  .description("Revoke a linked Desktop Computer Use host")
+  .argument("<host-id>")
+  .action(
+    withErrorHandler(async (hostId: string) => {
+      await deleteComputerUseHost(hostId);
+      console.log(`Revoked computer-use host ${hostId}`);
+    }),
+  );
+
+const auditCommand = new Command()
+  .name("audit")
+  .description("List Desktop Computer Use write-command audit events")
+  .option("--limit <count>", "Maximum events to return", "50")
+  .option("--command-id <id>", "Filter by command id")
+  .option("--host-id <id>", "Filter by host id")
+  .option("--run-id <id>", "Filter by run id")
+  .action(
+    withErrorHandler(async (options: AuditListOptions) => {
+      const { auditEvents } = await listComputerUseAuditEvents({
+        limit: parseLimit(options.limit),
+        ...(options.commandId ? { commandId: options.commandId } : {}),
+        ...(options.hostId ? { hostId: options.hostId } : {}),
+        ...(options.runId ? { runId: options.runId } : {}),
+      });
+      for (const event of auditEvents) {
+        console.log(formatAuditEvent(event));
+      }
+    }),
+  );
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
-  .description("Remote desktop control for cloud agents")
-  .addCommand(hostCommand)
-  .addCommand(clientCommand);
+  .description("Desktop app computer use through Zero CLI")
+  .addCommand(listAppsCommand)
+  .addCommand(getAppStateCommand)
+  .addCommand(clickCommand)
+  .addCommand(scrollCommand)
+  .addCommand(setValueCommand)
+  .addCommand(typeTextCommand)
+  .addCommand(pressKeyCommand)
+  .addCommand(performActionCommand)
+  .addCommand(openAppCommand)
+  .addCommand(hostsCommand)
+  .addCommand(revokeHostCommand)
+  .addCommand(auditCommand);

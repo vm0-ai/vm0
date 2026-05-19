@@ -92,7 +92,7 @@ describe("computer-use command visibility", () => {
     expect(hiddenCommandNames(prog)).toContain("computer-use");
   });
 
-  it("should have host and client subcommands", () => {
+  it("should have Desktop-backed agent command subcommands", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
@@ -104,97 +104,17 @@ describe("computer-use command visibility", () => {
     const subNames = computerUse!.commands.map((c) => {
       return c.name();
     });
-    expect(subNames).toContain("host");
-    expect(subNames).toContain("client");
-  });
-
-  it("should have start and stop under host subcommand", () => {
-    const prog = new Command();
-    registerZeroCommands(prog);
-
-    const computerUse = prog.commands.find((c) => {
-      return c.name() === "computer-use";
-    });
-    const host = computerUse!.commands.find((c) => {
-      return c.name() === "host";
-    });
-    expect(host).toBeDefined();
-
-    const hostSubs = host!.commands.map((c) => {
-      return c.name();
-    });
-    expect(hostSubs).toContain("start");
-    expect(hostSubs).toContain("stop");
-  });
-
-  it("should have screenshot, info, mouse, scroll, clipboard, and keyboard commands under client subcommand", () => {
-    const prog = new Command();
-    registerZeroCommands(prog);
-
-    const computerUse = prog.commands.find((c) => {
-      return c.name() === "computer-use";
-    });
-    const client = computerUse!.commands.find((c) => {
-      return c.name() === "client";
-    });
-    expect(client).toBeDefined();
-
-    const clientSubs = client!.commands.map((c) => {
-      return c.name();
-    });
-    expect(clientSubs).toContain("screenshot");
-    expect(clientSubs).toContain("zoom");
-    expect(clientSubs).toContain("info");
-    expect(clientSubs).toContain("left-click-drag");
-    expect(clientSubs).toContain("left-mouse-down");
-    expect(clientSubs).toContain("left-mouse-up");
-    expect(clientSubs).toContain("scroll");
-    expect(clientSubs).toContain("read-clipboard");
-    expect(clientSubs).toContain("write-clipboard");
-    expect(clientSubs).toContain("key");
-    expect(clientSubs).toContain("hold-key");
-    expect(clientSubs).toContain("type");
-    expect(clientSubs).toContain("open-app");
-  });
-
-  it("should have mouse click commands under client subcommand", () => {
-    const prog = new Command();
-    registerZeroCommands(prog);
-
-    const computerUse = prog.commands.find((c) => {
-      return c.name() === "computer-use";
-    });
-    const client = computerUse!.commands.find((c) => {
-      return c.name() === "client";
-    });
-    expect(client).toBeDefined();
-
-    const clientSubs = client!.commands.map((c) => {
-      return c.name();
-    });
-    expect(clientSubs).toContain("left-click");
-    expect(clientSubs).toContain("right-click");
-    expect(clientSubs).toContain("middle-click");
-    expect(clientSubs).toContain("double-click");
-    expect(clientSubs).toContain("triple-click");
-  });
-
-  it("should have mouse-move and cursor-position under client subcommand", () => {
-    const prog = new Command();
-    registerZeroCommands(prog);
-
-    const computerUse = prog.commands.find((c) => {
-      return c.name() === "computer-use";
-    });
-    const client = computerUse!.commands.find((c) => {
-      return c.name() === "client";
-    });
-    expect(client).toBeDefined();
-
-    const clientSubs = client!.commands.map((c) => {
-      return c.name();
-    });
-    expect(clientSubs).toContain("mouse-move");
-    expect(clientSubs).toContain("cursor-position");
+    expect(subNames).toContain("list-apps");
+    expect(subNames).toContain("get-app-state");
+    expect(subNames).toContain("click");
+    expect(subNames).toContain("scroll");
+    expect(subNames).toContain("set-value");
+    expect(subNames).toContain("type-text");
+    expect(subNames).toContain("press-key");
+    expect(subNames).toContain("perform-action");
+    expect(subNames).toContain("open-app");
+    expect(subNames).toContain("hosts");
+    expect(subNames).toContain("revoke-host");
+    expect(subNames).toContain("audit");
   });
 });
