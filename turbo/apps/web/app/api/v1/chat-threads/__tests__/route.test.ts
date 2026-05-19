@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET as getThread } from "../[threadId]/route";
 import { GET as getMessages } from "../[threadId]/messages/route";
 import { POST as sendMessage } from "../messages/route";
 import {
@@ -16,10 +15,7 @@ import {
   insertTestChatThread,
   insertTestChatMessage,
 } from "../../../../../src/__tests__/db-test-seeders/agents";
-import {
-  createTestCliToken,
-  deleteTestCliToken,
-} from "../../../../../src/__tests__/db-test-seeders/auth";
+import { createTestCliToken } from "../../../../../src/__tests__/db-test-seeders/auth";
 import { updateOrgDefaultAgent } from "../../../../../src/__tests__/db-test-seeders/org";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
@@ -27,9 +23,6 @@ import { randomUUID } from "crypto";
 
 const context = testContext();
 
-const GET_THREAD_URL = (threadId: string) => {
-  return `http://localhost:3000/api/v1/chat-threads/${threadId}`;
-};
 const GET_MESSAGES_URL = (threadId: string) => {
   return `http://localhost:3000/api/v1/chat-threads/${threadId}/messages`;
 };
@@ -45,118 +38,6 @@ function bearerHeaders(secret: string) {
 async function mintApiKey(user: UserContext): Promise<string> {
   return createTestCliToken(user.userId, undefined, user.orgId);
 }
-
-describe("GET /api/v1/chat-threads/:threadId", () => {
-  let user: UserContext;
-  let threadId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    user = await context.setupUser();
-    const compose = await createTestCompose(uniqueId("v1-get-thread"));
-    const agentId = await getTestZeroAgentId(user.orgId, compose.name);
-    threadId = await insertTestChatThread(user.userId, agentId, "t");
-  });
-
-  it("returns 401 without API key", async () => {
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), { method: "GET" }),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 for opaque (non-vm0_pat_) bearer token", async () => {
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders("ak_unknown_opaque_secret"),
-      }),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 when PAT is revoked (row deleted)", async () => {
-    const token = await mintApiKey(user);
-    await deleteTestCliToken(token);
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 when PAT is expired", async () => {
-    const token = await createTestCliToken(
-      user.userId,
-      new Date(Date.now() - 1000),
-      user.orgId,
-    );
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 400 for malformed threadId before API key auth", async () => {
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL("not-a-uuid"), { method: "GET" }),
-    );
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error.code).toBe("BAD_REQUEST");
-    expect(body.error.message).toContain("threadId");
-  });
-
-  it("returns 403 for sandbox token auth", async () => {
-    const token = await generateSandboxToken(
-      user.userId,
-      randomUUID(),
-      user.orgId,
-    );
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 200 with thread detail when PAT owns thread", async () => {
-    const token = await mintApiKey(user);
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.id).toBe(threadId);
-    // agentId must NOT be exposed on the v1 contract
-    expect(body.agentId).toBeUndefined();
-    expect(body.title).toBe("t");
-    expect(body.createdAt).toBeDefined();
-    expect(body.updatedAt).toBeDefined();
-  });
-
-  it("returns 404 when thread belongs to another user", async () => {
-    const token = await mintApiKey(user);
-    const otherThreadId = randomUUID();
-    const res = await getThread(
-      createTestRequest(GET_THREAD_URL(otherThreadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(404);
-  });
-});
 
 describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   let user: UserContext;

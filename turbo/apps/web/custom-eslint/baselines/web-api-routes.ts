@@ -45,7 +45,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/test/telegram-mock/[botToken]/[method]/route.ts",
   "app/api/test/telegram-state/route.ts",
   "app/api/v1/chat-threads/[threadId]/messages/route.ts",
-  "app/api/v1/chat-threads/[threadId]/route.ts",
   "app/api/v1/chat-threads/messages/route.ts",
   "app/api/webhooks/agent/checkpoints/prepare-history/route.ts",
   "app/api/webhooks/agent/checkpoints/route.ts",

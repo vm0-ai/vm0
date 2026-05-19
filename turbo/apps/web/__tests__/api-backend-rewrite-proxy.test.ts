@@ -342,6 +342,26 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the v1 chat thread detail rewrite without shadowing sibling routes", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/v1/chat-threads/not-a-uuid"),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads/messages")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads")).toBe(false);
+  });
+
   it("matches the cron sync skills rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/sync-skills")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/cron/sync-skills/extra")).toBe(

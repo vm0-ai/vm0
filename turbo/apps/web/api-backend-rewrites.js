@@ -112,6 +112,10 @@ const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
 );
 const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
+const V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE =
+  "/api/v1/chat-threads/:threadId((?!messages$)[^/]+)";
+const V1_CHAT_THREAD_DETAIL_PATH_RE =
+  /^\/api\/v1\/chat-threads\/(?!messages$)[^/]+$/;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -315,6 +319,11 @@ export const API_BACKEND_REWRITES = [
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],
   ["/api/v1/audio/transcriptions", "/api/v1/audio/transcriptions"],
+  [
+    V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
+    "/api/v1/chat-threads/:threadId",
+    V1_CHAT_THREAD_DETAIL_PATH_RE,
+  ],
   [
     "/api/zero/connectors/stripe/cli-auth/sessions",
     "/api/zero/connectors/stripe/cli-auth/sessions",

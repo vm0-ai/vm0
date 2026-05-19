@@ -643,6 +643,17 @@ const ZERO_INSIGHTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/insights/extra",
   "/api/zero/insights/range",
 ] as const;
+const V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE =
+  "/api/v1/chat-threads/:threadId((?!messages$)[^/]+)";
+const V1_CHAT_THREAD_DETAIL_PATH =
+  "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000";
+const V1_CHAT_THREAD_DETAIL_INVALID_UUID_PATH =
+  "/api/v1/chat-threads/not-a-uuid";
+const V1_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS = [
+  "/api/v1/chat-threads/messages",
+  "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages",
+  "/api/v1/chat-threads",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -1562,6 +1573,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_INSIGHTS_RANGE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/insights/range",
+        },
+        {
+          source: V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/v1/chat-threads/:threadId",
         },
         {
           source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -3162,6 +3177,34 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match the v1 chat thread detail rewrite without shadowing sibling routes", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/v1/chat-threads/:threadId",
+    });
+
+    const matcher = getPathMatch(V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(V1_CHAT_THREAD_DETAIL_PATH)).toStrictEqual({
+      threadId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    expect(matcher(V1_CHAT_THREAD_DETAIL_INVALID_UUID_PATH)).toStrictEqual({
+      threadId: "not-a-uuid",
+    });
+    for (const pathname of V1_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero chat threads collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4682,6 +4725,16 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath("/api/zero/insights/extra")).toBe(
       false,
     );
+  });
+
+  it("should match the v1 chat thread detail route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(V1_CHAT_THREAD_DETAIL_PATH)).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(V1_CHAT_THREAD_DETAIL_INVALID_UUID_PATH),
+    ).toBe(true);
+    for (const pathname of V1_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should match the zero chat threads collection route for middleware pass-through", async () => {
