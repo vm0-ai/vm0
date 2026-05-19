@@ -2672,6 +2672,56 @@ mod tests {
         (state, state_tx)
     }
 
+    fn state_after_first_read(next_state: SandboxState) -> impl Fn() -> SandboxState {
+        let reads = std::sync::atomic::AtomicUsize::new(0);
+        move || {
+            if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                SandboxState::Running
+            } else {
+                next_state
+            }
+        }
+    }
+
+    #[test]
+    fn process_control_boundary_stop_after_reserve_releases_lease() {
+        let coordinator = ParkCoordinator::new();
+
+        let error = match FirecrackerSandbox::begin_process_control_boundary(
+            &coordinator,
+            state_after_first_read(SandboxState::Stopped),
+        ) {
+            Ok(_) => panic!("expected process control boundary to reject stopped state"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            GuestOperationStartError::NotRunning {
+                state: SandboxState::Stopped
+            }
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+    }
+
+    #[test]
+    fn process_control_boundary_crash_after_reserve_releases_lease() {
+        let coordinator = ParkCoordinator::new();
+
+        let error = match FirecrackerSandbox::begin_process_control_boundary(
+            &coordinator,
+            state_after_first_read(SandboxState::Crashed),
+        ) {
+            Ok(_) => panic!("expected process control boundary to reject crashed state"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, GuestOperationStartError::BackendCrashed);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+    }
+
     async fn send_process_control_result(
         stream: &mut UnixStream,
         request: RawMessage,
