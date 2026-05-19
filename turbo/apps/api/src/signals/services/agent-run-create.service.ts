@@ -1074,6 +1074,17 @@ async function resolveModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
+  if (args.modelProviderType === "vm0") {
+    const provider = await vm0ModelProviderEnvironment(
+      db,
+      args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
+    );
+    return provider?.concreteType &&
+      getFrameworkForType(provider.concreteType) === args.framework
+      ? provider
+      : null;
+  }
+
   const rows = await db
     .select({
       id: modelProviders.id,

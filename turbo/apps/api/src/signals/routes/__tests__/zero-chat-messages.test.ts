@@ -1162,6 +1162,84 @@ describe("POST /api/zero/chat/messages", () => {
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
   });
 
+  it("seeds default model-first policies before resolving explicit VM0 selection", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await removeComposeFrameworkApiKey(fixture);
+    await seedVm0Credits(fixture, 1000);
+    await seedVm0ApiKey(fixture, "claude-sonnet-4-6");
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "run with default seeded vm0 route",
+      modelSelection: {
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "claude-sonnet-4-6",
+      },
+    });
+    await clearAllDetached();
+
+    const [policy] = await writeDb
+      .select({
+        defaultProviderType: orgModelPolicies.defaultProviderType,
+        credentialScope: orgModelPolicies.credentialScope,
+        modelProviderId: orgModelPolicies.modelProviderId,
+      })
+      .from(orgModelPolicies)
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, fixture.orgId),
+          eq(orgModelPolicies.model, "claude-sonnet-4-6"),
+        ),
+      )
+      .limit(1);
+    expect(policy).toStrictEqual({
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+    });
+
+    const [run] = await writeDb
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, response.body.runId!))
+      .limit(1);
+    expect(run).toStrictEqual({
+      modelProvider: "vm0",
+      modelProviderId: null,
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    const [job] = await writeDb
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId!))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly billableFirewalls: readonly string[];
+      readonly modelUsageProvider: string | undefined;
+    };
+    expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_API_KEY: expect.any(String),
+      ANTHROPIC_MODEL: "claude-sonnet-4-6",
+    });
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      ANTHROPIC_API_KEY: executionContext.environment.ANTHROPIC_API_KEY,
+    });
+    expect(executionContext.billableFirewalls).toContain(
+      "model-provider:anthropic-api-key",
+    );
+    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
+  });
+
   it("passes explicit provider selection into the runner job context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1620,6 +1698,8 @@ describe("POST /api/zero/chat/messages", () => {
   it("normalizes legacy built-in first-run pins that still carry provider IDs", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
+    await seedVm0Credits(fixture, 1000);
+    await seedVm0ApiKey(fixture, "claude-opus-4-7");
 
     const first = await send({
       agentId: fixture.agentId,

@@ -381,19 +381,21 @@ async function promoteApiQueuedRunnerJob(
     readonly executionContext: StoredExecutionContext;
   },
 ): Promise<void> {
-  await globalThis.services.db.insert(runnerJobQueue).values({
-    runId,
-    runnerGroup: payload.runnerGroup,
-    profile: payload.profile,
-    sessionId: payload.sessionId,
-    executionContext: payload.executionContext,
-    expiresAt: new Date(Date.now() + QUEUE_TTL_MS),
-  });
+  await globalThis.services.db.transaction(async (tx) => {
+    await tx.insert(runnerJobQueue).values({
+      runId,
+      runnerGroup: payload.runnerGroup,
+      profile: payload.profile,
+      sessionId: payload.sessionId,
+      executionContext: payload.executionContext,
+      expiresAt: new Date(Date.now() + QUEUE_TTL_MS),
+    });
 
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({ runnerGroup: payload.runnerGroup })
-    .where(eq(agentRuns.id, runId));
+    await tx
+      .update(agentRuns)
+      .set({ runnerGroup: payload.runnerGroup })
+      .where(eq(agentRuns.id, runId));
+  });
 
   await notifyApiQueuedRunnerJob(runId, payload);
 }

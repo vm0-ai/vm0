@@ -86,7 +86,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
-async function ensureOrgModelPolicies(
+export async function ensureOrgModelPolicies(
   db: Db,
   orgId: string,
   userId: string,

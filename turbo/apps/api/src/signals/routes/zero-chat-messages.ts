@@ -49,6 +49,7 @@ import {
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { ensureOrgModelPolicies } from "../services/zero-model-policy.service";
 import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
@@ -889,6 +890,7 @@ async function resolveModelSelectionPin(params: {
     };
   }
 
+  await ensureOrgModelPolicies(db, orgId, userId);
   const [policy] = await db
     .select({
       model: orgModelPolicies.model,
