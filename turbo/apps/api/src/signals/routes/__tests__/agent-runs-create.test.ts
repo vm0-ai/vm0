@@ -738,6 +738,29 @@ describe("POST /api/agent/runs", () => {
     expect(response.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
   });
 
+  it("treats CONCURRENT_RUN_LIMIT_CAP=0 as unlimited", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+
+    await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "second" },
+      }),
+      [201],
+    );
+
+    expect(response.body.status).toBe("pending");
+  });
+
   it("does not count stale pending runs toward the concurrency limit", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });

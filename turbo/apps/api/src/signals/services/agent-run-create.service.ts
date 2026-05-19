@@ -134,6 +134,15 @@ const TIER_LIMITS = Object.freeze({
   team: 10,
 });
 
+function getEffectiveConcurrencyLimit(tier: keyof typeof TIER_LIMITS): number {
+  const tierLimit = TIER_LIMITS[tier];
+  const cap = env("CONCURRENT_RUN_LIMIT_CAP");
+  if (cap === 0) {
+    return 0;
+  }
+  return cap === undefined ? tierLimit : Math.min(tierLimit, cap);
+}
+
 const ORG_SENTINEL_USER_ID = "__org__";
 const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
 const PLATFORM_ENV_SECRET_NAMES = [
@@ -1769,7 +1778,10 @@ async function checkRunConcurrencyLimit(
   tx: Db,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const limit = TIER_LIMITS[await orgTier(tx, orgId)];
+  const limit = getEffectiveConcurrencyLimit(await orgTier(tx, orgId));
+  if (limit === 0) {
+    return null;
+  }
 
   const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
   const [activeResult] = await tx
