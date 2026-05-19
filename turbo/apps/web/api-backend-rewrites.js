@@ -148,6 +148,7 @@ const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
 const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
 const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPOSES_REWRITE_SOURCE = "/api/zero/composes";
+const ZERO_COMPOSES_LIST_REWRITE_SOURCE = "/api/zero/composes/list";
 const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
 const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/register";
@@ -444,6 +445,7 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_MESSAGES_PATH_RE,
   ],
   [ZERO_COMPOSES_REWRITE_SOURCE, "/api/zero/composes"],
+  [ZERO_COMPOSES_LIST_REWRITE_SOURCE, "/api/zero/composes/list"],
   [ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE, "/api/zero/computer-use/host"],
   [
     ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,

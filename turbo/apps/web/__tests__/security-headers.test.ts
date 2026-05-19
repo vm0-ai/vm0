@@ -681,6 +681,21 @@ const ZERO_COMPOSES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/composes/extra",
   "/api/zero/compose",
 ] as const;
+const ZERO_COMPOSES_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/composes/extra",
+  "/api/zero/compose",
+] as const;
+const ZERO_COMPOSES_LIST_REWRITE_SOURCE = "/api/zero/composes/list";
+const ZERO_COMPOSES_LIST_PATH = "/api/zero/composes/list";
+const ZERO_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/composes",
+  "/api/zero/composes/list/extra",
+  "/api/zero/composes/lists",
+] as const;
+const ZERO_COMPOSES_LIST_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/composes/list/extra",
+  "/api/zero/composes/lists",
+] as const;
 const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
 const ZERO_COMPUTER_USE_HOST_PATH = "/api/zero/computer-use/host";
 const ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS = [
@@ -1777,6 +1792,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_COMPOSES_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/composes",
+        },
+        {
+          source: ZERO_COMPOSES_LIST_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/composes/list",
         },
         {
           source: ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE,
@@ -3472,6 +3491,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_COMPOSES_PATH)).toStrictEqual({});
     for (const pathname of ZERO_COMPOSES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero composes list rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_COMPOSES_LIST_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_COMPOSES_LIST_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/composes/list",
+    });
+
+    const matcher = getPathMatch(ZERO_COMPOSES_LIST_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_COMPOSES_LIST_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_COMPOSES_LIST_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -5297,7 +5339,14 @@ describe("API backend rewrites", () => {
 
   it("should match the zero composes route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_COMPOSES_PATH)).toBe(true);
-    for (const pathname of ZERO_COMPOSES_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_COMPOSES_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero composes list route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_COMPOSES_LIST_PATH)).toBe(true);
+    for (const pathname of ZERO_COMPOSES_LIST_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

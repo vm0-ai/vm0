@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { randomUUID } from "crypto";
 import { PATCH } from "../route";
-import { GET as LIST } from "../../../list/route";
 import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { getTestZeroAgentMetadata } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
   uniqueId,
@@ -32,22 +32,11 @@ async function findComposeMetadata(composeId: string): Promise<{
   description: string | null;
   sound: string | null;
 }> {
-  const response = await LIST(
-    createTestRequest("http://localhost:3000/api/zero/composes/list"),
-  );
-  expect(response.status).toBe(200);
-  const data = await response.json();
-  const compose = data.composes.find((item: { id: string }) => {
-    return item.id === composeId;
-  });
+  const compose = await getTestZeroAgentMetadata(composeId);
   if (!compose) {
-    throw new Error(`Expected compose ${composeId} in list response`);
+    throw new Error(`Expected compose metadata for ${composeId}`);
   }
-  return {
-    displayName: compose.displayName,
-    description: compose.description,
-    sound: compose.sound,
-  };
+  return compose;
 }
 
 describe("PATCH /api/zero/composes/:id/metadata", () => {

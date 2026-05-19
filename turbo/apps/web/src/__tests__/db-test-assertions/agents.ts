@@ -25,6 +25,27 @@ export async function getTestZeroAgentId(
   return row.id;
 }
 
+export async function getTestZeroAgentMetadata(agentId: string): Promise<
+  | {
+      displayName: string | null;
+      description: string | null;
+      sound: string | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      displayName: zeroAgents.displayName,
+      description: zeroAgents.description,
+      sound: zeroAgents.sound,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return row;
+}
+
 // ---------------------------------------------------------------------------
 // Session / conversation assertions (migrated from api-test-helpers/agents.ts)
 // ---------------------------------------------------------------------------
