@@ -1,5 +1,6 @@
 import { type ProviderHandler } from "../provider-types";
 import {
+  CHATGPT_OAUTH_CLIENT_ID,
   buildChatgptAuthorizationUrl,
   exchangeChatgptCode,
   getChatgptRefreshSecretName,
@@ -10,9 +11,9 @@ import {
 /**
  * OAuth handler for the codex-oauth-token model provider type.
  *
- * The generic connector authorize endpoint still blocks `codex-oauth` so it
- * cannot create connector rows. Dedicated model-provider OAuth routes use this
- * handler to create `model_providers` rows with model-provider secrets.
+ * This is intentionally registered only as a model-provider OAuth handler, not
+ * as a connector handler. Dedicated model-provider OAuth routes use it to
+ * create `model_providers` rows with model-provider secrets.
  */
 export const codexOauthHandler: ProviderHandler = {
   buildAuthUrl: (clientId, redirectUri, state) => {
@@ -45,7 +46,7 @@ export const codexOauthHandler: ProviderHandler = {
   },
   refreshToken: refreshChatgptToken,
   getClientId: () => {
-    return "app_EMoamEEZ73f0CkXaXp7hrann";
+    return CHATGPT_OAUTH_CLIENT_ID;
   },
   getClientSecret: () => {
     return undefined;

@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
-const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+export const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_ISSUER = "https://auth.openai.com";
 
-const AUTHORIZATION_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/authorize`;
-const TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
-const CHATGPT_OAUTH_SCOPES = [
+export const CHATGPT_OAUTH_AUTHORIZATION_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/authorize`;
+export const CHATGPT_OAUTH_TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
+export const CHATGPT_OAUTH_SCOPES = [
   "openid",
   "profile",
   "email",
@@ -236,7 +236,7 @@ export async function buildChatgptAuthorizationUrl(
   });
 
   return {
-    url: `${AUTHORIZATION_URL}?${params.toString()}`,
+    url: `${CHATGPT_OAUTH_AUTHORIZATION_URL}?${params.toString()}`,
     codeVerifier,
   };
 }
@@ -247,7 +247,7 @@ export async function exchangeChatgptCode(
   redirectUri: string,
   codeVerifier: string,
 ): Promise<ChatgptOAuthResult> {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -290,7 +290,7 @@ export async function refreshChatgptToken(
   _clientSecret: string,
   refreshToken: string,
 ): Promise<ChatgptRefreshResult> {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
