@@ -419,6 +419,21 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).toContain("host:write");
     });
 
+    it("should include resolved feature switches in zero tokens", async () => {
+      mockIsFeatureEnabled.mockImplementation((flag) => {
+        return flag === FeatureSwitchKey.HostedSites;
+      });
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.featureSwitches).toMatchObject({
+        [FeatureSwitchKey.ComputerUse]: false,
+        [FeatureSwitchKey.LocalBrowserUse]: false,
+        [FeatureSwitchKey.HostedSites]: true,
+      });
+    });
+
     it("should include file:read and file:write capabilities by default", async () => {
       mockIsFeatureEnabled.mockReturnValue(false);
 
