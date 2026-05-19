@@ -357,6 +357,15 @@ const TEST_SLACK_MOCK_AUTH_TEST_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-mock/auth",
   "/api/test/slack-mock/auth.tests",
 ] as const;
+const TEST_SLACK_MOCK_CHAT_POST_MESSAGE_REWRITE_SOURCE =
+  "/api/test/slack-mock/chat.postMessage";
+const TEST_SLACK_MOCK_CHAT_POST_MESSAGE_PATH =
+  "/api/test/slack-mock/chat.postMessage";
+const TEST_SLACK_MOCK_CHAT_POST_MESSAGE_NEXT_NEGATIVE_PATHS = [
+  "/api/test/slack-mock/chat.postMessage/extra",
+  "/api/test/slack-mock/chat.post",
+  "/api/test/slack-mock/chat.postMessages",
+] as const;
 const CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_PATH = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_NEXT_NEGATIVE_PATHS = [
@@ -1361,6 +1370,11 @@ describe("API backend rewrites", () => {
         {
           source: TEST_SLACK_MOCK_AUTH_TEST_REWRITE_SOURCE,
           destination: "https://api.example.test/api/test/slack-mock/auth.test",
+        },
+        {
+          source: TEST_SLACK_MOCK_CHAT_POST_MESSAGE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/slack-mock/chat.postMessage",
         },
         {
           source: CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE,
@@ -3245,6 +3259,33 @@ describe("API backend rewrites", () => {
 
     expect(matcher(TEST_SLACK_MOCK_AUTH_TEST_PATH)).toStrictEqual({});
     for (const pathname of TEST_SLACK_MOCK_AUTH_TEST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact test Slack chat.postMessage mock rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_SLACK_MOCK_CHAT_POST_MESSAGE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_SLACK_MOCK_CHAT_POST_MESSAGE_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/test/slack-mock/chat.postMessage",
+    });
+
+    const matcher = getPathMatch(
+      TEST_SLACK_MOCK_CHAT_POST_MESSAGE_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(TEST_SLACK_MOCK_CHAT_POST_MESSAGE_PATH)).toStrictEqual({});
+    for (const pathname of TEST_SLACK_MOCK_CHAT_POST_MESSAGE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

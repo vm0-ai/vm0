@@ -301,6 +301,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test Slack chat.postMessage mock rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/chat.postMessage"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/chat.postMessage/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/chat.post")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/chat.postMessages"),
+    ).toBe(false);
+  });
+
   it("matches the cron aggregate insights rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-insights")).toBe(
       true,
