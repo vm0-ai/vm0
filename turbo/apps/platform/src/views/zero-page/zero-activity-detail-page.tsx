@@ -417,6 +417,11 @@ const SANDBOX_REUSE_LABELS = {
     label: "Not reused",
     description: "Idle pool entry exists but its profile does not match.",
   },
+  deviceLimitMismatch: {
+    label: "Not reused",
+    description:
+      "Idle pool entry exists but its device rate limiter state does not match.",
+  },
   unparkFailed: {
     label: "Not reused",
     description: "Unpark attempt failed; a fresh sandbox was provisioned.",

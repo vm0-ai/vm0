@@ -93,9 +93,20 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         return;
     };
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+    let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
+        ctx.spawn_ctx.device_rate_limits.as_ref(),
+        &context,
+    );
 
-    let (reuse_entry, active_lease, reuse_result, idle_snapshot) =
-        try_reuse_from_pool(run_id, &profile_name, &context, job_lease, &mut ctx).await;
+    let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
+        run_id,
+        &profile_name,
+        &device_rate_limits,
+        &context,
+        job_lease,
+        &mut ctx,
+    )
+    .await;
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
     // its original identity; on a fresh create, allocate a new UUID for the
@@ -116,6 +127,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         memory_mb: job_memory,
         budget_lease: active_lease,
         restore_guest_state: *restore_guest_state,
+        device_rate_limits,
         factory: Arc::clone(factory),
         cancel: job_cancel,
     };
@@ -133,6 +145,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
 async fn try_reuse_from_pool(
     run_id: RunId,
     profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     context: &ExecutionContext,
     job_lease: BudgetLease,
     ctx: &mut DiscoveredJobContext<'_>,
@@ -155,38 +168,62 @@ async fn try_reuse_from_pool(
         (taken, snapshot)
     };
     match taken {
-        Some(entry) if entry.profile_name() == profile_name => match entry.try_unpark().await {
-            IdleUnparkResult::Reused {
-                sandbox,
-                budget_lease,
-            } => {
-                info!(
-                    run_id = %run_id,
-                    session_id,
-                    "reusing idle VM for session"
-                );
-                // Idle entry already holds budget. Drop the speculative
-                // fresh-job lease and move the idle lease to the outer job
-                // task before handing the sandbox to the executor.
-                drop(job_lease);
-                (
-                    Some(sandbox),
+        Some(entry)
+            if entry.profile_name() == profile_name
+                && entry.device_rate_limits() == device_rate_limits =>
+        {
+            match entry.try_unpark().await {
+                IdleUnparkResult::Reused {
+                    sandbox,
                     budget_lease,
-                    SandboxReuseResult::Reused,
-                    snapshot,
-                )
+                } => {
+                    info!(
+                        run_id = %run_id,
+                        session_id,
+                        "reusing idle VM for session"
+                    );
+                    // Idle entry already holds budget. Drop the speculative
+                    // fresh-job lease and move the idle lease to the outer job
+                    // task before handing the sandbox to the executor.
+                    drop(job_lease);
+                    (
+                        Some(sandbox),
+                        budget_lease,
+                        SandboxReuseResult::Reused,
+                        snapshot,
+                    )
+                }
+                IdleUnparkResult::Failed { destroy_job, error } => {
+                    warn!(
+                        run_id = %run_id,
+                        session_id,
+                        error = %error,
+                        "unpark failed, destroying idle VM and falling through to fresh create"
+                    );
+                    spawn_idle_destroy_job(ctx.destroy_tasks, destroy_job, "reuse_unpark_failed");
+                    (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
+                }
             }
-            IdleUnparkResult::Failed { destroy_job, error } => {
-                warn!(
-                    run_id = %run_id,
-                    session_id,
-                    error = %error,
-                    "unpark failed, destroying idle VM and falling through to fresh create"
-                );
-                spawn_idle_destroy_job(ctx.destroy_tasks, destroy_job, "reuse_unpark_failed");
-                (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
-            }
-        },
+        }
+        Some(stale) if stale.profile_name() == profile_name => {
+            info!(
+                run_id = %run_id,
+                session_id,
+                profile = %profile_name,
+                "idle VM device rate limiter mismatch, destroying"
+            );
+            spawn_idle_destroy_job(
+                ctx.destroy_tasks,
+                stale.into_destroy_job(),
+                "reuse_device_limit_mismatch",
+            );
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::DeviceLimitMismatch,
+                snapshot,
+            )
+        }
         Some(stale) => {
             info!(
                 run_id = %run_id,

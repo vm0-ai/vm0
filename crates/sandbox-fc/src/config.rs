@@ -26,8 +26,6 @@ pub struct FirecrackerConfig {
     pub dns_port: Option<u16>,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore instead of fresh boot.
     pub snapshot: Option<SnapshotConfig>,
-    /// Optional Firecracker device rate limiters for sandboxes created by this factory.
-    pub device_rate_limits: Option<FirecrackerDeviceRateLimits>,
 }
 
 /// Snapshot restore artifacts and bind-path metadata for Firecracker.

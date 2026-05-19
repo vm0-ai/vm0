@@ -249,6 +249,7 @@ mod tests {
                 session_id: "sess-panic".into(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default".into(),
+                device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
@@ -277,6 +278,7 @@ mod tests {
                     cpu_count: 2,
                     memory_mb: 4096,
                 },
+                device_rate_limits: None,
             })
             .await
             .expect("create sandbox");
@@ -293,6 +295,7 @@ mod tests {
                 session_id: "sess-stop-panic".into(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default".into(),
+                device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),

@@ -107,6 +107,7 @@ export const sandboxReuseResultSchema = z.enum([
   "noSessionId",
   "poolMiss",
   "profileMismatch",
+  "deviceLimitMismatch",
   "unparkFailed",
 ]);
 

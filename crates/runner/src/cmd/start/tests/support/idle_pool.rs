@@ -16,6 +16,7 @@ fn make_synthetic_parked_candidate(
         session_id: session_id.into(),
         sandbox_id: SandboxId::new_v4(),
         profile_name: profile_name.into(),
+        device_rate_limits: None,
         budget_lease,
         source_ip: "10.0.0.1".into(),
         storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
@@ -60,7 +61,6 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
             rootfs_path: PathBuf::new(),
             base_dir: PathBuf::new(),
             snapshot: None,
-            device_rate_limits: None,
         })
         .await
         .expect("create factory");
@@ -73,6 +73,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
                 cpu_count: vcpu,
                 memory_mb,
             },
+            device_rate_limits: None,
         })
         .await
         .expect("create sandbox");
@@ -87,6 +88,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
             session_id: session_id.to_string(),
             sandbox_id,
             profile_name: profile_name.into(),
+            device_rate_limits: None,
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),

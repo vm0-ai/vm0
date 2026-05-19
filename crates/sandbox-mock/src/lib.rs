@@ -287,6 +287,8 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of create results consumed by every factory built with
     /// these overrides. Empty queue → default Ok(()).
     create_results: Mutex<VecDeque<Result<()>>>,
+    /// Sandbox create configs observed across factories built with these overrides.
+    create_configs: Mutex<Vec<SandboxConfig>>,
     /// FIFO queue of start results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     start_results: Mutex<VecDeque<Result<()>>>,
@@ -327,6 +329,7 @@ impl MockSandboxOverrides {
             wait_exit_gate: None,
             wait_exit_error: None,
             create_results: Mutex::new(VecDeque::new()),
+            create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
             stop_behaviors: Mutex::new(VecDeque::new()),
             park_behaviors: Mutex::new(VecDeque::new()),
@@ -377,6 +380,10 @@ impl MockSandboxOverrides {
     /// empty queue → default Ok(()).
     pub fn push_create_result(&self, result: Result<()>) {
         self.create_results.lock_ignoring_poison().push_back(result);
+    }
+
+    pub fn create_configs(&self) -> Vec<SandboxConfig> {
+        self.create_configs.lock_ignoring_poison().clone()
     }
 
     /// Queue a `start()` result applied to the next factory-created sandbox.
@@ -997,6 +1004,12 @@ impl SandboxFactory for MockSandboxFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
+        if let Some(overrides) = &self.overrides {
+            overrides
+                .create_configs
+                .lock_ignoring_poison()
+                .push(config.clone());
+        }
         if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
         } else if let Some(overrides) = &self.overrides
@@ -1224,6 +1237,7 @@ mod tests {
                 cpu_count: 2,
                 memory_mb: 1024,
             },
+            device_rate_limits: None,
         }
     }
 
@@ -1235,7 +1249,6 @@ mod tests {
             rootfs_path: "/rootfs/test".into(),
             base_dir: "/tmp/test".into(),
             snapshot: None,
-            device_rate_limits: None,
         }
     }
 
@@ -2362,7 +2375,6 @@ mod tests {
             rootfs_path: "/rootfs/test".into(),
             base_dir: "/tmp/test".into(),
             snapshot: None,
-            device_rate_limits: None,
         };
         let mut factory = runtime.create_factory(factory_config).await.unwrap();
         assert_eq!(factory.name(), "mock");

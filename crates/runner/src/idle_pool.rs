@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
-use sandbox::{Sandbox, SandboxFactory, SandboxId};
+use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
@@ -162,6 +162,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) session_id: String,
     pub(crate) sandbox_id: SandboxId,
     pub(crate) profile_name: String,
+    pub(crate) device_rate_limits: Option<DeviceRateLimits>,
     pub(crate) budget_lease: BudgetLease,
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
@@ -182,6 +183,7 @@ pub struct ParkedIdleCandidate {
     /// doctor / kill / workspace-dir naming.
     sandbox_id: SandboxId,
     profile_name: String,
+    device_rate_limits: Option<DeviceRateLimits>,
     budget_lease: BudgetLease,
     source_ip: String,
     /// Version fingerprints of storages downloaded in the previous turn.
@@ -196,6 +198,7 @@ pub(crate) struct SyntheticParkedIdleCandidateParts {
     pub session_id: String,
     pub sandbox_id: SandboxId,
     pub profile_name: String,
+    pub device_rate_limits: Option<DeviceRateLimits>,
     pub budget_lease: BudgetLease,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
@@ -234,6 +237,7 @@ impl IdleParkRequest {
             session_id,
             sandbox_id,
             profile_name,
+            device_rate_limits,
             budget_lease,
             source_ip,
             storage_fingerprints,
@@ -246,6 +250,7 @@ impl IdleParkRequest {
                 session_id,
                 sandbox_id,
                 profile_name,
+                device_rate_limits,
                 budget_lease,
                 source_ip,
                 storage_fingerprints,
@@ -296,6 +301,7 @@ impl ParkedIdleCandidate {
             session_id: parts.session_id,
             sandbox_id: parts.sandbox_id,
             profile_name: parts.profile_name,
+            device_rate_limits: parts.device_rate_limits,
             budget_lease: parts.budget_lease,
             source_ip: parts.source_ip,
             storage_fingerprints: parts.storage_fingerprints,
@@ -318,6 +324,7 @@ impl ParkedIdleCandidate {
             session_id,
             sandbox_id,
             profile_name,
+            device_rate_limits,
             budget_lease,
             source_ip,
             storage_fingerprints,
@@ -329,6 +336,7 @@ impl ParkedIdleCandidate {
             session_id,
             sandbox_id,
             profile_name,
+            device_rate_limits,
             budget_lease,
             source_ip,
             parked_at,
@@ -376,6 +384,7 @@ pub struct IdleEntry {
     session_id: String,
     sandbox_id: SandboxId,
     profile_name: String,
+    device_rate_limits: Option<DeviceRateLimits>,
     budget_lease: BudgetLease,
     source_ip: String,
     parked_at: Instant,
@@ -553,6 +562,10 @@ pub enum IdleUnparkResult {
 impl IdleEntry {
     pub fn profile_name(&self) -> &str {
         &self.profile_name
+    }
+
+    pub fn device_rate_limits(&self) -> &Option<DeviceRateLimits> {
+        &self.device_rate_limits
     }
 
     #[cfg(test)]
@@ -873,6 +886,7 @@ mod tests {
             session_id: session_id.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
+            device_rate_limits: None,
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -912,6 +926,7 @@ mod tests {
                     cpu_count: budget_lease.vcpu(),
                     memory_mb: budget_lease.memory_mb(),
                 },
+                device_rate_limits: None,
             })
             .await
             .expect("create sandbox");
@@ -921,6 +936,7 @@ mod tests {
             session_id: session_id.into(),
             sandbox_id,
             profile_name: "vm0/default".into(),
+            device_rate_limits: None,
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
@@ -964,6 +980,7 @@ mod tests {
                     cpu_count: budget_lease.vcpu(),
                     memory_mb: budget_lease.memory_mb(),
                 },
+                device_rate_limits: None,
             })
             .await
             .expect("create sandbox");
@@ -984,6 +1001,7 @@ mod tests {
             session_id: session_id.into(),
             sandbox_id,
             profile_name: profile_name.into(),
+            device_rate_limits: None,
             budget_lease,
             source_ip: source_ip.into(),
             storage_fingerprints,

@@ -858,15 +858,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         test_observer,
     } = config;
 
-    let mut factories = start_factories(
-        &profiles,
-        &firecracker,
-        &base_dir,
-        &home,
-        runtime.as_mut(),
-        device_rate_limits,
-    )
-    .await?;
+    let mut factories =
+        start_factories(&profiles, &firecracker, &base_dir, &home, runtime.as_mut()).await?;
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
@@ -972,6 +965,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
+        device_rate_limits: device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]

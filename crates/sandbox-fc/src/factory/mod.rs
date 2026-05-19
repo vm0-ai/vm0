@@ -13,7 +13,7 @@ use sandbox::{
 };
 use tracing::{info, warn};
 
-use crate::config::FirecrackerConfig;
+use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::factory::create_transaction::{
@@ -24,7 +24,7 @@ use crate::factory::leak_cleaner::LeakCleaner;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{FactoryPaths, RuntimePaths, SockPaths};
 use crate::prerequisites;
-use crate::sandbox::FirecrackerSandbox;
+use crate::sandbox::{FirecrackerSandbox, FirecrackerSandboxInit};
 
 pub(crate) use cow_cleanup::cow_destroy_retry_policy;
 pub(crate) use invariant::InvariantConfig;
@@ -221,6 +221,7 @@ impl SandboxFactory for FirecrackerFactory {
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
         let resources = self.resources()?;
+        let device_rate_limits = convert_device_rate_limits(config.device_rate_limits.as_ref())?;
         let leak_tx = resources.leak_cleaner.sender();
         let id = config.id.to_string();
         let rollback_cleanup = FactoryCreateRollbackCleanup {
@@ -320,15 +321,16 @@ impl SandboxFactory for FirecrackerFactory {
 
         info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
 
-        let sandbox = FirecrackerSandbox::new(
+        let sandbox = FirecrackerSandbox::new(FirecrackerSandboxInit {
             config,
-            self.config.clone(),
+            factory_config: self.config.clone(),
             sandbox_paths,
             sock_paths,
             network,
             cow_device,
+            device_rate_limits,
             leak_tx,
-        );
+        });
 
         Ok(Box::new(sandbox))
     }
@@ -392,6 +394,17 @@ impl SandboxFactory for FirecrackerFactory {
 
         info!("factory shutdown complete");
     }
+}
+
+fn convert_device_rate_limits(
+    limits: Option<&sandbox::DeviceRateLimits>,
+) -> sandbox::Result<Option<FirecrackerDeviceRateLimits>> {
+    limits
+        .map(FirecrackerDeviceRateLimits::try_from)
+        .transpose()
+        .map_err(|message| SandboxError::Configuration {
+            message: format!("device_rate_limits: {message}"),
+        })
 }
 
 async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool: NetnsPoolHandle) {
@@ -522,7 +535,6 @@ mod tests {
             proxy_port: None,
             dns_port: None,
             snapshot: None,
-            device_rate_limits: None,
         }
     }
 
@@ -614,6 +626,7 @@ mod tests {
                 cpu_count: 1,
                 memory_mb: 512,
             },
+            device_rate_limits: None,
         };
 
         let err = match factory.create(config).await {
@@ -646,6 +659,7 @@ mod tests {
                 cpu_count: 1,
                 memory_mb: 512,
             },
+            device_rate_limits: None,
         };
         let err = match factory.create(config).await {
             Ok(_) => panic!("create should fail after shutdown"),

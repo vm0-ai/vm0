@@ -382,6 +382,7 @@ mod tests {
                     session_id: session_id.into(),
                     sandbox_id,
                     profile_name: "vm0/default".into(),
+                    device_rate_limits: None,
                     budget_lease: lease,
                     source_ip: "10.0.0.1".into(),
                     storage_fingerprints: StorageFingerprints::default(),

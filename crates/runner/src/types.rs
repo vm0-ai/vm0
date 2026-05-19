@@ -322,6 +322,7 @@ pub enum SandboxReuseResult {
     NoSessionId,
     PoolMiss,
     ProfileMismatch,
+    DeviceLimitMismatch,
     UnparkFailed,
 }
 
@@ -334,6 +335,7 @@ impl SandboxReuseResult {
             Self::NoSessionId => "noSessionId",
             Self::PoolMiss => "poolMiss",
             Self::ProfileMismatch => "profileMismatch",
+            Self::DeviceLimitMismatch => "deviceLimitMismatch",
             Self::UnparkFailed => "unparkFailed",
         }
     }
@@ -602,6 +604,10 @@ mod tests {
             serde_json::json!("profileMismatch"),
         );
         assert_eq!(
+            serde_json::to_value(SandboxReuseResult::DeviceLimitMismatch).unwrap(),
+            serde_json::json!("deviceLimitMismatch"),
+        );
+        assert_eq!(
             serde_json::to_value(SandboxReuseResult::UnparkFailed).unwrap(),
             serde_json::json!("unparkFailed"),
         );
@@ -616,6 +622,7 @@ mod tests {
             SandboxReuseResult::NoSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::DeviceLimitMismatch,
             SandboxReuseResult::UnparkFailed,
         ] {
             assert_eq!(

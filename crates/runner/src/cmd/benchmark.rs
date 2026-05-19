@@ -152,6 +152,7 @@ pub async fn run_benchmark(
             cpu_count: profile_config.vcpu,
             memory_mb: profile_config.memory_mb,
         },
+        device_rate_limits: None,
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
@@ -485,7 +486,6 @@ mod tests {
             rootfs_path: PathBuf::from("/rootfs.ext4"),
             base_dir: PathBuf::from("/tmp/vm0-test"),
             snapshot: None,
-            device_rate_limits: None,
         }
     }
 }

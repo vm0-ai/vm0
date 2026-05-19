@@ -41,6 +41,7 @@ pub(super) struct JobProfile {
     pub(super) memory_mb: u32,
     pub(super) budget_lease: BudgetLease,
     pub(super) restore_guest_state: bool,
+    pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: SharedFactory,
     pub(super) cancel: CancellationToken,
 }
@@ -61,6 +62,7 @@ pub(super) struct SpawnContext {
     /// This eliminates the up-to-10s blind spot where the server doesn't know
     /// which runner holds a newly-parked session.
     pub(super) park_notify: Arc<tokio::sync::Notify>,
+    pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -99,7 +101,9 @@ pub(super) fn spawn_job(
         vcpu,
         memory_mb,
         restore_guest_state: job_profile.restore_guest_state,
+        device_rate_limits: job_profile.device_rate_limits.clone(),
     };
+    let job_device_rate_limits = params.device_rate_limits.clone();
 
     let storage_fingerprints = context
         .storage_manifest
@@ -267,6 +271,7 @@ pub(super) fn spawn_job(
                     source_ip,
                     network_log_session,
                     storage_fingerprints,
+                    device_rate_limits: job_device_rate_limits,
                     factory: factory_for_cleanup,
                     idle_pool,
                     status: Arc::clone(&status),
@@ -634,6 +639,7 @@ mod tests {
                 session_id: "sess-idle-owned-cleanup".into(),
                 sandbox_id,
                 profile_name: "vm0/default".into(),
+                device_rate_limits: None,
                 budget_lease: lease,
                 source_ip: "10.0.0.1".into(),
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),

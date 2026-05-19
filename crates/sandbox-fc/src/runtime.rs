@@ -8,7 +8,7 @@ use sandbox::{
 
 use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 
-use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits, SnapshotConfig};
+use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::factory::FirecrackerFactory;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
@@ -65,7 +65,6 @@ impl FirecrackerRuntime {
 
     fn to_firecracker_config(&self, config: FactoryConfig) -> sandbox::Result<FirecrackerConfig> {
         let snapshot = config.snapshot.map(|s| Self::resolve_snapshot(&s));
-        let device_rate_limits = convert_device_rate_limits(config.device_rate_limits.as_ref())?;
         Ok(FirecrackerConfig {
             binary_path: config.binary_path,
             kernel_path: config.kernel_path,
@@ -75,7 +74,6 @@ impl FirecrackerRuntime {
             proxy_port: self.proxy_port,
             dns_port: self.dns_port,
             snapshot,
-            device_rate_limits,
         })
     }
 
@@ -92,17 +90,6 @@ impl FirecrackerRuntime {
             vsock_bind_dir: sock.vsock_dir(),
         }
     }
-}
-
-fn convert_device_rate_limits(
-    limits: Option<&sandbox::DeviceRateLimits>,
-) -> sandbox::Result<Option<FirecrackerDeviceRateLimits>> {
-    limits
-        .map(FirecrackerDeviceRateLimits::try_from)
-        .transpose()
-        .map_err(|message| SandboxError::Configuration {
-            message: format!("device_rate_limits: {message}"),
-        })
 }
 
 #[async_trait]
@@ -144,53 +131,5 @@ impl RuntimeProvider for FirecrackerRuntimeProvider {
         config: sandbox::RuntimeConfig,
     ) -> sandbox::Result<Box<dyn SandboxRuntime>> {
         Ok(Box::new(FirecrackerRuntime::new(config).await?))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn valid_device_rate_limits() -> sandbox::DeviceRateLimits {
-        sandbox::DeviceRateLimits {
-            block: sandbox::BlockRateLimits {
-                bandwidth_bytes_per_sec: 100 * 1024 * 1024,
-                ops_per_sec: 10_000,
-            },
-            network: sandbox::NetworkRateLimits {
-                rx_bytes_per_sec: 50 * 1024 * 1024,
-                tx_bytes_per_sec: 25 * 1024 * 1024,
-            },
-        }
-    }
-
-    #[test]
-    fn convert_device_rate_limits_accepts_absent_limits() {
-        let converted = convert_device_rate_limits(None).unwrap();
-
-        assert_eq!(converted, None);
-    }
-
-    #[test]
-    fn convert_device_rate_limits_accepts_positive_limits() {
-        let limits = valid_device_rate_limits();
-        let converted = convert_device_rate_limits(Some(&limits)).unwrap();
-
-        assert!(converted.is_some());
-    }
-
-    #[test]
-    fn convert_device_rate_limits_rejects_zero_rate_as_configuration_error() {
-        let mut limits = valid_device_rate_limits();
-        limits.network.tx_bytes_per_sec = 0;
-
-        let err = convert_device_rate_limits(Some(&limits)).unwrap_err();
-
-        let SandboxError::Configuration { message } = err else {
-            panic!("expected configuration error");
-        };
-        assert!(message.contains("device_rate_limits"));
-        assert!(message.contains("network tx_bytes_per_sec"));
-        assert!(message.contains("positive"));
     }
 }

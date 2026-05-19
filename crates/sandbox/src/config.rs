@@ -99,6 +99,7 @@ pub struct DeviceRateLimits {
 ///
 /// Factory-wide configuration belongs in [`FactoryConfig`]; these values are
 /// chosen for each individual sandbox lifecycle.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SandboxConfig {
     /// Sandbox lifecycle identity.
     ///
@@ -107,6 +108,8 @@ pub struct SandboxConfig {
     pub id: SandboxId,
     /// Requested resource limits for this sandbox.
     pub resources: ResourceLimits,
+    /// Optional provider-neutral I/O limits to apply to this sandbox.
+    pub device_rate_limits: Option<DeviceRateLimits>,
 }
 
 /// Reference to a pre-built snapshot for fast VM boot.
@@ -132,8 +135,6 @@ pub struct FactoryConfig {
     pub base_dir: PathBuf,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore.
     pub snapshot: Option<SnapshotRef>,
-    /// Optional provider-neutral I/O limits to apply to every sandbox created by this factory.
-    pub device_rate_limits: Option<DeviceRateLimits>,
 }
 
 /// Runtime-wide configuration used to initialize shared backend resources.

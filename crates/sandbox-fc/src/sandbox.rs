@@ -564,6 +564,8 @@ pub struct FirecrackerSandbox {
     pub(crate) network: SandboxNetwork,
     /// NBD COW device (torn down on destroy).
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
+    /// Firecracker-local device rate limiters for this sandbox lifecycle.
+    device_rate_limits: Option<FirecrackerDeviceRateLimits>,
     /// Per-sandbox runtime task handles.
     runtime: SandboxRuntimeHandles,
     /// Process-group leader PID for the spawned Firecracker wrapper.
@@ -604,6 +606,17 @@ pub struct FirecrackerSandbox {
     park_fence: Option<NormalOperationFence>,
 }
 
+pub(crate) struct FirecrackerSandboxInit {
+    pub(crate) config: SandboxConfig,
+    pub(crate) factory_config: FirecrackerConfig,
+    pub(crate) sandbox_paths: SandboxPaths,
+    pub(crate) sock_paths: SockPaths,
+    pub(crate) network: NetnsLease,
+    pub(crate) cow_device: PooledNbdCowDevice,
+    pub(crate) device_rate_limits: Option<FirecrackerDeviceRateLimits>,
+    pub(crate) leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+}
+
 pub(crate) struct SandboxNetwork {
     info: NetnsInfo,
     lease: Option<NetnsLease>,
@@ -639,15 +652,17 @@ impl SandboxNetwork {
 }
 
 impl FirecrackerSandbox {
-    pub(crate) fn new(
-        config: SandboxConfig,
-        factory_config: FirecrackerConfig,
-        sandbox_paths: SandboxPaths,
-        sock_paths: SockPaths,
-        network: NetnsLease,
-        cow_device: PooledNbdCowDevice,
-        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
-    ) -> Self {
+    pub(crate) fn new(init: FirecrackerSandboxInit) -> Self {
+        let FirecrackerSandboxInit {
+            config,
+            factory_config,
+            sandbox_paths,
+            sock_paths,
+            network,
+            cow_device,
+            device_rate_limits,
+            leak_tx,
+        } = init;
         let id = config.id.to_string();
         Self {
             config,
@@ -657,6 +672,7 @@ impl FirecrackerSandbox {
             sock_paths,
             network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
+            device_rate_limits,
             runtime: SandboxRuntimeHandles::default(),
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -941,7 +957,7 @@ impl FirecrackerSandbox {
             kernel_path,
             cow_device_path,
             vsock_path,
-            self.factory_config.device_rate_limits.as_ref(),
+            self.device_rate_limits.as_ref(),
         )
     }
 
@@ -1139,7 +1155,7 @@ impl FirecrackerSandbox {
             &client,
             &snapshot_str,
             &memory_str,
-            self.factory_config.device_rate_limits.as_ref(),
+            self.device_rate_limits.as_ref(),
         )
         .await?;
 

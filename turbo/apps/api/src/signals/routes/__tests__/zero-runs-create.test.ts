@@ -481,7 +481,10 @@ describe("POST /api/zero/runs", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.ComputerUse]: true },
+      switches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+        [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+      },
     });
     const agent = await seedRunnableZeroAgent({ fixture: fx });
     const first = await accept(
@@ -561,6 +564,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,
+      [FeatureSwitchKey.FirecrackerIoLimiters]: true,
     });
     const zeroToken = decryptSecretsMap(
       executionContext.encryptedSecrets ?? null,

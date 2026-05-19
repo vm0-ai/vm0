@@ -157,6 +157,7 @@ mod tests {
             session_id: session_id.into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
+            device_rate_limits: None,
             budget_lease: ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),

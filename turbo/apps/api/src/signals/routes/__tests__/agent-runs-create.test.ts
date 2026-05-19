@@ -397,7 +397,10 @@ describe("POST /api/agent/runs", () => {
     await db.insert(userFeatureSwitches).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      switches: { [FeatureSwitchKey.ComputerUse]: true },
+      switches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+        [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+      },
     });
     const compose = await createCompose({ fixture: fx });
 
@@ -422,6 +425,7 @@ describe("POST /api/agent/runs", () => {
 
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,
+      [FeatureSwitchKey.FirecrackerIoLimiters]: true,
     });
   });
 

@@ -80,6 +80,7 @@ pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
     pub restore_guest_state: bool,
+    pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
 
 /// Outcome of a job execution, including the sandbox for possible reuse.
@@ -287,6 +288,7 @@ fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult)
         SandboxReuseResult::NoSessionId
         | SandboxReuseResult::PoolMiss
         | SandboxReuseResult::ProfileMismatch
+        | SandboxReuseResult::DeviceLimitMismatch
         | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
     };
     telemetry.record(action_type, Duration::ZERO, true, None);
@@ -362,6 +364,7 @@ async fn execute_new_sandbox(
             cpu_count: params.vcpu,
             memory_mb: params.memory_mb,
         },
+        device_rate_limits: params.device_rate_limits.clone(),
     };
 
     // Create and start sandbox
@@ -3328,6 +3331,20 @@ mod tests {
             vcpu: 2,
             memory_mb: 2048,
             restore_guest_state: false,
+            device_rate_limits: None,
+        }
+    }
+
+    fn test_device_rate_limits() -> sandbox::DeviceRateLimits {
+        sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+                ops_per_sec: 10_000,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 50 * 1024 * 1024,
+                tx_bytes_per_sec: 25 * 1024 * 1024,
+            },
         }
     }
 
@@ -3359,6 +3376,7 @@ mod tests {
                 session_id: session_id.into(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: "vm0/default".into(),
+                device_rate_limits: None,
                 budget_lease: test_budget_lease(),
                 source_ip,
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
@@ -3420,6 +3438,30 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_inner_passes_device_rate_limits_to_sandbox_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let limits = test_device_rate_limits();
+        let params = JobParams {
+            device_rate_limits: Some(limits.clone()),
+            ..default_params()
+        };
+
+        let (exit_code, error_msg) =
+            run_execute_inner(&factory, &minimal_context(), &config, &params)
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].device_rate_limits, Some(limits));
     }
 
     #[tokio::test]
@@ -3796,6 +3838,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
+            device_rate_limits: None,
             budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
@@ -3847,6 +3890,7 @@ mod tests {
             session_id: "test-session".into(),
             sandbox_id: SandboxId::new_v4(),
             profile_name: "vm0/default".into(),
+            device_rate_limits: None,
             budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
