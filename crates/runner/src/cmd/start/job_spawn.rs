@@ -167,21 +167,23 @@ pub(super) fn spawn_job(
             let (
                 exit_code,
                 err,
+                failure,
                 sandbox,
                 source_ip,
                 network_log_session,
                 guest_session_id,
                 telemetry,
             ) = match inner.await {
-                Ok((outcome, telemetry)) => {
-                    let err = if job_cancel.is_cancelled() {
-                        Some("cancelled by user".to_string())
-                    } else {
-                        outcome.error
-                    };
+                Ok((mut outcome, telemetry)) => {
+                    if job_cancel.is_cancelled() {
+                        outcome.mark_cancelled();
+                    }
+                    let exit_code = outcome.exit_code();
+                    let err = outcome.error().map(ToOwned::to_owned);
                     (
-                        outcome.exit_code,
+                        exit_code,
                         err,
+                        outcome.failure,
                         outcome.sandbox,
                         outcome.source_ip,
                         outcome.network_log_session,
@@ -198,9 +200,15 @@ pub(super) fn spawn_job(
                         run_id,
                         sandbox_token.clone(),
                     );
+                    let failure = executor::ExecutionFailure::from_error(format!(
+                        "executor task panicked: {e}"
+                    ));
+                    let exit_code = failure.exit_code;
+                    let err = Some(failure.error.clone());
                     (
-                        1,
-                        Some(format!("executor task panicked: {e}")),
+                        exit_code,
+                        err,
+                        Some(failure),
                         None,
                         String::new(),
                         None,
@@ -211,14 +219,32 @@ pub(super) fn spawn_job(
             };
 
             // Single sink for any claimed job's terminal state. Cancellation gets
-            // its own info marker; everything else with `err` set is a failure
-            // (panics, executor internal errors, non-zero exits with
-            // stderr/guest error file); otherwise the job finished normally.
+            // its own info marker; every other failure is represented by a
+            // single object carrying the exit code, error, and optional
+            // guest-authored diagnostic.
             let cancelled_for_log = job_cancel.is_cancelled();
-            match (cancelled_for_log, err.as_deref()) {
+            match (cancelled_for_log, failure.as_ref()) {
                 (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
-                (false, Some(e)) => {
-                    error!(run_id = %run_id, exit_code, reused, error = %e, "job execution failed");
+                (false, Some(failure)) => {
+                    if let Some(diagnostic) = failure.diagnostic.as_ref() {
+                        error!(
+                            run_id = %run_id,
+                            exit_code,
+                            reused,
+                            error = %failure.error,
+                            failure_class = diagnostic.failure_class.as_str(),
+                            failure_framework = diagnostic.framework.as_str(),
+                            failure_cli_exit_code = diagnostic.cli_exit_code,
+                            failure_claude_num_turns = diagnostic.claude_num_turns,
+                            session_history_status = diagnostic.session_history_status.as_str(),
+                            prompt_shape = diagnostic.prompt_shape.as_str(),
+                            prompt_bytes = diagnostic.prompt_bytes,
+                            first_line_bytes = diagnostic.first_line_bytes,
+                            "job execution failed"
+                        );
+                    } else {
+                        error!(run_id = %run_id, exit_code, reused, error = %failure.error, "job execution failed");
+                    }
                 }
                 (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
             }
