@@ -7,7 +7,8 @@ use tokio::net::UnixStream;
 use tokio::time::Instant;
 use vsock_proto::{
     Decoder, ExecCapturedOutput, ExecOutputStream, ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE,
-    MIN_BODY_SIZE, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY,
+    MIN_BODY_SIZE, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START,
+    MSG_EXEC_STARTED, MSG_PING, MSG_PONG, MSG_READY, ProcessControlNonce, ProcessControlStatus,
     RawMessage,
 };
 
@@ -163,6 +164,33 @@ pub(crate) async fn send_exec_result(
 ) {
     let payload = exec_result_payload(termination, stdout, stderr);
     let frame = vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload).unwrap();
+    stream.write_all(&frame).await.unwrap();
+}
+
+pub(crate) async fn send_exec_started(stream: &mut UnixStream, seq: u32, pid: u32) {
+    let payload = vsock_proto::encode_exec_started(pid).unwrap();
+    let frame = vsock_proto::encode(MSG_EXEC_STARTED, seq, &payload).unwrap();
+    stream.write_all(&frame).await.unwrap();
+}
+
+pub(crate) async fn send_exec_control_result(
+    stream: &mut UnixStream,
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+    status: ProcessControlStatus,
+    diagnostic: &str,
+) {
+    let payload = vsock_proto::encode_exec_control_result(
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
+    )
+    .unwrap();
+    let frame = vsock_proto::encode(MSG_EXEC_CONTROL_RESULT, request_seq, &payload).unwrap();
     stream.write_all(&frame).await.unwrap();
 }
 

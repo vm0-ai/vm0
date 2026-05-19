@@ -24,3 +24,4 @@ mod exec;
 mod lifecycle;
 mod malformed;
 mod stream;
+mod supervised;

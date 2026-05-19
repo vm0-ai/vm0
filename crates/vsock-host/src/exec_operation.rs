@@ -15,7 +15,8 @@ use crate::{
 };
 use vsock_proto::{
     ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecTermination, ExecTimeoutPolicy, MSG_EXEC_CANCEL, MSG_EXEC_START, RawMessage,
+    ExecTermination, ExecTimeoutPolicy, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
+    ProcessControlNonce, ProcessControlStatus, RawMessage,
 };
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
@@ -112,14 +113,72 @@ pub struct ExecStreamRequest<'a> {
     pub stream_queue_capacity: Option<usize>,
 }
 
+/// Exec control policy for supervised host operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupervisedExecControl {
+    Disabled,
+    Enabled { sink: bool },
+}
+
+/// Request parameters for starting a supervised exec operation.
+pub struct SupervisedExecRequest<'a> {
+    pub timeout: ExecTimeoutPolicy,
+    pub command: &'a str,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub label: &'a str,
+    pub stdout: ExecOutputPolicy,
+    pub stderr: ExecOutputPolicy,
+    pub expected_exit_codes: &'a [i32],
+    pub control: SupervisedExecControl,
+    pub stream_queue_capacity: Option<usize>,
+    pub start_timeout: Duration,
+}
+
+/// Host-side acknowledgement for a delivered exec-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecControlAck {
+    pub target_seq: u32,
+    pub message_id: String,
+}
+
+/// Guest-side terminal status for an exec-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecControlGuestStatus {
+    pub status: ProcessControlStatus,
+    pub diagnostic: String,
+}
+
+/// Terminal guest response for an exec-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecControlOutcome {
+    Delivered(ExecControlAck),
+    GuestStatus(ExecControlGuestStatus),
+    GuestError(String),
+}
+
+impl ExecControlOutcome {
+    pub fn into_ack(self) -> io::Result<ExecControlAck> {
+        match self {
+            Self::Delivered(ack) => Ok(ack),
+            Self::GuestStatus(status) => {
+                Err(exec_control_status_error(status.status, &status.diagnostic))
+            }
+            Self::GuestError(message) => Err(io::Error::other(message)),
+        }
+    }
+}
+
 pub(crate) struct Operations {
     operations: HashMap<u32, ExecOperation>,
+    control_targets: HashMap<u32, u32>,
 }
 
 impl Operations {
     pub(crate) fn new() -> Self {
         Self {
             operations: HashMap::new(),
+            control_targets: HashMap::new(),
         }
     }
 
@@ -133,11 +192,19 @@ impl Operations {
     }
 
     pub(crate) fn remove(&mut self, seq: u32) {
-        self.operations.remove(&seq);
+        if let Some(operation) = self.operations.remove(&seq) {
+            for request_seq in operation.pending_controls.keys() {
+                self.control_targets.remove(request_seq);
+            }
+        }
     }
 
     fn take(&mut self, seq: u32) -> Option<ExecOperation> {
-        self.operations.remove(&seq)
+        let operation = self.operations.remove(&seq)?;
+        for request_seq in operation.pending_controls.keys() {
+            self.control_targets.remove(request_seq);
+        }
+        Some(operation)
     }
 
     fn contains(&self, seq: u32) -> bool {
@@ -146,6 +213,41 @@ impl Operations {
 
     fn get_mut(&mut self, seq: u32) -> Option<&mut ExecOperation> {
         self.operations.get_mut(&seq)
+    }
+
+    fn insert_pending_control(
+        &mut self,
+        target_seq: u32,
+        request_seq: u32,
+        pending: PendingExecControl,
+    ) -> io::Result<()> {
+        let Some(operation) = self.operations.get_mut(&target_seq) else {
+            return Err(exec_control_status_error(
+                ProcessControlStatus::Inactive,
+                "exec operation is not active",
+            ));
+        };
+        operation.validate_control_nonce(pending.control_nonce)?;
+        operation.pending_controls.insert(request_seq, pending);
+        self.control_targets.insert(request_seq, target_seq);
+        Ok(())
+    }
+
+    fn remove_pending_control(&mut self, request_seq: u32) {
+        let Some(target_seq) = self.control_targets.remove(&request_seq) else {
+            return;
+        };
+        if let Some(operation) = self.operations.get_mut(&target_seq) {
+            operation.pending_controls.remove(&request_seq);
+        }
+    }
+
+    fn take_pending_control(&mut self, request_seq: u32) -> Option<PendingExecControl> {
+        let target_seq = self.control_targets.remove(&request_seq)?;
+        self.operations
+            .get_mut(&target_seq)?
+            .pending_controls
+            .remove(&request_seq)
     }
 
     pub(crate) fn close_snapshot(&self) -> ExecOperationCloseSnapshot {
@@ -171,6 +273,7 @@ impl Default for Operations {
 
 struct ExecOperation {
     normal_operation: Option<ExecOperationNormalTracking>,
+    lifecycle: ExecOperationLifecycle,
     diagnostic: ExecOperationDiagnostic,
     result_tx: oneshot::Sender<io::Result<ExecOperationResult>>,
     stream_tx: Option<mpsc::Sender<ExecOutputEvent>>,
@@ -180,11 +283,87 @@ struct ExecOperation {
     stderr_stream: Option<ExecStreamState>,
     expected_output_seq: u32,
     stream_overflowed: bool,
+    pending_controls: HashMap<u32, PendingExecControl>,
+}
+
+enum ExecOperationLifecycle {
+    OneShot,
+    SupervisedAwaitingStart {
+        start_tx: Option<oneshot::Sender<io::Result<u32>>>,
+        control_nonce: Option<ProcessControlNonce>,
+    },
+    SupervisedStarted {
+        pid: u32,
+        control_nonce: Option<ProcessControlNonce>,
+    },
+}
+
+struct PendingExecControl {
+    target_seq: u32,
+    message_id: String,
+    control_nonce: ProcessControlNonce,
+    response_tx: oneshot::Sender<io::Result<ExecControlOutcome>>,
+    normal_operation: NormalOperationToken,
 }
 
 enum ExecOperationNormalTracking {
     Owned(NormalOperationToken),
     Composite(NormalOperationTransitionHandle),
+}
+
+impl ExecOperation {
+    fn allows_output(&self) -> bool {
+        matches!(
+            self.lifecycle,
+            ExecOperationLifecycle::OneShot | ExecOperationLifecycle::SupervisedStarted { .. }
+        )
+    }
+
+    fn validates_result_before_start(
+        &self,
+        result: &vsock_proto::DecodedExecResult<'_>,
+    ) -> io::Result<()> {
+        if matches!(
+            self.lifecycle,
+            ExecOperationLifecycle::SupervisedAwaitingStart { .. }
+        ) && result.termination != ExecTermination::StartFailed
+        {
+            return Err(exec_operation_protocol_error(
+                "supervised exec result before exec_started must be StartFailed",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_control_nonce(&self, control_nonce: ProcessControlNonce) -> io::Result<()> {
+        match self.lifecycle {
+            ExecOperationLifecycle::SupervisedStarted {
+                control_nonce: Some(expected),
+                ..
+            } if expected == control_nonce => Ok(()),
+            ExecOperationLifecycle::SupervisedStarted {
+                control_nonce: Some(_),
+                ..
+            } => Err(exec_control_status_error(
+                ProcessControlStatus::NonceMismatch,
+                "exec operation nonce mismatch",
+            )),
+            ExecOperationLifecycle::SupervisedStarted {
+                control_nonce: None,
+                ..
+            } => Err(exec_control_status_error(
+                ProcessControlStatus::Unsupported,
+                "exec control is not supported by this operation",
+            )),
+            ExecOperationLifecycle::OneShot
+            | ExecOperationLifecycle::SupervisedAwaitingStart { .. } => {
+                Err(exec_control_status_error(
+                    ProcessControlStatus::Inactive,
+                    "exec operation is not active",
+                ))
+            }
+        }
+    }
 }
 
 impl ExecOperationNormalTracking {
@@ -261,6 +440,11 @@ struct ExecOperationRegistrationGuard {
     disarmed: bool,
 }
 
+struct PendingExecControlGuard {
+    shared: Arc<Shared>,
+    request_seq: u32,
+}
+
 impl ExecOperationRegistrationGuard {
     fn new(shared: Arc<Shared>, seq: u32) -> Self {
         Self {
@@ -280,6 +464,21 @@ impl Drop for ExecOperationRegistrationGuard {
         if !self.disarmed {
             self.shared.remove_operation(self.seq);
         }
+    }
+}
+
+impl PendingExecControlGuard {
+    fn new(shared: Arc<Shared>, request_seq: u32) -> Self {
+        Self {
+            shared,
+            request_seq,
+        }
+    }
+}
+
+impl Drop for PendingExecControlGuard {
+    fn drop(&mut self) {
+        remove_pending_exec_control(&self.shared, self.request_seq);
     }
 }
 
@@ -568,6 +767,247 @@ impl Drop for ExecOperationHandle {
     }
 }
 
+/// Handle for a host-side supervised exec operation.
+///
+/// Dropping this handle never sends `MSG_EXEC_CANCEL` and does not remove the
+/// operation lifecycle registration. The host keeps the registration until a
+/// terminal exec result arrives, the connection closes, or a caller explicitly
+/// waits with a timeout that abandons the operation.
+pub struct SupervisedExecHandle {
+    shared: Arc<Shared>,
+    seq: Option<u32>,
+    pid: u32,
+    diagnostic: ExecOperationDiagnostic,
+    result_rx: Option<oneshot::Receiver<io::Result<ExecOperationResult>>>,
+    stream_rx: Option<mpsc::Receiver<ExecOutputEvent>>,
+    control: Option<ExecControlHandle>,
+}
+
+impl SupervisedExecHandle {
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub fn control_handle(&self) -> Option<ExecControlHandle> {
+        self.control.clone()
+    }
+
+    pub async fn control(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> io::Result<ExecControlAck> {
+        self.control
+            .as_ref()
+            .ok_or_else(|| {
+                exec_control_status_error(
+                    ProcessControlStatus::Unsupported,
+                    "exec control is not supported by this operation",
+                )
+            })?
+            .control(message_id, payload, timeout)
+            .await
+    }
+
+    pub fn take_stream_receiver(&mut self) -> Option<mpsc::Receiver<ExecOutputEvent>> {
+        self.stream_rx.take()
+    }
+
+    pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        self.wait_with_timeout(timeout, false).await
+    }
+
+    pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
+        let cancel_label_log = self.diagnostic.label_log.clone();
+        let registered_at = self.diagnostic.registered_at;
+        let wait_result = self.cancel_and_wait_for_terminal_status(timeout).await?;
+        if wait_result.cancel_seq.is_none()
+            || wait_result.result.termination == ExecTermination::Cancelled
+        {
+            if let Some(seq) = wait_result.cancel_seq {
+                tracing::info!(
+                    seq = seq,
+                    label = %cancel_label_log,
+                    elapsed_ms = registered_at.elapsed().as_millis(),
+                    "supervised exec operation cancel completed"
+                );
+            }
+            return Ok(wait_result.result);
+        }
+
+        Err(io::Error::other(format!(
+            "supervised exec cancel returned terminal state: {:?}",
+            wait_result.result.termination
+        )))
+    }
+
+    async fn cancel_and_wait_for_terminal_status(
+        mut self,
+        timeout: Duration,
+    ) -> io::Result<ExecCancelWaitResult> {
+        if let Some(result) = self.try_take_ready_result()? {
+            return Ok(ExecCancelWaitResult {
+                result,
+                cancel_seq: None,
+            });
+        }
+
+        let seq = self.seq.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "supervised exec operation closed",
+            )
+        })?;
+        let payload = vsock_proto::encode_exec_cancel();
+        write_frame(
+            &self.shared,
+            MSG_EXEC_CANCEL,
+            seq,
+            &payload,
+            Some(self.diagnostic.frame("cancel")),
+            None,
+            FrameWriteObserver::default(),
+        )
+        .await?;
+        tracing::info!(
+            seq = seq,
+            label = %self.diagnostic.label_log,
+            elapsed_ms = self.diagnostic.elapsed_ms(),
+            "supervised exec operation cancel sent"
+        );
+
+        let result = self.wait_with_timeout(timeout, true).await?;
+        Ok(ExecCancelWaitResult {
+            result,
+            cancel_seq: Some(seq),
+        })
+    }
+
+    fn try_take_ready_result(&mut self) -> io::Result<Option<ExecOperationResult>> {
+        let Some(rx) = self.result_rx.as_mut() else {
+            return Ok(None);
+        };
+
+        match rx.try_recv() {
+            Ok(result) => {
+                self.seq = None;
+                self.result_rx = None;
+                result.map(Some)
+            }
+            Err(oneshot::error::TryRecvError::Empty) => Ok(None),
+            Err(oneshot::error::TryRecvError::Closed) => {
+                self.seq = None;
+                self.result_rx = None;
+                Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))
+            }
+        }
+    }
+
+    async fn wait_with_timeout(
+        mut self,
+        timeout: Duration,
+        poison_on_timeout: bool,
+    ) -> io::Result<ExecOperationResult> {
+        let seq = self.seq.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "supervised exec operation closed",
+            )
+        })?;
+        let rx = self.result_rx.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "supervised exec operation closed",
+            )
+        })?;
+
+        tokio::select! {
+            biased;
+            result = rx => {
+                self.seq = None;
+                self.result_rx = None;
+                result.map_err(|_| io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))?
+            }
+            _ = tokio::time::sleep(timeout) => {
+                self.shared.remove_operation(seq);
+                self.seq = None;
+                self.result_rx = None;
+                tracing::warn!(
+                    seq = seq,
+                    label = %self.diagnostic.label_log,
+                    elapsed_ms = self.diagnostic.elapsed_ms(),
+                    poison_connection = poison_on_timeout,
+                    "supervised exec operation wait timeout"
+                );
+                if poison_on_timeout {
+                    self.shared.poison_connection();
+                }
+                Err(io::Error::new(io::ErrorKind::TimedOut, "supervised exec operation timeout"))
+            }
+        }
+    }
+}
+
+impl Drop for SupervisedExecHandle {
+    fn drop(&mut self) {
+        if let Some(seq) = self.seq {
+            clear_exec_operation_stream_sender(&self.shared, seq);
+        }
+    }
+}
+
+/// Cloneable handle for sending control messages to a supervised exec operation.
+#[derive(Clone)]
+pub struct ExecControlHandle {
+    shared: Arc<Shared>,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+}
+
+impl ExecControlHandle {
+    pub async fn control(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> io::Result<ExecControlAck> {
+        self.control_with_write_observer(
+            message_id,
+            payload,
+            timeout,
+            FrameWriteObserver::default(),
+        )
+        .await?
+        .into_ack()
+    }
+
+    pub async fn control_with_write_observer(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ExecControlOutcome> {
+        exec_control_on_shared(
+            &self.shared,
+            self.target_seq,
+            self.control_nonce,
+            message_id,
+            payload,
+            timeout,
+            write_observer,
+        )
+        .await
+    }
+}
+
 pub(crate) struct ExecOperationCancelOnDropGuard {
     shared: Option<Arc<Shared>>,
     seq: u32,
@@ -576,6 +1016,15 @@ pub(crate) struct ExecOperationCancelOnDropGuard {
 
 impl ExecOperationCancelOnDropGuard {
     pub(crate) fn new(handle: &ExecOperationHandle) -> Option<Self> {
+        Some(Self {
+            shared: Some(Arc::clone(&handle.shared)),
+            seq: handle.seq?,
+            diagnostic: handle.diagnostic.clone(),
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_supervised(handle: &SupervisedExecHandle) -> Option<Self> {
         Some(Self {
             shared: Some(Arc::clone(&handle.shared)),
             seq: handle.seq?,
@@ -649,6 +1098,53 @@ fn exec_operation_protocol_error(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
 }
 
+fn exec_control_status_error(status: ProcessControlStatus, diagnostic: &str) -> io::Error {
+    let message = if diagnostic.is_empty() {
+        default_exec_control_status_message(status).to_owned()
+    } else {
+        diagnostic.to_owned()
+    };
+    io::Error::new(exec_control_status_error_kind(status), message)
+}
+
+fn exec_control_status_error_kind(status: ProcessControlStatus) -> io::ErrorKind {
+    match status {
+        ProcessControlStatus::Delivered => io::ErrorKind::Other,
+        ProcessControlStatus::Inactive => io::ErrorKind::NotFound,
+        ProcessControlStatus::NonceMismatch => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::Unsupported => io::ErrorKind::Unsupported,
+        ProcessControlStatus::Rejected => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::SinkUnavailable => io::ErrorKind::NotConnected,
+        ProcessControlStatus::SinkTimeout => io::ErrorKind::TimedOut,
+        ProcessControlStatus::QueueFull => io::ErrorKind::WouldBlock,
+        ProcessControlStatus::SinkError => io::ErrorKind::BrokenPipe,
+    }
+}
+
+fn default_exec_control_status_message(status: ProcessControlStatus) -> &'static str {
+    match status {
+        ProcessControlStatus::Delivered => "exec control request delivered",
+        ProcessControlStatus::Inactive => "exec operation is not active",
+        ProcessControlStatus::NonceMismatch => "exec operation nonce mismatch",
+        ProcessControlStatus::Unsupported => "exec control is not supported by this operation",
+        ProcessControlStatus::Rejected => "exec control request rejected",
+        ProcessControlStatus::SinkUnavailable => "exec control sink is not connected",
+        ProcessControlStatus::SinkTimeout => "exec control sink timed out",
+        ProcessControlStatus::QueueFull => "exec control queue is full",
+        ProcessControlStatus::SinkError => "exec control sink error",
+    }
+}
+
+fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
+    if timeout.is_zero() {
+        return 0;
+    }
+
+    u32::try_from(timeout.as_millis())
+        .unwrap_or(u32::MAX)
+        .max(1)
+}
+
 fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes: &[i32]) -> bool {
     !matches!(
         termination,
@@ -717,6 +1213,39 @@ fn output_policy_streams(policy: ExecOutputPolicy) -> bool {
         policy,
         ExecOutputPolicy::Stream { .. } | ExecOutputPolicy::CaptureAndStream { .. }
     )
+}
+
+fn stream_queue_capacity_for(
+    stdout: ExecOutputPolicy,
+    stderr: ExecOutputPolicy,
+    requested: Option<usize>,
+) -> io::Result<Option<usize>> {
+    if matches!(requested, Some(0)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exec stream queue capacity must be positive",
+        ));
+    }
+    if let Some(capacity) = requested
+        && capacity > MAX_EXEC_STREAM_CAPACITY
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("exec stream queue capacity must be at most {MAX_EXEC_STREAM_CAPACITY}"),
+        ));
+    }
+    let streams_output = output_policy_streams(stdout) || output_policy_streams(stderr);
+    if !streams_output && requested.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "exec stream queue capacity requires a streaming output policy",
+        ));
+    }
+    if streams_output {
+        Ok(Some(requested.unwrap_or(DEFAULT_EXEC_STREAM_CAPACITY)))
+    } else {
+        Ok(None)
+    }
 }
 
 fn capture_state(policy: ExecOutputPolicy) -> ExecCaptureState {
@@ -884,6 +1413,11 @@ pub(crate) fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
         {
             let decoded = vsock_proto::decode_exec_output(&msg.payload)
                 .map_err(exec_operation_protocol_error)?;
+            if !operation.allows_output() {
+                return Err(exec_operation_protocol_error(
+                    "exec output arrived before exec_started",
+                ));
+            }
             validate_output(operation, &decoded)?;
             first_output_slow = operation.diagnostic.mark_first_output();
             if let Some(tx) = operation.stream_tx.take() {
@@ -912,28 +1446,88 @@ pub(crate) fn dispatch_output(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
     Ok(())
 }
 
+pub(crate) fn dispatch_started(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let start = {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { operations, .. } => {
+                let Some(operation) = operations.get_mut(msg.seq) else {
+                    return Ok(());
+                };
+                let decoded = vsock_proto::decode_exec_started(&msg.payload)
+                    .map_err(exec_operation_protocol_error)?;
+                let lifecycle =
+                    std::mem::replace(&mut operation.lifecycle, ExecOperationLifecycle::OneShot);
+                match lifecycle {
+                    ExecOperationLifecycle::SupervisedAwaitingStart {
+                        mut start_tx,
+                        control_nonce,
+                    } => {
+                        let start_tx = start_tx.take();
+                        operation.lifecycle = ExecOperationLifecycle::SupervisedStarted {
+                            pid: decoded.pid,
+                            control_nonce,
+                        };
+                        start_tx.map(|start_tx| (start_tx, decoded.pid))
+                    }
+                    lifecycle @ ExecOperationLifecycle::SupervisedStarted { pid, .. } => {
+                        operation.lifecycle = lifecycle;
+                        return Err(exec_operation_protocol_error(format!(
+                            "duplicate exec_started for pid {pid}",
+                        )));
+                    }
+                    ExecOperationLifecycle::OneShot => {
+                        return Err(exec_operation_protocol_error(
+                            "exec_started received for one-shot exec operation",
+                        ));
+                    }
+                }
+            }
+            ConnectionState::Closed { .. } => None,
+        }
+    };
+
+    if let Some((start_tx, pid)) = start {
+        let _ = start_tx.send(Ok(pid));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let Some((diagnostic, result_tx, stream_overflowed, decoded)) = ({
+    let Some((diagnostic, result_tx, start_tx, stream_overflowed, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
                 let decoded = vsock_proto::decode_exec_result(&msg.payload)
                     .map_err(exec_operation_protocol_error)?;
+                let Some(operation) = operations.get_mut(msg.seq) else {
+                    return Ok(());
+                };
+                operation.validates_result_before_start(&decoded)?;
+                validate_result(operation, &decoded)?;
                 let Some(operation) = operations.take(msg.seq) else {
                     return Ok(());
                 };
-                validate_result(&operation, &decoded)?;
                 let ExecOperation {
                     normal_operation,
+                    mut lifecycle,
                     diagnostic,
                     result_tx,
                     stream_overflowed,
                     ..
                 } = operation;
+                let start_tx = match &mut lifecycle {
+                    ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => {
+                        start_tx.take()
+                    }
+                    ExecOperationLifecycle::OneShot
+                    | ExecOperationLifecycle::SupervisedStarted { .. } => None,
+                };
                 if let Some(normal_operation) = normal_operation {
                     normal_operation.complete()?;
                 }
-                Some((diagnostic, result_tx, stream_overflowed, decoded))
+                Some((diagnostic, result_tx, start_tx, stream_overflowed, decoded))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
         }
@@ -943,13 +1537,71 @@ pub(crate) fn dispatch_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Res
 
     diagnostic.log_terminal(&decoded, stream_overflowed);
     let result = owned_result(decoded, stream_overflowed);
+    if let Some(start_tx) = start_tx {
+        let message = if result.diagnostic.is_empty() {
+            "supervised exec start failed".to_owned()
+        } else {
+            result.diagnostic.clone()
+        };
+        let _ = start_tx.send(Err(io::Error::other(message)));
+    }
     let _ = result_tx.send(Ok(result));
 
     Ok(())
 }
 
+pub(crate) fn dispatch_control_result(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let Some(pending) = ({
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { operations, .. } => {
+                operations.take_pending_control(msg.seq)
+            }
+            ConnectionState::Closed { .. } => None,
+        }
+    }) else {
+        return Ok(());
+    };
+    let decoded = vsock_proto::decode_exec_control_result(&msg.payload)
+        .map_err(exec_operation_protocol_error)?;
+
+    if decoded.control_nonce != pending.control_nonce {
+        return Err(exec_operation_protocol_error(
+            "exec_control_result nonce mismatch",
+        ));
+    }
+    if decoded.target_seq != pending.target_seq {
+        return Err(exec_operation_protocol_error(format!(
+            "exec_control_result target seq mismatch: expected {}, got {}",
+            pending.target_seq, decoded.target_seq
+        )));
+    }
+    if decoded.message_id != pending.message_id {
+        return Err(exec_operation_protocol_error(format!(
+            "exec_control_result message_id mismatch: expected {}, got {}",
+            pending.message_id, decoded.message_id
+        )));
+    }
+    pending
+        .normal_operation
+        .complete()
+        .map_err(normal_operation_transition_error)?;
+    let outcome = match decoded.status {
+        ProcessControlStatus::Delivered => ExecControlOutcome::Delivered(ExecControlAck {
+            target_seq: decoded.target_seq,
+            message_id: decoded.message_id.to_owned(),
+        }),
+        status => ExecControlOutcome::GuestStatus(ExecControlGuestStatus {
+            status,
+            diagnostic: decoded.diagnostic.to_owned(),
+        }),
+    };
+    let _ = pending.response_tx.send(Ok(outcome));
+    Ok(())
+}
+
 pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
-    let Some((diagnostic, result_tx, err)) = ({
+    let Some((diagnostic, result_tx, start_tx, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
@@ -961,23 +1613,59 @@ pub(crate) fn dispatch_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Resu
                 };
                 let ExecOperation {
                     normal_operation,
+                    mut lifecycle,
                     diagnostic,
                     result_tx,
                     ..
                 } = operation;
+                let start_tx = match &mut lifecycle {
+                    ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => {
+                        start_tx.take()
+                    }
+                    ExecOperationLifecycle::OneShot
+                    | ExecOperationLifecycle::SupervisedStarted { .. } => None,
+                };
                 if let Some(normal_operation) = normal_operation {
                     normal_operation.complete()?;
                 }
-                Some((diagnostic, result_tx, err))
+                Some((diagnostic, result_tx, start_tx, err))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed { .. } => None,
         }
     }) else {
-        return Ok(false);
+        return dispatch_control_error(shared, msg);
     };
 
     diagnostic.log_error_response(&err);
+    if let Some(start_tx) = start_tx {
+        let _ = start_tx.send(Err(io::Error::new(err.kind(), err.to_string())));
+    }
     let _ = result_tx.send(Err(err));
+    Ok(true)
+}
+
+fn dispatch_control_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+    let Some(pending) = ({
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Connected { operations, .. } => {
+                operations.take_pending_control(msg.seq)
+            }
+            ConnectionState::Closed { .. } => None,
+        }
+    }) else {
+        return Ok(false);
+    };
+    let message = vsock_proto::decode_error(&msg.payload)
+        .map(|message| message.to_owned())
+        .map_err(exec_operation_protocol_error)?;
+    pending
+        .normal_operation
+        .complete()
+        .map_err(normal_operation_transition_error)?;
+    let _ = pending
+        .response_tx
+        .send(Ok(ExecControlOutcome::GuestError(message)));
     Ok(true)
 }
 
@@ -1004,6 +1692,54 @@ fn mark_exec_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> i
     }
 }
 
+fn clear_exec_operation_stream_sender(shared: &Arc<Shared>, seq: u32) {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { operations, .. } = &mut *guard
+        && let Some(operation) = operations.get_mut(seq)
+    {
+        operation.stream_tx = None;
+    }
+}
+
+fn remove_pending_exec_control(shared: &Arc<Shared>, request_seq: u32) {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { operations, .. } = &mut *guard {
+        operations.remove_pending_control(request_seq);
+    }
+}
+
+fn mark_pending_exec_control_possible_guest_write(
+    shared: &Arc<Shared>,
+    target_seq: u32,
+    request_seq: u32,
+) -> io::Result<()> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &mut *guard {
+        ConnectionState::Connected { operations, .. } => {
+            let Some(operation) = operations.get_mut(target_seq) else {
+                return Err(exec_control_status_error(
+                    ProcessControlStatus::Inactive,
+                    "exec operation is not active",
+                ));
+            };
+            let Some(pending) = operation.pending_controls.get_mut(&request_seq) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "exec control request closed before frame write",
+                ));
+            };
+            pending
+                .normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(normal_operation_transition_error)
+        }
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
+}
+
 async fn write_frame(
     shared: &Arc<Shared>,
     msg_type: u8,
@@ -1013,6 +1749,23 @@ async fn write_frame(
     normal_operation_seq: Option<u32>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<()> {
+    write_frame_with_pre_write(shared, msg_type, seq, payload, diagnostic, || {
+        if let Some(normal_operation_seq) = normal_operation_seq {
+            mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
+        }
+        write_observer.record_write_start()
+    })
+    .await
+}
+
+async fn write_frame_with_pre_write(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    diagnostic: Option<ExecOperationFrameDiagnostic>,
+    pre_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
     let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_NOT_STARTED));
@@ -1021,10 +1774,7 @@ async fn write_frame(
     let wait_started_at = Instant::now();
     let mut writer = shared.writer.lock().await;
     let wait_elapsed_ms = wait_started_at.elapsed().as_millis();
-    if let Some(normal_operation_seq) = normal_operation_seq {
-        mark_exec_operation_possible_guest_write(shared, normal_operation_seq)?;
-    }
-    write_observer.record_write_start()?;
+    pre_write()?;
     state.store(EXEC_OPERATION_FRAME_WRITE_STARTED, Ordering::Release);
     let write_started_at = Instant::now();
     let result = writer.write_all(&data).await;
@@ -1078,6 +1828,79 @@ async fn write_frame(
     drop(guard);
 
     Ok(())
+}
+
+async fn exec_control_on_shared(
+    shared: &Arc<Shared>,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+    control_payload: &[u8],
+    timeout: Duration,
+    write_observer: FrameWriteObserver,
+) -> io::Result<ExecControlOutcome> {
+    let request_timeout_ms = duration_to_request_timeout_ms(timeout);
+    let payload = vsock_proto::encode_exec_control(
+        target_seq,
+        control_nonce,
+        message_id,
+        control_payload,
+        request_timeout_ms,
+    )
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+    let request_seq = shared.next_seq();
+    let normal_operation = shared.reserve_normal_operation()?;
+    let (response_tx, response_rx) = oneshot::channel();
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { operations, .. } => {
+                operations.insert_pending_control(
+                    target_seq,
+                    request_seq,
+                    PendingExecControl {
+                        target_seq,
+                        message_id: message_id.to_owned(),
+                        control_nonce,
+                        response_tx,
+                        normal_operation,
+                    },
+                )?;
+            }
+        }
+    }
+    let _pending_guard = PendingExecControlGuard::new(Arc::clone(shared), request_seq);
+    write_frame_with_pre_write(
+        shared,
+        MSG_EXEC_CONTROL,
+        request_seq,
+        &payload,
+        None,
+        || {
+            mark_pending_exec_control_possible_guest_write(shared, target_seq, request_seq)?;
+            write_observer.record_write_start()
+        },
+    )
+    .await?;
+
+    tokio::select! {
+        biased;
+        result = response_rx => {
+            result.map_err(|_| io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ))?
+        }
+        _ = tokio::time::sleep(timeout) => {
+            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+        }
+    }
 }
 
 fn capture_output_to_bytes(
@@ -1169,37 +1992,11 @@ async fn start_exec_operation_on_shared_with_tracking(
             "exec operation requires a positive timeout; use spawn_process for unbounded commands",
         ));
     }
-    if matches!(request.stream_queue_capacity, Some(0)) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "exec stream queue capacity must be positive",
-        ));
-    }
-    if let Some(capacity) = request.stream_queue_capacity
-        && capacity > MAX_EXEC_STREAM_CAPACITY
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("exec stream queue capacity must be at most {MAX_EXEC_STREAM_CAPACITY}"),
-        ));
-    }
-    let streams_output =
-        output_policy_streams(request.stdout) || output_policy_streams(request.stderr);
-    if !streams_output && request.stream_queue_capacity.is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "exec stream queue capacity requires a streaming output policy",
-        ));
-    }
-    let stream_queue_capacity = if streams_output {
-        Some(
-            request
-                .stream_queue_capacity
-                .unwrap_or(DEFAULT_EXEC_STREAM_CAPACITY),
-        )
-    } else {
-        None
-    };
+    let stream_queue_capacity = stream_queue_capacity_for(
+        request.stdout,
+        request.stderr,
+        request.stream_queue_capacity,
+    )?;
 
     let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
         vsock_proto::ExecStartEncodeRequest {
@@ -1241,6 +2038,7 @@ async fn start_exec_operation_on_shared_with_tracking(
     let tracks_normal_operation = normal_operation.is_some();
     let operation = ExecOperation {
         normal_operation,
+        lifecycle: ExecOperationLifecycle::OneShot,
         diagnostic: diagnostic.clone(),
         result_tx,
         stream_tx,
@@ -1250,6 +2048,7 @@ async fn start_exec_operation_on_shared_with_tracking(
         stderr_stream: stream_state(request.stderr),
         expected_output_seq: 0,
         stream_overflowed: false,
+        pending_controls: HashMap::new(),
     };
 
     {
@@ -1286,6 +2085,135 @@ async fn start_exec_operation_on_shared_with_tracking(
         diagnostic,
         result_rx: Some(result_rx),
         stream_rx,
+    })
+}
+
+pub(crate) async fn start_supervised_exec_on_shared(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+) -> io::Result<SupervisedExecHandle> {
+    let stream_queue_capacity = stream_queue_capacity_for(
+        request.stdout,
+        request.stderr,
+        request.stream_queue_capacity,
+    )?;
+    let (control, control_nonce) = match request.control {
+        SupervisedExecControl::Disabled => (ExecControlPolicy::Disabled, None),
+        SupervisedExecControl::Enabled { sink } => {
+            let control_nonce = *uuid::Uuid::new_v4().as_bytes();
+            (
+                ExecControlPolicy::Enabled {
+                    control_nonce,
+                    sink,
+                },
+                Some(control_nonce),
+            )
+        }
+    };
+    let payload = vsock_proto::encode_exec_start_with_expected_exit_codes(
+        vsock_proto::ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: request.timeout,
+            command: request.command,
+            env: request.env,
+            sudo: request.sudo,
+            label: request.label,
+            stdout: request.stdout,
+            stderr: request.stderr,
+            expected_exit_codes: request.expected_exit_codes,
+            control,
+        },
+    )
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+    let (stream_tx, stream_rx) = match stream_queue_capacity {
+        Some(capacity) => {
+            let (tx, rx) = mpsc::channel(capacity);
+            (Some(tx), Some(rx))
+        }
+        None => (None, None),
+    };
+    let (result_tx, result_rx) = oneshot::channel();
+    let (start_tx, start_rx) = oneshot::channel();
+    let seq = shared.next_seq();
+    let diagnostic = ExecOperationDiagnostic::new(seq, request.label, request.expected_exit_codes);
+    let operation = ExecOperation {
+        normal_operation: Some(ExecOperationNormalTracking::Owned(
+            shared.reserve_normal_operation()?,
+        )),
+        lifecycle: ExecOperationLifecycle::SupervisedAwaitingStart {
+            start_tx: Some(start_tx),
+            control_nonce,
+        },
+        diagnostic: diagnostic.clone(),
+        result_tx,
+        stream_tx,
+        stdout_capture: capture_state(request.stdout),
+        stderr_capture: capture_state(request.stderr),
+        stdout_stream: stream_state(request.stdout),
+        stderr_stream: stream_state(request.stderr),
+        expected_output_seq: 0,
+        stream_overflowed: false,
+        pending_controls: HashMap::new(),
+    };
+
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { operations, .. } => {
+                operations.insert(seq, operation);
+            }
+        }
+    }
+
+    let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    write_frame(
+        shared,
+        MSG_EXEC_START,
+        seq,
+        &payload,
+        Some(diagnostic.frame("start")),
+        Some(seq),
+        FrameWriteObserver::default(),
+    )
+    .await?;
+    registration_guard.disarm();
+
+    let pid = tokio::select! {
+        biased;
+        result = start_rx => {
+            result.map_err(|_| io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ))??
+        }
+        _ = tokio::time::sleep(request.start_timeout) => {
+            shared.remove_operation(seq);
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "supervised exec start acknowledgement timeout",
+            ));
+        }
+    };
+
+    Ok(SupervisedExecHandle {
+        shared: Arc::clone(shared),
+        seq: Some(seq),
+        pid,
+        diagnostic,
+        result_rx: Some(result_rx),
+        stream_rx,
+        control: control_nonce.map(|control_nonce| ExecControlHandle {
+            shared: Arc::clone(shared),
+            target_seq: seq,
+            control_nonce,
+        }),
     })
 }
 
@@ -1554,6 +2482,7 @@ mod tests {
             normal_operation: Some(ExecOperationNormalTracking::Owned(
                 normal_operations.reserve().unwrap(),
             )),
+            lifecycle: ExecOperationLifecycle::OneShot,
             diagnostic: ExecOperationDiagnostic::new(seq, label, &[]),
             result_tx,
             stream_tx: None,
@@ -1563,6 +2492,7 @@ mod tests {
             stderr_stream: None,
             expected_output_seq: 0,
             stream_overflowed: false,
+            pending_controls: HashMap::new(),
         }
     }
 

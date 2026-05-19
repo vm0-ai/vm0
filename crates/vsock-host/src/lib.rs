@@ -44,15 +44,17 @@ use operation_tracker::{
     NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
-    Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS,
-    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS_RESULT,
-    MSG_STDOUT_CHUNK, RawMessage,
+    Decoder, MSG_ERROR, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
+    MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
+    MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, RawMessage,
 };
 
 pub use exec_operation::{
-    ExecCaptureRequest, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
-    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest,
+    ExecCaptureRequest, ExecControlAck, ExecControlGuestStatus, ExecControlHandle,
+    ExecControlOutcome, ExecOperationHandle, ExecOperationRequest, ExecOperationResult,
+    ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecControl,
+    SupervisedExecHandle, SupervisedExecRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
 pub use process::{
@@ -508,8 +510,18 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
+            } else if msg.msg_type == MSG_EXEC_STARTED {
+                if exec_operation::dispatch_started(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
             } else if msg.msg_type == MSG_EXEC_RESULT {
                 if exec_operation::dispatch_result(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
+            } else if msg.msg_type == MSG_EXEC_CONTROL_RESULT {
+                if exec_operation::dispatch_control_result(&shared, &msg).is_err() {
                     shared.poison_connection();
                     return;
                 }
@@ -1116,6 +1128,14 @@ impl VsockHost {
         request: ExecOperationRequest<'_>,
     ) -> io::Result<ExecOperationHandle> {
         exec_operation::start_exec_operation_on_shared(&self.shared, request).await
+    }
+
+    /// Start a supervised exec operation and wait for its PID acknowledgement.
+    pub async fn start_supervised_exec(
+        &self,
+        request: SupervisedExecRequest<'_>,
+    ) -> io::Result<SupervisedExecHandle> {
+        exec_operation::start_supervised_exec_on_shared(&self.shared, request).await
     }
 
     /// Run a capture-only exec operation with default capture limits.
