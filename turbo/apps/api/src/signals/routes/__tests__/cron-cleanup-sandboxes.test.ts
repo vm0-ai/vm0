@@ -13,6 +13,7 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
@@ -42,6 +43,16 @@ function apiClient() {
 
 function cronHeaders(secret = CRON_SECRET) {
   return { authorization: `Bearer ${secret}` };
+}
+
+async function rawCronRequest(
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  const app = createApp({ signal: context.signal });
+  return await app.request("/api/cron/cleanup-sandboxes", {
+    method: "GET",
+    headers,
+  });
 }
 
 function versionId(): string {
@@ -245,6 +256,16 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
+  it("rejects requests with a missing authorization header", async () => {
+    const response = await rawCronRequest();
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns the cleanup result shape for an authorized request", async () => {
     const response = await accept(
       apiClient().cleanup({ headers: cronHeaders() }),
@@ -257,6 +278,23 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       results: [],
       exportJobsCleaned: 0,
       exportJobsStuck: 0,
+    });
+  });
+
+  it("does not cleanup a recent pending run", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(1) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "pending",
+      error: null,
     });
   });
 
@@ -330,6 +368,59 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Run timed out (no heartbeat)",
+    });
+  });
+
+  it("does not cleanup completed runs even when they are old", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "completed", createdAt: minutesAgo(60) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "completed",
+      error: null,
+    });
+  });
+
+  it("cleans up multiple expired runs from different orgs", async () => {
+    const firstFixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
+    );
+    const secondFixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(7) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(2);
+    expect(response.body.results).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: firstFixture.runId,
+          status: "cleaned",
+        }),
+        expect.objectContaining({
+          runId: secondFixture.runId,
+          status: "cleaned",
+        }),
+      ]),
+    );
+    await expect(findRun(firstFixture.runId)).resolves.toMatchObject({
+      status: "timeout",
+      error: "Run timed out while pending (never started)",
+    });
+    await expect(findRun(secondFixture.runId)).resolves.toMatchObject({
+      status: "timeout",
+      error: "Run timed out while pending (never started)",
     });
   });
 

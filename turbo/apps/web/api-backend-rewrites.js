@@ -219,6 +219,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/cli/auth/test-token", "/api/cli/auth/test-token"],
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
+  ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
