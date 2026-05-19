@@ -29,6 +29,7 @@ describe("GET /api/zero/integrations/slack", () => {
 
   beforeEach(() => {
     mockEnv("SLACK_CLIENT_ID", "test-slack-client-id");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
   });
 
   it("returns 401 when the request is unauthenticated", async () => {
@@ -72,6 +73,36 @@ describe("GET /api/zero/integrations/slack", () => {
     );
 
     expect(response.body.isConnected).toBeFalsy();
+    expect(response.body.connectUrl).not.toBeNull();
+    const connectUrl = new URL(response.body.connectUrl!);
+    expect(`${connectUrl.origin}${connectUrl.pathname}`).toBe(
+      "https://www.vm0.ai/api/zero/slack/oauth/connect",
+    );
+    expect(connectUrl.searchParams.get("orgId")).toBe(orgId);
+    expect(connectUrl.searchParams.get("vm0UserId")).toBe(userId);
+  });
+
+  it("returns install URLs on the web origin when Slack is not installed", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.installUrl).not.toBeNull();
+    const installUrl = new URL(response.body.installUrl!);
+    expect(`${installUrl.origin}${installUrl.pathname}`).toBe(
+      "https://www.vm0.ai/api/zero/slack/oauth/install",
+    );
+    expect(installUrl.searchParams.get("orgId")).toBe(orgId);
+    expect(installUrl.searchParams.get("vm0UserId")).toBe(userId);
   });
 
   it("returns workspace info for connected user", async () => {

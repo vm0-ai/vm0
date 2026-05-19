@@ -564,6 +564,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches Slack OAuth rewrite paths exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/slack/oauth/install")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/oauth/connect")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/oauth/callback")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/slack/oauth/install/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/oauth")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/events")).toBe(false);
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(

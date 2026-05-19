@@ -50,7 +50,7 @@ function buildSlackInstallUrl(args: {
   if (!clientId) {
     return null;
   }
-  const url = new URL(`${env("VM0_API_URL")}/api/zero/slack/oauth/install`);
+  const url = new URL(`${env("VM0_WEB_URL")}/api/zero/slack/oauth/install`);
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   if (args.reinstall) {
@@ -67,7 +67,7 @@ function buildSlackConnectUrl(args: {
   if (!clientId) {
     return null;
   }
-  const url = new URL(`${env("VM0_API_URL")}/api/zero/slack/oauth/connect`);
+  const url = new URL(`${env("VM0_WEB_URL")}/api/zero/slack/oauth/connect`);
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();

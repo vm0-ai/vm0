@@ -20,10 +20,21 @@ import { decryptSecretValue } from "../../services/crypto.utils";
 
 const context = testContext();
 const store = createStore();
+const API_ORIGIN = "https://api.vm0.ai";
+const WEB_ORIGIN = "https://www.vm0.ai";
 
-async function appRequest(path: string): Promise<Response> {
+async function appRequest(
+  path: string,
+  options: {
+    readonly origin?: string;
+    readonly headers?: HeadersInit;
+  } = {},
+): Promise<Response> {
   const app = createApp({ signal: context.signal });
-  return await app.request(`http://api.test${path}`, { method: "GET" });
+  return await app.request(`${options.origin ?? "http://api.test"}${path}`, {
+    method: "GET",
+    headers: options.headers,
+  });
 }
 
 function mockSlackEnv(): void {
@@ -107,7 +118,7 @@ describe("Slack OAuth API routes", () => {
         "test-slack-client-id",
       );
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        "http://localhost:3000/api/zero/slack/oauth/callback",
+        "http://api.test/api/zero/slack/oauth/callback",
       );
       expect(redirectUrl.searchParams.get("scope")).toContain("chat:write");
       expect(redirectUrl.searchParams.get("state")).toBeNull();
@@ -131,6 +142,43 @@ describe("Slack OAuth API routes", () => {
       expect(state.vm0UserId).toBe("user_1");
       expect(state.reinstall).toBeTruthy();
       expect([...state.prompt]).toHaveLength(500);
+    });
+
+    it("uses the web rewrite origin for Slack callback URLs", async () => {
+      const response = await appRequest("/api/zero/slack/oauth/install", {
+        origin: API_ORIGIN,
+        headers: { "x-vm0-web-origin": WEB_ORIGIN },
+      });
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+      );
+    });
+
+    it("redirects direct API host install requests to the canonical web route", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+        { origin: API_ORIGIN },
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1`,
+      );
+    });
+
+    it("ignores untrusted web origin headers on direct API host install requests", async () => {
+      const response = await appRequest("/api/zero/slack/oauth/install", {
+        origin: API_ORIGIN,
+        headers: { "x-vm0-web-origin": "https://evil.example" },
+      });
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/install`,
+      );
     });
 
     it("returns 503 when Slack client ID is not configured", async () => {
@@ -157,6 +205,9 @@ describe("Slack OAuth API routes", () => {
 
       expect(response.status).toBe(307);
       const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        "http://api.test/api/zero/slack/oauth/callback",
+      );
       expect(redirectUrl.searchParams.get("user_scope")).toBe("identity.basic");
       expect(redirectUrl.searchParams.get("team")).toBe(
         fixture.slackWorkspaceId,
@@ -171,6 +222,38 @@ describe("Slack OAuth API routes", () => {
         orgId: fixture.orgId,
         vm0UserId: fixture.userId,
       });
+    });
+
+    it("uses the web rewrite origin for connect callback URLs", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/connect?orgId=${fixture.orgId}&vm0UserId=${fixture.userId}`,
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": WEB_ORIGIN },
+        },
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+      );
+    });
+
+    it("redirects direct API host connect requests to the canonical web route", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1",
+        { origin: API_ORIGIN },
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/connect?orgId=org_1&vm0UserId=user_1`,
+      );
     });
 
     it("returns 400 when orgId or vm0UserId is missing", async () => {
@@ -241,6 +324,11 @@ describe("Slack OAuth API routes", () => {
       expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
         "xoxb-test-token",
       );
+      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirect_uri: "http://api.test/api/zero/slack/oauth/callback",
+        }),
+      );
 
       const connection = await store.set(
         findSlackOrgConnection$,
@@ -251,6 +339,51 @@ describe("Slack OAuth API routes", () => {
         context.signal,
       );
       expect(connection).toMatchObject({ vm0UserId: fixture.userId });
+    });
+
+    it("uses the web rewrite origin for callback token exchange", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+        {
+          origin: API_ORIGIN,
+          headers: { "x-vm0-web-origin": WEB_ORIGIN },
+        },
+      );
+
+      expect(response.status).toBe(307);
+      expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
+        }),
+      );
+    });
+
+    it("redirects direct API host callback requests to the canonical web route", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/callback?code=valid-code&state=state-123",
+        { origin: API_ORIGIN },
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `${WEB_ORIGIN}/api/zero/slack/oauth/callback?code=valid-code&state=state-123`,
+      );
+      expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
     });
 
     it("rejects platform install for a non-admin member", async () => {

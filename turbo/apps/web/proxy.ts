@@ -14,7 +14,7 @@ import { applyCorsHeaders, handleCors } from "./proxy.cors";
 import { env } from "./src/env";
 import {
   matchesApiBackendRewritePath,
-  matchesConnectorOAuthRewritePath,
+  matchesOAuthWebOriginRewritePath,
 } from "./api-backend-rewrites";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
     "x-forwarded-proto",
     request.nextUrl.protocol.slice(0, -1),
   );
-  if (matchesConnectorOAuthRewritePath(request.nextUrl.pathname)) {
+  if (matchesOAuthWebOriginRewritePath(request.nextUrl.pathname)) {
     requestHeaders.set(
       CONNECTOR_OAUTH_WEB_ORIGIN_HEADER,
       request.nextUrl.origin,

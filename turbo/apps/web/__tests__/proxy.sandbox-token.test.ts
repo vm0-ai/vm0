@@ -314,4 +314,34 @@ describe("proxy middleware: sandbox token handling", () => {
       "https://www.vm0.ai",
     );
   });
+
+  it("should preserve web origin headers for Slack OAuth rewrite routes", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+      {
+        headers: {
+          cookie: "__session=opaque",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(
+      "__session=opaque",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(response.headers.get("x-middleware-request-x-vm0-web-origin")).toBe(
+      "https://www.vm0.ai",
+    );
+  });
 });
