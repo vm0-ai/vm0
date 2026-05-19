@@ -347,6 +347,13 @@ const CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS = [
   "/api/cron/execute-schedules/extra",
   "/api/cron",
 ] as const;
+const CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE =
+  "/api/cron/process-usage-events";
+const CRON_PROCESS_USAGE_EVENTS_PATH = "/api/cron/process-usage-events";
+const CRON_PROCESS_USAGE_EVENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/process-usage-events/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -1129,6 +1136,10 @@ describe("API backend rewrites", () => {
         {
           source: CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/execute-schedules",
+        },
+        {
+          source: CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/process-usage-events",
         },
         {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -2314,6 +2325,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_EXECUTE_SCHEDULES_PATH)).toStrictEqual({});
     for (const pathname of CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron process usage events rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/process-usage-events",
+    });
+
+    const matcher = getPathMatch(CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_PROCESS_USAGE_EVENTS_PATH)).toStrictEqual({});
+    for (const pathname of CRON_PROCESS_USAGE_EVENTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

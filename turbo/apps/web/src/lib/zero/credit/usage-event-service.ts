@@ -163,23 +163,3 @@ export async function processOrgUsageEvents(orgId: string): Promise<void> {
     await evaluateMemberCaps(orgId, [...result.affectedUserIds]);
   }
 }
-
-/**
- * Cron entry point: find all orgs with pending usage_event rows and process them.
- *
- * @returns Number of orgs processed
- */
-export async function processStaleUsageEvents(): Promise<number> {
-  const db = globalThis.services.db;
-
-  const orgs = await db
-    .selectDistinct({ orgId: usageEvent.orgId })
-    .from(usageEvent)
-    .where(eq(usageEvent.status, "pending"));
-
-  for (const { orgId } of orgs) {
-    await processOrgUsageEvents(orgId);
-  }
-
-  return orgs.length;
-}
