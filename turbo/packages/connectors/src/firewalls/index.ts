@@ -60,6 +60,7 @@ import { axiomFirewall } from "./axiom.generated";
 import { bentomlFirewall } from "./bentoml.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
+import { brexFirewall } from "./brex.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
@@ -71,6 +72,7 @@ import { calComFirewall } from "./cal-com.generated";
 import { calendlyFirewall } from "./calendly.generated";
 import { canvaFirewall } from "./canva.generated";
 import { chatwootFirewall } from "./chatwoot.generated";
+import { checkrFirewall } from "./checkr.generated";
 import { cladoFirewall } from "./clado.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
@@ -97,6 +99,7 @@ import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { etsyFirewall } from "./etsy.generated";
 import { exaFirewall } from "./exa.generated";
 import { exploriumFirewall } from "./explorium.generated";
+import { faireFirewall } from "./faire.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
@@ -197,6 +200,7 @@ import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
+import { segmentFirewall } from "./segment.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shopifyFirewall } from "./shopify.generated";
@@ -280,6 +284,7 @@ const CONNECTOR_FIREWALLS = {
   bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
+  brex: brexFirewall,
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
@@ -290,6 +295,7 @@ const CONNECTOR_FIREWALLS = {
   calendly: calendlyFirewall,
   canva: canvaFirewall,
   chatwoot: chatwootFirewall,
+  checkr: checkrFirewall,
   clerk: clerkFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
@@ -317,6 +323,7 @@ const CONNECTOR_FIREWALLS = {
   etsy: etsyFirewall,
   exa: exaFirewall,
   explorium: exploriumFirewall,
+  faire: faireFirewall,
   fal: falFirewall,
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
@@ -410,6 +417,7 @@ const CONNECTOR_FIREWALLS = {
   runway: runwayFirewall,
   salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
+  segment: segmentFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shopify: shopifyFirewall,
