@@ -357,6 +357,16 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the v1 chat thread send rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads/messages")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/v1/chat-threads/messages/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads")).toBe(false);
+  });
+
   it("matches the v1 chat thread detail rewrite without shadowing sibling routes", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -367,7 +377,7 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/v1/chat-threads/not-a-uuid"),
     ).toBe(true);
     expect(matchesApiBackendRewritePath("/api/v1/chat-threads/messages")).toBe(
-      false,
+      true,
     );
     expect(
       matchesApiBackendRewritePath(
@@ -387,7 +397,7 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/v1/chat-threads/not-a-uuid/messages"),
     ).toBe(true);
     expect(matchesApiBackendRewritePath("/api/v1/chat-threads/messages")).toBe(
-      false,
+      true,
     );
     expect(
       matchesApiBackendRewritePath(

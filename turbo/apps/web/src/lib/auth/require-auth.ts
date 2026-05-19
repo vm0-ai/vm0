@@ -3,7 +3,6 @@ import { after } from "next/server";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { getAuthContext, type AuthContext } from "./get-auth-context";
 import {
-  isPatToken,
   isSandboxToken,
   verifySandboxToken,
   verifyZeroToken,
@@ -118,71 +117,4 @@ export function isAuthError(
   result: AuthContext | AuthErrorResponse,
 ): result is AuthErrorResponse {
   return "status" in result;
-}
-
-/**
- * Strict authenticator for the public `/api/v1/*` surface: the caller must
- * present a `vm0_pat_…` personal access token minted from `/settings/api-keys`
- * (or the CLI device flow — the same token artifact). Session cookies,
- * sandbox/zero tokens, and any other bearer shape are rejected so these
- * endpoints can never be reached without an explicit, user-created PAT.
- *
- * The PAT JWT carries the orgId stamped at mint time, so `resolveOrg` has
- * explicit org context without a session lookup. We additionally re-check
- * that the user is still a member of that org — a PAT must not outlive
- * membership.
- *
- * Valid sandbox/zero tokens return 403 because the caller is authenticated
- * with the wrong credential type. Missing/invalid/revoked/expired keys (or
- * keys whose user left the org) return 401.
- */
-export async function requireApiKeyAuth(
-  authHeader: string | undefined,
-  cookieHeader?: string,
-): Promise<AuthContext | AuthErrorResponse> {
-  const shadowOpts = { accept: "pat" as const };
-  const unauthorized: AuthErrorResponse = {
-    status: 401 as const,
-    body: {
-      error: { message: "API key required", code: "UNAUTHORIZED" },
-    },
-  };
-  const forbiddenSandboxToken: AuthErrorResponse = {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "This endpoint is not available for sandbox tokens",
-        code: "FORBIDDEN",
-      },
-    },
-  };
-  if (!authHeader?.startsWith("Bearer ")) {
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
-    return unauthorized;
-  }
-  const token = authHeader.substring(7);
-  if (!isPatToken(token)) {
-    if (isSandboxToken(token)) {
-      const sandboxAuth = verifySandboxToken(token);
-      const zeroAuth = sandboxAuth ? null : verifyZeroToken(token);
-      if (sandboxAuth || zeroAuth) {
-        scheduleShadowCheck(
-          forbiddenSandboxToken,
-          authHeader,
-          cookieHeader,
-          shadowOpts,
-        );
-        return forbiddenSandboxToken;
-      }
-    }
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
-    return unauthorized;
-  }
-  const authCtx = await getAuthContext(authHeader);
-  if (!authCtx || authCtx.tokenType !== "pat" || !authCtx.orgId) {
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
-    return unauthorized;
-  }
-  scheduleShadowCheck(authCtx, authHeader, cookieHeader, shadowOpts);
-  return authCtx;
 }
