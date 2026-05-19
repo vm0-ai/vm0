@@ -44,11 +44,21 @@ export interface ComputerUseApprovalAction {
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  let escaped = "";
+  for (const char of value) {
+    if (char === "&") {
+      escaped += "&amp;";
+    } else if (char === "<") {
+      escaped += "&lt;";
+    } else if (char === ">") {
+      escaped += "&gt;";
+    } else if (char === '"') {
+      escaped += "&quot;";
+    } else {
+      escaped += char;
+    }
+  }
+  return escaped;
 }
 
 function statusText(enabled: boolean): string {
