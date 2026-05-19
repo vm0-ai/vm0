@@ -1,9 +1,9 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
 import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
-import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
 import type { VolumeVersionsSnapshot } from "../../lib/infra/checkpoint/types";
+import { findTestRunRecord } from "../db-test-assertions/runs";
 import { createTestRequest } from "./core";
 
 // Re-exports: DB-direct seeders
@@ -71,7 +71,7 @@ export async function createTestRun(
 }
 
 /**
- * Get test run details via internal API route handler.
+ * Get test run details for assertions that inspect internal run fields.
  *
  * @param runId - The run ID to fetch
  * @returns The run details including status, error, etc.
@@ -83,22 +83,15 @@ export async function getTestRun(runId: string): Promise<{
   completedAt: string | null;
   appendSystemPrompt: string | null;
 }> {
-  const request = createTestRequest(
-    `http://localhost:3000/api/agent/runs/${runId}`,
-  );
-  const response = await getRunByIdRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to get run: ${error.error?.message || response.status}`,
-    );
+  const data = await findTestRunRecord(runId);
+  if (!data) {
+    throw new Error(`Failed to get run: ${runId}`);
   }
-  const data = await response.json();
   return {
-    id: data.runId,
+    id: data.id,
     status: data.status,
     error: data.error ?? null,
-    completedAt: data.completedAt ?? null,
+    completedAt: data.completedAt?.toISOString() ?? null,
     appendSystemPrompt: data.appendSystemPrompt ?? null,
   };
 }

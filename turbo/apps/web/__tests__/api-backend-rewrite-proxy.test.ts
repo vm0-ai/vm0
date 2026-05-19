@@ -399,6 +399,26 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches only UUID-shaped agent run detail paths", () => {
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/extra`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
+      ),
+    ).toBe(false);
+  });
+
   it("routes hosted-site deployment endpoints to the API backend", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/host/deployments/prepare"),

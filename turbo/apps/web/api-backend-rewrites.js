@@ -70,6 +70,10 @@ const AGENT_RUN_EVENTS_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT
 const AGENT_RUN_EVENTS_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/events$`,
 );
+const AGENT_RUN_BY_ID_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const AGENT_RUN_BY_ID_PATH_RE = new RegExp(
+  `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -133,6 +137,11 @@ export const API_BACKEND_REWRITES = [
     AGENT_RUN_EVENTS_REWRITE_SOURCE,
     "/api/agent/runs/:id/events",
     AGENT_RUN_EVENTS_PATH_RE,
+  ],
+  [
+    AGENT_RUN_BY_ID_REWRITE_SOURCE,
+    "/api/agent/runs/:id",
+    AGENT_RUN_BY_ID_PATH_RE,
   ],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [

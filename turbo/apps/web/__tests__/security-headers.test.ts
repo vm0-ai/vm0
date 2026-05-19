@@ -103,6 +103,25 @@ const AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
   "/api/agent/runs",
   "/api/agent/runs/queues",
 ] as const;
+const AGENT_RUN_BY_ID_REWRITE_SOURCE =
+  "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const AGENT_RUN_BY_ID_PATH = `/api/agent/runs/${AGENT_RUN_ID}`;
+const AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs",
+  "/api/agent/runs/queue",
+  "/api/agent/runs/not-a-uuid",
+  `/api/agent/runs/${AGENT_RUN_ID}/cancel`,
+  `/api/agent/runs/${AGENT_RUN_ID}/events`,
+  `/api/agent/runs/${AGENT_RUN_ID}/extra`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+] as const;
+const AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs",
+  "/api/agent/runs/not-a-uuid",
+  `/api/agent/runs/${AGENT_RUN_ID}/extra`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
+] as const;
 const AGENT_RUN_CANCEL_REWRITE_SOURCE =
   "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/cancel";
 const AGENT_RUN_CANCEL_PATH = `/api/agent/runs/${AGENT_RUN_ID}/cancel`;
@@ -785,6 +804,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/runs/:id/events",
         },
         {
+          source: AGENT_RUN_BY_ID_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs/:id",
+        },
+        {
           source: AUTH_ME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/auth/me",
         },
@@ -1440,6 +1463,31 @@ describe("API backend rewrites", () => {
       id: AGENT_RUN_ID,
     });
     for (const pathname of AGENT_RUN_EVENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent run detail rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUN_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUN_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs/:id",
+    });
+
+    const matcher = getPathMatch(AGENT_RUN_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUN_BY_ID_PATH)).toStrictEqual({
+      id: AGENT_RUN_ID,
+    });
+    for (const pathname of AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3126,6 +3174,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for UUID-shaped agent run events paths", () => {
     expect(matchesApiBackendRewritePath(AGENT_RUN_EVENTS_PATH)).toBe(true);
     for (const pathname of AGENT_RUN_EVENTS_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped agent run detail paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUN_BY_ID_PATH)).toBe(true);
+    for (const pathname of AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
