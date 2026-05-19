@@ -3925,6 +3925,80 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn process_control_concurrent_requests_release_gate_leases() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let first_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control.clone(),
+            "concurrent-a".to_owned(),
+            b"payload-a".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let second_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "concurrent-b".to_owned(),
+            b"payload-b".to_vec(),
+            Duration::from_secs(5),
+        ));
+
+        let first_request = read_vsock_message(&mut guest).await;
+        let second_request = read_vsock_message(&mut guest).await;
+        let mut message_ids = [
+            vsock_proto::decode_process_control(&first_request.payload)
+                .unwrap()
+                .message_id
+                .to_owned(),
+            vsock_proto::decode_process_control(&second_request.payload)
+                .unwrap()
+                .message_id
+                .to_owned(),
+        ];
+        message_ids.sort();
+        assert_eq!(message_ids, ["concurrent-a", "concurrent-b"]);
+        assert_eq!(coordinator.active_operation_count(), 2);
+
+        send_process_control_result(
+            &mut guest,
+            second_request,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+        send_process_control_result(
+            &mut guest,
+            first_request,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let first_ack = first_task.await.unwrap().unwrap();
+        let second_ack = second_task.await.unwrap().unwrap();
+        assert_eq!(first_ack.message_id, "concurrent-a");
+        assert_eq!(second_ack.message_id, "concurrent-b");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn process_control_protocol_error_after_guest_write_marks_gate_dirty() {
         let ProcessControlFixture {
             host: _host,
