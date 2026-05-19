@@ -409,7 +409,6 @@ describe("getConfiguredConnectorTypes", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
       return (
         getConnectorOAuthConfig(type) &&
-        isConnectorOAuthAuthorizeType(type) &&
         !oauthTypesWithoutRuntimeClientCredentials.has(type)
       );
     });
@@ -419,6 +418,7 @@ describe("getConfiguredConnectorTypes", () => {
     });
 
     expect(configuredTypes).toEqual(expect.arrayContaining(activeOAuthTypes));
+    expect(configuredTypes).toContain("codex-oauth");
   });
 
   it("includes computer only when both ngrok env vars are configured", () => {

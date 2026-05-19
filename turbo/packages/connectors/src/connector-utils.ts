@@ -189,13 +189,10 @@ export function getConnectorOAuthCredentials(
   return { configured: true, client, clientId, clientSecret };
 }
 
-function hasConfiguredConnectorOAuth(
+function hasConfiguredOAuth(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  if (getConnectorOAuthStorage(type) !== "connector") {
-    return false;
-  }
   return getConnectorOAuthCredentials(type, readEnv)?.configured ?? false;
 }
 
@@ -231,7 +228,7 @@ export function getConfiguredConnectorTypes(
   for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
     const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
     if (
-      hasConfiguredConnectorOAuth(readEnv, type) ||
+      hasConfiguredOAuth(readEnv, type) ||
       defaultAuthMethod === "api-token"
     ) {
       configured.add(type);
