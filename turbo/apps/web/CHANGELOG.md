@@ -1,5 +1,50 @@
 # Changelog
 
+## [12.378.0](https://github.com/vm0-ai/vm0/compare/web-v12.377.2...web-v12.378.0) (2026-05-19)
+
+
+### Features
+
+* redesign computer use around desktop host ([#14067](https://github.com/vm0-ai/vm0/issues/14067)) ([7b5bc86](https://github.com/vm0-ai/vm0/commit/7b5bc864edb3bba064d5a3aa35e904a96c9e627c))
+
+
+### Bug Fixes
+
+* keep agentphone webhook on web origin ([#14076](https://github.com/vm0-ai/vm0/issues/14076)) ([2d0a126](https://github.com/vm0-ai/vm0/commit/2d0a126a369b81c6ba17723ca48716b572f287b6))
+* keep github oauth on web origin ([#14084](https://github.com/vm0-ai/vm0/issues/14084)) ([7976243](https://github.com/vm0-ai/vm0/commit/79762435c4ccab7eaf934dd36170c9476639e7a1))
+* keep github webhooks on web origin ([#14088](https://github.com/vm0-ai/vm0/issues/14088)) ([a3b1580](https://github.com/vm0-ai/vm0/commit/a3b1580c0aa6818673f297454e98821ad2f679ec))
+* keep slack oauth on web origin ([#14057](https://github.com/vm0-ai/vm0/issues/14057)) ([6c1a674](https://github.com/vm0-ai/vm0/commit/6c1a67455b835cb1182f03453d83a6ab079ceea7))
+* keep slack provider callbacks on web origin ([#14062](https://github.com/vm0-ai/vm0/issues/14062)) ([b701df6](https://github.com/vm0-ai/vm0/commit/b701df6ab550d1f95e68a184ef670dc04378c152))
+* keep telegram callbacks on web origin ([#14068](https://github.com/vm0-ai/vm0/issues/14068)) ([36b10af](https://github.com/vm0-ai/vm0/commit/36b10aff3fa404c3069451d8277a709c3c0a4b0c))
+
+
+### Refactoring
+
+* cut over internal cron schedule callback route ([#14036](https://github.com/vm0-ai/vm0/issues/14036)) ([96d9e6b](https://github.com/vm0-ai/vm0/commit/96d9e6be8979594605af97ae42891cf67f453c14))
+* cut over internal loop schedule callback route ([#14056](https://github.com/vm0-ai/vm0/issues/14056)) ([5caad66](https://github.com/vm0-ai/vm0/commit/5caad663d6c18d4f1e09f12e0f4e62f4a8029426))
+* cut over internal slack org callback route ([#14065](https://github.com/vm0-ai/vm0/issues/14065)) ([1e79768](https://github.com/vm0-ai/vm0/commit/1e7976884465071724154860d4e21e0ac6644dd5))
+* cut over internal voice-chat callback route ([#14085](https://github.com/vm0-ai/vm0/issues/14085)) ([3564202](https://github.com/vm0-ai/vm0/commit/3564202dbfaa935b0476ef8b015e30ad5a859791))
+* cut over zero composes list route ([#14034](https://github.com/vm0-ai/vm0/issues/14034)) ([795886b](https://github.com/vm0-ai/vm0/commit/795886be42ef8e33f7e6604c0d2b3acca91b873f))
+* migrate zero runs create rewrite ([#14033](https://github.com/vm0-ai/vm0/issues/14033)) ([1563d5e](https://github.com/vm0-ai/vm0/commit/1563d5e24a2be1906fc265ec0cfb5c831a626769))
+* proxy test slack conversations history route to api ([#14035](https://github.com/vm0-ai/vm0/issues/14035)) ([1f61e38](https://github.com/vm0-ai/vm0/commit/1f61e38ac172654081b37de90f43f1f1145c3b6d))
+* proxy test slack conversations open route to api ([#14050](https://github.com/vm0-ai/vm0/issues/14050)) ([b3a3b30](https://github.com/vm0-ai/vm0/commit/b3a3b30719c8cbe7e2a4add1bfa618272e98ba11))
+* proxy test slack conversations replies to api ([#14059](https://github.com/vm0-ai/vm0/issues/14059)) ([1ca8b8a](https://github.com/vm0-ai/vm0/commit/1ca8b8ab365f7761437704930d662cec9d6af789))
+* proxy test slack ephemeral route to api ([#14015](https://github.com/vm0-ai/vm0/issues/14015)) ([ea8480a](https://github.com/vm0-ai/vm0/commit/ea8480ac574d44bd542dea9f01cc57ec9536e776))
+* proxy test slack oauth access route to api ([#14066](https://github.com/vm0-ai/vm0/issues/14066)) ([22eeb2d](https://github.com/vm0-ai/vm0/commit/22eeb2dbbbd0509706c234afb86079663ba3b1c3))
+* proxy test slack users info to api ([#14073](https://github.com/vm0-ai/vm0/issues/14073)) ([beeacb5](https://github.com/vm0-ai/vm0/commit/beeacb5cb6530d9d691e30ebf90a937659cf770d))
+* proxy test slack views publish route to api ([#14080](https://github.com/vm0-ai/vm0/issues/14080)) ([5402481](https://github.com/vm0-ai/vm0/commit/54024813bc108b5a9e06298edfe0e7e5e6c5ad4c))
+* proxy test telegram state route to api ([#14089](https://github.com/vm0-ai/vm0/issues/14089)) ([828cc1c](https://github.com/vm0-ai/vm0/commit/828cc1c986ae6a7a07e81fc372de42a40d1144e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.32.0
+    * @vm0/connectors bumped to 1.22.0
+    * @vm0/core bumped to 8.284.0
+    * @vm0/db bumped to 1.15.0
+
 ## [12.377.2](https://github.com/vm0-ai/vm0/compare/web-v12.377.1...web-v12.377.2) (2026-05-19)
 
 

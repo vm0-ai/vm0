@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.158.0](https://github.com/vm0-ai/vm0/compare/cli-v9.157.1...cli-v9.158.0) (2026-05-19)
+
+
+### Features
+
+* redesign computer use around desktop host ([#14067](https://github.com/vm0-ai/vm0/issues/14067)) ([7b5bc86](https://github.com/vm0-ai/vm0/commit/7b5bc864edb3bba064d5a3aa35e904a96c9e627c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.32.0
+    * @vm0/connectors bumped to 1.22.0
+    * @vm0/core bumped to 8.284.0
+
 ## [9.157.1](https://github.com/vm0-ai/vm0/compare/cli-v9.157.0...cli-v9.157.1) (2026-05-19)
 
 

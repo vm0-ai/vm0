@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.284.0](https://github.com/vm0-ai/vm0/compare/core-v8.283.0...core-v8.284.0) (2026-05-19)
+
+
+### Features
+
+* add desktop local agent management ([#14055](https://github.com/vm0-ai/vm0/issues/14055)) ([a31aa82](https://github.com/vm0-ai/vm0/commit/a31aa823db896b801428e55b3875ca6c55f1fc66))
+* redesign computer use around desktop host ([#14067](https://github.com/vm0-ai/vm0/issues/14067)) ([7b5bc86](https://github.com/vm0-ai/vm0/commit/7b5bc864edb3bba064d5a3aa35e904a96c9e627c))
+
+
+### Bug Fixes
+
+* adjust org feature switch rollout ([#14077](https://github.com/vm0-ai/vm0/issues/14077)) ([a3ed4d2](https://github.com/vm0-ai/vm0/commit/a3ed4d28caec9de9aec2749addffd005d38bab32))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.32.0
+    * @vm0/connectors bumped to 1.22.0
+
 ## [8.283.0](https://github.com/vm0-ai/vm0/compare/core-v8.282.0...core-v8.283.0) (2026-05-19)
 
 

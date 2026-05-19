@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.368.0](https://github.com/vm0-ai/vm0/compare/app-v0.367.0...app-v0.368.0) (2026-05-19)
+
+
+### Features
+
+* add desktop local agent management ([#14055](https://github.com/vm0-ai/vm0/issues/14055)) ([a31aa82](https://github.com/vm0-ai/vm0/commit/a31aa823db896b801428e55b3875ca6c55f1fc66))
+
+
+### Refactoring
+
+* split zero sidebar nav content and fix dropped mod+shift+arrow keypress ([#14079](https://github.com/vm0-ai/vm0/issues/14079)) ([2d532b7](https://github.com/vm0-ai/vm0/commit/2d532b7bcef908ee8e491c035ca9b2d5a7ccbc28))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.32.0
+    * @vm0/connectors bumped to 1.22.0
+    * @vm0/core bumped to 8.284.0
+
 ## [0.367.0](https://github.com/vm0-ai/vm0/compare/app-v0.366.2...app-v0.367.0) (2026-05-19)
 
 
