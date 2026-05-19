@@ -128,6 +128,11 @@ export function clearMockedAuth() {
   mockedClerk.createOrganization.mockReset();
   mockedClerk.sessionGetToken.mockReset();
   mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
+  mockedClerk.clientSignInCreate.mockReset();
+  mockedClerk.clientSignInCreate.mockResolvedValue({
+    status: "complete",
+    createdSessionId: "test-created-session-id",
+  });
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -141,6 +146,14 @@ const defaultGetTokenImpl: GetTokenImpl = () => {
 };
 
 const sessionGetToken = vi.fn<GetTokenImpl>(defaultGetTokenImpl);
+const clientSignInCreate = vi.fn(
+  (_params: { strategy: "ticket"; ticket: string }) => {
+    return Promise.resolve({
+      status: "complete",
+      createdSessionId: "test-created-session-id",
+    });
+  },
+);
 
 export const mockedClerk = {
   get user() {
@@ -156,6 +169,12 @@ export const mockedClerk = {
     };
   },
   sessionGetToken,
+  clientSignInCreate,
+  client: {
+    signIn: {
+      create: clientSignInCreate,
+    },
+  },
   signOut: vi.fn(() => {
     return Promise.resolve();
   }),
