@@ -1464,6 +1464,7 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
+                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
                 self.runtime.kill_process().await;
             }
             return Ok(());
@@ -1484,14 +1485,15 @@ impl Sandbox for FirecrackerSandbox {
         // deflate failed), is_parked is true but vCPUs are actually running.
         // Skipping graceful shutdown is still correct — the sandbox was idle
         // with no user workload.
-        if !self.is_parked {
-            let guest = self.guest.lock().await.take();
-            if let Some(guest) = guest
-                && !guest.shutdown(SHUTDOWN_TIMEOUT).await
-            {
-                warn!(id = %self.id, "graceful shutdown timed out");
-            }
+        let was_parked = self.is_parked;
+        let guest = self.guest.lock().await.take();
+        if !was_parked
+            && let Some(guest) = guest
+            && !guest.shutdown(SHUTDOWN_TIMEOUT).await
+        {
+            warn!(id = %self.id, "graceful shutdown timed out");
         }
+        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
 
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
@@ -1504,12 +1506,14 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
+                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
                 self.runtime.kill_process().await;
             }
             return Ok(());
         }
         self.runtime.shutdown_services().await;
         self.guest.lock().await.take();
+        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
@@ -2048,6 +2052,11 @@ impl Drop for UnparkBoundaryGuard {
             UnparkBoundaryGuardState::Disarmed => {}
         }
     }
+}
+
+fn release_park_state_for_termination<Fence>(is_parked: &mut bool, park_fence: &mut Option<Fence>) {
+    *is_parked = false;
+    drop(park_fence.take());
 }
 
 async fn park_with_ready_for_park<Fence, F, FF, Q, QF, P, PF>(
@@ -3239,6 +3248,21 @@ mod tests {
             ));
             self.events.lock().unwrap().push("release_fence");
         }
+    }
+
+    #[test]
+    fn termination_releases_park_fence_and_clears_parked_flag() {
+        let events = event_log();
+        let mut is_parked = true;
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
+
+        release_park_state_for_termination(&mut is_parked, &mut fence);
+
+        assert!(!is_parked);
+        assert!(fence.is_none());
+        assert_eq!(logged_events(&events), vec!["release_fence"]);
     }
 
     #[test]
