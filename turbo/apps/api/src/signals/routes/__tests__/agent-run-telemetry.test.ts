@@ -349,6 +349,24 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     expect(response.body.metrics[1]?.cpu).toBe(0.2);
   });
 
+  it("returns empty legacy telemetry when no Postgres records exist", async () => {
+    const fixture = await setupRun();
+
+    const client = setupApp({ context })(runTelemetryContract);
+    const response = await accept(
+      client.getTelemetry({
+        params: { id: fixture.runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      systemLog: "",
+      metrics: [],
+    });
+  });
+
   it("returns paged agent telemetry events from Axiom", async () => {
     const fixture = await setupRun();
     context.mocks.axiom.query.mockResolvedValueOnce([

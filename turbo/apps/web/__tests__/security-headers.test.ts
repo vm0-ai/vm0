@@ -122,7 +122,27 @@ const AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs",
   "/api/agent/runs/not-a-uuid",
   `/api/agent/runs/${AGENT_RUN_ID}/extra`,
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+] as const;
+const AGENT_RUN_TELEMETRY_REWRITE_SOURCE =
+  "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/telemetry";
+const AGENT_RUN_TELEMETRY_PATH = `/api/agent/runs/${AGENT_RUN_ID}/telemetry`;
+const AGENT_RUN_TELEMETRY_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/telemetry",
+  "/api/agent/runs/not-a-uuid/telemetry",
+  `/api/agent/runs/${AGENT_RUN_ID}`,
+  `/api/agent/runs/${AGENT_RUN_ID}/cancel`,
+  `/api/agent/runs/${AGENT_RUN_ID}/events`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/extra`,
+] as const;
+const AGENT_RUN_TELEMETRY_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/telemetry",
+  "/api/agent/runs/not-a-uuid/telemetry",
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/extra`,
 ] as const;
 const AGENT_RUN_TELEMETRY_AGENT_REWRITE_SOURCE =
   "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/telemetry/agent";
@@ -142,7 +162,6 @@ const AGENT_RUN_TELEMETRY_AGENT_NEXT_NEGATIVE_PATHS = [
 const AGENT_RUN_TELEMETRY_AGENT_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/telemetry/agent",
   "/api/agent/runs/not-a-uuid/telemetry/agent",
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent/extra`,
 ] as const;
@@ -164,7 +183,6 @@ const AGENT_RUN_TELEMETRY_METRICS_NEXT_NEGATIVE_PATHS = [
 const AGENT_RUN_TELEMETRY_METRICS_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/telemetry/metrics",
   "/api/agent/runs/not-a-uuid/telemetry/metrics",
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics/extra`,
 ] as const;
@@ -186,7 +204,6 @@ const AGENT_RUN_TELEMETRY_NETWORK_NEXT_NEGATIVE_PATHS = [
 const AGENT_RUN_TELEMETRY_NETWORK_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/telemetry/network",
   "/api/agent/runs/not-a-uuid/telemetry/network",
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network/extra`,
 ] as const;
@@ -197,6 +214,11 @@ const AGENT_RUN_CANCEL_NEXT_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/cancel",
   "/api/agent/runs/not-a-uuid/cancel",
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+  `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
+] as const;
+const AGENT_RUN_CANCEL_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/cancel",
+  "/api/agent/runs/not-a-uuid/cancel",
   `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
 ] as const;
 const AGENT_RUN_EVENTS_REWRITE_SOURCE =
@@ -214,7 +236,6 @@ const AGENT_RUN_EVENTS_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/events",
   "/api/agent/runs/not-a-uuid/events",
   `/api/agent/runs/${AGENT_RUN_ID}/events/extra`,
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
 ] as const;
 const AUTH_ME_REWRITE_SOURCE = "/api/auth/me";
 const AUTH_ME_PATH = "/api/auth/me";
@@ -882,6 +903,10 @@ describe("API backend rewrites", () => {
         {
           source: AGENT_RUN_BY_ID_REWRITE_SOURCE,
           destination: "https://api.example.test/api/agent/runs/:id",
+        },
+        {
+          source: AGENT_RUN_TELEMETRY_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs/:id/telemetry",
         },
         {
           source: AGENT_RUN_TELEMETRY_AGENT_REWRITE_SOURCE,
@@ -1584,6 +1609,31 @@ describe("API backend rewrites", () => {
       id: AGENT_RUN_ID,
     });
     for (const pathname of AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent run telemetry rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUN_TELEMETRY_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUN_TELEMETRY_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs/:id/telemetry",
+    });
+
+    const matcher = getPathMatch(AGENT_RUN_TELEMETRY_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUN_TELEMETRY_PATH)).toStrictEqual({
+      id: AGENT_RUN_ID,
+    });
+    for (const pathname of AGENT_RUN_TELEMETRY_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3366,7 +3416,7 @@ describe("API backend rewrites", () => {
 
   it("should bypass web middleware only for UUID-shaped agent run cancel paths", () => {
     expect(matchesApiBackendRewritePath(AGENT_RUN_CANCEL_PATH)).toBe(true);
-    for (const pathname of AGENT_RUN_CANCEL_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of AGENT_RUN_CANCEL_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
@@ -3381,6 +3431,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for UUID-shaped agent run detail paths", () => {
     expect(matchesApiBackendRewritePath(AGENT_RUN_BY_ID_PATH)).toBe(true);
     for (const pathname of AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped agent run telemetry paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUN_TELEMETRY_PATH)).toBe(true);
+    for (const pathname of AGENT_RUN_TELEMETRY_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

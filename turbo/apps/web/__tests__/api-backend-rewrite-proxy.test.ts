@@ -368,9 +368,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid/cancel"),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
-    ).toBe(false);
-    expect(
       matchesApiBackendRewritePath(
         `/api/agent/runs/${AGENT_RUN_ID}/cancel/extra`,
       ),
@@ -404,8 +401,27 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/extra`),
     ).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent run telemetry paths", () => {
     expect(
       matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/runs/queue/telemetry"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/agent/runs/not-a-uuid/telemetry"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/extra`,
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+      ),
     ).toBe(false);
   });
 
@@ -425,9 +441,6 @@ describe("API backend rewrite proxy behavior", () => {
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent/extra`,
       ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
-    ).toBe(false);
   });
 
   it("matches only UUID-shaped agent run metrics telemetry paths", () => {
@@ -446,9 +459,6 @@ describe("API backend rewrite proxy behavior", () => {
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics/extra`,
       ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
-    ).toBe(false);
   });
 
   it("matches only UUID-shaped agent run network telemetry paths", () => {
@@ -466,9 +476,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath(
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network/extra`,
       ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath(

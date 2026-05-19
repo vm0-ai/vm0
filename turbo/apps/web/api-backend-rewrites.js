@@ -74,6 +74,10 @@ const AGENT_RUN_BY_ID_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_
 const AGENT_RUN_BY_ID_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const AGENT_RUN_TELEMETRY_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry`;
+const AGENT_RUN_TELEMETRY_PATH_RE = new RegExp(
+  `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry$`,
+);
 const AGENT_RUN_TELEMETRY_AGENT_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/agent`;
 const AGENT_RUN_TELEMETRY_AGENT_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/agent$`,
@@ -158,6 +162,11 @@ export const API_BACKEND_REWRITES = [
     AGENT_RUN_BY_ID_REWRITE_SOURCE,
     "/api/agent/runs/:id",
     AGENT_RUN_BY_ID_PATH_RE,
+  ],
+  [
+    AGENT_RUN_TELEMETRY_REWRITE_SOURCE,
+    "/api/agent/runs/:id/telemetry",
+    AGENT_RUN_TELEMETRY_PATH_RE,
   ],
   [
     AGENT_RUN_TELEMETRY_AGENT_REWRITE_SOURCE,
