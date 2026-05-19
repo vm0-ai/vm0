@@ -319,6 +319,18 @@ describe("desktop computer-use runtime", () => {
     );
     expect(created.body.status).toBe("pending_approval");
 
+    const agentApproval = await accept(
+      approvalClient.decide({
+        params: { commandId: created.body.commandId },
+        body: { decision: "approve" },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+    expect(agentApproval.body.error.message).toBe(
+      "This endpoint is not available for sandbox tokens",
+    );
+
     const approved = await accept(
       approvalClient.decide({
         params: { commandId: created.body.commandId },

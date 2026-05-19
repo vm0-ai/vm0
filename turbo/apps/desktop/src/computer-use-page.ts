@@ -33,8 +33,14 @@ interface ComputerUseAuditEventPageState {
 
 interface ComputerUsePageState {
   readonly featureSwitchKey: typeof COMPUTER_USE_FEATURE_SWITCH_KEY;
+  readonly approvalActionScheme: string;
   readonly permissions: ComputerUsePermissionState;
   readonly host: ComputerUseHostPageState;
+}
+
+export interface ComputerUseApprovalAction {
+  readonly commandId: string;
+  readonly decision: "approve" | "deny";
 }
 
 function escapeHtml(value: string): string {
@@ -61,6 +67,42 @@ function valueText(value: string | null): string {
   return value ? escapeHtml(value) : "None";
 }
 
+export function buildComputerUseApprovalActionUrl(args: {
+  readonly scheme: string;
+  readonly commandId: string;
+  readonly decision: ComputerUseApprovalAction["decision"];
+}): string {
+  const url = new URL(`${args.scheme}://computer-use/approval`);
+  url.searchParams.set("commandId", args.commandId);
+  url.searchParams.set("decision", args.decision);
+  return url.toString();
+}
+
+export function parseComputerUseApprovalActionUrl(
+  rawUrl: string,
+  scheme: string,
+): ComputerUseApprovalAction | null {
+  try {
+    const url = new URL(rawUrl);
+    if (
+      url.protocol !== `${scheme}:` ||
+      url.hostname !== "computer-use" ||
+      url.pathname !== "/approval"
+    ) {
+      return null;
+    }
+
+    const commandId = url.searchParams.get("commandId");
+    const decision = url.searchParams.get("decision");
+    if (!commandId || (decision !== "approve" && decision !== "deny")) {
+      return null;
+    }
+    return { commandId, decision };
+  } catch {
+    return null;
+  }
+}
+
 function commandTitle(command: {
   readonly commandId: string;
   readonly kind: string;
@@ -72,13 +114,24 @@ function commandTitle(command: {
 
 function renderPendingApprovals(
   approvals: readonly ComputerUsePendingApprovalPageState[],
+  scheme: string,
 ): string {
   if (approvals.length === 0) {
     return '<p class="empty">No pending approvals</p>';
   }
   return `<ul>${approvals
     .map((approval) => {
-      return `<li><strong>${commandTitle(approval)}</strong><span>${escapeHtml(approval.commandId)} · ${escapeHtml(approval.createdAt)}</span></li>`;
+      const approveUrl = buildComputerUseApprovalActionUrl({
+        scheme,
+        commandId: approval.commandId,
+        decision: "approve",
+      });
+      const denyUrl = buildComputerUseApprovalActionUrl({
+        scheme,
+        commandId: approval.commandId,
+        decision: "deny",
+      });
+      return `<li><strong>${commandTitle(approval)}</strong><span>${escapeHtml(approval.commandId)} · ${escapeHtml(approval.createdAt)}</span><div class="actions"><a class="approve" href="${escapeHtml(approveUrl)}">Approve</a><a class="deny" href="${escapeHtml(denyUrl)}">Deny</a></div></li>`;
     })
     .join("")}</ul>`;
 }
@@ -133,6 +186,10 @@ export function buildComputerUsePageHtml(state: ComputerUsePageState): string {
       li { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid #303036; }
       li strong { color: #fafafa; font-size: 13px; font-weight: 650; }
       li span, .empty { color: #a1a1aa; font-size: 12px; overflow-wrap: anywhere; }
+      .actions { display: flex; gap: 8px; margin-top: 4px; }
+      a { color: #fafafa; border-radius: 5px; padding: 5px 9px; font-size: 12px; font-weight: 650; text-decoration: none; }
+      a.approve { background: #166534; }
+      a.deny { background: #7f1d1d; }
     </style>
   </head>
   <body>
@@ -178,7 +235,7 @@ export function buildComputerUsePageHtml(state: ComputerUsePageState): string {
           </div>
           <span class="status ${approvalClass}">${state.host.pendingApprovals.length} pending</span>
         </div>
-        ${renderPendingApprovals(state.host.pendingApprovals)}
+        ${renderPendingApprovals(state.host.pendingApprovals, state.approvalActionScheme)}
       </section>
       <section>
         <div class="label">Recent command history</div>

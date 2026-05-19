@@ -5,8 +5,10 @@ import {
   resolveComputerUseApiBaseUrl,
 } from "./computer-use-host";
 import {
+  buildComputerUseApprovalActionUrl,
   buildComputerUsePageHtml,
   COMPUTER_USE_FEATURE_SWITCH_KEY,
+  parseComputerUseApprovalActionUrl,
 } from "./computer-use-page";
 import { resolveDesktopConfig } from "./config";
 import {
@@ -343,6 +345,7 @@ describe("computer use desktop page", () => {
   it("renders feature switch and permission state", () => {
     const html = buildComputerUsePageHtml({
       featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
+      approvalActionScheme: "ai.vm0.zero.desktop",
       permissions: { accessibility: true, screenRecording: false },
       host: {
         status: "online",
@@ -381,6 +384,33 @@ describe("computer use desktop page", () => {
     expect(html).toContain("Pending approvals");
     expect(html).toContain("Recent command history");
     expect(html).toContain("cmd_123");
+    expect(html).toContain(
+      "ai.vm0.zero.desktop://computer-use/approval?commandId=cmd_123&amp;decision=approve",
+    );
+    expect(html).toContain(
+      "ai.vm0.zero.desktop://computer-use/approval?commandId=cmd_123&amp;decision=deny",
+    );
+  });
+
+  it("parses local Computer Use approval actions", () => {
+    const url = buildComputerUseApprovalActionUrl({
+      scheme: "ai.vm0.zero.desktop",
+      commandId: "cmd_123",
+      decision: "approve",
+    });
+
+    expect(
+      parseComputerUseApprovalActionUrl(url, "ai.vm0.zero.desktop"),
+    ).toStrictEqual({ commandId: "cmd_123", decision: "approve" });
+    expect(
+      parseComputerUseApprovalActionUrl(
+        "ai.vm0.zero.desktop://computer-use/approval?commandId=cmd_123&decision=nope",
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
+    expect(
+      parseComputerUseApprovalActionUrl(url, "ai.vm0.zero.desktop.dev"),
+    ).toBe(null);
   });
 });
 

@@ -164,6 +164,31 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
+  async decideCommand(args: {
+    readonly commandId: string;
+    readonly decision: "approve" | "deny";
+  }): Promise<void> {
+    const response = await this.fetch(
+      `${this.apiBaseUrl}/api/zero/computer-use/commands/${encodeURIComponent(args.commandId)}/approval`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision: args.decision }),
+      },
+    );
+    if (!response.ok) {
+      const message = `Computer Use approval failed: ${response.status}`;
+      this.setState({ lastError: message });
+      throw new Error(message);
+    }
+
+    this.setState({
+      lastError: null,
+      lastCommandAt: new Date().toISOString(),
+    });
+    await this.refreshAuditEvents();
+  }
+
   private runtimeBody(): Record<string, unknown> {
     return buildComputerUseRuntimeBody({
       displayName: this.displayName,

@@ -515,6 +515,11 @@ const computerUseCommandAuthOptions = {
   requiredCapability: "computer-use:write",
 } as const;
 
+const computerUseSessionAuthOptions = {
+  ...computerUseAuthOptions,
+  accept: ["session"],
+} as const;
+
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.start,
@@ -546,7 +551,7 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroComputerUseCommandApprovalContract.decide,
-    handler: authRoute(computerUseAuthOptions, commandApprovalInner$),
+    handler: authRoute(computerUseSessionAuthOptions, commandApprovalInner$),
   },
   {
     route: zeroComputerUseHostCommandsContract.next,
