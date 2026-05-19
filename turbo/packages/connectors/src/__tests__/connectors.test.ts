@@ -298,6 +298,13 @@ describe("getConfiguredConnectorTypes", () => {
     expect(configuredTypes).toContain("openai");
   });
 
+  it("includes static OAuth connectors without environment credentials", () => {
+    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+
+    expect(configuredTypes).toContain("codex-oauth");
+    expect(configuredTypes).toContain("test-oauth");
+  });
+
   it("includes OAuth connectors only when client id and secret are configured", () => {
     const env = new Map([
       ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
