@@ -5,7 +5,7 @@
  * for computer-use remote desktop sessions.
  */
 import { createHash, randomUUID } from "crypto";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
@@ -330,30 +330,4 @@ export async function unregisterHost(
   await db.delete(computerUseHosts).where(eq(computerUseHosts.id, host.id));
 
   log.debug("Computer-use host unregistered", { orgId });
-}
-
-/**
- * Get the active computer-use host for an org/user.
- * Returns null if no active (non-expired) host exists.
- */
-export async function getHost(
-  orgId: string,
-  userId: string,
-): Promise<{ domain: string; token: string } | null> {
-  const [host] = await globalThis.services.db
-    .select({
-      domain: computerUseHosts.domain,
-      token: computerUseHosts.token,
-    })
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.orgId, orgId),
-        eq(computerUseHosts.userId, userId),
-        gt(computerUseHosts.expiresAt, new Date()),
-      ),
-    )
-    .limit(1);
-
-  return host ?? null;
 }

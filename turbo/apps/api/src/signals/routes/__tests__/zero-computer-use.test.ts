@@ -10,12 +10,19 @@ import { http, HttpResponse } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   type ComputerUseScenarioFixture,
   deleteComputerUseScenario$,
   seedComputerUseScenario$,
 } from "./helpers/zero-computer-use";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+  type OrgMembershipFixture,
+} from "./helpers/zero-org-membership";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -24,6 +31,10 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
 
 interface NgrokCalls {
   createBotUser: string[];
@@ -139,6 +150,11 @@ describe("GET /api/zero/computer-use/host", () => {
   const track = createFixtureTracker<ComputerUseScenarioFixture>((fixture) => {
     return store.set(deleteComputerUseScenario$, fixture, context.signal);
   });
+  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
+    (fixture) => {
+      return store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
 
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(zeroComputerUseHostContract);
@@ -239,6 +255,82 @@ describe("GET /api/zero/computer-use/host", () => {
     expect(response.body).toStrictEqual({
       domain: "abc.ngrok-free.app",
       token: "host_token_xyz",
+    });
+  });
+
+  it("returns host details for a ZERO_TOKEN with computer-use write capability", async () => {
+    const fixture = await track(
+      store.set(
+        seedComputerUseScenario$,
+        {
+          computerUseEnabled: true,
+          host: {
+            domain: "zero-token-host.ngrok-free.app",
+            token: "zero_token_host_secret",
+          },
+        },
+        context.signal,
+      ),
+    );
+    await trackOrgMembership(
+      store.set(
+        seedOrgMembership$,
+        { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["computer-use:write"],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroComputerUseHostContract);
+
+    const response = await accept(
+      client.getHost({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      domain: "zero-token-host.ngrok-free.app",
+      token: "zero_token_host_secret",
+    });
+  });
+
+  it("returns 403 for a ZERO_TOKEN without computer-use write capability", async () => {
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroComputerUseHostContract);
+
+    const response = await accept(
+      client.getHost({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: computer-use:write",
+        code: "FORBIDDEN",
+      },
     });
   });
 });

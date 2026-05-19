@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../../src/mocks/server";
 import { POST } from "../register/route";
 import { DELETE } from "../unregister/route";
-import { GET } from "../host/route";
 import {
   createTestRequest,
   createTestOrg,
@@ -44,10 +43,6 @@ function registerUrl(): string {
 
 function unregisterUrl(): string {
   return `http://localhost:3000/api/zero/computer-use/unregister`;
-}
-
-function hostUrl(): string {
-  return `http://localhost:3000/api/zero/computer-use/host`;
 }
 
 function setupNgrokMocks() {
@@ -300,63 +295,6 @@ describe("POST /api/zero/computer-use/register", () => {
   });
 });
 
-describe("GET /api/zero/computer-use/host", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    mockIsFeatureEnabled.mockReturnValue(true);
-  });
-
-  it("should return 401 when not authenticated", async () => {
-    mockClerk({ userId: null });
-
-    const response = await GET(createTestRequest(hostUrl()));
-    expect(response.status).toBe(401);
-  });
-
-  it("should return 401 when the user has no active org", async () => {
-    mockClerk({ userId: uniqueId("zcu-host-no-org"), orgId: null });
-
-    const response = await GET(createTestRequest(hostUrl()));
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-  });
-
-  it("should return 403 when feature flag is disabled", async () => {
-    const userId = uniqueId("zcu-host-ff");
-    await setupOrg(userId);
-    mockIsFeatureEnabled.mockReturnValue(false);
-
-    const response = await GET(createTestRequest(hostUrl()));
-    expect(response.status).toBe(403);
-  });
-
-  it("should return 404 if no host registered", async () => {
-    const userId = uniqueId("zcu-host-nf");
-    await setupOrg(userId);
-
-    const response = await GET(createTestRequest(hostUrl()));
-    expect(response.status).toBe(404);
-  });
-
-  it("should return host details after registration", async () => {
-    const userId = uniqueId("zcu-host-ok");
-    await setupOrg(userId);
-    setupNgrokMocks();
-
-    await POST(createPostRequest());
-
-    const response = await GET(createTestRequest(hostUrl()));
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.domain).toContain(".ngrok-free.app");
-    expect(data.token).toBeDefined();
-  });
-});
-
 describe("DELETE /api/zero/computer-use/unregister", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -409,9 +347,5 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
     expect(ngrokCalls.deleteEndpoint).toEqual(["ep_test_cu_789"]);
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
     expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_cu_123"]);
-
-    // Verify GET returns 404 after unregister
-    const getResponse = await GET(createTestRequest(hostUrl()));
-    expect(getResponse.status).toBe(404);
   });
 });

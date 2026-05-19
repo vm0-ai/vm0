@@ -83,7 +83,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/composes/[id]/route.ts",
   "app/api/zero/composes/list/route.ts",
   "app/api/zero/composes/route.ts",
-  "app/api/zero/computer-use/host/route.ts",
   "app/api/zero/computer-use/register/route.ts",
   "app/api/zero/computer-use/unregister/route.ts",
   "app/api/zero/connectors/[type]/route.ts",

@@ -522,6 +522,12 @@ const ZERO_CHAT_MESSAGES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/chat/messages/extra",
   "/api/zero/chat/message",
 ] as const;
+const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
+const ZERO_COMPUTER_USE_HOST_PATH = "/api/zero/computer-use/host";
+const ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/computer-use/host/extra",
+  "/api/zero/computer-use",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -1291,6 +1297,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_CHAT_MESSAGES_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/chat/messages",
+        },
+        {
+          source: ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/computer-use/host",
         },
         {
           source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -2561,6 +2571,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero computer-use host rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/computer-use/host",
+    });
+
+    const matcher = getPathMatch(ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_COMPUTER_USE_HOST_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero chat threads collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -3802,6 +3835,15 @@ describe("API backend rewrites", () => {
   it("should match the zero chat messages route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_CHAT_MESSAGES_PATH)).toBe(true);
     for (const pathname of ZERO_CHAT_MESSAGES_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero computer-use host route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_COMPUTER_USE_HOST_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
