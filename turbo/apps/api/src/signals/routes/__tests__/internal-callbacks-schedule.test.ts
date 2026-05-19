@@ -185,6 +185,13 @@ async function updateSchedule(
     .where(eq(zeroAgentSchedules.id, scheduleId));
 }
 
+async function deleteSchedule(scheduleId: string): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, scheduleId));
+}
+
 async function runSummary(runId: string): Promise<string | null> {
   const writeDb = store.set(writeDb$);
   const [row] = await writeDb
@@ -238,6 +245,20 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(response.status).toBe(404);
   });
 
+  it("returns 404 when no cron callback record exists", async () => {
+    const response = await postSignedCallback(CRON_PATH, {
+      runId: "00000000-0000-0000-0000-000000000000",
+      status: "completed",
+      payload: {
+        scheduleId: "00000000-0000-0000-0000-000000000000",
+        cronExpression: "0 9 * * *",
+        timezone: "UTC",
+      },
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it("rejects invalid cron payloads", async () => {
     const fixture = await track(seedFixture());
     const scheduleId = await seedSchedule(fixture, { kind: "cron" });
@@ -277,6 +298,36 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
       runId,
       status: "progress",
       payload: { scheduleId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    const updated = await scheduleById(scheduleId);
+    expect(updated?.consecutiveFailures).toBe(2);
+    expect(updated?.enabled).toBeTruthy();
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("skips cron progress callbacks without mutating schedules", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, {
+      kind: "cron",
+      consecutiveFailures: 2,
+    });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: CRON_PATH,
+      scheduleId,
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    const response = await postSignedCallback(CRON_PATH, {
+      callbackId,
+      runId,
+      status: "progress",
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
     });
 
     expect(response.status).toBe(200);
@@ -359,6 +410,7 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     });
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
     const updated = await scheduleById(scheduleId);
     expect(updated?.consecutiveFailures).toBe(0);
     expect(updated?.enabled).toBeTruthy();
@@ -367,6 +419,35 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     );
     await expect(runSummary(runId)).resolves.toBe(
       "Schedule produced a report.",
+    );
+  });
+
+  it("increments cron failure counters before the auto-disable threshold", async () => {
+    const failedAt = new Date("2026-05-13T04:00:00.000Z");
+    mockNow(failedAt);
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "cron" });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: CRON_PATH,
+      scheduleId,
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    const response = await postSignedCallback(CRON_PATH, {
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    const updated = await scheduleById(scheduleId);
+    expect(updated?.consecutiveFailures).toBe(1);
+    expect(updated?.enabled).toBeTruthy();
+    expect(updated?.nextRunAt?.toISOString()).toBe(
+      calculateNextRun("0 9 * * *", "UTC", failedAt)?.toISOString(),
     );
   });
 
@@ -391,10 +472,63 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     });
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
     const updated = await scheduleById(scheduleId);
     expect(updated?.consecutiveFailures).toBe(3);
     expect(updated?.enabled).toBeFalsy();
     expect(updated?.nextRunAt).toBeNull();
+  });
+
+  it("skips completed callbacks for deleted cron schedules", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "cron" });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: CRON_PATH,
+      scheduleId,
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+    await deleteSchedule(scheduleId);
+
+    const response = await postSignedCallback(CRON_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("skips completed callbacks for disabled cron schedules", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, {
+      kind: "cron",
+      enabled: false,
+    });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: CRON_PATH,
+      scheduleId,
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    const response = await postSignedCallback(CRON_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: { scheduleId, cronExpression: "0 9 * * *", timezone: "UTC" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
   it("skips completed callbacks for disabled loop schedules", async () => {

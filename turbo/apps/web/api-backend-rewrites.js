@@ -321,6 +321,10 @@ export const API_BACKEND_REWRITES = [
     "/api/internal/callbacks/github/issues",
     "/api/internal/callbacks/github/issues",
   ],
+  [
+    "/api/internal/callbacks/schedule/cron",
+    "/api/internal/callbacks/schedule/cron",
+  ],
   ["/api/internal/callbacks/agentphone", "/api/internal/callbacks/agentphone"],
   [
     "/api/internal/cron/aggregate-model-stats",

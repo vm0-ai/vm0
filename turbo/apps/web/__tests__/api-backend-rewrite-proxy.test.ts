@@ -517,6 +517,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
+  it("matches the internal cron schedule callback rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/schedule/cron"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/callbacks/schedule/cron/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/schedule"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

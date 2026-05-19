@@ -90,7 +90,7 @@ function isValidTimezone(timezone: string): boolean {
 /**
  * Calculate next run time from cron expression and timezone
  */
-export function calculateNextRun(
+function calculateNextRun(
   cronExpression: string,
   timezone: string,
 ): Date | null {
