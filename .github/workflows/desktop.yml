@@ -64,50 +64,55 @@ jobs:
       - name: Build unsigned macOS artifact
         run: |
           pnpm -F @vm0/desktop build
+          pnpm --dir apps/desktop exec electron-forge make --platform darwin --arch arm64
 
           desktop_dir="$PWD/apps/desktop"
-          app_dir="$desktop_dir/out/Zero-darwin-arm64/Zero.app"
-          electron_dir=$(pnpm -F @vm0/desktop exec node -p "require('path').dirname(require.resolve('electron/package.json'))")
-          ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -e "require('electron')"
-          electron_path=$(ELECTRON_INSTALL_PLATFORM=darwin ELECTRON_INSTALL_ARCH=arm64 pnpm -F @vm0/desktop exec node -p "require('electron')")
-          runtime_app="${electron_path%/Contents/MacOS/Electron}"
           version=$(node -p "require('./apps/desktop/package.json').version")
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$version.zip"
+          artifact_path="$desktop_dir/out/Zero-darwin-arm64.zip"
 
-          rm -rf "$desktop_dir/out"
-          mkdir -p "$desktop_dir/out/Zero-darwin-arm64"
-          if [ ! -d "$runtime_app" ]; then
-            echo "Electron.app was not downloaded: $runtime_app"
-            find "$electron_dir" -maxdepth 4 -print
+          if [ ! -f "$forge_zip" ]; then
+            echo "No Forge zip artifact found: $forge_zip"
+            find "$desktop_dir/out" -maxdepth 6 -type f -print || true
             exit 1
           fi
-          cp -R "$runtime_app" "$app_dir"
 
-          mv "$app_dir/Contents/MacOS/Electron" "$app_dir/Contents/MacOS/Zero"
-          mkdir -p "$app_dir/Contents/Resources/app"
-          cp "$desktop_dir/package.json" "$app_dir/Contents/Resources/app/package.json"
-          cp -R "$desktop_dir/dist" "$app_dir/Contents/Resources/app/dist"
-
-          plist="$app_dir/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string Zero" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleName string Zero" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Zero" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Zero" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.vm0.zero.desktop" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.vm0.zero.desktop" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$plist" || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $version" "$plist"
-
-          ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$desktop_dir/out/Zero-darwin-arm64.zip"
+          cp "$forge_zip" "$artifact_path"
 
       - name: Verify artifact
         id: artifact
         run: |
           artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
+          app_dir=apps/desktop/out/Zero-darwin-arm64/Zero.app
+          plist="$app_dir/Contents/Info.plist"
           if [ ! -f "$artifact_path" ]; then
             echo "No desktop zip artifact found"
             find apps/desktop/out -maxdepth 5 -type f -print || true
             exit 1
           fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/main.js" ]; then
+            echo "No packaged app main process bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/src" ]; then
+            echo "Packaged app should not contain desktop source files"
+            find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "vm0"
 
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
           echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload unsigned macOS artifact

@@ -255,6 +255,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the cron drain email outbox rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/drain-email-outbox")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/cron/drain-email-outbox/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),
@@ -266,7 +276,22 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
+      matchesApiBackendRewritePath("/api/connectors/github/authorizes"),
+    ).toBe(false);
+  });
+
+  it("matches the connector callback rewrite path exactly", () => {
+    expect(
       matchesApiBackendRewritePath("/api/connectors/github/callback"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/callback/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/connectors/callback")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/callbacks"),
     ).toBe(false);
   });
 
@@ -807,6 +832,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
   });
 
+  it("matches the zero computer-use register rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/register"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/register/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
+  });
+
   it("matches the zero chat threads collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(
@@ -980,6 +1015,36 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/skill/my-skill")).toBe(
       false,
     );
+  });
+
+  it("matches the zero schedules disable rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/disable"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/disable/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedule/nightly/disable"),
+    ).toBe(false);
+  });
+
+  it("matches the zero schedules enable rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/enable"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/enable/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedule/nightly/enable"),
+    ).toBe(false);
   });
 
   it("matches the zero agents collection rewrite path", () => {

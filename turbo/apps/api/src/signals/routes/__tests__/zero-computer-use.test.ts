@@ -339,6 +339,11 @@ describe("POST /api/zero/computer-use/register", () => {
   const track = createFixtureTracker<ComputerUseScenarioFixture>((fixture) => {
     return store.set(deleteComputerUseScenario$, fixture, context.signal);
   });
+  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
+    (fixture) => {
+      return store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroComputerUseRegisterContract);
@@ -371,6 +376,80 @@ describe("POST /api/zero/computer-use/register", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Computer use is not enabled", code: "FORBIDDEN" },
+    });
+  });
+
+  it("registers a computer-use host for a ZERO_TOKEN with computer-use write capability", async () => {
+    const fixture = await track(
+      store.set(
+        seedComputerUseScenario$,
+        { computerUseEnabled: true },
+        context.signal,
+      ),
+    );
+    await trackOrgMembership(
+      store.set(
+        seedOrgMembership$,
+        { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    mockOptionalEnv("NGROK_API_KEY", "test-ngrok-key");
+    const ngrokCalls = setupNgrokMocks();
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["computer-use:write"],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroComputerUseRegisterContract);
+
+    const response = await accept(
+      client.register({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body.id).toBeDefined();
+    expect(response.body.ngrokToken).toBe("2abc_test_ngrok_cu_authtoken");
+    expect(response.body.token).toBeDefined();
+    expect(response.body.endpointPrefix).toContain("vm0-cu-");
+    expect(response.body.domain).toContain(".ngrok-free.app");
+    expect(ngrokCalls.createBotUser).toHaveLength(1);
+  });
+
+  it("returns 403 for a ZERO_TOKEN without computer-use write capability", async () => {
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroComputerUseRegisterContract);
+
+    const response = await accept(
+      client.register({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: computer-use:write",
+        code: "FORBIDDEN",
+      },
     });
   });
 

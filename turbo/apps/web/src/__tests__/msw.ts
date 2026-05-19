@@ -54,26 +54,3 @@ export const http = {
   put: wrapMswHandler(mswHttp.put),
   delete: wrapMswHandler(mswHttp.delete),
 };
-
-export function handlers<
-  T extends Record<
-    string,
-    { handler: HttpHandler; mocked: Mock<HttpResponseResolver> }
-  >,
->(
-  mockedHandlers: T,
-): {
-  mocked: { [K in keyof T]: T[K]["mocked"] };
-  handlers: HttpHandler[];
-} {
-  const mocks = {} as { [K in keyof T]: T[K]["mocked"] };
-  for (const key of Object.keys(mockedHandlers) as Array<keyof T>) {
-    mocks[key] = mockedHandlers[key]!.mocked;
-  }
-  return {
-    mocked: mocks,
-    handlers: Object.values(mockedHandlers).map((h) => {
-      return h.handler;
-    }),
-  };
-}

@@ -326,12 +326,25 @@ const CRON_CLEANUP_SANDBOXES_NEXT_NEGATIVE_PATHS = [
   "/api/cron/cleanup-sandboxes/extra",
   "/api/cron",
 ] as const;
+const CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE = "/api/cron/drain-email-outbox";
+const CRON_DRAIN_EMAIL_OUTBOX_PATH = "/api/cron/drain-email-outbox";
+const CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/drain-email-outbox/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
   "/api/connectors/github/authorize/extra",
   "/api/connectors/authorize",
-  "/api/connectors/github/callback",
+  "/api/connectors/github/authorizes",
+] as const;
+const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
+const CONNECTORS_CALLBACK_PATH = "/api/connectors/github/callback";
+const CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/connectors/github/callback/extra",
+  "/api/connectors/callback",
+  "/api/connectors/github/callbacks",
 ] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
@@ -546,6 +559,13 @@ const ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS = [
   "/api/zero/computer-use/host/extra",
   "/api/zero/computer-use",
 ] as const;
+const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
+  "/api/zero/computer-use/register";
+const ZERO_COMPUTER_USE_REGISTER_PATH = "/api/zero/computer-use/register";
+const ZERO_COMPUTER_USE_REGISTER_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/computer-use/register/extra",
+  "/api/zero/computer-use",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -631,6 +651,23 @@ const ZERO_SECRETS_BY_NAME_PATH = "/api/zero/secrets/DELETE_ME";
 const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/secrets/DELETE_ME/extra",
   "/api/zero/secret/DELETE_ME",
+] as const;
+const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
+  "/api/zero/schedules/:name/disable";
+const ZERO_SCHEDULES_DISABLE_PATH = "/api/zero/schedules/nightly/disable";
+const ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/schedules",
+  "/api/zero/schedules/nightly",
+  "/api/zero/schedules/nightly/disable/extra",
+  "/api/zero/schedule/nightly/disable",
+] as const;
+const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
+const ZERO_SCHEDULES_ENABLE_PATH = "/api/zero/schedules/nightly/enable";
+const ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/schedules",
+  "/api/zero/schedules/nightly",
+  "/api/zero/schedules/nightly/enable/extra",
+  "/api/zero/schedule/nightly/enable",
 ] as const;
 const ZERO_ORG_REWRITE_SOURCE = "/api/zero/org";
 const ZERO_ORG_PATH = "/api/zero/org";
@@ -1055,9 +1092,17 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/cleanup-sandboxes",
         },
         {
+          source: CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/drain-email-outbox",
+        },
+        {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/connectors/:type/authorize",
+        },
+        {
+          source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/connectors/:type/callback",
         },
         {
           source: "/api/device-token",
@@ -1268,6 +1313,16 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/secrets/:name",
         },
         {
+          source: ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/schedules/:name/disable",
+        },
+        {
+          source: ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/schedules/:name/enable",
+        },
+        {
           source: ZERO_SKILLS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/skills",
         },
@@ -1327,6 +1382,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/computer-use/host",
+        },
+        {
+          source: ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/computer-use/register",
         },
         {
           source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -2145,6 +2205,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact cron drain email outbox rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/drain-email-outbox",
+    });
+
+    const matcher = getPathMatch(CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_DRAIN_EMAIL_OUTBOX_PATH)).toStrictEqual({});
+    for (const pathname of CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the connector authorize rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -2166,6 +2249,31 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the connector callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CONNECTORS_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/connectors/:type/callback",
+    });
+
+    const matcher = getPathMatch(CONNECTORS_CALLBACK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CONNECTORS_CALLBACK_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2639,6 +2747,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_COMPUTER_USE_HOST_PATH)).toStrictEqual({});
     for (const pathname of ZERO_COMPUTER_USE_HOST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero computer-use register rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/computer-use/register",
+    });
+
+    const matcher = getPathMatch(ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_COMPUTER_USE_REGISTER_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_COMPUTER_USE_REGISTER_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3193,6 +3324,56 @@ describe("API backend rewrites", () => {
       name: "DELETE_ME",
     });
     for (const pathname of ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment zero schedules disable rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/schedules/:name/disable",
+    });
+
+    const matcher = getPathMatch(ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SCHEDULES_DISABLE_PATH)).toStrictEqual({
+      name: "nightly",
+    });
+    for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment zero schedules enable rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/schedules/:name/enable",
+    });
+
+    const matcher = getPathMatch(ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SCHEDULES_ENABLE_PATH)).toStrictEqual({
+      name: "nightly",
+    });
+    for (const pathname of ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3922,6 +4103,15 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match the zero computer-use register route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_COMPUTER_USE_REGISTER_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_COMPUTER_USE_REGISTER_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
   it("should match the zero chat threads collection route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_CHAT_THREADS_PATH)).toBe(true);
     for (const pathname of ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS) {
@@ -4011,6 +4201,22 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath(ZERO_SECRETS_PATH)).toBe(true);
     expect(matchesApiBackendRewritePath(ZERO_SECRETS_BY_NAME_PATH)).toBe(true);
     for (const pathname of ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero schedules disable paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_DISABLE_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero schedules enable paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_ENABLE_PATH)).toBe(true);
+    for (const pathname of ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

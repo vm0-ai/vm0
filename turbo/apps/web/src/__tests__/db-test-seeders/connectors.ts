@@ -1,9 +1,11 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { initServices } from "../../lib/init-services";
+import { connectors } from "@vm0/db/schema/connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for connector test setup.
@@ -57,6 +59,79 @@ export async function insertTestConnectorSecret(
     userId,
     orgId,
   });
+}
+
+/**
+ * Create a completed OAuth connector record and access-token secret directly.
+ *
+ * @why-db-direct The legacy web OAuth callback route has been removed; apps/api
+ * owns callback behavior tests. Web route tests need completed connector state
+ * as setup data, not another callback exercise.
+ */
+export async function createTestOAuthConnectorRecord(options: {
+  orgId: string;
+  userId: string;
+  type: Exclude<ConnectorType, "computer">;
+  accessToken: string;
+  externalId: string;
+  externalUsername: string;
+  externalEmail: string | null;
+  oauthScopes: string[];
+}): Promise<void> {
+  initServices();
+
+  const handler = PROVIDER_HANDLERS[options.type];
+  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
+  await globalThis.services.db
+    .insert(secrets)
+    .values({
+      name: handler.getSecretName(),
+      encryptedValue: encryptSecretValue(options.accessToken, encryptionKey),
+      type: "connector",
+      userId: options.userId,
+      orgId: options.orgId,
+      description: `OAuth token for ${options.type} connector`,
+    })
+    .onConflictDoUpdate({
+      target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+      set: {
+        encryptedValue: encryptSecretValue(options.accessToken, encryptionKey),
+        description: `OAuth token for ${options.type} connector`,
+        updatedAt: new Date(),
+      },
+    });
+
+  await globalThis.services.db
+    .insert(connectors)
+    .values({
+      userId: options.userId,
+      orgId: options.orgId,
+      type: options.type,
+      authMethod: "oauth",
+      externalId: options.externalId,
+      externalUsername: options.externalUsername,
+      externalEmail: options.externalEmail,
+      oauthScopes: JSON.stringify(options.oauthScopes),
+      tokenExpiresAt: handler.refreshToken
+        ? new Date(Date.now() + 60 * 60 * 1000)
+        : null,
+      needsReconnect: false,
+    })
+    .onConflictDoUpdate({
+      target: [connectors.orgId, connectors.userId, connectors.type],
+      set: {
+        authMethod: "oauth",
+        externalId: options.externalId,
+        externalUsername: options.externalUsername,
+        externalEmail: options.externalEmail,
+        oauthScopes: JSON.stringify(options.oauthScopes),
+        tokenExpiresAt: handler.refreshToken
+          ? new Date(Date.now() + 60 * 60 * 1000)
+          : null,
+        needsReconnect: false,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 /**

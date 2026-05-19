@@ -12,12 +12,35 @@ import {
 import type { FeatureSwitchKey } from "./feature-switch-key";
 
 /**
+ * Connector utility vocabulary:
+ *
+ * - Available auth methods are user-selectable connection flows after
+ *   feature-switch filtering.
+ * - Runtime available connector types are connector types the current server
+ *   environment can offer as connection candidates.
+ * - User connected connector types come from persisted OAuth rows or inferred
+ *   api-token state from user secrets and variables.
+ * - Runtime injection happens later when a run receives env vars, secrets,
+ *   variables, and firewall context.
+ */
+
+/**
  * Get auth methods for a connector type
  */
 export function getConnectorAuthMethods(
   type: ConnectorType,
 ): Partial<Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>> {
   return CONNECTOR_TYPES[type].authMethods;
+}
+
+/**
+ * Get one auth method config for a connector type.
+ */
+export function getConnectorAuthMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodType,
+): ConnectorAuthMethodConfig | undefined {
+  return getConnectorAuthMethods(type)[authMethod];
 }
 
 /**
@@ -48,7 +71,7 @@ export function isConnectorAuthMethodAvailable(
   authMethod: ConnectorAuthMethodType,
   featureStates: ConnectorFeatureStates,
 ): boolean {
-  const method = CONNECTOR_TYPES[type].authMethods[authMethod];
+  const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return false;
   }
@@ -79,12 +102,11 @@ export function getAvailableConnectorAuthMethods(
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
 ): ConnectorAuthMethodType[] {
-  const methods = CONNECTOR_TYPES[type].authMethods;
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
   const availableAuthMethods: ConnectorAuthMethodType[] = [];
 
   for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-    if (!methods[authMethod]) {
+    if (!getConnectorAuthMethod(type, authMethod)) {
       continue;
     }
     if (
@@ -314,15 +336,16 @@ export function getConnectorOAuthEnvKeys(
 }
 
 /**
- * Return connector types configured by platform/runtime environment.
+ * Return connector types the current runtime can offer as connection candidates.
  *
- * This is intentionally the shared source of truth for the Web and API
- * implementations of GET /api/zero/connectors.
+ * This is not user connected state and it does not evaluate feature switches.
+ * It includes API-token default connectors because they do not require server
+ * credentials, while OAuth connectors require their runtime OAuth env to exist.
  */
-export function getConfiguredConnectorTypes(
+export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,
 ): ConnectorType[] {
-  const configured = new Set<ConnectorType>();
+  const runtimeAvailable = new Set<ConnectorType>();
 
   for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
     const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
@@ -330,7 +353,7 @@ export function getConfiguredConnectorTypes(
       hasConfiguredOAuth(readEnv, type) ||
       defaultAuthMethod === "api-token"
     ) {
-      configured.add(type);
+      runtimeAvailable.add(type);
     }
   }
 
@@ -338,10 +361,22 @@ export function getConfiguredConnectorTypes(
     hasEnvValue(readEnv, "NGROK_API_KEY") &&
     hasEnvValue(readEnv, "NGROK_COMPUTER_CONNECTOR_DOMAIN")
   ) {
-    configured.add("computer");
+    runtimeAvailable.add("computer");
   }
 
-  return [...configured].sort();
+  return [...runtimeAvailable].sort();
+}
+
+/**
+ * Compatibility wrapper for existing configuredTypes response semantics.
+ *
+ * The API response field and existing call sites still use "configuredTypes";
+ * new connector utility code should prefer getRuntimeAvailableConnectorTypes.
+ */
+export function getConfiguredConnectorTypes(
+  readEnv: ConnectorEnvReader,
+): ConnectorType[] {
+  return getRuntimeAvailableConnectorTypes(readEnv);
 }
 
 /**
@@ -351,8 +386,7 @@ export function getConnectorSecretsForAuthMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodType,
 ): Record<string, ConnectorSecretConfig> | undefined {
-  const authMethods = getConnectorAuthMethods(type);
-  return authMethods[authMethod]?.secrets;
+  return getConnectorAuthMethod(type, authMethod)?.secrets;
 }
 
 /**
@@ -605,10 +639,7 @@ export function getConnectorTypeForSecretName(
 export function getApiTokenRequiredSecretNames(
   type: ConnectorType,
 ): string[] | null {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"] as
-    | ConnectorAuthMethodConfig
-    | undefined;
+  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   if (!apiTokenConfig) return null;
 
   return Object.entries(apiTokenConfig.secrets)
@@ -627,10 +658,7 @@ export function getApiTokenRequiredSecretNames(
 export function getApiTokenFieldsByType(
   type: ConnectorType,
 ): { secrets: string[]; variables: string[] } | null {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"] as
-    | ConnectorAuthMethodConfig
-    | undefined;
+  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   if (!apiTokenConfig) return null;
 
   const secretNames: string[] = [];

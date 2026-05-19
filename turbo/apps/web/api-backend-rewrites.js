@@ -25,6 +25,12 @@ const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
+const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
+  "/api/zero/schedules/:name/disable";
+const ZERO_SCHEDULES_DISABLE_PATH_RE =
+  /^\/api\/zero\/schedules\/[^/]+\/disable$/;
+const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
+const ZERO_SCHEDULES_ENABLE_PATH_RE = /^\/api\/zero\/schedules\/[^/]+\/enable$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -96,6 +102,8 @@ const AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE = `/api/agent/runs/:id(${UUI
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/system-log$`,
 );
+const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
+const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -103,6 +111,8 @@ const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
 const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
 const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
+const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
+  "/api/zero/computer-use/register";
 const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
   "/api/zero/connectors/:type/authorize";
 const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
@@ -225,10 +235,16 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
+  ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
     CONNECTORS_AUTHORIZE_PATH_RE,
+  ],
+  [
+    CONNECTORS_CALLBACK_REWRITE_SOURCE,
+    "/api/connectors/:type/callback",
+    CONNECTORS_CALLBACK_PATH_RE,
   ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
@@ -354,6 +370,10 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_MESSAGES_PATH_RE,
   ],
   [ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE, "/api/zero/computer-use/host"],
+  [
+    ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
+    "/api/zero/computer-use/register",
+  ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
   [
     ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -439,6 +459,16 @@ export const API_BACKEND_REWRITES = [
     ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
+  ],
+  [
+    ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
+    "/api/zero/schedules/:name/disable",
+    ZERO_SCHEDULES_DISABLE_PATH_RE,
+  ],
+  [
+    ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
+    "/api/zero/schedules/:name/enable",
+    ZERO_SCHEDULES_ENABLE_PATH_RE,
   ],
   ["/api/zero/skills", "/api/zero/skills"],
   [

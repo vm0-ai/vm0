@@ -3,6 +3,7 @@ import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
 import {
   getAvailableConnectorAuthMethods,
   hasRequiredScopes,
+  getConnectorAuthMethod,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
@@ -10,6 +11,7 @@ import {
   getConnectorAuthMethods,
   getConnectorOAuthConfig,
   getConfiguredConnectorTypes,
+  getRuntimeAvailableConnectorTypes,
   isGoogleOAuthConnector,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
@@ -60,6 +62,13 @@ describe("hasRequiredScopes", () => {
 });
 
 describe("connector auth method config", () => {
+  it("returns a single auth method config when present", () => {
+    expect(getConnectorAuthMethod("stripe", "cli-auth")?.label).toBe(
+      "Sign in with Stripe",
+    );
+    expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
+  });
+
   it("declares Stripe CLI auth as a gated connection flow with modes", () => {
     const method = CONNECTOR_TYPES.stripe.authMethods["cli-auth"];
 
@@ -282,16 +291,39 @@ describe("getConnectorEnvironmentMapping", () => {
   });
 });
 
-describe("getConfiguredConnectorTypes", () => {
+describe("getRuntimeAvailableConnectorTypes", () => {
   const emptyEnv = () => {
     return undefined;
   };
 
-  it("includes api-token connectors without environment credentials", () => {
-    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+  it("keeps getConfiguredConnectorTypes compatible with runtime availability", () => {
+    const env = new Map([
+      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
+      ["AIRTABLE_OAUTH_CLIENT_SECRET", "airtable-client-secret"],
+      ["NGROK_API_KEY", "ngrok-api-key"],
+      ["NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.example.com"],
+    ]);
+    const readEnv = (name: string) => {
+      return env.get(name);
+    };
 
-    expect(configuredTypes).toContain("amplitude");
-    expect(configuredTypes).toContain("openai");
+    expect(getConfiguredConnectorTypes(readEnv)).toStrictEqual(
+      getRuntimeAvailableConnectorTypes(readEnv),
+    );
+  });
+
+  it("includes api-token default connectors without environment credentials or feature switches", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toContain("amplitude");
+    expect(runtimeAvailableTypes).toContain("bentoml");
+    expect(runtimeAvailableTypes).toContain("openai");
+  });
+
+  it("includes static OAuth test connectors without runtime environment credentials", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toContain("test-oauth");
   });
 
   it("includes OAuth connectors only when client id and secret are configured", () => {
@@ -301,12 +333,28 @@ describe("getConfiguredConnectorTypes", () => {
       ["SENTRY_OAUTH_CLIENT_ID", "sentry-client-id"],
     ]);
 
-    const configuredTypes = getConfiguredConnectorTypes((name) => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
       return env.get(name);
     });
 
-    expect(configuredTypes).toContain("airtable");
-    expect(configuredTypes).not.toContain("sentry");
+    expect(runtimeAvailableTypes).toContain("airtable");
+    expect(runtimeAvailableTypes).not.toContain("sentry");
+  });
+
+  it("treats empty OAuth environment values as not configured", () => {
+    const env = new Map([
+      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
+      ["AIRTABLE_OAUTH_CLIENT_SECRET", ""],
+      ["SENTRY_OAUTH_CLIENT_ID", ""],
+      ["SENTRY_OAUTH_CLIENT_SECRET", "sentry-client-secret"],
+    ]);
+
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
+      return env.get(name);
+    });
+
+    expect(runtimeAvailableTypes).not.toContain("airtable");
+    expect(runtimeAvailableTypes).not.toContain("sentry");
   });
 
   it("includes all connectors that share a configured OAuth app", () => {
@@ -315,11 +363,11 @@ describe("getConfiguredConnectorTypes", () => {
       ["GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret"],
     ]);
 
-    const configuredTypes = getConfiguredConnectorTypes((name) => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
       return env.get(name);
     });
 
-    expect(configuredTypes).toEqual(
+    expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining([
         "gmail",
         "google-calendar",
@@ -343,11 +391,13 @@ describe("getConfiguredConnectorTypes", () => {
       );
     });
 
-    const configuredTypes = getConfiguredConnectorTypes(() => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
       return "configured";
     });
 
-    expect(configuredTypes).toEqual(expect.arrayContaining(activeOAuthTypes));
+    expect(runtimeAvailableTypes).toEqual(
+      expect.arrayContaining(activeOAuthTypes),
+    );
   });
 
   it("includes computer only when both ngrok env vars are configured", () => {
@@ -358,21 +408,38 @@ describe("getConfiguredConnectorTypes", () => {
     ]);
 
     expect(
-      getConfiguredConnectorTypes((name) => {
+      getRuntimeAvailableConnectorTypes((name) => {
         return partialComputerEnv.get(name);
       }),
     ).not.toContain("computer");
     expect(
-      getConfiguredConnectorTypes((name) => {
+      getRuntimeAvailableConnectorTypes((name) => {
         return fullComputerEnv.get(name);
       }),
     ).toContain("computer");
   });
 
-  it("returns connector types in sorted order", () => {
-    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+  it("excludes API-managed local connectors without special runtime env support", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
-    expect(configuredTypes).toStrictEqual([...configuredTypes].sort());
+    expect(runtimeAvailableTypes).not.toContain("local-agent");
+    expect(runtimeAvailableTypes).not.toContain("local-browser");
+  });
+
+  it("does not include Stripe without OAuth runtime env despite alternative auth methods", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(getConnectorAuthMethod("stripe", "api-token")).toBeDefined();
+    expect(getConnectorAuthMethod("stripe", "cli-auth")).toBeDefined();
+    expect(runtimeAvailableTypes).not.toContain("stripe");
+  });
+
+  it("returns connector types in sorted order", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toStrictEqual(
+      [...runtimeAvailableTypes].sort(),
+    );
   });
 });
 

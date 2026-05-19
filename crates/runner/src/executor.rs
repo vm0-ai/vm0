@@ -18,6 +18,9 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
+use agent_diagnostics::{
+    FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic, failure_diagnostic_file,
+};
 use futures_util::FutureExt;
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox,
@@ -75,8 +78,7 @@ pub struct JobParams {
 
 /// Outcome of a job execution, including the sandbox for possible reuse.
 pub struct ExecuteOutcome {
-    pub exit_code: i32,
-    pub error: Option<String>,
+    pub failure: Option<ExecutionFailure>,
     /// The sandbox after execution. `Some` when the sandbox is still alive
     /// and eligible for keep-alive parking. `None` when execution failed
     /// during create/start (sandbox was destroyed inline).
@@ -86,6 +88,95 @@ pub struct ExecuteOutcome {
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub guest_session_id: Option<String>,
+}
+
+impl ExecuteOutcome {
+    #[must_use]
+    pub fn exit_code(&self) -> i32 {
+        self.failure.as_ref().map_or(0, |failure| failure.exit_code)
+    }
+
+    #[must_use]
+    pub fn error(&self) -> Option<&str> {
+        self.failure.as_ref().map(|failure| failure.error.as_str())
+    }
+
+    pub fn mark_cancelled(&mut self) {
+        self.failure = Some(ExecutionFailure::cancelled());
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionFailure {
+    pub exit_code: i32,
+    pub error: String,
+    pub diagnostic: Option<FailureDiagnostic>,
+}
+
+impl ExecutionFailure {
+    #[must_use]
+    pub fn new(
+        exit_code: i32,
+        error: impl Into<String>,
+        diagnostic: Option<FailureDiagnostic>,
+    ) -> Self {
+        let error = non_empty_failure_error(exit_code, error.into());
+        Self {
+            exit_code,
+            error,
+            diagnostic,
+        }
+    }
+
+    #[must_use]
+    pub fn from_error(error: impl Into<String>) -> Self {
+        Self::new(1, error, None)
+    }
+
+    #[must_use]
+    pub fn cancelled() -> Self {
+        Self::new(EXIT_SIGKILL, "cancelled by user", None)
+    }
+}
+
+struct AgentExecutionResult {
+    failure: Option<ExecutionFailure>,
+}
+
+impl AgentExecutionResult {
+    fn success() -> Self {
+        Self { failure: None }
+    }
+
+    fn failure(
+        exit_code: i32,
+        error: impl Into<String>,
+        diagnostic: Option<FailureDiagnostic>,
+    ) -> Self {
+        Self {
+            failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
+        }
+    }
+
+    fn failure_from_error(error: impl Into<String>) -> Self {
+        Self::failure(1, error, None)
+    }
+
+    fn exit_code(&self) -> i32 {
+        self.failure.as_ref().map_or(0, |failure| failure.exit_code)
+    }
+}
+
+fn non_empty_failure_error(exit_code: i32, error: String) -> String {
+    if error.trim().is_empty() {
+        agent_exit_failure_message(exit_code)
+    } else {
+        error
+    }
+}
+
+fn agent_exit_failure_message(exit_code: i32) -> String {
+    format!("Agent exited with code {exit_code}")
 }
 
 /// Execute a single job inside a **new** Firecracker VM.
@@ -124,8 +215,7 @@ pub async fn execute_job(
     {
         Ok(outcome) => outcome,
         Err(e) => ExecuteOutcome {
-            exit_code: 1,
-            error: Some(e.to_string()),
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
@@ -282,21 +372,28 @@ async fn execute_new_sandbox(
             prev_storage: None,
         },
         telemetry,
-        cancel,
+        cancel.clone(),
     )
     .await;
 
     // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
-    post_job_cleanup(sandbox.as_ref(), config, context, &source_ip).await;
+    post_job_cleanup(
+        sandbox.as_ref(),
+        config,
+        context,
+        &source_ip,
+        cancel.is_cancelled(),
+    )
+    .await;
 
-    let (exit_code, error) = match result {
-        Ok((code, err)) => (code, err),
-        Err(e) => (1, Some(e.to_string())),
+    let agent_result = match result {
+        Ok(result) => result,
+        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
     };
 
     // Read CLI-generated session ID for first-run parking.
     // Only needed when resume_session is absent (first turn in a conversation).
-    let guest_session_id = if exit_code == 0 && context.session_id().is_none() {
+    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
         let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
         if let Some(ref sid) = id {
             info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
@@ -307,8 +404,7 @@ async fn execute_new_sandbox(
     };
 
     Ok(ExecuteOutcome {
-        exit_code,
-        error,
+        failure: agent_result.failure,
         sandbox: Some(sandbox),
         source_ip,
         network_log_session: Some(network_log_session),
@@ -358,20 +454,27 @@ async fn execute_reused_sandbox(
             prev_storage: Some(prev_storage),
         },
         telemetry,
-        cancel,
+        cancel.clone(),
     )
     .await;
 
     // Post-job cleanup (copy logs to host, unregister proxy registry)
-    post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
+    post_job_cleanup(
+        sandbox.as_ref(),
+        config,
+        context,
+        source_ip,
+        cancel.is_cancelled(),
+    )
+    .await;
 
-    let (exit_code, error) = match result {
-        Ok((code, err)) => (code, err),
-        Err(e) => (1, Some(e.to_string())),
+    let agent_result = match result {
+        Ok(result) => result,
+        Err(e) => AgentExecutionResult::failure_from_error(e.to_string()),
     };
 
     // Read CLI-generated session ID for first-run parking.
-    let guest_session_id = if exit_code == 0 && context.session_id().is_none() {
+    let guest_session_id = if agent_result.exit_code() == 0 && context.session_id().is_none() {
         let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
         if let Some(ref sid) = id {
             info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
@@ -382,8 +485,7 @@ async fn execute_reused_sandbox(
     };
 
     ExecuteOutcome {
-        exit_code,
-        error,
+        failure: agent_result.failure,
         sandbox: Some(sandbox),
         source_ip: source_ip.to_string(),
         network_log_session: Some(network_log_session),
@@ -448,8 +550,9 @@ async fn post_job_cleanup(
     config: &ExecutorConfig,
     context: &ExecutionContext,
     source_ip: &str,
+    cancelled: bool,
 ) {
-    copy_guest_logs(sandbox, context, &config.log_paths).await;
+    copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
     unregister_proxy_registry(config, context, source_ip).await;
 }
 
@@ -470,7 +573,7 @@ async fn run_in_sandbox(
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
-) -> RunnerResult<(i32, Option<String>)> {
+) -> RunnerResult<AgentExecutionResult> {
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
     if start.restore_guest_state {
@@ -615,9 +718,6 @@ async fn run_in_sandbox(
             warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
         }
     }
-    let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
-    let err = result.as_ref().err().map(|e| e.to_string());
-    telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
     let exit = match result {
         Ok(exit) => exit,
         Err(e) => {
@@ -627,15 +727,14 @@ async fn run_in_sandbox(
                 && check_host_oom(pid).await
             {
                 warn!(run_id = %context.run_id, pid, "host OOM kill detected for firecracker");
-                return Ok((
-                    1,
-                    Some(
-                        "Firecracker VM killed by host OOM killer \
-                         (cgroup memory limit exceeded)"
-                            .into(),
-                    ),
-                ));
+                let error = "Firecracker VM killed by host OOM killer \
+                             (cgroup memory limit exceeded)"
+                    .to_string();
+                telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
+                return Ok(AgentExecutionResult::failure(1, error, None));
             }
+            let error = e.to_string();
+            telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
             return Err(e.into());
         }
     };
@@ -664,7 +763,9 @@ async fn run_in_sandbox(
                 warn!(run_id = %context.run_id, "OOM kill detected via dmesg");
                 // Return exit code 1 with descriptive message instead of raw 137,
                 // so callers see a clear error rather than an opaque signal code.
-                return Ok((1, Some("Agent process killed by OOM killer".into())));
+                let error = "Agent process killed by OOM killer";
+                telemetry.record("agent_execute", t.elapsed(), false, Some(error));
+                return Ok(AgentExecutionResult::failure(1, error, None));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -673,25 +774,47 @@ async fn run_in_sandbox(
         }
     }
 
-    let error_msg = if cancel.is_cancelled() {
-        // Skip guest file reads — sandbox hasn't been stopped yet and the
-        // caller will override with "cancelled by user" anyway.
-        None
+    let failure = if cancel.is_cancelled() {
+        // Skip guest file reads — sandbox hasn't been stopped yet.
+        Some(ExecutionFailure::cancelled())
     } else if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
-        if !stderr.is_empty() {
-            Some(stderr)
+        let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
+        let error = if !stderr.is_empty() {
+            stderr
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
             // error file written by the guest-agent for final failure
             // handoff.
-            read_guest_error_file(sandbox, context.run_id).await
-        }
+            read_guest_error_file(sandbox, context.run_id)
+                .await
+                .unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
+        };
+        Some(ExecutionFailure::new(
+            exit.exit_code,
+            error,
+            failure_diagnostic,
+        ))
     } else {
         None
     };
 
-    Ok((exit.exit_code, error_msg))
+    let agent_result = match failure {
+        Some(failure) => AgentExecutionResult {
+            failure: Some(failure),
+        },
+        None => AgentExecutionResult::success(),
+    };
+    telemetry.record(
+        "agent_execute",
+        t.elapsed(),
+        agent_result.failure.is_none(),
+        agent_result
+            .failure
+            .as_ref()
+            .map(|failure| failure.error.as_str()),
+    );
+    Ok(agent_result)
 }
 
 /// Read a structured error file from the guest filesystem.
@@ -715,6 +838,45 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: RunId) -> Option<S
             Some(msg).filter(|s| !s.is_empty())
         }
         _ => None,
+    }
+}
+
+/// Read structured guest failure diagnostics from the guest filesystem.
+///
+/// Diagnostics are optional and best-effort. They must never change the
+/// user-visible completion error or mask the original exit status.
+async fn read_guest_failure_diagnostic_file(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+) -> Option<FailureDiagnostic> {
+    let path = failure_diagnostic_file(&run_id.to_string());
+    match sandbox.read_file(&path, SMALL_GUEST_FILE_MAX_BYTES).await {
+        Ok(Some(bytes)) if !bytes.iter().all(|byte| byte.is_ascii_whitespace()) => {
+            match serde_json::from_slice::<FailureDiagnostic>(&bytes) {
+                Ok(diagnostic)
+                    if diagnostic.schema_version == FAILURE_DIAGNOSTIC_SCHEMA_VERSION =>
+                {
+                    Some(diagnostic)
+                }
+                Ok(diagnostic) => {
+                    warn!(
+                        run_id = %run_id,
+                        schema_version = diagnostic.schema_version,
+                        "ignoring guest failure diagnostic with unsupported schema version"
+                    );
+                    None
+                }
+                Err(e) => {
+                    warn!(run_id = %run_id, error = %e, "failed to parse guest failure diagnostic");
+                    None
+                }
+            }
+        }
+        Ok(_) => None,
+        Err(e) => {
+            warn!(run_id = %run_id, error = %e, "failed to read guest failure diagnostic");
+            None
+        }
     }
 }
 
@@ -841,7 +1003,26 @@ const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
 /// including setup output written before agent streaming starts. Agent stdout
 /// that is not written by guest-agent's logger is intentionally not part of
 /// the final system log.
-async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_paths: &LogPaths) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GuestLogCopyFailureKind {
+    Failed,
+    SkippedAfterCancellation,
+}
+
+fn guest_log_copy_failure_kind(cancelled: bool) -> GuestLogCopyFailureKind {
+    if cancelled {
+        GuestLogCopyFailureKind::SkippedAfterCancellation
+    } else {
+        GuestLogCopyFailureKind::Failed
+    }
+}
+
+async fn copy_guest_logs(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    log_paths: &LogPaths,
+    cancelled: bool,
+) {
     let run_id = context.run_id;
     let files = [
         (
@@ -871,7 +1052,14 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
             )
             .await
         {
-            warn!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "failed to copy guest log");
+            match guest_log_copy_failure_kind(cancelled) {
+                GuestLogCopyFailureKind::SkippedAfterCancellation => {
+                    info!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "guest log copy skipped after cancellation");
+                }
+                GuestLogCopyFailureKind::Failed => {
+                    warn!(run_id = %run_id, error = %e, guest_path = %guest_path, host_path = %host_path.display(), "failed to copy guest log");
+                }
+            }
         }
     }
 }
@@ -2568,6 +2756,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
+        let sandbox = MockSandbox::new("test");
+        let diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        )
+        .with_cli_exit_code(1)
+        .with_session_history_status(agent_diagnostics::SessionHistoryStatus::Present);
+        sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+
+        let read = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert_eq!(read, Some(diagnostic));
+        let calls = sandbox.read_file_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].path,
+            agent_diagnostics::failure_diagnostic_file(&RunId::nil().to_string())
+        );
+        assert_eq!(calls[0].max_bytes, SMALL_GUEST_FILE_MAX_BYTES);
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_missing_file() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Ok(None));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_empty_content() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Ok(Some(b" \n\t".to_vec())));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_malformed_json() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Ok(Some(b"{not-json".to_vec())));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_unsupported_schema() {
+        let sandbox = MockSandbox::new("test");
+        let mut diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        );
+        diagnostic.schema_version = FAILURE_DIAGNOSTIC_SCHEMA_VERSION + 1;
+        sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_read_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Err(sandbox_exec_error("vsock timeout")));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_oversized_content() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Ok(Some(vec![
+            b' ';
+            SMALL_GUEST_FILE_MAX_BYTES as usize + 1
+        ])));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
     async fn download_storages_success() {
         let sandbox = MockSandbox::new("test");
         // write_file succeeds by default, exec returns exit 0 by default.
@@ -2746,6 +3027,18 @@ mod tests {
     // copy_guest_logs tests
     // -----------------------------------------------------------------------
 
+    #[test]
+    fn guest_log_copy_failure_kind_tracks_cancellation() {
+        assert_eq!(
+            guest_log_copy_failure_kind(false),
+            GuestLogCopyFailureKind::Failed
+        );
+        assert_eq!(
+            guest_log_copy_failure_kind(true),
+            GuestLogCopyFailureKind::SkippedAfterCancellation
+        );
+    }
+
     #[tokio::test]
     async fn copy_guest_logs_writes_files_to_host() {
         let dir = tempfile::tempdir().unwrap();
@@ -2768,7 +3061,7 @@ mod tests {
                 .to_vec(),
         ));
 
-        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+        copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
         let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
             .await
@@ -2808,7 +3101,7 @@ mod tests {
         sandbox.push_copy_file_result(Ok(b"system log\n".to_vec()));
         sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
 
-        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+        copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
         let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
             .await
@@ -2841,7 +3134,7 @@ mod tests {
         sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
         sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
 
-        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+        copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
         // Host files should not be created
         assert!(!log_paths.system_log(ctx.run_id).exists());
@@ -2860,7 +3153,7 @@ mod tests {
         sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
         sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
 
-        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+        copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
@@ -3049,7 +3342,7 @@ mod tests {
             cancel,
         )
         .await?;
-        Ok((outcome.exit_code, outcome.error))
+        Ok((outcome.exit_code(), outcome.error().map(ToOwned::to_owned)))
     }
 
     #[tokio::test]
@@ -3178,6 +3471,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_nonzero_without_guest_error_returns_failure_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(7));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_records_agent_execute_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(7));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+        let cancel = tokio_util::sync::CancellationToken::new();
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            &mut telemetry,
+            cancel,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 7);
+        let ops = telemetry.pending_ops_snapshot();
+        let agent_execute = ops
+            .iter()
+            .find(|op| op.0 == "agent_execute")
+            .expect("agent_execute telemetry should be recorded");
+        assert!(!agent_execute.1);
+        assert_eq!(agent_execute.2.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
     async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -3230,8 +3574,8 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(outcome.exit_code, 0);
-        assert!(outcome.error.is_none());
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.error().is_none());
         assert!(outcome.sandbox.is_some());
     }
 
@@ -3255,8 +3599,8 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(outcome.exit_code, 1);
-        assert!(outcome.error.unwrap().contains("boom"));
+        assert_eq!(outcome.exit_code(), 1);
+        assert!(outcome.error().unwrap().contains("boom"));
         assert!(outcome.sandbox.is_none());
     }
 
@@ -3284,7 +3628,7 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.exit_code(), 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
         // Reuse the sandbox for a second turn
@@ -3293,8 +3637,8 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
-        assert_eq!(reuse_outcome.exit_code, 0);
-        assert!(reuse_outcome.error.is_none());
+        assert_eq!(reuse_outcome.exit_code(), 0);
+        assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
     }
 
@@ -3325,7 +3669,7 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.exit_code(), 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
         // Second turn: reuse with new session history
@@ -3343,7 +3687,7 @@ mod tests {
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
-        assert_eq!(reuse_outcome.exit_code, 0);
+        assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
 
@@ -3372,7 +3716,7 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.exit_code(), 0);
         let sandbox = outcome.sandbox.expect("sandbox alive");
 
         // Park in idle pool
@@ -3416,7 +3760,7 @@ mod tests {
         };
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
-        assert_eq!(reuse_outcome.exit_code, 0);
+        assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
 
@@ -3470,8 +3814,8 @@ mod tests {
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
-        assert_eq!(outcome.exit_code, 1);
-        assert!(outcome.error.unwrap().contains("vsock broken"));
+        assert_eq!(outcome.exit_code(), 1);
+        assert!(outcome.error().unwrap().contains("vsock broken"));
         // Critical: sandbox must be returned so caller can stop + destroy it
         assert!(
             outcome.sandbox.is_some(),
@@ -3495,8 +3839,8 @@ mod tests {
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
-        assert_eq!(outcome.exit_code, 1);
-        assert!(outcome.error.unwrap().contains("reseed timeout"));
+        assert_eq!(outcome.exit_code(), 1);
+        assert!(outcome.error().unwrap().contains("reseed timeout"));
         assert!(
             outcome.sandbox.is_some(),
             "sandbox must be returned on reseed failure"
@@ -3525,8 +3869,8 @@ mod tests {
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-abc").await;
         let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
 
-        assert_eq!(outcome.exit_code, 1);
-        assert!(outcome.error.unwrap().contains("disk full"));
+        assert_eq!(outcome.exit_code(), 1);
+        assert!(outcome.error().unwrap().contains("disk full"));
         assert!(
             outcome.sandbox.is_some(),
             "sandbox must be returned on session restore failure"

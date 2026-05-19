@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
+agent-diagnostics.workspace = true
 api-contracts.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }

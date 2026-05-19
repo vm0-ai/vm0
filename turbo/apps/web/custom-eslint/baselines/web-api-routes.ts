@@ -8,8 +8,6 @@
  */
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/route.ts",
-  "app/api/connectors/[type]/callback/route.ts",
-  "app/api/cron/drain-email-outbox/route.ts",
   "app/api/cron/execute-schedules/route.ts",
   "app/api/cron/process-usage-events/route.ts",
   "app/api/cron/reconcile-billing-entitlements/route.ts",
@@ -81,7 +79,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/composes/[id]/route.ts",
   "app/api/zero/composes/list/route.ts",
   "app/api/zero/composes/route.ts",
-  "app/api/zero/computer-use/register/route.ts",
   "app/api/zero/computer-use/unregister/route.ts",
   "app/api/zero/connectors/[type]/route.ts",
   "app/api/zero/connectors/[type]/scope-diff/route.ts",
@@ -125,8 +122,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/runs/[id]/telemetry/agent/route.ts",
   "app/api/zero/runs/queue/route.ts",
   "app/api/zero/runs/route.ts",
-  "app/api/zero/schedules/[name]/disable/route.ts",
-  "app/api/zero/schedules/[name]/enable/route.ts",
   "app/api/zero/schedules/[name]/route.ts",
   "app/api/zero/schedules/route.ts",
   "app/api/zero/schedules/run/route.ts",
