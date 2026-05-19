@@ -3452,6 +3452,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ready_for_park_boundary_guest_unavailable_fence_marks_dirty_without_pause() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async {
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::GuestUnavailable(
+                    io::Error::new(io::ErrorKind::NotConnected, "guest missing"),
+                ))
+            },
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+        assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn ready_for_park_boundary_busy_prevents_quiesce_and_pause() {
         let coordinator = ParkCoordinator::new();
         let _lease = active_spawn_process_lease(&coordinator);
