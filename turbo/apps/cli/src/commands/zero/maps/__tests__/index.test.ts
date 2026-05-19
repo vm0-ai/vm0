@@ -36,8 +36,8 @@ describe("zero maps command", () => {
           return HttpResponse.json({
             operation: "directions",
             provider: "google-maps",
-            creditsCharged: 15,
-            billingCategory: "routes.compute_routes.essentials",
+            creditsCharged: 6,
+            billingCategory: "routes.directions",
             result: { distanceMeters: 42 },
           });
         },
@@ -64,8 +64,8 @@ describe("zero maps command", () => {
       JSON.stringify({
         operation: "directions",
         provider: "google-maps",
-        creditsCharged: 15,
-        billingCategory: "routes.compute_routes.essentials",
+        creditsCharged: 6,
+        billingCategory: "routes.directions",
         result: { distanceMeters: 42 },
       }),
     );
@@ -81,7 +81,7 @@ describe("zero maps command", () => {
           return HttpResponse.json({
             operation: "places.search",
             provider: "google-maps",
-            creditsCharged: 96,
+            creditsCharged: 39,
             result: { places: [] },
           });
         },
@@ -110,7 +110,7 @@ describe("zero maps command", () => {
         return HttpResponse.json({
           operation: "geocode",
           provider: "google-maps",
-          creditsCharged: 15,
+          creditsCharged: 6,
           billingCategory: "geocoding",
           billingQuantity: 1,
           result: {
@@ -133,7 +133,7 @@ describe("zero maps command", () => {
     expect(output).toContain("✓ Geocode completed");
     expect(output).toContain("Provider: google-maps");
     expect(output).toContain("Billing category: geocoding");
-    expect(output).toContain("Credits charged: 15");
+    expect(output).toContain("Credits charged: 6");
     expect(output).toContain("1 Infinite Loop, Cupertino, CA");
   });
 

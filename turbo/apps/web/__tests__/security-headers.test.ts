@@ -2331,6 +2331,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/image-io/generate",
         },
         {
+          source: "/api/zero/maps/:path*",
+          destination: "https://api.example.test/api/zero/maps/:path*",
+        },
+        {
           source: ONBOARDING_SETUP_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/onboarding/setup",
         },

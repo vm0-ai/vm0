@@ -819,6 +819,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
   ["/api/zero/insights", "/api/zero/insights"],
   ["/api/zero/insights/range", "/api/zero/insights/range"],
+  ["/api/zero/maps/:path*", "/api/zero/maps/:path*"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
   ["/api/zero/local-browser/:path*", "/api/zero/local-browser/:path*"],

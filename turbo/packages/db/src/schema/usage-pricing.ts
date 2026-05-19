@@ -28,6 +28,7 @@ import {
  *   image      fal-ai/qwen-image         output_megapixel 24        1          $0.024 per output megapixel
  *   video      fal-ai/veo3.1/fast        output_video_seconds.audio 180 1      generated video seconds
  *   video      bytedance/seedance-2.0    output_video_tokens 1680   100000     generated video tokens
+ *   maps       google-maps               geocoding      6           1          $0.005 request + 20% markup
  */
 export const usagePricing = pgTable(
   "usage_pricing",

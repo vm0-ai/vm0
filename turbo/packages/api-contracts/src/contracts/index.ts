@@ -1425,6 +1425,23 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
+  zeroMapsContract,
+  zeroMapsOperationSchema,
+  zeroMapsResponseSchema,
+  zeroMapsGeocodeRequestSchema,
+  zeroMapsReverseGeocodeRequestSchema,
+  zeroMapsDirectionsRequestSchema,
+  zeroMapsPlacesSearchRequestSchema,
+  zeroMapsPlacesDetailsRequestSchema,
+  type ZeroMapsContract,
+  type ZeroMapsResponse,
+  type ZeroMapsGeocodeRequest,
+  type ZeroMapsReverseGeocodeRequest,
+  type ZeroMapsDirectionsRequest,
+  type ZeroMapsPlacesSearchRequest,
+  type ZeroMapsPlacesDetailsRequest,
+} from "./zero-maps";
+export {
   zeroVideoIoGenerateContract,
   zeroVideoIoGenerateRequestSchema,
   zeroVideoIoGenerateResponseSchema,

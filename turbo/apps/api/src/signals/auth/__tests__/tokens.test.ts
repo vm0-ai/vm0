@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  generateZeroToken,
   isPatToken,
   isSandboxToken,
   signPatJwtForTests,
@@ -10,6 +11,7 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { now } from "../../external/time";
 
 function currentSecond(): number {
@@ -110,5 +112,25 @@ describe("auth tokens", () => {
 
     expect(isSandboxToken(legacyCliToken)).toBeTruthy();
     expect(verifyCliToken(legacyCliToken)).toBeNull();
+  });
+
+  it("gates maps capability on the Zero Maps feature switch", () => {
+    const disabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ZeroMaps]: false },
+    );
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ZeroMaps]: true },
+    );
+
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
+      "maps:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("maps:read");
   });
 });

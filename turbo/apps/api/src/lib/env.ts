@@ -12,6 +12,7 @@ const SCHEMA = {
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
+  ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),
   ENV: z.enum(["production", "preview", "development"]),

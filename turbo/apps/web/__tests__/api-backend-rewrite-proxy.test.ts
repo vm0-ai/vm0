@@ -2131,6 +2131,14 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero maps rewrite subtree", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/maps/geocode")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/maps/places/search")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/map/geocode")).toBe(false);
+  });
+
   it("matches the zero skills collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/skills")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/skills/extra/path")).toBe(
