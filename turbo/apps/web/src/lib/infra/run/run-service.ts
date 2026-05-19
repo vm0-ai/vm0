@@ -34,8 +34,6 @@ import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { publishCancelNotification } from "../realtime/client";
-import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
 const log = logger("service:run");
 
@@ -589,47 +587,4 @@ export async function getRunById(
     startedAt: run.startedAt?.toISOString(),
     completedAt: run.completedAt?.toISOString(),
   };
-}
-
-/**
- * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain).
- *
- * Returns `true` when the cancelled run was previously active (running/pending),
- * indicating the caller should also process org credits.
- */
-export async function dispatchCancelSideEffects(
-  result: CancelRunResult,
-  drain: (orgId: string) => Promise<void>,
-): Promise<boolean> {
-  const log = logger("service:run:cancel");
-
-  if (result.alreadyCancelled) {
-    return false;
-  }
-
-  if (result.previousStatus === "running" && result.runnerGroup) {
-    const published = await publishCancelNotification(
-      result.runnerGroup,
-      result.runId,
-    );
-    if (!published) {
-      log.warn(
-        `Ably cancel notification failed for run ${result.runId}, VM will run until natural completion`,
-      );
-    }
-  }
-
-  const shouldProcessCredits =
-    result.previousStatus === "running" || result.previousStatus === "pending";
-
-  await dispatchTerminalSideEffects(
-    result.runId,
-    "cancelled",
-    "Run cancelled",
-    () => {
-      return drain(result.orgId);
-    },
-  );
-
-  return shouldProcessCredits;
 }

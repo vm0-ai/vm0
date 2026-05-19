@@ -12,7 +12,7 @@ import { publishOrgSignal } from "./realtime";
  * of a previously-successful cancel and the original caller already dispatched
  * queue drain / credit processing / terminal callbacks.
  */
-export interface CancelRunResult {
+interface CancelRunResult {
   runId: string;
   previousStatus: string;
   userId: string;
