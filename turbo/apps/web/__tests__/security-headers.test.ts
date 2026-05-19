@@ -604,6 +604,12 @@ const GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/github/extra",
   "/api/webhooks",
 ] as const;
+const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
+const STRIPE_WEBHOOK_PATH = "/api/webhooks/stripe";
+const STRIPE_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/stripe/extra",
+  "/api/webhooks",
+] as const;
 const STORAGES_COMMIT_REWRITE_SOURCE = "/api/storages/commit";
 const STORAGES_COMMIT_PATH = "/api/storages/commit";
 const STORAGES_COMMIT_NEXT_NEGATIVE_PATHS = [
@@ -1692,6 +1698,10 @@ describe("API backend rewrites", () => {
         {
           source: GITHUB_WEBHOOK_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/github",
+        },
+        {
+          source: STRIPE_WEBHOOK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/webhooks/stripe",
         },
         {
           source: STORAGES_COMMIT_REWRITE_SOURCE,
@@ -3613,6 +3623,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GITHUB_WEBHOOK_PATH)).toStrictEqual({});
     for (const pathname of GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact Stripe webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === STRIPE_WEBHOOK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: STRIPE_WEBHOOK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/stripe",
+    });
+
+    const matcher = getPathMatch(STRIPE_WEBHOOK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(STRIPE_WEBHOOK_PATH)).toStrictEqual({});
+    for (const pathname of STRIPE_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

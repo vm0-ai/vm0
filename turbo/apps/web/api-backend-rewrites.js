@@ -140,6 +140,7 @@ const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
+const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
 const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
 const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
@@ -363,6 +364,7 @@ export const API_BACKEND_REWRITES = [
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
   [GITHUB_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/github"],
+  [STRIPE_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/stripe"],
   [
     TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE,
     "/api/integrations/telegram/auth-callback",

@@ -1123,6 +1123,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
   });
 
+  it("matches the Stripe webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/stripe")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks/stripe/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+  });
+
   it("matches the storages commit rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/storages/commit")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/storages/commit/extra")).toBe(
@@ -2501,6 +2509,45 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers["x-github-event"]).toBe("ping");
         expect(payload.headers["x-hub-signature-256"]).toBe(
           "sha256=test-signature",
+        );
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards Stripe webhook POST bodies and signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          id: "evt_stripe_1",
+          type: "invoice.paid",
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/stripe?from=stripe`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "stripe-signature": "t=1710000000,v1=test-signature",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/webhooks/stripe?from=stripe");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["stripe-signature"]).toBe(
+          "t=1710000000,v1=test-signature",
         );
         expect(payload.body).toBe(webhookBody);
       },
