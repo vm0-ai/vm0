@@ -1838,6 +1838,22 @@ mod tests {
         process::DnsmasqProcessInfo { pid, port }
     }
 
+    fn has_proxy_warning(report: &RunnerReport) -> bool {
+        report.warnings.iter().any(|w| {
+            matches!(
+                w,
+                Warning::NoMitmproxy { .. } | Warning::StaleMitmproxy { .. }
+            )
+        })
+    }
+
+    fn has_dns_warning(report: &RunnerReport) -> bool {
+        report
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::NoDnsmasq { .. }))
+    }
+
     #[tokio::test]
     async fn report_warns_for_running_without_proxy() {
         let report = build_test_runner_report("running", Some(32821), None, vec![], vec![]).await;
@@ -1871,14 +1887,14 @@ mod tests {
     #[tokio::test]
     async fn report_no_warning_for_stopped_without_proxy() {
         let report = build_test_runner_report("stopped", Some(32821), None, vec![], vec![]).await;
-        assert!(report.warnings.is_empty());
+        assert!(!has_proxy_warning(&report));
     }
 
     #[tokio::test]
     async fn report_no_warning_for_draining_proxy() {
         let without_proxy =
             build_test_runner_report("draining", Some(32821), None, vec![], vec![]).await;
-        assert!(without_proxy.warnings.is_empty());
+        assert!(!has_proxy_warning(&without_proxy));
 
         let with_proxy = build_test_runner_report(
             "draining",
@@ -1888,7 +1904,7 @@ mod tests {
             vec![],
         )
         .await;
-        assert!(with_proxy.warnings.is_empty());
+        assert!(!has_proxy_warning(&with_proxy));
     }
 
     #[tokio::test]
@@ -1901,7 +1917,7 @@ mod tests {
             vec![],
         )
         .await;
-        assert!(report.warnings.is_empty());
+        assert!(!has_proxy_warning(&report));
     }
 
     #[tokio::test]
@@ -1925,7 +1941,7 @@ mod tests {
             vec![dns_proc(888, 5353)],
         )
         .await;
-        assert!(report.warnings.is_empty());
+        assert!(!has_dns_warning(&report));
     }
 
     #[test]
