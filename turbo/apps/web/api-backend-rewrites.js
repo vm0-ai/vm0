@@ -231,6 +231,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
+  ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",

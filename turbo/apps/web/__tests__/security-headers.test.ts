@@ -326,6 +326,12 @@ const CRON_CLEANUP_SANDBOXES_NEXT_NEGATIVE_PATHS = [
   "/api/cron/cleanup-sandboxes/extra",
   "/api/cron",
 ] as const;
+const CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE = "/api/cron/drain-email-outbox";
+const CRON_DRAIN_EMAIL_OUTBOX_PATH = "/api/cron/drain-email-outbox";
+const CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/drain-email-outbox/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -1069,6 +1075,10 @@ describe("API backend rewrites", () => {
         {
           source: CRON_CLEANUP_SANDBOXES_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/cleanup-sandboxes",
+        },
+        {
+          source: CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/drain-email-outbox",
         },
         {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -2166,6 +2176,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_CLEANUP_SANDBOXES_PATH)).toStrictEqual({});
     for (const pathname of CRON_CLEANUP_SANDBOXES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron drain email outbox rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/drain-email-outbox",
+    });
+
+    const matcher = getPathMatch(CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_DRAIN_EMAIL_OUTBOX_PATH)).toStrictEqual({});
+    for (const pathname of CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
