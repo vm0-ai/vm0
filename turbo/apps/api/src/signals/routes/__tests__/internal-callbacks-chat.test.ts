@@ -334,10 +334,10 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
-  it("preserves usage limit errors on failed callbacks", async () => {
+  it("preserves non-Codex usage limit errors on failed callbacks", async () => {
     const fixture = await track(seedChatCallbackFixture());
     const usageLimitError =
-      "usage_limit_reached: Your usage limit has been reached.";
+      "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.";
 
     const response = await postSignedCallback({
       callbackId: fixture.callbackId,
@@ -359,6 +359,34 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(errorMessage?.error).not.toBe(
       "Oops, something went wrong. Please try again later.",
     );
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("renders ChatGPT Codex usage limit errors with VM0 guidance", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const codexUsageLimitError =
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
+    const expectedDisplayError =
+      "ChatGPT Codex usage limit reached. This limit resets at 6:17 AM. View details in [ChatGPT Codex usage settings](https://chatgpt.com/codex/settings/usage), or switch to another model to continue now.";
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: codexUsageLimitError,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+
+    const messages = await listMessages(fixture.threadId);
+    const errorMessage = messages.find((message) => {
+      return message.role === "assistant" && message.runId === fixture.runId;
+    });
+    expect(errorMessage?.error).toBe(expectedDisplayError);
+    expect(errorMessage?.content).toBe(expectedDisplayError);
+    expect(errorMessage?.error).not.toBe(codexUsageLimitError);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 

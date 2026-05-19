@@ -1024,12 +1024,12 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(errorMsg?.content).toBe(actionableError);
     });
 
-    it("should preserve usage limit failed run errors", async () => {
+    it("should preserve non-Codex usage limit failed run errors", async () => {
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",
       });
       const usageLimitError =
-        "Usage limit reached. Upgrade your plan or try again later.";
+        "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.";
 
       const response = await POST(
         createSignedCallbackRequest(
@@ -1055,6 +1055,39 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(errorMsg?.error).not.toBe(
         "Oops, something went wrong. Please try again later.",
       );
+    });
+
+    it("should render ChatGPT Codex usage limit errors with VM0 guidance", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      const codexUsageLimitError =
+        "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
+      const expectedDisplayError =
+        "ChatGPT Codex usage limit reached. This limit resets at 6:17 AM. View details in [ChatGPT Codex usage settings](https://chatgpt.com/codex/settings/usage), or switch to another model to continue now.";
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: codexUsageLimitError,
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const errorMsg = chatMessages.find((message) => {
+        return message.role === "assistant" && message.error !== null;
+      });
+      expect(errorMsg?.error).toBe(expectedDisplayError);
+      expect(errorMsg?.content).toBe(expectedDisplayError);
+      expect(errorMsg?.error).not.toBe(codexUsageLimitError);
     });
 
     it("should preserve user-cancelled run errors", async () => {
