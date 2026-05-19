@@ -49,7 +49,7 @@ import { updateUserFeatureSwitches } from "../user/feature-switches-service";
 // route handler (appendSystemPrompt, scheduleId, callbacks, userInfoExtras,
 // non-web trigger sources) and for the internal createZeroRunRecord function.
 //
-// Route-level tests live in app/api/zero/runs/__tests__/route.test.ts.
+// Route-level tests live in apps/api/src/signals/routes/__tests__/zero-runs-create.test.ts.
 // ---------------------------------------------------------------------------
 
 const context = testContext();

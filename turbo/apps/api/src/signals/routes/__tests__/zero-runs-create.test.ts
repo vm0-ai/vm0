@@ -443,6 +443,7 @@ describe("POST /api/zero/runs", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, response.body.runId));
     expect(zeroRun?.triggerSource).toBe("web");
+    expect(zeroRun?.triggerAgentId).toBeNull();
 
     const [job] = await db
       .select({ executionContext: runnerJobQueue.executionContext })
