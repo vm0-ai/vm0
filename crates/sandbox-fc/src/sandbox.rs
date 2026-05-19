@@ -3517,12 +3517,19 @@ mod tests {
     async fn ready_for_park_boundary_quiesce_failure_marks_dirty_without_pause() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Err(io::Error::new(io::ErrorKind::TimedOut, "quiesce timeout"))
@@ -3534,25 +3541,35 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
-        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
     }
 
     #[tokio::test]
     async fn ready_for_park_boundary_complete_prepare_failure_marks_dirty_without_pause() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
         let quiesce_state = coordinator.clone();
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 quiesce_state.mark_dirty(DirtyReason::new("operation dropped during quiesce"));
@@ -3565,24 +3582,34 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
-        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
     }
 
     #[tokio::test]
     async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Ok(())
@@ -3597,14 +3624,19 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
         assert_eq!(
             logged_events(&events),
-            vec!["guest_quiesce", "firecracker_park"]
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
         );
     }
 
@@ -3612,13 +3644,20 @@ mod tests {
     async fn ready_for_park_boundary_mark_parked_failure_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
         let park_state = coordinator.clone();
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Ok(())
@@ -3631,14 +3670,19 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
         assert_eq!(
             logged_events(&events),
-            vec!["guest_quiesce", "firecracker_park"]
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
         );
     }
 
@@ -3816,10 +3860,13 @@ mod tests {
         let coordinator = ParkCoordinator::new();
         mark_coordinator_parked(&coordinator);
         let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
 
-        let result = unpark_with_ready_for_operations(
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -3836,10 +3883,14 @@ mod tests {
                     "resume failed",
                 ))
             },
+            || {
+                drop(fence.take());
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(fence.is_some());
         assert_eq!(
             logged_events(&events),
             vec!["firecracker_unpark", "guest_resume"]
@@ -4033,9 +4084,10 @@ mod tests {
         let events = event_log();
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
+        let release_events = Arc::clone(&events);
         let resume_state = coordinator.clone();
 
-        let result = unpark_with_ready_for_operations(
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -4050,13 +4102,16 @@ mod tests {
                 resume_state.mark_dirty(DirtyReason::new("reopen race"));
                 Ok(())
             },
+            || {
+                release_events.lock().unwrap().push("release_fence");
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
         assert_eq!(
             logged_events(&events),
-            vec!["firecracker_unpark", "guest_resume"]
+            vec!["firecracker_unpark", "guest_resume", "release_fence"]
         );
         assert!(matches!(
             coordinator.state(),
