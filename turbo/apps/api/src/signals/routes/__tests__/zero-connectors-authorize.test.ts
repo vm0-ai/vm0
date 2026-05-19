@@ -107,15 +107,23 @@ function useDynamicTestOAuthAuthorize(): () => void {
 
 async function requestAuthorize(
   type: string,
-  options: { readonly session?: string; readonly authenticated?: boolean } = {},
+  options: {
+    readonly session?: string;
+    readonly authenticated?: boolean;
+    readonly headers?: HeadersInit;
+  } = {},
 ): Promise<Response> {
   if (options.authenticated) {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
   }
+  const headers = new Headers(options.headers);
+  if (options.authenticated) {
+    headers.set("cookie", "__session=opaque");
+  }
   const app = createApp({ signal: context.signal });
   return await app.request(authorizeUrl(type, options.session), {
     method: "GET",
-    headers: options.authenticated ? sessionHeaders() : undefined,
+    headers,
   });
 }
 
@@ -161,6 +169,24 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(url.searchParams.get("redirect_url")).toBe(authorizeUrl("github"));
   });
 
+  it("redirects unauthenticated users to sign-in on the forwarded web origin", async () => {
+    const response = await requestAuthorize("github", {
+      headers: {
+        "x-forwarded-host": "www.vm0.ai",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe("https://www.vm0.ai/sign-in");
+    expect(url.searchParams.get("redirect_url")).toBe(
+      "https://www.vm0.ai/api/zero/connectors/github/authorize",
+    );
+  });
+
   it("redirects to GitHub OAuth and sets the state cookie", async () => {
     const response = await requestAuthorize("github", { authenticated: true });
 
@@ -184,6 +210,24 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith("connector_oauth_state=");
       }),
     ).toBeTruthy();
+  });
+
+  it("uses the forwarded web origin for OAuth callback URLs", async () => {
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      headers: {
+        "x-forwarded-host": "www.vm0.ai",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://www.vm0.ai/api/connectors/github/callback",
+    );
   });
 
   it("stores the connector session id when provided", async () => {
