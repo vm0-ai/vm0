@@ -97,13 +97,16 @@ pub(crate) struct GuestOperation {
 }
 
 impl GuestOperation {
+    pub(crate) fn guest(&self) -> Arc<VsockHost> {
+        Arc::clone(&self.guest)
+    }
+
     pub(crate) fn into_write_boundary(self) -> GuestOperationWriteBoundary {
-        GuestOperationWriteBoundary::new(self.guest, self.lease)
+        GuestOperationWriteBoundary::new(self.lease)
     }
 }
 
 pub(crate) struct GuestOperationWriteBoundary {
-    guest: Arc<VsockHost>,
     state: Arc<Mutex<GuestOperationWriteBoundaryState>>,
 }
 
@@ -114,19 +117,14 @@ struct GuestOperationWriteBoundaryState {
 }
 
 impl GuestOperationWriteBoundary {
-    fn new(guest: Arc<VsockHost>, lease: OperationLease) -> Self {
+    pub(crate) fn new(lease: OperationLease) -> Self {
         Self {
-            guest,
             state: Arc::new(Mutex::new(GuestOperationWriteBoundaryState {
                 operation_id: lease.id(),
                 lease: Some(lease),
                 write_started: false,
             })),
         }
-    }
-
-    pub(crate) fn guest(&self) -> Arc<VsockHost> {
-        Arc::clone(&self.guest)
     }
 
     pub(crate) fn write_observer(&self) -> FrameWriteObserver {

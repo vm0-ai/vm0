@@ -448,10 +448,10 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) ->
                 error: control_start_error(error),
             };
         }
-    }
-    .into_write_boundary();
+    };
 
     let vsock = operation.guest();
+    let operation = operation.into_write_boundary();
     let write_observer = operation.write_observer();
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];

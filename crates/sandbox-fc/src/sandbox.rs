@@ -30,13 +30,14 @@ use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
 use crate::guest_operations::{
-    GuestOperation, GuestOperationGate, GuestOperationStartError, guest_error_is_terminal,
+    GuestOperation, GuestOperationGate, GuestOperationStartError, GuestOperationWriteBoundary,
+    guest_error_is_terminal,
 };
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
-    CoordinatorState, DirtyReason, OperationLease, OperationTransitionError, ParkAttempt,
-    ParkCoordinator, PrepareParkError, PrepareParkEvidence,
+    CoordinatorState, DirtyReason, LeaseRejection, OperationLease, OperationTransitionError,
+    ParkAttempt, ParkCoordinator, PrepareParkError, PrepareParkEvidence,
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
@@ -709,11 +710,9 @@ impl FirecrackerSandbox {
             BackendCrashed,
         }
 
-        let guest = self
-            .begin_guest_operation(operation)
-            .await?
-            .into_write_boundary();
-        let vsock = guest.guest();
+        let guest_operation = self.begin_guest_operation(operation).await?;
+        let vsock = guest_operation.guest();
+        let guest = guest_operation.into_write_boundary();
         let write_observer = guest.write_observer();
 
         let outcome = tokio::select! {
@@ -751,6 +750,33 @@ impl FirecrackerSandbox {
         SandboxState::from_u8(state.load(Ordering::Acquire))
     }
 
+    fn begin_process_control_boundary(
+        coordinator: &ParkCoordinator,
+        current_state: impl Fn() -> SandboxState,
+    ) -> Result<GuestOperationWriteBoundary, GuestOperationStartError> {
+        match current_state() {
+            SandboxState::Running => {}
+            SandboxState::Crashed => return Err(GuestOperationStartError::BackendCrashed),
+            state => return Err(GuestOperationStartError::NotRunning { state }),
+        }
+
+        let lease = coordinator
+            .reserve_operation()
+            .map_err(|error| match error {
+                LeaseRejection::GateClosed { state } => {
+                    GuestOperationStartError::GateClosed { state }
+                }
+            })?;
+
+        match current_state() {
+            SandboxState::Running => {}
+            SandboxState::Crashed => return Err(GuestOperationStartError::BackendCrashed),
+            state => return Err(GuestOperationStartError::NotRunning { state }),
+        }
+
+        Ok(GuestOperationWriteBoundary::new(lease))
+    }
+
     fn operation_start_io_error(
         operation: SandboxOperation,
         error: GuestOperationStartError,
@@ -779,7 +805,7 @@ impl FirecrackerSandbox {
     }
 
     async fn process_control(
-        gate: GuestOperationGate,
+        coordinator: ParkCoordinator,
         state: Arc<AtomicU8>,
         state_tx: watch::Sender<SandboxState>,
         control: vsock_host::GuestProcessControlHandle,
@@ -793,13 +819,15 @@ impl FirecrackerSandbox {
         }
 
         let operation = SandboxOperation::ProcessControl;
-        let guest = gate
-            .begin_sandbox_operation(|| Self::current_state_from(&state))
-            .await
-            .map_err(|error| {
-                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
-            })?
-            .into_write_boundary();
+        let guest =
+            Self::begin_process_control_boundary(&coordinator, || Self::current_state_from(&state))
+                .map_err(|error| {
+                    Self::operation_start_io_error(
+                        operation,
+                        error,
+                        Self::current_state_from(&state),
+                    )
+                })?;
         let write_observer = guest.write_observer();
 
         let outcome = tokio::select! {
@@ -1681,11 +1709,9 @@ impl Sandbox for FirecrackerSandbox {
         request: &SpawnProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         let operation = SandboxOperation::SpawnProcess;
-        let guest = self
-            .begin_guest_operation(operation)
-            .await?
-            .into_write_boundary();
-        let vsock = guest.guest();
+        let guest_operation = self.begin_guest_operation(operation).await?;
+        let vsock = guest_operation.guest();
+        let guest = guest_operation.into_write_boundary();
         let write_observer = guest.write_observer();
 
         let spawn_future: Pin<
@@ -1738,17 +1764,17 @@ impl Sandbox for FirecrackerSandbox {
                 let pid = handle.pid();
                 let process_control = (request.control == SpawnProcessControl::Enabled).then(|| {
                     let control = handle.control_handle();
-                    let gate = self.guest_operations();
+                    let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
                     let state_tx = self.state_tx.clone();
                     GuestProcessControlHandle::new(move |message_id, payload, timeout| {
                         let control = control.clone();
-                        let gate = gate.clone();
+                        let coordinator = coordinator.clone();
                         let state = Arc::clone(&state);
                         let state_tx = state_tx.clone();
                         Box::pin(async move {
                             Self::process_control(
-                                gate, state, state_tx, control, message_id, payload, timeout,
+                                coordinator, state, state_tx, control, message_id, payload, timeout,
                             )
                             .await
                         })
@@ -2636,18 +2662,13 @@ mod tests {
         }
     }
 
-    fn process_control_gate(host: Arc<VsockHost>) -> (GuestOperationGate, ParkCoordinator) {
-        let coordinator = ParkCoordinator::new();
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(host)));
-        (
-            GuestOperationGate::new(guest, coordinator.clone()),
-            coordinator,
-        )
+    fn running_process_state() -> (Arc<AtomicU8>, watch::Sender<SandboxState>) {
+        process_state(SandboxState::Running)
     }
 
-    fn running_process_state() -> (Arc<AtomicU8>, watch::Sender<SandboxState>) {
-        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
-        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+    fn process_state(sandbox_state: SandboxState) -> (Arc<AtomicU8>, watch::Sender<SandboxState>) {
+        let state = Arc::new(AtomicU8::new(sandbox_state as u8));
+        let (state_tx, _state_rx) = watch::channel(sandbox_state);
         (state, state_tx)
     }
 
@@ -3626,21 +3647,21 @@ mod tests {
     #[tokio::test]
     async fn process_control_rejects_closed_operation_gate_without_dirtying() {
         let ProcessControlFixture {
-            host,
+            host: _host,
             handle,
             mut guest,
             spawn_seq,
             pid,
         } = setup_process_control_fixture().await;
         let control = handle.control_handle();
-        let (gate, coordinator) = process_control_gate(Arc::clone(&host));
+        let coordinator = ParkCoordinator::new();
         let attempt = coordinator
             .begin_prepare_park()
             .expect("begin prepare park");
         let (state, state_tx) = running_process_state();
 
         let error = FirecrackerSandbox::process_control(
-            gate,
+            coordinator.clone(),
             state,
             state_tx,
             control,
@@ -3664,21 +3685,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_control_local_validation_failure_keeps_gate_clean() {
+    async fn process_control_rejects_stopped_state_without_dirtying() {
         let ProcessControlFixture {
-            host,
+            host: _host,
             handle,
             mut guest,
             spawn_seq,
             pid,
         } = setup_process_control_fixture().await;
         let control = handle.control_handle();
-        let (gate, coordinator) = process_control_gate(Arc::clone(&host));
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = process_state(SandboxState::Stopped);
+
+        let error = FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx,
+            control,
+            "stopped".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("sandbox not running"),
+            "unexpected error: {error}",
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_local_validation_failure_keeps_gate_clean() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
         let too_large = vec![0; vsock_proto::PROCESS_CONTROL_MAX_PAYLOAD_BYTES + 1];
 
         let error = FirecrackerSandbox::process_control(
-            gate.clone(),
+            coordinator.clone(),
             Arc::clone(&state),
             state_tx.clone(),
             control.clone(),
@@ -3694,7 +3751,7 @@ mod tests {
         assert_eq!(coordinator.active_operation_count(), 0);
 
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
-            gate,
+            coordinator.clone(),
             state,
             state_tx,
             control,
@@ -3716,18 +3773,18 @@ mod tests {
     #[tokio::test]
     async fn process_control_guest_status_completes_gate() {
         let ProcessControlFixture {
-            host,
+            host: _host,
             handle,
             mut guest,
             spawn_seq,
             pid,
         } = setup_process_control_fixture().await;
         let control = handle.control_handle();
-        let (gate, coordinator) = process_control_gate(Arc::clone(&host));
+        let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
-            gate,
+            coordinator.clone(),
             state,
             state_tx,
             control,
@@ -3757,18 +3814,18 @@ mod tests {
     #[tokio::test]
     async fn process_control_timeout_after_guest_write_marks_gate_dirty() {
         let ProcessControlFixture {
-            host,
+            host: _host,
             handle,
             mut guest,
             spawn_seq,
             pid,
         } = setup_process_control_fixture().await;
         let control = handle.control_handle();
-        let (gate, coordinator) = process_control_gate(Arc::clone(&host));
+        let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
-            gate,
+            coordinator.clone(),
             state,
             state_tx,
             control,
