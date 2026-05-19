@@ -491,4 +491,31 @@ describe("proxy middleware: sandbox token handling", () => {
       false,
     );
   });
+
+  it("should not add OAuth web origin headers for GitHub provider webhooks", async () => {
+    const request = new NextRequest("https://www.vm0.ai/api/webhooks/github", {
+      method: "POST",
+      headers: {
+        "x-github-delivery": "delivery-github-1",
+        "x-github-event": "ping",
+        "x-hub-signature-256": "sha256=test-signature",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(response.headers.has("x-middleware-request-x-vm0-web-origin")).toBe(
+      false,
+    );
+  });
 });

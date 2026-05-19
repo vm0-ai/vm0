@@ -1105,6 +1105,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/integrations")).toBe(false);
   });
 
+  it("matches the GitHub webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/github")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks/github/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+  });
+
   it("matches the storages commit rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/storages/commit")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/storages/commit/extra")).toBe(
@@ -2440,6 +2448,48 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers["x-webhook-id"]).toBe("webhook-agentphone-1");
         expect(payload.headers["x-webhook-timestamp"]).toBe("1710000000");
         expect(payload.headers["x-webhook-signature"]).toBe(
+          "sha256=test-signature",
+        );
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards GitHub webhook POST bodies and signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          zen: "Non-blocking webhook migrations",
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/github?from=github`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-github-delivery": "delivery-github-1",
+              "x-github-event": "ping",
+              "x-hub-signature-256": "sha256=test-signature",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/webhooks/github?from=github");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["x-github-delivery"]).toBe("delivery-github-1");
+        expect(payload.headers["x-github-event"]).toBe("ping");
+        expect(payload.headers["x-hub-signature-256"]).toBe(
           "sha256=test-signature",
         );
         expect(payload.body).toBe(webhookBody);
