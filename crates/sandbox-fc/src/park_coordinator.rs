@@ -18,9 +18,6 @@
 //!   quiesce has completed, and the caller owns the authoritative `vsock-host`
 //!   normal-operation fence.
 //! - Coordinator locks are never held across `.await`.
-#![cfg_attr(not(test), allow(dead_code))]
-
-use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Debug)]
@@ -102,19 +99,6 @@ impl ParkCoordinator {
                 state,
             }),
         }
-    }
-
-    pub(crate) async fn prepare_park_with<F, Fut>(&self, hook: F) -> Result<(), PrepareParkError>
-    where
-        F: FnOnce(ParkAttempt) -> Fut,
-        Fut: Future<Output = PrepareParkEvidence>,
-    {
-        let attempt = self.begin_prepare_park()?;
-        let abort_on_drop = ParkAttemptDropGuard::new(Arc::clone(&self.inner), attempt);
-        let evidence = hook(attempt).await;
-        let result = self.complete_prepare_park(&attempt, evidence);
-        abort_on_drop.disarm();
-        result
     }
 
     pub(crate) fn mark_parked(&self, attempt: &ParkAttempt) -> Result<(), PrepareParkError> {
@@ -216,42 +200,6 @@ struct Inner {
     next_attempt_id: u64,
 }
 
-struct ParkAttemptDropGuard {
-    inner: Arc<Mutex<Inner>>,
-    attempt: ParkAttempt,
-    armed: bool,
-}
-
-impl ParkAttemptDropGuard {
-    fn new(inner: Arc<Mutex<Inner>>, attempt: ParkAttempt) -> Self {
-        Self {
-            inner,
-            attempt,
-            armed: true,
-        }
-    }
-
-    fn disarm(mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for ParkAttemptDropGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-
-        let mut inner = lock_inner(&self.inner);
-        if matches!(
-            inner.state,
-            CoordinatorState::ClosingForPark { attempt_id } if attempt_id == self.attempt.id
-        ) {
-            inner.state = CoordinatorState::Open;
-        }
-    }
-}
-
 impl Inner {
     fn mark_dirty(&mut self, reason: DirtyReason) {
         if matches!(self.state, CoordinatorState::Dirty { .. }) {
@@ -305,6 +253,30 @@ mod tests {
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert_eq!(coordinator.ensure_operation_start_allowed(), Ok(()));
+    }
+
+    #[test]
+    fn poisoned_mutex_marks_coordinator_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let poisoned_coordinator = coordinator.clone();
+
+        let join_result = std::thread::spawn(move || {
+            let _guard = poisoned_coordinator.inner();
+            panic!("poison coordinator lock");
+        })
+        .join();
+
+        assert!(join_result.is_err());
+        assert_eq!(
+            dirty_reason(&coordinator),
+            DirtyReason::new("park coordinator mutex poisoned")
+        );
+        assert!(matches!(
+            coordinator.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
+                state: CoordinatorState::Dirty { .. }
+            })
+        ));
     }
 
     #[test]
@@ -471,127 +443,6 @@ mod tests {
             dirty_reason(&coordinator),
             DirtyReason::new("driver shutdown")
         );
-    }
-
-    #[tokio::test]
-    async fn async_prepare_hook_runs_without_holding_coordinator_lock() {
-        let coordinator = ParkCoordinator::new();
-        let observed = coordinator.clone();
-
-        let result = coordinator
-            .prepare_park_with(|_| async move {
-                assert!(matches!(
-                    observed.ensure_operation_start_allowed(),
-                    Err(OperationStartRejection::GateClosed {
-                        state: CoordinatorState::ClosingForPark { .. }
-                    })
-                ));
-                PrepareParkEvidence::AgentQuiesced
-            })
-            .await;
-
-        assert!(result.is_ok());
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::ReadyForPark { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn successful_prepare_releases_attempt_guard_reference() {
-        let coordinator = ParkCoordinator::new();
-        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
-
-        let result = coordinator
-            .prepare_park_with(|_| async { PrepareParkEvidence::AgentQuiesced })
-            .await;
-
-        assert!(result.is_ok());
-        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::ReadyForPark { .. }
-        ));
-    }
-
-    #[tokio::test]
-    async fn dropped_prepare_future_reopens_gate_and_stales_attempt() {
-        let coordinator = ParkCoordinator::new();
-        let worker_coordinator = coordinator.clone();
-        let (attempt_tx, attempt_rx) = tokio::sync::oneshot::channel();
-
-        let task = tokio::spawn(async move {
-            worker_coordinator
-                .prepare_park_with(|attempt| async move {
-                    let _ = attempt_tx.send(attempt);
-                    std::future::pending::<PrepareParkEvidence>().await
-                })
-                .await
-        });
-
-        let stale_attempt = attempt_rx
-            .await
-            .expect("prepare hook should receive an attempt");
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::ClosingForPark { .. }
-        ));
-
-        task.abort();
-        let join_error = task.await.expect_err("prepare task should be aborted");
-        assert!(join_error.is_cancelled());
-
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.ensure_operation_start_allowed(), Ok(()));
-        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
-        assert!(matches!(
-            coordinator.complete_prepare_park(&stale_attempt, PrepareParkEvidence::AgentQuiesced),
-            Err(PrepareParkError::StaleAttempt {
-                state: CoordinatorState::Open,
-                ..
-            })
-        ));
-    }
-
-    #[tokio::test]
-    async fn dropped_prepare_future_does_not_reopen_dirty_gate() {
-        let coordinator = ParkCoordinator::new();
-        let worker_coordinator = coordinator.clone();
-        let (attempt_tx, attempt_rx) = tokio::sync::oneshot::channel();
-
-        let task = tokio::spawn(async move {
-            worker_coordinator
-                .prepare_park_with(|attempt| async move {
-                    let _ = attempt_tx.send(attempt);
-                    std::future::pending::<PrepareParkEvidence>().await
-                })
-                .await
-        });
-
-        let _attempt = attempt_rx
-            .await
-            .expect("prepare hook should receive an attempt");
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::ClosingForPark { .. }
-        ));
-
-        coordinator.mark_dirty(DirtyReason::new("driver shutdown"));
-        task.abort();
-        let join_error = task.await.expect_err("prepare task should be aborted");
-        assert!(join_error.is_cancelled());
-
-        assert_eq!(
-            dirty_reason(&coordinator),
-            DirtyReason::new("driver shutdown")
-        );
-        assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
-        assert!(matches!(
-            coordinator.ensure_operation_start_allowed(),
-            Err(OperationStartRejection::GateClosed {
-                state: CoordinatorState::Dirty { .. }
-            })
-        ));
     }
 
     #[test]
