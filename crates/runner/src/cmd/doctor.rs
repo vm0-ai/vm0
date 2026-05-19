@@ -1921,6 +1921,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_warns_for_running_when_only_unrelated_proxy_exists() {
+        let report = build_test_runner_report(
+            "running",
+            Some(32821),
+            None,
+            vec![mitm_proc(999, 32822)],
+            vec![],
+        )
+        .await;
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::NoMitmproxy { port: 32821, .. }))
+        );
+    }
+
+    #[tokio::test]
+    async fn report_no_stale_proxy_warning_for_stopped_with_unrelated_proxy() {
+        let report = build_test_runner_report(
+            "stopped",
+            Some(32821),
+            None,
+            vec![mitm_proc(999, 32822)],
+            vec![],
+        )
+        .await;
+        assert!(!has_proxy_warning(&report));
+    }
+
+    #[tokio::test]
     async fn report_warns_for_running_without_dnsmasq() {
         let report = build_test_runner_report("running", None, Some(5353), vec![], vec![]).await;
         assert!(
@@ -1942,6 +1973,24 @@ mod tests {
         )
         .await;
         assert!(!has_dns_warning(&report));
+    }
+
+    #[tokio::test]
+    async fn report_warns_for_running_when_only_unrelated_dnsmasq_exists() {
+        let report = build_test_runner_report(
+            "running",
+            None,
+            Some(5353),
+            vec![],
+            vec![dns_proc(888, 5354)],
+        )
+        .await;
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::NoDnsmasq { port: 5353, .. }))
+        );
     }
 
     #[test]
