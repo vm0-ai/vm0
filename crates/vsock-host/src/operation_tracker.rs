@@ -1,11 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "normal operation tracker APIs are introduced before command/file/process callers migrate to them"
-    )
-)]
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -26,6 +18,7 @@ impl NormalOperationTracker {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn readiness(&self) -> NormalOperationReadiness {
         self.inner().readiness()
     }
@@ -101,6 +94,7 @@ impl NormalOperationTracker {
     }
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NormalOperationReadiness {
     Idle,
@@ -167,6 +161,7 @@ struct Inner {
 }
 
 impl Inner {
+    #[cfg(test)]
     fn readiness(&self) -> NormalOperationReadiness {
         match self.state {
             TrackerState::Open if self.operations.is_empty() => NormalOperationReadiness::Idle,
