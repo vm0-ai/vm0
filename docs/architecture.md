@@ -167,14 +167,17 @@ sandbox:
   unrelated environment values fail visibly.
 - `VM0_RUNNER_CONCURRENCY_FACTOR` in this file can override the YAML
   concurrency factor.
-- Firecracker I/O limiters are disabled unless all four capacity values are
-  present: `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` (MiB/s),
+- Firecracker I/O limiter capacity is not configured unless all four capacity
+  values are present: `VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC` (MiB/s),
   `VM0_RUNNER_DISK_IOPS` (positive integer IOPS),
   `VM0_RUNNER_NET_RX_MIB_PER_SEC` (MiB/s), and
   `VM0_RUNNER_NET_TX_MIB_PER_SEC` (MiB/s).
 - If only some I/O values are present, or any I/O value is invalid, the runner
-  logs a warning and disables all I/O limiters. Valid I/O capacity keeps a fixed
-  20% host reserve and splits the remainder evenly across admitted sandboxes.
+  logs a warning and disables I/O limiter capacity. Valid I/O capacity keeps a
+  fixed 20% host reserve and splits the remainder evenly across admitted
+  sandboxes.
+- Even with valid host capacity, the runner only applies limiter fields to jobs
+  whose evaluated `sandboxIoLimiters` feature flag is true.
 - I/O capacity is resolved per runner process. If multiple runner services share
   one host, split the host capacity across those services in their host env
   values; the runner does not coordinate I/O budgets across processes.

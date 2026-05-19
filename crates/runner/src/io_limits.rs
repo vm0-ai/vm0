@@ -28,7 +28,7 @@ pub(crate) enum IoLimitResolution {
     Misconfigured {
         reason: String,
     },
-    Enabled {
+    Configured {
         limits: DeviceRateLimits,
         denominator: u64,
     },
@@ -37,7 +37,7 @@ pub(crate) enum IoLimitResolution {
 impl IoLimitResolution {
     pub(crate) fn device_rate_limits(&self) -> Option<DeviceRateLimits> {
         match self {
-            Self::Enabled { limits, .. } => Some(limits.clone()),
+            Self::Configured { limits, .. } => Some(limits.clone()),
             Self::Disabled | Self::Misconfigured { .. } => None,
         }
     }
@@ -151,7 +151,7 @@ fn resolve_io_limits_from_values(
         );
     };
 
-    IoLimitResolution::Enabled {
+    IoLimitResolution::Configured {
         denominator,
         limits: DeviceRateLimits {
             block: BlockRateLimits {
@@ -464,12 +464,12 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled {
+        let IoLimitResolution::Configured {
             limits,
             denominator,
         } = resolution
         else {
-            panic!("expected enabled resolution");
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 4);
         assert_eq!(limits.block.bandwidth_bytes_per_sec, 400 * 1024 * 1024);
@@ -485,8 +485,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 6);
     }
@@ -498,8 +498,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 8);
     }
@@ -511,8 +511,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 2);
     }
@@ -524,8 +524,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 10_000);
     }
@@ -545,8 +545,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 500);
     }
@@ -558,8 +558,8 @@ mod tests {
 
         let resolution = resolve_io_limits_from_values(&full_values(), &profiles, &budget);
 
-        let IoLimitResolution::Enabled { denominator, .. } = resolution else {
-            panic!("expected enabled resolution");
+        let IoLimitResolution::Configured { denominator, .. } = resolution else {
+            panic!("expected configured resolution");
         };
         assert_eq!(denominator, 1);
     }

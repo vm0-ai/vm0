@@ -377,9 +377,9 @@ pub async fn run_start(
             info!("I/O limiters disabled");
         }
         crate::io_limits::IoLimitResolution::Misconfigured { reason } => {
-            warn!(%reason, "I/O limiter host env config invalid; disabling I/O limiters");
+            warn!(%reason, "I/O limiter host env config invalid; disabling I/O limiter capacity");
         }
-        crate::io_limits::IoLimitResolution::Enabled {
+        crate::io_limits::IoLimitResolution::Configured {
             limits,
             denominator,
         } => {
@@ -389,7 +389,8 @@ pub async fn run_start(
                 disk_ops_per_sec = limits.block.ops_per_sec,
                 net_rx_bytes_per_sec = limits.network.rx_bytes_per_sec,
                 net_tx_bytes_per_sec = limits.network.tx_bytes_per_sec,
-                "I/O limiters enabled"
+                feature_flag = crate::io_limits::SANDBOX_IO_LIMITERS_FEATURE_FLAG,
+                "I/O limiter capacity configured; applying limiters only for flagged jobs"
             );
         }
     }

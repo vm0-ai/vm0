@@ -1885,6 +1885,10 @@ mod tests {
             (SandboxReuseResult::NoSessionId, "noSessionId"),
             (SandboxReuseResult::PoolMiss, "poolMiss"),
             (SandboxReuseResult::ProfileMismatch, "profileMismatch"),
+            (
+                SandboxReuseResult::DeviceLimitMismatch,
+                "deviceLimitMismatch",
+            ),
             (SandboxReuseResult::UnparkFailed, "unparkFailed"),
         ] {
             let env = build_env_json_with_host_env(
@@ -4394,6 +4398,7 @@ mod tests {
             SandboxReuseResult::NoSessionId,
             SandboxReuseResult::PoolMiss,
             SandboxReuseResult::ProfileMismatch,
+            SandboxReuseResult::DeviceLimitMismatch,
             SandboxReuseResult::UnparkFailed,
         ];
         for variant in variants {
