@@ -1008,16 +1008,14 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     let err = encode_exec_control(0, NONCE, "message", b"body", 5000).unwrap_err();
     assert!(matches!(
         err,
-        ProtocolError::InvalidPayload("process_control target_seq must be non-zero")
+        ProtocolError::InvalidPayload("exec_control target_seq must be non-zero")
     ));
 
     let mut trailing = payload;
     trailing.push(0);
     assert!(matches!(
         decode_exec_control(&trailing),
-        Err(ProtocolError::InvalidPayload(
-            "process_control trailing bytes"
-        ))
+        Err(ProtocolError::InvalidPayload("exec_control trailing bytes"))
     ));
 }
 
@@ -1037,7 +1035,17 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
         .unwrap_err();
     assert!(matches!(
         err,
-        ProtocolError::InvalidPayload("process_control_result target_seq must be non-zero")
+        ProtocolError::InvalidPayload("exec_control_result target_seq must be non-zero")
+    ));
+
+    let mut unknown_status = payload.clone();
+    let status_offset = 4 + PROCESS_CONTROL_NONCE_LEN + 2 + "message".len();
+    unknown_status[status_offset] = 0xFE;
+    assert!(matches!(
+        decode_exec_control_result(&unknown_status),
+        Err(ProtocolError::InvalidPayload(
+            "exec_control_result status invalid"
+        ))
     ));
 
     let mut trailing = payload;
@@ -1045,7 +1053,7 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
     assert!(matches!(
         decode_exec_control_result(&trailing),
         Err(ProtocolError::InvalidPayload(
-            "process_control_result trailing bytes"
+            "exec_control_result trailing bytes"
         ))
     ));
 }

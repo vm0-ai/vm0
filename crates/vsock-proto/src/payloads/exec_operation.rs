@@ -1,8 +1,9 @@
 use crate::error::ProtocolError;
 use crate::payloads::process_control::{
-    DecodedProcessControl, DecodedProcessControlResult, PROCESS_CONTROL_NONCE_LEN,
-    ProcessControlNonce, ProcessControlStatus, decode_process_control,
-    decode_process_control_result, encode_process_control, encode_process_control_result,
+    DecodedProcessControl, DecodedProcessControlResult, EXEC_CONTROL_CODEC_ERRORS,
+    EXEC_CONTROL_RESULT_CODEC_ERRORS, PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce,
+    ProcessControlStatus, decode_control_result_with_errors, decode_control_with_errors,
+    encode_control_result_with_errors, encode_control_with_errors,
 };
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
@@ -430,12 +431,13 @@ pub fn encode_exec_control(
     payload: &[u8],
     request_timeout_ms: u32,
 ) -> Result<Vec<u8>, ProtocolError> {
-    encode_process_control(
+    encode_control_with_errors(
         target_seq,
         control_nonce,
         message_id,
         payload,
         request_timeout_ms,
+        EXEC_CONTROL_CODEC_ERRORS,
     )
 }
 
@@ -447,7 +449,14 @@ pub fn encode_exec_control_result(
     status: ExecControlStatus,
     diagnostic: &str,
 ) -> Result<Vec<u8>, ProtocolError> {
-    encode_process_control_result(target_seq, control_nonce, message_id, status, diagnostic)
+    encode_control_result_with_errors(
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
+        EXEC_CONTROL_RESULT_CODEC_ERRORS,
+    )
 }
 
 /// Encode exec_output payload: `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]`.
@@ -819,7 +828,7 @@ pub fn decode_exec_control(payload: &[u8]) -> Result<DecodedExecControl<'_>, Pro
         control_nonce,
         message_id,
         payload: message_payload,
-    } = decode_process_control(payload)?;
+    } = decode_control_with_errors(payload, EXEC_CONTROL_CODEC_ERRORS)?;
     Ok(DecodedExecControl {
         target_seq,
         request_timeout_ms,
@@ -839,7 +848,7 @@ pub fn decode_exec_control_result(
         message_id,
         status,
         diagnostic,
-    } = decode_process_control_result(payload)?;
+    } = decode_control_result_with_errors(payload, EXEC_CONTROL_RESULT_CODEC_ERRORS)?;
     Ok(DecodedExecControlResult {
         target_seq,
         control_nonce,
