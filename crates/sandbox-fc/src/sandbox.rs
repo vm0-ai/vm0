@@ -3831,7 +3831,7 @@ mod tests {
             control,
             "timeout-after-write".to_owned(),
             b"payload".to_vec(),
-            Duration::from_millis(10),
+            Duration::ZERO,
         ));
         let request = read_vsock_message(&mut guest).await;
         assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
