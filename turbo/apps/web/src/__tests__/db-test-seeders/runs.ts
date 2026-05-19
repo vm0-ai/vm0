@@ -1,5 +1,7 @@
 import { and, eq, or, sql } from "drizzle-orm";
+import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
 import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { ContextArtifact } from "../../lib/infra/run/types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -15,7 +17,22 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { initServices } from "../../lib/init-services";
+import {
+  buildAndDispatchRun,
+  insertRunRecord,
+  loadCompose,
+  markRunFailed,
+} from "../../lib/infra/run";
+import { buildInfraExecutionContext } from "../../lib/infra/run/context/build-context";
+import { generateSandboxToken } from "../../lib/auth/sandbox-token";
+import { resolveCliRunContext } from "../../lib/zero/build-zero-context";
 import { enqueueRun } from "../../lib/zero/zero-run-queue-service";
+import { resolveStartRunCompose } from "../../lib/zero/zero-run-validation";
+import {
+  authorizeCompose,
+  checkRunConcurrencyLimit,
+  validateComposeRequirements,
+} from "../../lib/zero/zero-run-policy";
 import { uniqueId } from "../test-helpers";
 import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
@@ -156,6 +173,217 @@ async function createRunDirect(
   return run!;
 }
 
+type TestRunAdditionalVolume = {
+  name: string;
+  version?: string;
+  mountPath: string;
+};
+
+export type CreateDispatchedTestRunOptions = {
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  sessionId?: string;
+  checkpointId?: string;
+  appendSystemPrompt?: string;
+  additionalVolumes?: TestRunAdditionalVolume[];
+  permissionPolicies?: FirewallPolicies;
+  triggerSource?: string;
+};
+
+type CreateDispatchedTestRunParams = {
+  userId: string;
+  orgId: string;
+  orgTier: string;
+  agentComposeId: string;
+  prompt: string;
+  options?: CreateDispatchedTestRunOptions;
+};
+
+type ResolvedTestRunContext = Awaited<ReturnType<typeof resolveCliRunContext>>;
+type TestRunComposeMeta = Awaited<ReturnType<typeof resolveStartRunCompose>>;
+
+function mergeTestRunAdditionalVolumes(params: {
+  bodyAdditionalVolumes: TestRunAdditionalVolume[] | undefined;
+  resolvedAdditionalVolumes: TestRunAdditionalVolume[] | undefined;
+}): TestRunAdditionalVolume[] | undefined {
+  const merged =
+    params.bodyAdditionalVolumes ?? params.resolvedAdditionalVolumes;
+  return merged && merged.length > 0 ? merged : undefined;
+}
+
+async function resolveDispatchedTestRun(params: CreateDispatchedTestRunParams) {
+  const { userId, orgId, agentComposeId, options } = params;
+  const resolved = await resolveCliRunContext({
+    orgId,
+    userId,
+    sessionId: options?.sessionId,
+    checkpointId: options?.checkpointId,
+    composeId: agentComposeId,
+    vars: options?.vars,
+    secrets: options?.secrets,
+    permissionPolicies: options?.permissionPolicies,
+  });
+  const composeMeta = await resolveStartRunCompose({
+    userId,
+    composeId: agentComposeId,
+    agentComposeVersionId: resolved.agentComposeVersionId,
+    checkpointId: options?.checkpointId,
+    sessionId: options?.sessionId,
+  });
+  const { composeContent, compose } = await loadCompose(
+    composeMeta.agentComposeVersionId,
+    composeMeta.composeId,
+  );
+  authorizeCompose(userId, orgId, compose);
+  if (!options?.checkpointId && !options?.sessionId) {
+    await validateComposeRequirements(composeContent, null);
+  }
+  return { resolved, composeMeta, composeContent, compose };
+}
+
+async function insertDispatchedTestRunRecord(params: {
+  input: CreateDispatchedTestRunParams;
+  resolved: ResolvedTestRunContext;
+  composeMeta: TestRunComposeMeta;
+  composeId: string;
+  artifacts: ContextArtifact[];
+  additionalVolumes: TestRunAdditionalVolume[] | undefined;
+}) {
+  const { input, resolved, composeMeta, composeId, artifacts } = params;
+  const orgTier = orgTierSchema.parse(input.orgTier);
+  return globalThis.services.db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${input.orgId}))`,
+    );
+    await checkRunConcurrencyLimit(input.orgId, orgTier, tx);
+    return insertRunRecord(tx, {
+      userId: input.userId,
+      orgId: input.orgId,
+      agentComposeId: composeId,
+      agentComposeVersionId: composeMeta.agentComposeVersionId,
+      prompt: input.prompt,
+      appendSystemPrompt: input.options?.appendSystemPrompt,
+      vars: resolved.vars ?? input.options?.vars,
+      secrets: resolved.secrets ?? input.options?.secrets,
+      additionalVolumes: params.additionalVolumes,
+      resumedFromCheckpointId: input.options?.checkpointId,
+      sessionId: input.options?.sessionId,
+      artifacts,
+    });
+  });
+}
+
+async function dispatchInsertedTestRun(params: {
+  input: CreateDispatchedTestRunParams;
+  resolved: ResolvedTestRunContext;
+  composeMeta: TestRunComposeMeta;
+  composeContent: unknown;
+  artifacts: ContextArtifact[];
+  additionalVolumes: TestRunAdditionalVolume[] | undefined;
+  run: { id: string; sessionId: string };
+  apiStartTime: number;
+  authorizeTime: number;
+  transactionTime: number;
+}): Promise<{ runId: string; status: string; sessionId: string }> {
+  const sandboxToken = await generateSandboxToken(
+    params.input.userId,
+    params.run.id,
+    params.input.orgId,
+  );
+  const tokenTime = Date.now();
+  try {
+    const { context } = buildInfraExecutionContext({
+      runId: params.run.id,
+      userId: params.input.userId,
+      orgId: params.input.orgId,
+      agentComposeVersionId: params.composeMeta.agentComposeVersionId,
+      agentCompose: params.composeContent,
+      framework: params.resolved.framework,
+      prompt: params.input.prompt,
+      sandboxToken,
+      appendSystemPrompt: params.input.options?.appendSystemPrompt,
+      vars: params.resolved.vars ?? params.input.options?.vars,
+      secrets: params.resolved.secrets ?? params.input.options?.secrets,
+      secretConnectorMap: params.resolved.secretConnectorMap,
+      secretConnectorMetadataMap: params.resolved.secretConnectorMetadataMap,
+      artifacts: params.artifacts,
+      volumeVersions: params.resolved.volumeVersions,
+      additionalVolumes: params.additionalVolumes,
+      environment: params.resolved.environment,
+      userTimezone: params.resolved.userTimezone,
+      featureSwitchOverrides: params.resolved.featureSwitchOverrides,
+      firewalls: params.resolved.firewalls,
+      networkPolicies: params.resolved.networkPolicies,
+      resumeSession: params.resolved.resumeSession,
+      agentName: params.composeMeta.agentName,
+      resumedFromCheckpointId: params.input.options?.checkpointId,
+      continuedFromSessionId: params.input.options?.sessionId,
+      billableFirewalls: params.resolved.billableFirewalls,
+      modelUsageProvider: params.resolved.modelUsageProvider,
+      apiStartTime: params.apiStartTime,
+    });
+    const result = await buildAndDispatchRun({
+      runId: params.run.id,
+      context,
+      timings: {
+        apiStart: params.apiStartTime,
+        authorize: params.authorizeTime,
+        transaction: params.transactionTime,
+        token: tokenTime,
+        resolveSourceDuration: params.resolved.timings.resolveSource,
+        resolveSecretsDuration: params.resolved.timings.resolveSecrets,
+      },
+    });
+    return {
+      runId: params.run.id,
+      status: result.status,
+      sessionId: params.run.sessionId,
+    };
+  } catch (error) {
+    await markRunFailed(params.run.id, error);
+    return {
+      runId: params.run.id,
+      status: "failed",
+      sessionId: params.run.sessionId,
+    };
+  }
+}
+
+export async function createDispatchedTestRun(
+  params: CreateDispatchedTestRunParams,
+): Promise<{ runId: string; status: string; sessionId: string }> {
+  const apiStartTime = Date.now();
+  initServices();
+  const { resolved, composeMeta, composeContent, compose } =
+    await resolveDispatchedTestRun(params);
+  const authorizeTime = Date.now();
+  const artifacts = [...resolved.artifacts];
+  const additionalVolumes = mergeTestRunAdditionalVolumes({
+    bodyAdditionalVolumes: params.options?.additionalVolumes,
+    resolvedAdditionalVolumes: resolved.additionalVolumes,
+  });
+  const run = await insertDispatchedTestRunRecord({
+    input: params,
+    resolved,
+    composeMeta,
+    composeId: compose.id,
+    artifacts,
+    additionalVolumes,
+  });
+  return dispatchInsertedTestRun({
+    input: params,
+    resolved,
+    composeMeta,
+    composeContent,
+    artifacts,
+    additionalVolumes,
+    run,
+    apiStartTime,
+    authorizeTime,
+    transactionTime: Date.now(),
+  });
+}
+
 /**
  * Seed a run record directly in the database, bypassing the API route and dispatch.
  *
@@ -242,52 +470,6 @@ export async function seedTestRun(
     },
   );
   return { runId: run.id };
-}
-
-/**
- * Seed a stale pending run directly into the database.
- *
- * @why-db-direct The API immediately transitions runs to "running" or "failed"
- * during dispatch. A run stuck in "pending" state past the cleanup TTL cannot
- * be reproduced through normal API flows. The stale lastHeartbeatAt timestamp
- * is also a DB-controlled value that cannot be set via the API.
- */
-export async function seedStalePendingRun(
-  userId: string,
-  agentComposeVersionId: string,
-  ageMs: number = 20 * 60 * 1000,
-): Promise<string> {
-  initServices();
-
-  const { orgId, composeId } = await getOrgAndComposeFromVersion(
-    agentComposeVersionId,
-  );
-  const sessionId = await ensureTestAgentSession({
-    userId,
-    orgId,
-    agentComposeId: composeId,
-  });
-
-  const staleCreatedAt = new Date(Date.now() - ageMs);
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId,
-      status: "pending",
-      prompt: "Stale pending run",
-      sessionId,
-      createdAt: staleCreatedAt,
-      lastHeartbeatAt: staleCreatedAt,
-    })
-    .returning({ id: agentRuns.id });
-
-  if (!run) {
-    throw new Error("Failed to insert stale pending run");
-  }
-
-  return run.id;
 }
 
 /**

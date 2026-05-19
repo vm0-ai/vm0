@@ -1,8 +1,13 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
 import type { VolumeVersionsSnapshot } from "../../lib/infra/checkpoint/types";
+import { getAuthContext } from "../../lib/auth/get-auth-context";
+import { resolveOrg } from "../../lib/zero/org/resolve-org";
+import {
+  createDispatchedTestRun,
+  type CreateDispatchedTestRunOptions,
+} from "../db-test-seeders/runs";
 import { findTestRunRecord } from "../db-test-assertions/runs";
 import { createTestRequest } from "./core";
 
@@ -42,32 +47,21 @@ export {
 export async function createTestRun(
   agentComposeId: string,
   prompt: string,
-  options?: {
-    vars?: Record<string, string>;
-    secrets?: Record<string, string>;
-    sessionId?: string;
-    checkpointId?: string;
-    appendSystemPrompt?: string;
-    additionalVolumes?: Array<{
-      name: string;
-      version?: string;
-      mountPath: string;
-    }>;
-    permissionPolicies?: Record<string, Record<string, string>>;
-    triggerSource?: string;
-  },
+  options?: CreateDispatchedTestRunOptions,
 ): Promise<{ runId: string; status: string; sessionId?: string }> {
-  const request = createTestRequest("http://localhost:3000/api/agent/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentComposeId,
-      prompt,
-      ...options,
-    }),
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    throw new Error("Failed to create test run: not authenticated");
+  }
+  const { org } = await resolveOrg(authCtx);
+  return createDispatchedTestRun({
+    userId: authCtx.userId,
+    orgId: org.orgId,
+    orgTier: org.tier,
+    agentComposeId,
+    prompt,
+    options,
   });
-  const response = await createRunRoute(request);
-  return response.json();
 }
 
 /**

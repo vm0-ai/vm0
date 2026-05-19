@@ -215,6 +215,7 @@ export const API_BACKEND_REWRITES = [
     "/api/agent/runs/:id/telemetry/system-log",
     AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE,
   ],
+  ["/api/agent/runs", "/api/agent/runs"],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [
     AGENT_SESSION_ID_REWRITE_SOURCE,

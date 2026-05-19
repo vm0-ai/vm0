@@ -10,7 +10,6 @@ export {
   markRunFailed,
   registerCallbacks,
   isRunDispatchError,
-  type RunDispatchError,
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "./run-service";

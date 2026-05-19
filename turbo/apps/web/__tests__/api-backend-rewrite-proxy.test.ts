@@ -332,8 +332,13 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/runs/queue/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
+  });
+
+  it("matches the agent runs collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/run")).toBe(false);
   });
 
   it("matches the agent composes collection rewrite path exactly", () => {

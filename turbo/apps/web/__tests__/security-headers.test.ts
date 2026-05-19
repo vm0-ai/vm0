@@ -97,11 +97,21 @@ const AGENT_COMPOSES_VERSIONS_NEXT_NEGATIVE_PATHS = [
   "/api/agent/composes/version",
   "/api/agent/composes",
 ] as const;
+const AGENT_RUNS_REWRITE_SOURCE = "/api/agent/runs";
+const AGENT_RUNS_PATH = "/api/agent/runs";
+const AGENT_RUNS_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/extra",
+  "/api/agent/run",
+  "/api/agent/runs/queue",
+] as const;
+const AGENT_RUNS_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs/extra",
+  "/api/agent/run",
+] as const;
 const AGENT_RUNS_QUEUE_REWRITE_SOURCE = "/api/agent/runs/queue";
 const AGENT_RUNS_QUEUE_PATH = "/api/agent/runs/queue";
 const AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/extra",
-  "/api/agent/runs",
   "/api/agent/runs/queues",
 ] as const;
 const AGENT_RUN_BY_ID_REWRITE_SOURCE =
@@ -121,7 +131,6 @@ const AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS = [
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
 ] as const;
 const AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS = [
-  "/api/agent/runs",
   "/api/agent/runs/not-a-uuid",
   `/api/agent/runs/${AGENT_RUN_ID}/extra`,
 ] as const;
@@ -1003,6 +1012,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/composes/versions",
         },
         {
+          source: AGENT_RUNS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs",
+        },
+        {
           source: AGENT_RUNS_QUEUE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/agent/runs/queue",
         },
@@ -1691,6 +1704,29 @@ describe("API backend rewrites", () => {
       id: AGENT_COMPOSE_ID,
     });
     for (const pathname of AGENT_COMPOSES_INSTRUCTIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent runs collection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUNS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUNS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs",
+    });
+
+    const matcher = getPathMatch(AGENT_RUNS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUNS_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_RUNS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3947,6 +3983,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for agent checkpoint detail paths", () => {
     expect(matchesApiBackendRewritePath(AGENT_CHECKPOINT_PATH)).toBe(true);
     for (const pathname of AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact agent runs collection path", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUNS_PATH)).toBe(true);
+    for (const pathname of AGENT_RUNS_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
