@@ -4,6 +4,7 @@ import {
   type TestOAuthProviderTokenResponse,
 } from "@vm0/api-contracts/contracts/test-oauth-provider-token";
 
+import { env } from "../../lib/env";
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route";
 import {
@@ -86,14 +87,25 @@ function handleRefreshToken(refreshToken: string | null) {
   return { status: 200 as const, body: mintTokensForScenario(resolved) };
 }
 
+function isPreviewSyntheticRefreshRequest(body: URLSearchParams): boolean {
+  if (env("ENV") !== "preview") {
+    return false;
+  }
+  return (
+    body.get("grant_type") === "refresh_token" &&
+    body.get("client_id") === TEST_OAUTH_CLIENT_ID &&
+    body.get("client_secret") === TEST_OAUTH_CLIENT_SECRET &&
+    isTestOAuthRefreshToken(body.get("refresh_token") ?? "")
+  );
+}
+
 const token$ = command(async ({ get }, signal: AbortSignal) => {
   const request = get(request$);
-  if (!isTestEndpointAllowed(request)) {
-    return testEndpointNotFoundResponse();
-  }
-
   const contentType = request.header("content-type") ?? "";
   if (!contentType.includes("application/x-www-form-urlencoded")) {
+    if (!isTestEndpointAllowed(request)) {
+      return testEndpointNotFoundResponse();
+    }
     return errorResponse(400, "invalid_request", "expected form body");
   }
 
@@ -101,6 +113,13 @@ const token$ = command(async ({ get }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const body = new URLSearchParams(text);
+  if (
+    !isTestEndpointAllowed(request) &&
+    !isPreviewSyntheticRefreshRequest(body)
+  ) {
+    return testEndpointNotFoundResponse();
+  }
+
   const grantType = body.get("grant_type");
   const clientId = body.get("client_id");
   const clientSecret = body.get("client_secret");

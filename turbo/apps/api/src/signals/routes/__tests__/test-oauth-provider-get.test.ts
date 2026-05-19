@@ -377,6 +377,44 @@ describe("/api/test/oauth-provider/*", () => {
       expect(refreshed.access_token).not.toBe(first.access_token);
     });
 
+    it("allows synthetic preview refresh grants without a bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "testoauth_rt_success_valid",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.access_token).toMatch(/^testoauth_at_/);
+      expect(body.refresh_token).toMatch(/^testoauth_rt_success_/);
+    });
+
+    it("hides non-refresh preview token grants without a bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: "testoauth_code_success_abc",
+        }),
+      );
+
+      expect(response.status).toBe(404);
+      await expect(response.text()).resolves.toBe("Not found");
+    });
+
     it("rejects an invalid-refresh scenario token", async () => {
       mockEnv("ENV", "development");
 

@@ -324,14 +324,22 @@ const TEST_OAUTH_PROVIDER_AUTHORIZE_PATH = "/api/test/oauth-provider/authorize";
 const TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS = [
   "/api/test/oauth-provider/authorize/extra",
   "/api/test/oauth-provider",
-  "/api/test/oauth-provider/token",
+  "/api/test/oauth-provider/userinfo",
 ] as const;
 const TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PATH = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PROXY_NEGATIVE_PATHS = [
   "/api/test/oauth-provider/echo/extra",
   "/api/test/oauth-provider",
-  "/api/test/oauth-provider/token",
+  "/api/test/oauth-provider/userinfo",
+] as const;
+const TEST_OAUTH_PROVIDER_TOKEN_REWRITE_SOURCE =
+  "/api/test/oauth-provider/token";
+const TEST_OAUTH_PROVIDER_TOKEN_PATH = "/api/test/oauth-provider/token";
+const TEST_OAUTH_PROVIDER_TOKEN_PROXY_NEGATIVE_PATHS = [
+  "/api/test/oauth-provider/token/extra",
+  "/api/test/oauth-provider",
+  "/api/test/oauth-provider/userinfo",
 ] as const;
 const CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_PATH = "/api/cron/aggregate-insights";
@@ -1230,6 +1238,10 @@ describe("API backend rewrites", () => {
         {
           source: TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE,
           destination: "https://api.example.test/api/test/oauth-provider/echo",
+        },
+        {
+          source: TEST_OAUTH_PROVIDER_TOKEN_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/test/oauth-provider/token",
         },
         {
           source: CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE,
@@ -4627,6 +4639,15 @@ describe("API backend rewrites", () => {
       matchesApiBackendRewritePath(TEST_OAUTH_PROVIDER_AUTHORIZE_PATH),
     ).toBe(true);
     for (const pathname of TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact test OAuth provider token path", () => {
+    expect(matchesApiBackendRewritePath(TEST_OAUTH_PROVIDER_TOKEN_PATH)).toBe(
+      true,
+    );
+    for (const pathname of TEST_OAUTH_PROVIDER_TOKEN_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

@@ -57,25 +57,56 @@ function isPreviewPlaceholder(url: string | undefined): boolean {
   return url?.includes("{pr}") ?? false;
 }
 
+function apiPreviewAliasFromWebUrl(
+  url: string | undefined,
+): string | undefined {
+  const normalized = normalizedUrl(url);
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = new URL(normalized);
+  if (!parsed.hostname.endsWith(".vm6.ai")) {
+    return normalized;
+  }
+  if (!parsed.hostname.includes("-www.")) {
+    return normalized;
+  }
+  parsed.hostname = parsed.hostname.replace("-www.", "-api.");
+  return parsed.toString().replace(/\/$/, "");
+}
+
 function runtimeBaseUrl(): string {
-  const configuredUrls = [
-    process.env.VM0_API_URL,
-    process.env.VM0_WEB_URL,
-    process.env.APP_URL,
-  ];
-  const concreteConfiguredUrl = configuredUrls.find((url) => {
-    return url && !isPreviewPlaceholder(url);
-  });
-  if (concreteConfiguredUrl) {
-    return normalizedUrl(concreteConfiguredUrl) ?? "http://localhost:3000";
+  const configuredApiUrl = process.env.VM0_API_URL;
+  if (configuredApiUrl && !isPreviewPlaceholder(configuredApiUrl)) {
+    return (
+      apiPreviewAliasFromWebUrl(configuredApiUrl) ?? "http://localhost:3000"
+    );
   }
 
   const vercelUrl = normalizedUrl(process.env.VERCEL_URL);
-  if (vercelUrl) {
-    return vercelUrl;
+  if (vercelUrl && isPreviewPlaceholder(configuredApiUrl)) {
+    return apiPreviewAliasFromWebUrl(vercelUrl) ?? vercelUrl;
   }
 
-  if (configuredUrls.some(isPreviewPlaceholder)) {
+  const configuredFallbackUrls = [process.env.VM0_WEB_URL, process.env.APP_URL];
+  const concreteConfiguredFallbackUrl = configuredFallbackUrls.find((url) => {
+    return url && !isPreviewPlaceholder(url);
+  });
+  if (concreteConfiguredFallbackUrl) {
+    return (
+      apiPreviewAliasFromWebUrl(concreteConfiguredFallbackUrl) ??
+      "http://localhost:3000"
+    );
+  }
+
+  if (vercelUrl) {
+    return apiPreviewAliasFromWebUrl(vercelUrl) ?? vercelUrl;
+  }
+
+  if (
+    isPreviewPlaceholder(configuredApiUrl) ||
+    configuredFallbackUrls.some(isPreviewPlaceholder)
+  ) {
     throw new Error(
       "A concrete test-oauth app URL is required when configured URL contains {pr}",
     );
@@ -88,6 +119,8 @@ function previewBypassHeaders(): Record<string, string> {
   return process.env.VERCEL_AUTOMATION_BYPASS_SECRET
     ? {
         "x-vercel-protection-bypass":
+          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+        "x-vm0-test-endpoint-bypass":
           process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       }
     : {};

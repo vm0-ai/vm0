@@ -236,9 +236,9 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/test/oauth-provider/token")).toBe(
-      false,
-    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+    ).toBe(false);
   });
 
   it("matches the test OAuth provider echo rewrite path exactly", () => {
@@ -251,9 +251,24 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
       false,
     );
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+    ).toBe(false);
+  });
+
+  it("matches the test OAuth provider token rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/oauth-provider/token")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/token/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
       false,
     );
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+    ).toBe(false);
   });
 
   it("matches the cron aggregate insights rewrite path exactly", () => {

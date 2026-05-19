@@ -317,6 +317,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/oauth-provider/authorize", "/api/test/oauth-provider/authorize"],
   ["/api/test/oauth-provider/echo", "/api/test/oauth-provider/echo"],
+  ["/api/test/oauth-provider/token", "/api/test/oauth-provider/token"],
   ["/api/test/slack-dispatch-probe", "/api/test/slack-dispatch-probe"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],
