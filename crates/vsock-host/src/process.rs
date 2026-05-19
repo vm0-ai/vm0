@@ -13,7 +13,7 @@ use vsock_proto::{
 
 use crate::{
     ConnectionState, FrameWriteObserver, PendingRequestGuard, PendingResponse, Shared,
-    normal_request_on_shared_with_write_observer, operation_tracker::NormalOperationToken,
+    normal_request_on_shared_with_pre_write_observer, operation_tracker::NormalOperationToken,
 };
 
 const SPAWN_PROCESS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -412,13 +412,17 @@ impl GuestProcessControlHandle {
             request_timeout_ms,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        ensure_process_control_target_active(&self.shared, self.target_seq)?;
-        let response = normal_request_on_shared_with_write_observer(
+        let response = normal_request_on_shared_with_pre_write_observer(
             &self.shared,
             MSG_PROCESS_CONTROL,
             &request,
             PROCESS_CONTROL_TERMINAL_MSG_TYPES,
             timeout,
+            {
+                let shared = Arc::clone(&self.shared);
+                let target_seq = self.target_seq;
+                move || ensure_process_control_target_active(&shared, target_seq)
+            },
             write_observer,
         )
         .await?;
