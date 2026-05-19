@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.283.0](https://github.com/vm0-ai/vm0/compare/core-v8.282.0...core-v8.283.0) (2026-05-19)
+
+
+### Features
+
+* enable stored secret kms reads ([#13970](https://github.com/vm0-ai/vm0/issues/13970)) ([11ee709](https://github.com/vm0-ai/vm0/commit/11ee7097d118f5b6b03726b3e810a5be0fae5d15))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+
 ## [8.282.0](https://github.com/vm0-ai/vm0/compare/core-v8.281.7...core-v8.282.0) (2026-05-19)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.34.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.3...sandbox-fc-v0.34.4) (2026-05-19)
+
+
+### Bug Fixes
+
+* reject malformed firecracker netns names ([#13964](https://github.com/vm0-ai/vm0/issues/13964)) ([637aa3f](https://github.com/vm0-ai/vm0/commit/637aa3ff0b2f6e059d26445c6a6eec4e3858d695))
+
+
+### Refactoring
+
+* remove sandbox-fc operation lease mirror ([#13961](https://github.com/vm0-ai/vm0/issues/13961)) ([c175dc4](https://github.com/vm0-ai/vm0/commit/c175dc4d9ac88556deecbdc5193837ce28b2b0e5))
+
 ## [0.34.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.2...sandbox-fc-v0.34.3) (2026-05-19)
 
 

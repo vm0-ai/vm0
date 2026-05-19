@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.377.0](https://github.com/vm0-ai/vm0/compare/web-v12.376.1...web-v12.377.0) (2026-05-19)
+
+
+### Features
+
+* add connector oauth client plumbing ([#13973](https://github.com/vm0-ai/vm0/issues/13973)) ([5c1ede5](https://github.com/vm0-ai/vm0/commit/5c1ede5a435a2c6a95efbf676aeb88bf8ec08788))
+
+
+### Bug Fixes
+
+* enforce api start time milliseconds ([#13963](https://github.com/vm0-ai/vm0/issues/13963)) ([847d7a2](https://github.com/vm0-ai/vm0/commit/847d7a2054778457d0c65da5e75439b71b78d965))
+* separate desktop development app identity ([#13980](https://github.com/vm0-ai/vm0/issues/13980)) ([21fe633](https://github.com/vm0-ai/vm0/commit/21fe6334d52eb4059df4a65fd6d177f1a8293012))
+
+
+### Refactoring
+
+* cut over cron voice chat cleanup route ([#13972](https://github.com/vm0-ai/vm0/issues/13972)) ([e7ced61](https://github.com/vm0-ai/vm0/commit/e7ced61c23bdc3c1baa25f1ac4fedf59eef9c690))
+* cut over internal agent callback route ([#13982](https://github.com/vm0-ai/vm0/issues/13982)) ([9126656](https://github.com/vm0-ai/vm0/commit/91266561c6fbd769e11146211186c2cd8bc683e5))
+* cut over v1 chat thread messages route ([#13991](https://github.com/vm0-ai/vm0/issues/13991)) ([f963421](https://github.com/vm0-ai/vm0/commit/f963421a2f1a5f1f7c407ce8bc5c786f8d751650))
+* migrate test slack dispatch probe rewrite ([#13948](https://github.com/vm0-ai/vm0/issues/13948)) ([b19f9c0](https://github.com/vm0-ai/vm0/commit/b19f9c0c8d5e5809b4de3ccad081a6e44bbbf622))
+* migrate zero runs cancel rewrite ([#13975](https://github.com/vm0-ai/vm0/issues/13975)) ([5681c5a](https://github.com/vm0-ai/vm0/commit/5681c5a5461bd796b0fab0fe0339e19188b553b0))
+* migrate zero runs context rewrite ([#13983](https://github.com/vm0-ai/vm0/issues/13983)) ([b2d2bf6](https://github.com/vm0-ai/vm0/commit/b2d2bf65faf30e8ef7d1a285e9fbd27e0c997f62))
+* proxy test oauth token route to api ([#13965](https://github.com/vm0-ai/vm0/issues/13965)) ([b45401f](https://github.com/vm0-ai/vm0/commit/b45401f5c9d0360ba858d4fbc669c7c0849c49b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+    * @vm0/core bumped to 8.283.0
+    * @vm0/db bumped to 1.14.16
+
 ## [12.376.1](https://github.com/vm0-ai/vm0/compare/web-v12.376.0...web-v12.376.1) (2026-05-19)
 
 

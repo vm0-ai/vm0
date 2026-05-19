@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.2...vsock-proto-v0.18.3) (2026-05-19)
+
+
+### Refactoring
+
+* upgrade exec start protocol schema ([#13841](https://github.com/vm0-ai/vm0/issues/13841)) ([6790751](https://github.com/vm0-ai/vm0/commit/67907514ba9f7372a4de7e0351cf5c724b997087))
+
 ## [0.18.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.1...vsock-proto-v0.18.2) (2026-05-19)
 
 

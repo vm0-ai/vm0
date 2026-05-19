@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.4](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.3...vsock-host-v0.17.4) (2026-05-19)
+
+
+### Refactoring
+
+* remove sandbox-fc operation lease mirror ([#13961](https://github.com/vm0-ai/vm0/issues/13961)) ([c175dc4](https://github.com/vm0-ai/vm0/commit/c175dc4d9ac88556deecbdc5193837ce28b2b0e5))
+* upgrade exec start protocol schema ([#13841](https://github.com/vm0-ai/vm0/issues/13841)) ([6790751](https://github.com/vm0-ai/vm0/commit/67907514ba9f7372a4de7e0351cf5c724b997087))
+
 ## [0.17.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.2...vsock-host-v0.17.3) (2026-05-19)
 
 

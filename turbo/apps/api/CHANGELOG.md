@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.57.0](https://github.com/vm0-ai/vm0/compare/api-v1.56.1...api-v1.57.0) (2026-05-19)
+
+
+### Features
+
+* add connector oauth client plumbing ([#13973](https://github.com/vm0-ai/vm0/issues/13973)) ([5c1ede5](https://github.com/vm0-ai/vm0/commit/5c1ede5a435a2c6a95efbf676aeb88bf8ec08788))
+* enable stored secret kms reads ([#13970](https://github.com/vm0-ai/vm0/issues/13970)) ([11ee709](https://github.com/vm0-ai/vm0/commit/11ee7097d118f5b6b03726b3e810a5be0fae5d15))
+
+
+### Bug Fixes
+
+* encode oauth callback cookies ([#13990](https://github.com/vm0-ai/vm0/issues/13990)) ([909a47b](https://github.com/vm0-ai/vm0/commit/909a47bb36eb6274bf156bb43c30b832e4398523))
+* enforce api start time milliseconds ([#13963](https://github.com/vm0-ai/vm0/issues/13963)) ([847d7a2](https://github.com/vm0-ai/vm0/commit/847d7a2054778457d0c65da5e75439b71b78d965))
+* separate desktop development app identity ([#13980](https://github.com/vm0-ai/vm0/issues/13980)) ([21fe633](https://github.com/vm0-ai/vm0/commit/21fe6334d52eb4059df4a65fd6d177f1a8293012))
+
+
+### Refactoring
+
+* cut over cron voice chat cleanup route ([#13972](https://github.com/vm0-ai/vm0/issues/13972)) ([e7ced61](https://github.com/vm0-ai/vm0/commit/e7ced61c23bdc3c1baa25f1ac4fedf59eef9c690))
+* migrate test slack dispatch probe rewrite ([#13948](https://github.com/vm0-ai/vm0/issues/13948)) ([b19f9c0](https://github.com/vm0-ai/vm0/commit/b19f9c0c8d5e5809b4de3ccad081a6e44bbbf622))
+* proxy test oauth token route to api ([#13965](https://github.com/vm0-ai/vm0/issues/13965)) ([b45401f](https://github.com/vm0-ai/vm0/commit/b45401f5c9d0360ba858d4fbc669c7c0849c49b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+    * @vm0/core bumped to 8.283.0
+    * @vm0/db bumped to 1.14.16
+
 ## [1.56.1](https://github.com/vm0-ai/vm0/compare/api-v1.56.0...api-v1.56.1) (2026-05-19)
 
 

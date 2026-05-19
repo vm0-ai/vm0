@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.102.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.3...runner-rs-v0.102.4) (2026-05-19)
+
+
+### Bug Fixes
+
+* enforce api start time milliseconds ([#13963](https://github.com/vm0-ai/vm0/issues/13963)) ([847d7a2](https://github.com/vm0-ai/vm0/commit/847d7a2054778457d0c65da5e75439b71b78d965))
+* reject malformed firecracker netns names ([#13964](https://github.com/vm0-ai/vm0/issues/13964)) ([637aa3f](https://github.com/vm0-ai/vm0/commit/637aa3ff0b2f6e059d26445c6a6eec4e3858d695))
+
 ## [0.102.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.2...runner-rs-v0.102.3) (2026-05-19)
 
 ## [0.102.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.1...runner-rs-v0.102.2) (2026-05-19)

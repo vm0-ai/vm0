@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.366.2](https://github.com/vm0-ai/vm0/compare/app-v0.366.1...app-v0.366.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* separate desktop development app identity ([#13980](https://github.com/vm0-ai/vm0/issues/13980)) ([21fe633](https://github.com/vm0-ai/vm0/commit/21fe6334d52eb4059df4a65fd6d177f1a8293012))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+    * @vm0/core bumped to 8.283.0
+
 ## [0.366.1](https://github.com/vm0-ai/vm0/compare/app-v0.366.0...app-v0.366.1) (2026-05-19)
 
 
