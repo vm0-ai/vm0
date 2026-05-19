@@ -55,7 +55,10 @@ import {
   isSupportedFramework,
   type SupportedFramework,
 } from "@vm0/core/frameworks";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import {
+  getAllFeatureStates,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
@@ -2431,6 +2434,7 @@ function buildStoredExecutionContext(args: {
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }): BuiltStoredExecutionContext {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
@@ -2482,7 +2486,7 @@ function buildStoredExecutionContext(args: {
       tools: args.body.tools,
       settings: args.body.settings,
       experimentalProfile: runnerProfile(args.resolved.content),
-      featureFlags: {},
+      featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: billableFirewallsForPermissions({
         modelProvider: args.modelProvider,
         permissions,
@@ -2703,6 +2707,7 @@ async function buildRunnerJobPayload(
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<ReturnType<typeof queuedRunnerJobPayload>> {
   const group =
@@ -2748,6 +2753,7 @@ async function buildRunnerJobPayload(
     runId: args.run.id,
     storageManifest,
     userTimezone: args.userTimezone,
+    featureSwitchContext: args.featureSwitchContext,
   });
   ingestRunContextSnapshot({
     runId: args.run.id,
@@ -2783,6 +2789,7 @@ async function dispatchRun(
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<{ readonly status: RunStatus; readonly sandboxId?: string }> {
   await db
@@ -2835,6 +2842,7 @@ async function enqueueRunForConcurrency(
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
     readonly userTimezone: string | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
   const payload = await buildRunnerJobPayload(get, db, args);
@@ -2895,6 +2903,7 @@ interface PreparedRunContext {
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 async function resolveRunModelProvider(
@@ -3234,6 +3243,7 @@ async function prepareRunContext(
     artifacts,
     additionalVolumes,
     userTimezone,
+    featureSwitchContext,
   };
 }
 
@@ -3304,6 +3314,7 @@ async function completeQueuedRun(input: {
       includeZeroTokenSecret: input.args.includeZeroTokenSecret,
       extraEnvironment: input.args.extraEnvironment,
       userTimezone: input.context.userTimezone,
+      featureSwitchContext: input.context.featureSwitchContext,
     }),
   );
   input.signal.throwIfAborted();
@@ -3341,6 +3352,7 @@ async function completePendingRun(input: {
       includeZeroTokenSecret: input.args.includeZeroTokenSecret,
       extraEnvironment: input.args.extraEnvironment,
       userTimezone: input.context.userTimezone,
+      featureSwitchContext: input.context.featureSwitchContext,
     }),
   );
   input.signal.throwIfAborted();

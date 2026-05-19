@@ -17,8 +17,10 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore, command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
@@ -386,6 +388,40 @@ describe("POST /api/agent/runs", () => {
       prompt: "Create a run",
       appendSystemPrompt: "Be concise.",
       sessionId: null,
+    });
+  });
+
+  it("passes evaluated feature switches to the runner job context", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Create a run",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly featureFlags?: Record<string, boolean>;
+    };
+
+    expect(executionContext.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ComputerUse]: true,
     });
   });
 
