@@ -14,6 +14,6 @@ export const atlascloudHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "ATLASCLAUDE_TOKEN";
+    return "ATLASCLOUD_API_KEY";
   },
 };
