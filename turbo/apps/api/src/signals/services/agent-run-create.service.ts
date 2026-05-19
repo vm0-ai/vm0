@@ -2721,7 +2721,7 @@ async function buildRunnerJobPayload(
 
   const profile = runnerProfile(args.resolved.content);
   const featureSwitchOverrides = args.includeZeroTokenSecret
-    ? await get(userFeatureSwitchOverrides(args.orgId, args.userId))
+    ? args.featureSwitchContext.overrides
     : undefined;
   const body = args.includeZeroTokenSecret
     ? withZeroTokenSecret(

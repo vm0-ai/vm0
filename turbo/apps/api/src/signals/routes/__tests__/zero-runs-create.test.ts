@@ -25,9 +25,11 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
@@ -475,6 +477,12 @@ describe("POST /api/zero/runs", () => {
 
   it("queues zero runs at the org concurrency limit and dispatches them when drained", async () => {
     const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.ComputerUse]: true },
+    });
     const agent = await seedRunnableZeroAgent({ fixture: fx });
     const first = await accept(
       zeroRunsClient().create({
@@ -493,7 +501,6 @@ describe("POST /api/zero/runs", () => {
     );
 
     expect(queued.body.status).toBe("queued");
-    const db = store.set(writeDb$);
     const [queuedRun] = await db
       .select({ status: agentRuns.status })
       .from(agentRuns)
@@ -549,11 +556,22 @@ describe("POST /api/zero/runs", () => {
     const executionContext = runnerJob?.executionContext as {
       readonly environment?: Record<string, string>;
       readonly encryptedSecrets?: string | null;
+      readonly featureFlags?: Record<string, boolean>;
     };
     expect(executionContext.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
-    expect(
-      decryptSecretsMap(executionContext.encryptedSecrets ?? null)?.ZERO_TOKEN,
-    ).toBeDefined();
+    expect(executionContext.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ComputerUse]: true,
+    });
+    const zeroToken = decryptSecretsMap(
+      executionContext.encryptedSecrets ?? null,
+    )?.ZERO_TOKEN;
+    expect(zeroToken).toBeDefined();
+    if (!zeroToken) {
+      throw new Error("expected ZERO_TOKEN");
+    }
+    expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
+      "computer-use:write",
+    );
   });
 
   it("rejects explicit VM0 runs when org credits are unavailable", async () => {

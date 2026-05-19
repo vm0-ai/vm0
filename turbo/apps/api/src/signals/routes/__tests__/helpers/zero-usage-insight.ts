@@ -10,6 +10,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -129,6 +130,16 @@ export const deleteUsageInsightFixture$ = command(
     await db
       .delete(usageEvent)
       .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.userId, userId)));
+    signal.throwIfAborted();
+
+    await db
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.orgId, orgId),
+          eq(userFeatureSwitches.userId, userId),
+        ),
+      );
     signal.throwIfAborted();
 
     const runRows = await db
