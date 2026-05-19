@@ -196,6 +196,7 @@ pub async fn run_start(
         ));
     }
 
+    let runner_host_env = crate::host_env::read_runner_host_env()?;
     let config::SandboxConfig {
         max_concurrent,
         concurrency_factor: yaml_concurrency_factor,
@@ -203,7 +204,10 @@ pub async fn run_start(
         max_idle,
     } = runner_config.sandbox;
     let (concurrency_factor, concurrency_factor_source) =
-        crate::runtime_overrides::resolve_concurrency_factor(yaml_concurrency_factor)?;
+        crate::runtime_overrides::resolve_concurrency_factor(
+            yaml_concurrency_factor,
+            &runner_host_env,
+        )?;
     if concurrency_factor_source.is_override() {
         info!(
             env_var = crate::host_env::RUNNER_CONCURRENCY_FACTOR_ENV,
@@ -366,7 +370,7 @@ pub async fn run_start(
         "resource budget initialized"
     );
     let io_limit_resolution =
-        crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget)?;
+        crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env)?;
     let device_rate_limits = io_limit_resolution.device_rate_limits();
     match &io_limit_resolution {
         crate::io_limits::IoLimitResolution::Disabled => {

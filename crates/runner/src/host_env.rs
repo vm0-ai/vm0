@@ -36,21 +36,32 @@ pub(crate) struct RunnerIoEnvValues {
     pub(crate) net_tx_mib_per_sec: Option<HostEnvValue>,
 }
 
-pub(crate) fn runner_concurrency_factor() -> RunnerResult<Option<HostEnvValue>> {
-    let file_values = read_host_env_file()?;
-    Ok(file_values.get(RUNNER_CONCURRENCY_FACTOR_ENV).cloned())
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct RunnerHostEnv {
+    values: BTreeMap<&'static str, HostEnvValue>,
 }
 
-pub(crate) fn runner_io_env_values() -> RunnerResult<RunnerIoEnvValues> {
-    let file_values = read_host_env_file()?;
+impl RunnerHostEnv {
+    pub(crate) fn concurrency_factor(&self) -> Option<&HostEnvValue> {
+        self.values.get(RUNNER_CONCURRENCY_FACTOR_ENV)
+    }
 
-    Ok(RunnerIoEnvValues {
-        disk_bandwidth_mib_per_sec: file_values
-            .get(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV)
-            .cloned(),
-        disk_iops: file_values.get(RUNNER_DISK_IOPS_ENV).cloned(),
-        net_rx_mib_per_sec: file_values.get(RUNNER_NET_RX_MIB_PER_SEC_ENV).cloned(),
-        net_tx_mib_per_sec: file_values.get(RUNNER_NET_TX_MIB_PER_SEC_ENV).cloned(),
+    pub(crate) fn io_values(&self) -> RunnerIoEnvValues {
+        RunnerIoEnvValues {
+            disk_bandwidth_mib_per_sec: self
+                .values
+                .get(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV)
+                .cloned(),
+            disk_iops: self.values.get(RUNNER_DISK_IOPS_ENV).cloned(),
+            net_rx_mib_per_sec: self.values.get(RUNNER_NET_RX_MIB_PER_SEC_ENV).cloned(),
+            net_tx_mib_per_sec: self.values.get(RUNNER_NET_TX_MIB_PER_SEC_ENV).cloned(),
+        }
+    }
+}
+
+pub(crate) fn read_runner_host_env() -> RunnerResult<RunnerHostEnv> {
+    Ok(RunnerHostEnv {
+        values: read_host_env_file()?,
     })
 }
 
@@ -140,6 +151,53 @@ mod tests {
         let values = parse_host_env_file("\n# nothing enabled\n").unwrap();
 
         assert!(values.is_empty());
+    }
+
+    #[test]
+    fn runner_host_env_projects_concurrency_and_io_values() {
+        let values = parse_host_env_file(
+            "\
+VM0_RUNNER_CONCURRENCY_FACTOR=1.5
+VM0_RUNNER_DISK_BANDWIDTH_MIB_PER_SEC=1000
+VM0_RUNNER_DISK_IOPS=50000
+VM0_RUNNER_NET_RX_MIB_PER_SEC=250
+VM0_RUNNER_NET_TX_MIB_PER_SEC=125
+",
+        )
+        .unwrap();
+        let host_env = RunnerHostEnv { values };
+
+        assert_eq!(
+            host_env.concurrency_factor(),
+            Some(&HostEnvValue {
+                value: "1.5".to_string(),
+            })
+        );
+        let io_values = host_env.io_values();
+        assert_eq!(
+            io_values.disk_bandwidth_mib_per_sec,
+            Some(HostEnvValue {
+                value: "1000".to_string(),
+            })
+        );
+        assert_eq!(
+            io_values.disk_iops,
+            Some(HostEnvValue {
+                value: "50000".to_string(),
+            })
+        );
+        assert_eq!(
+            io_values.net_rx_mib_per_sec,
+            Some(HostEnvValue {
+                value: "250".to_string(),
+            })
+        );
+        assert_eq!(
+            io_values.net_tx_mib_per_sec,
+            Some(HostEnvValue {
+                value: "125".to_string(),
+            })
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 use crate::config;
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_env::{self, HostEnvValue};
+use crate::host_env::{self, HostEnvValue, RunnerHostEnv};
 
 const RUNNER_YAML_SOURCE: &str = "runner.yaml";
 
@@ -30,9 +30,9 @@ impl ConcurrencyFactorSource {
 
 pub(crate) fn resolve_concurrency_factor(
     yaml_value: f64,
+    host_env: &RunnerHostEnv,
 ) -> RunnerResult<(f64, ConcurrencyFactorSource)> {
-    let env_value = host_env::runner_concurrency_factor()?;
-    resolve_concurrency_factor_from_env_value(yaml_value, env_value.as_ref())
+    resolve_concurrency_factor_from_env_value(yaml_value, host_env.concurrency_factor())
 }
 
 fn resolve_concurrency_factor_from_env_value(

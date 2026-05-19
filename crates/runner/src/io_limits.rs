@@ -9,7 +9,7 @@ use sandbox::{BlockRateLimits, DeviceRateLimits, NetworkRateLimits};
 
 use crate::config::ProfileConfig;
 use crate::error::RunnerResult;
-use crate::host_env::{self, HostEnvValue, RunnerIoEnvValues};
+use crate::host_env::{self, HostEnvValue, RunnerHostEnv, RunnerIoEnvValues};
 use crate::resource_budget::ResourceBudget;
 
 const MIB: f64 = 1024.0 * 1024.0;
@@ -44,8 +44,9 @@ impl IoLimitResolution {
 pub(crate) fn resolve_io_limits(
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
+    host_env: &RunnerHostEnv,
 ) -> RunnerResult<IoLimitResolution> {
-    let values = host_env::runner_io_env_values()?;
+    let values = host_env.io_values();
     Ok(resolve_io_limits_from_values(&values, profiles, budget))
 }
 
