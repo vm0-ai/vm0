@@ -4,6 +4,7 @@ import {
   TsRestResponse,
 } from "../../../../../../src/lib/ts-rest-handler";
 import {
+  elapsedSinceApiStartMs,
   runnersJobClaimContract,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
@@ -150,11 +151,15 @@ const router = tsr.router(runnersJobClaimContract, {
     );
 
     // Record api_to_claim metric
-    if (storedContext.apiStartTime) {
+    const apiToClaimMs = elapsedSinceApiStartMs(
+      storedContext.apiStartTime,
+      now.getTime(),
+    );
+    if (apiToClaimMs !== undefined) {
       recordSandboxOperation({
         sandboxType: "runner",
         actionType: "api_to_claim",
-        durationMs: now.getTime() - storedContext.apiStartTime,
+        durationMs: apiToClaimMs,
         success: true,
         runId,
       });

@@ -42,6 +42,7 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const MIN_PLAUSIBLE_API_START_TIME_MS: u64 = 1_000_000_000_000;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::RUNNER_CONCURRENCY_FACTOR_ENV;
@@ -288,15 +289,19 @@ fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult)
 
 fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: &mut JobTelemetry) {
     if let Some(api_start_ms) = context.api_start_time {
-        let now_ms = chrono::Utc::now().timestamp_millis() as f64;
-        let elapsed_ms = (now_ms - api_start_ms).max(0.0);
-        telemetry.record(
-            action_type,
-            Duration::from_millis(elapsed_ms as u64),
-            true,
-            None,
-        );
+        let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, now_ms) {
+            telemetry.record(action_type, duration, true, None);
+        }
     }
+}
+
+fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration> {
+    if api_start_ms < MIN_PLAUSIBLE_API_START_TIME_MS {
+        return None;
+    }
+
+    Some(Duration::from_millis(now_ms.saturating_sub(api_start_ms)))
 }
 
 /// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
@@ -1487,7 +1492,7 @@ fn build_env_json_with_host_env(
         "VM0_API_START_TIME".into(),
         context
             .api_start_time
-            .map(|t| (t as u64).to_string())
+            .map(|t| t.to_string())
             .unwrap_or_default(),
     );
     // The API omits cli_agent_type for claude-code agents (the default).
@@ -2176,10 +2181,31 @@ mod tests {
     #[test]
     fn build_env_json_with_api_start_time() {
         let mut ctx = minimal_context();
-        ctx.api_start_time = Some(1_700_000_000.5);
+        ctx.api_start_time = Some(1_700_000_000_500);
 
         let env = build_env_for_test(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000");
+        assert_eq!(env.get("VM0_API_START_TIME").unwrap(), "1700000000500");
+    }
+
+    #[test]
+    fn elapsed_since_api_start_ms_returns_elapsed_duration() {
+        let duration = elapsed_since_api_start_ms(1_700_000_000_000, 1_700_000_001_250);
+
+        assert_eq!(duration, Some(Duration::from_millis(1_250)));
+    }
+
+    #[test]
+    fn elapsed_since_api_start_ms_clamps_future_start_to_zero() {
+        let duration = elapsed_since_api_start_ms(1_700_000_001_250, 1_700_000_000_000);
+
+        assert_eq!(duration, Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn elapsed_since_api_start_ms_rejects_seconds_shaped_start() {
+        let duration = elapsed_since_api_start_ms(1_700_000_000, 1_700_000_001_250);
+
+        assert_eq!(duration, None);
     }
 
     #[test]

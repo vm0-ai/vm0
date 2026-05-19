@@ -28,7 +28,7 @@ pub struct Job {
 
 // ---------------------------------------------------------------------------
 // Claim (execution context)
-// Keep in sync with TS: packages/core/src/contracts/runners.ts → executionContextSchema
+// Keep in sync with TS: turbo/packages/api-contracts/src/contracts/runners.ts → executionContextSchema
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -74,7 +74,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub debug_no_mock_codex: Option<bool>,
     #[serde(default)]
-    pub api_start_time: Option<f64>,
+    pub api_start_time: Option<u64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
     #[serde(default)]
@@ -445,7 +445,7 @@ mod tests {
             },
             "debugNoMockClaude": true,
             "debugNoMockCodex": true,
-            "apiStartTime": 1700000000000.0,
+            "apiStartTime": 1_700_000_000_000u64,
             "userTimezone": "America/New_York",
             "firewalls": [{
                 "name": "github",
@@ -473,6 +473,7 @@ mod tests {
         );
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());
+        assert_eq!(ctx.api_start_time, Some(1_700_000_000_000));
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");
         assert_eq!(ctx.disallowed_tools.as_ref().unwrap(), &["CronCreate"]);
         assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
