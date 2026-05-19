@@ -3395,6 +3395,23 @@ mod tests {
         assert!(matches!(coordinator.state(), CoordinatorState::Open));
     }
 
+    #[test]
+    fn ready_for_park_boundary_missing_fence_marks_dirty_after_ready_for_park() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        let mut guard: ParkBoundaryGuard<RecordedFence> =
+            ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+        guard.complete_prepare().unwrap();
+        let error = guard.mark_parked().unwrap_err();
+
+        assert!(matches!(error, PrepareParkError::Dirty { .. }));
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
     #[tokio::test]
     async fn ready_for_park_boundary_busy_fence_aborts_without_dirtying() {
         let coordinator = ParkCoordinator::new();
