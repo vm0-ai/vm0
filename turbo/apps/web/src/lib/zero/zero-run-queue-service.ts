@@ -13,14 +13,20 @@ import {
   inArray,
 } from "drizzle-orm";
 import type { SupportedFramework } from "@vm0/core/frameworks";
+import {
+  storedExecutionContextSchema,
+  type StoredExecutionContext,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
+import { z } from "zod";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { env } from "../../env";
@@ -62,6 +68,8 @@ import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
 import { publishRunChangedForUserSafely } from "../infra/run/run-realtime";
+import { findBestRunner } from "../infra/run/scheduling";
+import { publishJobNotification } from "../infra/realtime/client";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { QueueResponse } from "@vm0/api-contracts/contracts/runs";
@@ -71,6 +79,19 @@ const log = logger("zero:run-queue-service");
 
 // Queue entry TTL: 2 hours (same as runner_job_queue)
 const QUEUE_TTL_MS = 2 * 60 * 60 * 1000;
+const API_QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
+
+const apiQueuedRunnerJobPayloadSchema = z.object({
+  version: z.literal(1),
+  runnerGroup: z.string(),
+  profile: z.string(),
+  sessionId: z.string().nullable(),
+  executionContext: storedExecutionContextSchema,
+});
+
+type ApiQueuedRunnerJobPayload = z.infer<
+  typeof apiQueuedRunnerJobPayloadSchema
+>;
 
 /**
  * Dispatcher function type for queued runs.
@@ -284,6 +305,23 @@ export async function drainOrgQueue(
         dequeued.encryptedParams,
         encryptionKey,
       );
+      try {
+        const apiPayload = parseApiQueuedRunnerJobPayload(decryptedMap);
+        if (apiPayload) {
+          await promoteApiQueuedRunnerJob(dequeued.runId, apiPayload);
+          log.debug(`Queued API run ${dequeued.runId} promoted to runner job`);
+          return; // Successfully promoted — done
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        log.error(
+          `Failed to promote queued API run ${dequeued.runId}: ${errorMessage}`,
+        );
+        await markQueuedRunFailed(dequeued.runId, errorMessage);
+        continue; // Try next entry
+      }
+
       if (!decryptedMap?.__params) {
         log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
         await markQueuedRunFailed(
@@ -320,6 +358,72 @@ export async function drainOrgQueue(
       log.error("Failed to publish queue:changed after drain", { err });
     });
   }
+}
+
+function parseApiQueuedRunnerJobPayload(
+  decryptedMap: Record<string, string> | null,
+): ApiQueuedRunnerJobPayload | null {
+  const rawPayload = decryptedMap?.[API_QUEUED_RUNNER_JOB_PAYLOAD_KEY];
+  if (!rawPayload) {
+    return null;
+  }
+
+  const parsedPayload: unknown = JSON.parse(rawPayload);
+  return apiQueuedRunnerJobPayloadSchema.parse(parsedPayload);
+}
+
+async function promoteApiQueuedRunnerJob(
+  runId: string,
+  payload: {
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly sessionId: string | null;
+    readonly executionContext: StoredExecutionContext;
+  },
+): Promise<void> {
+  await globalThis.services.db.insert(runnerJobQueue).values({
+    runId,
+    runnerGroup: payload.runnerGroup,
+    profile: payload.profile,
+    sessionId: payload.sessionId,
+    executionContext: payload.executionContext,
+    expiresAt: new Date(Date.now() + QUEUE_TTL_MS),
+  });
+
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({ runnerGroup: payload.runnerGroup })
+    .where(eq(agentRuns.id, runId));
+
+  await notifyApiQueuedRunnerJob(runId, payload);
+}
+
+async function notifyApiQueuedRunnerJob(
+  runId: string,
+  payload: {
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly sessionId: string | null;
+  },
+): Promise<void> {
+  let targetRunnerId: string | null = null;
+  try {
+    const target = await findBestRunner(
+      payload.runnerGroup,
+      payload.profile,
+      payload.sessionId,
+    );
+    targetRunnerId = target?.runnerId ?? null;
+  } catch (error) {
+    log.warn(`findBestRunner failed for run ${runId}, using broadcast`, error);
+  }
+
+  await publishJobNotification(
+    payload.runnerGroup,
+    runId,
+    payload.profile,
+    targetRunnerId,
+  );
 }
 
 interface DequeuedEntry {

@@ -607,6 +607,7 @@ export async function insertTestQueueEntry(
   runId: string,
   options?: {
     createdAt?: Date;
+    encryptedParams?: string | null;
     expiresAt?: Date;
   },
 ) {
@@ -624,6 +625,7 @@ export async function insertTestQueueEntry(
     userId: run.userId,
     orgId: run.orgId,
     createdAt: options?.createdAt,
+    encryptedParams: options?.encryptedParams,
     expiresAt: options?.expiresAt ?? new Date(Date.now() + 60 * 60 * 1000),
   });
 }
