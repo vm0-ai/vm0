@@ -418,6 +418,62 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     const apl = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
     expect(apl).toContain("sandbox-telemetry-system");
     expect(apl).toContain(new Date(since).toISOString());
+    expect(apl).toContain("| order by _time asc");
+  });
+
+  it("returns empty system log pages when Axiom has no records", async () => {
+    const fixture = await setupRun();
+    context.mocks.axiom.query.mockResolvedValueOnce([]);
+
+    const client = setupApp({ context })(runSystemLogContract);
+    const response = await accept(
+      client.getSystemLog({
+        params: { id: fixture.runId },
+        query: { limit: 10, order: "desc" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      systemLog: "",
+      hasMore: false,
+    });
+  });
+
+  it("returns 404 for another user's system log without leaking existence", async () => {
+    const owner = await setupRun();
+    const other = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(other.userId, other.orgId);
+
+    const client = setupApp({ context })(runSystemLogContract);
+    const response = await accept(
+      client.getSystemLog({
+        params: { id: owner.runId },
+        query: {},
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 400 for invalid system log query parameters", async () => {
+    const fixture = await setupRun();
+
+    const response = await rawRequest(
+      `/api/agent/runs/${fixture.runId}/telemetry/system-log?limit=101`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
   });
 
   it("returns metric pages from Axiom", async () => {

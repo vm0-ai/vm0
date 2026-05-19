@@ -92,6 +92,10 @@ const AGENT_RUN_TELEMETRY_NETWORK_PATH_RE = new RegExp(
 );
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH_RE = /^\/api\/connectors\/[^/]+\/authorize$/;
+const AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/system-log`;
+const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
+  `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/system-log$`,
+);
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -190,6 +194,11 @@ export const API_BACKEND_REWRITES = [
     AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE,
     "/api/agent/runs/:id/telemetry/network",
     AGENT_RUN_TELEMETRY_NETWORK_PATH_RE,
+  ],
+  [
+    AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE,
+    "/api/agent/runs/:id/telemetry/system-log",
+    AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE,
   ],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [

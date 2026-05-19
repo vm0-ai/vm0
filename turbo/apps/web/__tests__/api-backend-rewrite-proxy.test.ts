@@ -460,11 +460,6 @@ describe("API backend rewrite proxy behavior", () => {
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/extra`,
       ),
     ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath(
-        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
-      ),
-    ).toBe(false);
   });
 
   it("matches only UUID-shaped agent run agent telemetry paths", () => {
@@ -519,9 +514,22 @@ describe("API backend rewrite proxy behavior", () => {
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network/extra`,
       ),
     ).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent run system log telemetry paths", () => {
     expect(
       matchesApiBackendRewritePath(
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/runs/not-a-uuid/telemetry/system-log",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log/extra`,
       ),
     ).toBe(false);
   });
