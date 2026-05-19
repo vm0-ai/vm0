@@ -190,6 +190,13 @@ describe("getConnectorEnvironmentMapping", () => {
     });
   });
 
+  it("returns correct mapping for SproutGigs connector", () => {
+    expect(getConnectorEnvironmentMapping("sproutgigs")).toEqual({
+      SPROUTGIGS_USER_ID: "$vars.SPROUTGIGS_USER_ID",
+      SPROUTGIGS_API_SECRET: "$secrets.SPROUTGIGS_API_SECRET",
+    });
+  });
+
   it("returns correct mapping for API-token connector with variables", () => {
     expect(getConnectorEnvironmentMapping("jira")).toEqual({
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
