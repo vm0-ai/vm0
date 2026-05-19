@@ -27,6 +27,21 @@ function preloadPath(): string {
   return path.join(__dirname, "preload.js");
 }
 
+function appIconPath(): string {
+  return path.join(__dirname, "..", "assets", "icon.png");
+}
+
+function applyAppName(): void {
+  app.setName(config.identity.displayName);
+  app.name = config.identity.displayName;
+}
+
+function applyDockIcon(): void {
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setIcon(appIconPath());
+  }
+}
+
 function openExternal(url: string): void {
   void shell.openExternal(url);
 }
@@ -96,6 +111,7 @@ function browserWindowOptions() {
   return {
     title: config.identity.displayName,
     backgroundColor: "#19191b",
+    icon: appIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -277,7 +293,7 @@ if (process.platform !== "darwin") {
   console.warn("Zero Desktop POC is macOS-first and only packages for darwin.");
 }
 
-app.name = config.identity.displayName;
+applyAppName();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -300,6 +316,7 @@ if (!hasSingleInstanceLock) {
   });
 
   void app.whenReady().then(async () => {
+    applyDockIcon();
     registerDesktopAuthProtocol();
     queueDesktopAuthCallbackArgv(process.argv);
 

@@ -1,3 +1,5 @@
+const path = require("node:path");
+
 const desktopIdentities = require("./src/desktop-identities.json");
 
 const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
@@ -25,6 +27,10 @@ module.exports = {
     name: desktopIdentity.displayName,
     executableName: desktopIdentity.displayName,
     appBundleId: desktopIdentity.bundleId,
+    icon: path.join(__dirname, "assets", "icon"),
+    extendInfo: {
+      CFBundleIconFile: "icon.icns",
+    },
     asar: false,
     osxSign: {
       hardenedRuntime: false,

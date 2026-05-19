@@ -107,12 +107,19 @@ jobs:
           fi
 
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
+          cmp -s apps/platform/public/icons/icon-512.png "$app_dir/Contents/Resources/app/assets/icon.png"
 
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/icon.icns"
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/assets/icon.png"
           echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload unsigned macOS artifact
