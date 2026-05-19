@@ -326,6 +326,13 @@ const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/user-model-preference/extra",
   "/api/zero/user-preferences",
 ] as const;
+const ZERO_API_KEYS_REWRITE_SOURCE = "/api/zero/api-keys";
+const ZERO_API_KEYS_PATH = "/api/zero/api-keys";
+const ZERO_API_KEYS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/api-key",
+  "/api/zero/api-keys/550e8400-e29b-41d4-a716-446655440000",
+  "/api/zero/api-keys/extra",
+] as const;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_ME_MODEL_PROVIDERS_PATH = "/api/zero/me/model-providers";
 const ZERO_ME_MODEL_PROVIDERS_NEXT_NEGATIVE_PATHS = [
@@ -1003,6 +1010,10 @@ describe("API backend rewrites", () => {
           source: STRIPE_CLI_AUTH_SESSIONS_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/connectors/stripe/cli-auth/sessions",
+        },
+        {
+          source: ZERO_API_KEYS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/api-keys",
         },
         {
           source: "/api/zero/devices/bb0/confirm",
@@ -2592,6 +2603,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero api keys rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_API_KEYS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_API_KEYS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/api-keys",
+    });
+
+    const matcher = getPathMatch(ZERO_API_KEYS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_API_KEYS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_API_KEYS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact permission policies rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -3505,6 +3539,13 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath(ZERO_SECRETS_PATH)).toBe(true);
     expect(matchesApiBackendRewritePath(ZERO_SECRETS_BY_NAME_PATH)).toBe(true);
     for (const pathname of ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero api keys path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_API_KEYS_PATH)).toBe(true);
+    for (const pathname of ZERO_API_KEYS_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

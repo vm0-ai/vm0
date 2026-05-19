@@ -953,6 +953,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
   });
 
+  it("matches the zero api keys collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/api-keys")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/api-key")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/api-keys/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/api-keys/extra")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero model policies rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/model-policies")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/model-policies/extra")).toBe(

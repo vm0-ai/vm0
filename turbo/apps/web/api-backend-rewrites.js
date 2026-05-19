@@ -238,6 +238,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
+  ["/api/zero/api-keys", "/api/zero/api-keys"],
   ["/api/zero/devices/bb0/confirm", "/api/zero/devices/bb0/confirm"],
   [
     "/api/zero/host/deployments/:deploymentId/complete",
