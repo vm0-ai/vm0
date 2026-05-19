@@ -23,6 +23,13 @@ export const codexOauth = {
     oauth: {
       authorizationUrl: "https://auth.openai.com/oauth/authorize",
       tokenUrl: "https://auth.openai.com/oauth/token",
+      storage: "model-provider",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+      },
       scopes: [
         "openid",
         "profile",

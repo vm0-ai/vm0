@@ -15,9 +15,9 @@ import {
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  getConnectorAuthMethods,
+  getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
-  getConnectorOAuthEnvKeys,
+  getConnectorOAuthStorage,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -25,6 +25,10 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  type AuthUrlResult,
+  PROVIDER_HANDLERS,
+} from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
@@ -59,6 +63,7 @@ import type { RouteEntry } from "../route";
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
+const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const COOKIE_MAX_AGE = 15 * 60;
 const REDIRECT_STATUS = 307;
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
@@ -70,6 +75,8 @@ type ConnectorAuthorizeRoute = AppRoute & {
   readonly pathParams: z.ZodType<{ readonly type: string }>;
   readonly query: z.ZodType<{ readonly session?: string }>;
 };
+
+type OAuthConnectorType = Exclude<ConnectorType, "computer">;
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -128,10 +135,6 @@ function generateConnectorSessionCode(
   return code;
 }
 
-function isRefreshOnlyConnectorType(type: ConnectorType): boolean {
-  return type === "codex-oauth";
-}
-
 function buildCookieHeader(
   name: string,
   value: string,
@@ -172,6 +175,13 @@ function redirectResponse(url: string): Response {
     status: REDIRECT_STATUS,
     headers: { location: url },
   });
+}
+
+function connectorOAuthAuthorizationError(type: OAuthConnectorType): string {
+  if (type === "codex-oauth") {
+    return "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow";
+  }
+  return `${type} does not use connector OAuth authorization`;
 }
 
 async function base64UrlSha256(value: string): Promise<string> {
@@ -217,48 +227,39 @@ function deterministicPkceSuffix(type: ConnectorType): string | undefined {
 }
 
 async function buildAuthorizeUrl(args: {
-  readonly type: ConnectorType;
-  readonly clientId: string;
+  readonly type: OAuthConnectorType;
+  readonly clientRegistration: "static" | "dynamic" | undefined;
+  readonly clientId: string | undefined;
   readonly redirectUri: string;
   readonly state: string;
-}): Promise<{ readonly url: string; readonly codeVerifier?: string } | null> {
+}): Promise<{
+  readonly url: string;
+  readonly codeVerifier?: string;
+  readonly oauthContext?: string;
+} | null> {
   const oauthConfig = getConnectorOAuthConfig(args.type);
   if (!oauthConfig?.authorizationUrl) {
     return null;
   }
 
-  if (args.type === "github") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        scope: oauthConfig.scopes.join(" "),
-        state: args.state,
-      }).toString()}`,
-    };
+  if (args.clientRegistration === "dynamic") {
+    return buildDynamicAuthorizeUrl(args);
   }
 
-  if (args.type === "slack") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        user_scope: oauthConfig.scopes.join(","),
-        state: args.state,
-      }).toString()}`,
-    };
+  if (!args.clientId) {
+    return null;
   }
 
-  if (args.type === "notion") {
-    return {
-      url: `${oauthConfig.authorizationUrl}?${new URLSearchParams({
-        client_id: args.clientId,
-        redirect_uri: args.redirectUri,
-        state: args.state,
-        response_type: "code",
-        owner: "user",
-      }).toString()}`,
-    };
+  const connectorSpecificUrl = buildConnectorSpecificAuthorizeUrl({
+    type: args.type,
+    authorizationUrl: oauthConfig.authorizationUrl,
+    clientId: args.clientId,
+    redirectUri: args.redirectUri,
+    scopes: oauthConfig.scopes,
+    state: args.state,
+  });
+  if (connectorSpecificUrl) {
+    return { url: connectorSpecificUrl };
   }
 
   const params = new URLSearchParams({
@@ -312,6 +313,74 @@ async function buildAuthorizeUrl(args: {
   }
 
   return { url: `${oauthConfig.authorizationUrl}?${params.toString()}` };
+}
+
+function buildConnectorSpecificAuthorizeUrl(args: {
+  readonly type: OAuthConnectorType;
+  readonly authorizationUrl: string;
+  readonly clientId: string;
+  readonly redirectUri: string;
+  readonly scopes: readonly string[];
+  readonly state: string;
+}): string | undefined {
+  switch (args.type) {
+    case "github": {
+      return `${args.authorizationUrl}?${new URLSearchParams({
+        client_id: args.clientId,
+        redirect_uri: args.redirectUri,
+        scope: args.scopes.join(" "),
+        state: args.state,
+      }).toString()}`;
+    }
+    case "slack": {
+      return `${args.authorizationUrl}?${new URLSearchParams({
+        client_id: args.clientId,
+        redirect_uri: args.redirectUri,
+        user_scope: args.scopes.join(","),
+        state: args.state,
+      }).toString()}`;
+    }
+    case "notion": {
+      return `${args.authorizationUrl}?${new URLSearchParams({
+        client_id: args.clientId,
+        redirect_uri: args.redirectUri,
+        state: args.state,
+        response_type: "code",
+        owner: "user",
+      }).toString()}`;
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
+async function buildDynamicAuthorizeUrl(args: {
+  readonly type: OAuthConnectorType;
+  readonly redirectUri: string;
+  readonly state: string;
+}): Promise<{
+  readonly url: string;
+  readonly codeVerifier?: string;
+  readonly oauthContext?: string;
+} | null> {
+  const handler = PROVIDER_HANDLERS[args.type];
+  const authResult = await handler.buildAuthUrlWithoutClient?.(
+    args.redirectUri,
+    args.state,
+  );
+  if (!authResult) {
+    return null;
+  }
+  return normalizeAuthUrlResult(authResult);
+}
+
+function normalizeAuthUrlResult(authResult: string | AuthUrlResult): {
+  readonly url: string;
+  readonly codeVerifier?: string;
+  readonly oauthContext?: string;
+} {
+  return typeof authResult === "string" ? { url: authResult } : authResult;
 }
 
 const getConnectorListInner$ = computed(async (get) => {
@@ -546,18 +615,16 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    if (isRefreshOnlyConnectorType(type)) {
+    const oauthStorage = getConnectorOAuthStorage(type);
+    if (!oauthStorage) {
       return jsonResponse(
-        {
-          error:
-            "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-        },
+        { error: `${type} connector does not use OAuth` },
         400,
       );
     }
-    if (!("oauth" in getConnectorAuthMethods(type))) {
+    if (oauthStorage !== "connector") {
       return jsonResponse(
-        { error: `${type} connector does not use OAuth` },
+        { error: connectorOAuthAuthorizationError(type) },
         400,
       );
     }
@@ -577,15 +644,17 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const state = generateState();
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
-    const envKeys = getConnectorOAuthEnvKeys(type);
-    const clientId = envKeys ? optionalEnv(envKeys.clientId) : undefined;
-    if (!clientId) {
+    const credentials = getConnectorOAuthCredentials(type, optionalEnv, {
+      requireClientSecret: false,
+    });
+    if (!credentials?.configured) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
 
     const authResult = await buildAuthorizeUrl({
       type,
-      clientId,
+      clientRegistration: credentials.client?.clientRegistration,
+      clientId: credentials.clientId,
       redirectUri,
       state,
     });
@@ -612,6 +681,16 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         buildCookieHeader(
           PKCE_COOKIE_NAME,
           authResult.codeVerifier,
+          COOKIE_MAX_AGE,
+        ),
+      );
+    }
+    if (authResult.oauthContext) {
+      response.headers.append(
+        "Set-Cookie",
+        buildCookieHeader(
+          OAUTH_CONTEXT_COOKIE_NAME,
+          authResult.oauthContext,
           COOKIE_MAX_AGE,
         ),
       );

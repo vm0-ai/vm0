@@ -4,7 +4,7 @@ import {
   HANDLER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_HANDLER_KEY,
   SOURCE_HANDLER_TO_PROVIDER_TYPE,
-  getRefreshSourceType,
+  getOAuthSecretSource,
 } from "../handler-key-bridge";
 
 describe("handler-key bridge tables stay in sync", () => {
@@ -46,14 +46,14 @@ describe("handler-key bridge tables stay in sync", () => {
   });
 });
 
-describe("getRefreshSourceType", () => {
+describe("getOAuthSecretSource", () => {
   it("returns 'model-provider' for bridged handler keys", () => {
-    expect(getRefreshSourceType("codex-oauth")).toBe("model-provider");
+    expect(getOAuthSecretSource("codex-oauth")).toBe("model-provider");
   });
 
   it("returns 'connector' for unbridged handler keys (default)", () => {
-    expect(getRefreshSourceType("github")).toBe("connector");
-    expect(getRefreshSourceType("notion")).toBe("connector");
-    expect(getRefreshSourceType("totally-unknown")).toBe("connector");
+    expect(getOAuthSecretSource("github")).toBe("connector");
+    expect(getOAuthSecretSource("notion")).toBe("connector");
+    expect(getOAuthSecretSource("totally-unknown")).toBe("connector");
   });
 });

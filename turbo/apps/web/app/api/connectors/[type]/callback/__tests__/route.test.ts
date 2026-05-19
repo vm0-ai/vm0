@@ -927,6 +927,7 @@ function createCallbackRequest(options: {
   errorDescription?: string;
   savedState?: string;
   sessionId?: string;
+  oauthContext?: string;
   connectorType?: string;
 }) {
   const type = options.connectorType ?? "github";
@@ -945,6 +946,9 @@ function createCallbackRequest(options: {
   }
   if (options.sessionId) {
     cookies.push(`connector_oauth_session=${options.sessionId}`);
+  }
+  if (options.oauthContext) {
+    cookies.push(`connector_oauth_context=${options.oauthContext}`);
   }
 
   return createTestRequest(url.toString(), {
@@ -1039,6 +1043,26 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       const location = response.headers.get("location");
       expect(location).toContain("/connector/error");
       expect(location).toContain("Not+authenticated");
+    });
+
+    it("should redirect with error for refresh-only connector callbacks", async () => {
+      await context.setupUser();
+
+      const request = createCallbackRequest({
+        connectorType: "codex-oauth",
+        code: "test-code",
+        state: "test-state",
+        savedState: "test-state",
+      });
+      const response = await GET(request, {
+        params: Promise.resolve({ type: "codex-oauth" }),
+      });
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/connector/error");
+      expect(location).toContain("codex-oauth");
+      expect(location).toContain("OAuth+authorization+failed");
     });
 
     it("should redirect with error when OAuth provider returns error", async () => {
@@ -1174,6 +1198,7 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
         code: "valid-code",
         state: "test-state",
         savedState: "test-state",
+        oauthContext: "opaque-provider-context",
       });
       const response = await GET(request, {
         params: Promise.resolve({ type: "github" }),
@@ -1219,7 +1244,11 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
       const stateCookie = cookies.find((c) => {
         return c.startsWith("connector_oauth_state=");
       });
+      const contextCookie = cookies.find((c) => {
+        return c.startsWith("connector_oauth_context=");
+      });
       expect(stateCookie).toContain("Max-Age=0");
+      expect(contextCookie).toContain("Max-Age=0");
     });
   });
 

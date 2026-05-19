@@ -31,6 +31,13 @@ export const outlookMail = {
       authorizationUrl:
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
+        clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
     },
   },

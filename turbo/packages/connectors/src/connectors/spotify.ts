@@ -31,6 +31,13 @@ export const spotify = {
     oauth: {
       authorizationUrl: "https://accounts.spotify.com/authorize",
       tokenUrl: "https://accounts.spotify.com/api/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
+        clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "ugc-image-upload",
         "user-read-playback-state",

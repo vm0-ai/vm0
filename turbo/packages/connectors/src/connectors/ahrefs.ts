@@ -43,6 +43,13 @@ export const ahrefs = {
     oauth: {
       authorizationUrl: "https://app.ahrefs.com/api/auth",
       tokenUrl: "https://app.ahrefs.com/api/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "AHREFS_OAUTH_CLIENT_ID",
+        clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["api"],
     },
   },

@@ -2,6 +2,8 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
+  getConnectorOAuthCredentials,
+  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthMethodType,
@@ -60,6 +62,30 @@ const log = logger("service:connector");
  * always judge freshness and trigger a refresh. See #9836.
  */
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
+
+type BrowserOAuthConnectorType = Exclude<ConnectorType, "computer">;
+type ProviderHandler =
+  (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS];
+
+interface RefreshTokenResult {
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly expiresIn?: number;
+}
+
+interface RefreshConnectorAccessTokenContext {
+  readonly connectorType: string;
+  readonly typedConnectorType: BrowserOAuthConnectorType;
+  readonly handler: ProviderHandler;
+  readonly sourceType: OAuthSecretSource;
+  readonly refreshTokenSecret: string;
+  readonly currentRefreshToken: string;
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+  readonly accessTokenSecret: string;
+  readonly secretUserId: string;
+  readonly metadataKey: string | undefined;
+}
 
 /**
  * Validate and parse connector type from database value
@@ -611,6 +637,233 @@ export async function deleteConnector(
  * Returns null if refresh token is unavailable, OAuth credentials are missing,
  * or the refresh fails (caller should fall back to the existing access token).
  */
+function canRefreshConnectorAccessToken(params: {
+  readonly connectorType: string;
+  readonly handler: ProviderHandler;
+  readonly credentials: ConnectorOAuthCredentials | undefined;
+}): boolean {
+  if (!params.credentials?.configured) {
+    log.debug(
+      `${params.connectorType} OAuth credentials not configured, skipping token refresh`,
+    );
+    return false;
+  }
+  if (
+    params.credentials.client?.clientRegistration === "dynamic" &&
+    !params.handler.refreshTokenWithoutClient
+  ) {
+    log.debug(
+      `${params.connectorType} dynamic OAuth refresh not supported, skipping token refresh`,
+    );
+    return false;
+  }
+  if (
+    params.credentials.client?.clientRegistration !== "dynamic" &&
+    !params.handler.refreshToken
+  ) {
+    log.debug(
+      `${params.connectorType} OAuth refresh not supported, skipping token refresh`,
+    );
+    return false;
+  }
+  if (
+    params.credentials.client?.clientRegistration !== "dynamic" &&
+    !params.credentials.clientId
+  ) {
+    log.debug(
+      `${params.connectorType} OAuth client ID not configured, skipping token refresh`,
+    );
+    return false;
+  }
+  return true;
+}
+
+function prepareRefreshConnectorAccessTokenContext(params: {
+  readonly connectorType: string;
+  readonly userId: string;
+  readonly connectorSecrets: Record<string, string>;
+  readonly options: {
+    readonly sourceType?: OAuthSecretSource;
+    readonly metadataKey?: string;
+    readonly sourceUserId?: string;
+  };
+}): RefreshConnectorAccessTokenContext | null {
+  const typeResult = connectorTypeSchema.safeParse(params.connectorType);
+  if (!typeResult.success || typeResult.data === "computer") {
+    return null;
+  }
+  const typedConnectorType = typeResult.data;
+  const sourceType: OAuthSecretSource =
+    params.options.sourceType ?? "connector";
+  const handler = PROVIDER_HANDLERS[typedConnectorType];
+  if (!handler?.getRefreshSecretName) {
+    return null;
+  }
+  if (sourceType === "model-provider" && !params.options.metadataKey) {
+    throw new Error(
+      `metadataKey required for model-provider source on ${params.connectorType}`,
+    );
+  }
+
+  const refreshTokenSecret = handler.getRefreshSecretName();
+  const currentRefreshToken = params.connectorSecrets[refreshTokenSecret];
+  if (!currentRefreshToken) {
+    log.debug(`No ${params.connectorType} refresh token available, skipping`);
+    return null;
+  }
+
+  const env = providerEnvFromObject(globalThis.services.env);
+  const credentials = getConnectorOAuthCredentials(
+    typedConnectorType,
+    (name) => {
+      return env[name];
+    },
+    { requireClientSecret: false },
+  );
+  if (
+    !canRefreshConnectorAccessToken({
+      connectorType: params.connectorType,
+      handler,
+      credentials,
+    })
+  ) {
+    return null;
+  }
+
+  return {
+    connectorType: params.connectorType,
+    typedConnectorType,
+    handler,
+    sourceType,
+    refreshTokenSecret,
+    currentRefreshToken,
+    clientId: credentials?.clientId,
+    clientSecret: credentials?.clientSecret,
+    accessTokenSecret: handler.getSecretName(),
+    secretUserId: resolveSecretUserId(
+      sourceType,
+      params.userId,
+      params.options.sourceUserId,
+    ),
+    metadataKey: params.options.metadataKey,
+  };
+}
+
+async function refreshPreparedConnectorAccessToken(
+  context: RefreshConnectorAccessTokenContext,
+): Promise<RefreshTokenResult> {
+  if (context.clientId) {
+    return await context.handler.refreshToken!(
+      context.clientId,
+      context.clientSecret ?? "",
+      context.currentRefreshToken,
+    );
+  }
+  return await context.handler.refreshTokenWithoutClient!(
+    context.currentRefreshToken,
+  );
+}
+
+async function persistRefreshSuccess(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly context: RefreshConnectorAccessTokenContext;
+  readonly result: RefreshTokenResult;
+  readonly connectorSecrets: Record<string, string>;
+}): Promise<void> {
+  await upsertConnectorSecret(
+    params.orgId,
+    params.context.secretUserId,
+    params.context.accessTokenSecret,
+    params.result.accessToken,
+    params.context.sourceType,
+  );
+  if (params.result.refreshToken) {
+    await upsertConnectorSecret(
+      params.orgId,
+      params.context.secretUserId,
+      params.context.refreshTokenSecret,
+      params.result.refreshToken,
+      params.context.sourceType,
+    );
+  }
+
+  const expiresAt = new Date(
+    Date.now() +
+      (params.result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
+  );
+  if (params.context.sourceType === "model-provider") {
+    await globalThis.services.db
+      .update(modelProviders)
+      .set({
+        tokenExpiresAt: expiresAt,
+        needsReconnect: false,
+        lastRefreshErrorCode: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(modelProviders.orgId, params.orgId),
+          eq(modelProviders.userId, params.context.secretUserId),
+          eq(modelProviders.type, params.context.metadataKey!),
+        ),
+      );
+  } else {
+    await globalThis.services.db
+      .update(connectors)
+      .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(
+        and(
+          eq(connectors.orgId, params.orgId),
+          eq(connectors.userId, params.userId),
+          eq(connectors.type, params.context.connectorType),
+        ),
+      );
+  }
+
+  params.connectorSecrets[params.context.accessTokenSecret] =
+    params.result.accessToken;
+  if (params.result.refreshToken) {
+    params.connectorSecrets[params.context.refreshTokenSecret] =
+      params.result.refreshToken;
+  }
+}
+
+async function persistRefreshFailure(params: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly context: RefreshConnectorAccessTokenContext;
+  readonly errorCode: string | null;
+}): Promise<void> {
+  if (params.context.sourceType === "model-provider") {
+    await globalThis.services.db
+      .update(modelProviders)
+      .set({
+        needsReconnect: true,
+        lastRefreshErrorCode: params.errorCode,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(modelProviders.orgId, params.orgId),
+          eq(modelProviders.userId, params.context.secretUserId),
+          eq(modelProviders.type, params.context.metadataKey!),
+        ),
+      );
+  } else {
+    await globalThis.services.db
+      .update(connectors)
+      .set({ needsReconnect: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(connectors.orgId, params.orgId),
+          eq(connectors.userId, params.userId),
+          eq(connectors.type, params.context.connectorType),
+        ),
+      );
+  }
+}
+
 export async function refreshConnectorAccessToken(
   connectorType: string,
   orgId: string,
@@ -622,112 +875,25 @@ export async function refreshConnectorAccessToken(
     sourceUserId?: string;
   } = {},
 ): Promise<string | null> {
-  const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
-  const handler =
-    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
-    return null;
-  }
-  if (sourceType === "model-provider" && !options.metadataKey) {
-    throw new Error(
-      `metadataKey required for model-provider source on ${connectorType}`,
-    );
-  }
-
-  const refreshTokenSecret = handler.getRefreshSecretName();
-  const currentRefreshToken = connectorSecrets[refreshTokenSecret];
-  if (!currentRefreshToken) {
-    log.debug(`No ${connectorType} refresh token available, skipping`);
-    return null;
-  }
-
-  const env = providerEnvFromObject(globalThis.services.env);
-  const clientId = handler.getClientId(env);
-  if (!clientId) {
-    log.debug(
-      `${connectorType} OAuth client ID not configured, skipping token refresh`,
-    );
-    return null;
-  }
-  // clientSecret may legitimately be undefined for PKCE-only handlers
-  // (e.g. codex-oauth). The handler's refreshToken is the source of truth
-  // for credential needs — if a non-PKCE handler is misconfigured the
-  // upstream call will fail and the catch below records the error.
-  const clientSecret = handler.getClientSecret(env);
-
-  const accessTokenSecret = handler.getSecretName();
-
-  const secretUserId = resolveSecretUserId(
-    sourceType,
+  const context = prepareRefreshConnectorAccessTokenContext({
+    connectorType,
     userId,
-    options.sourceUserId,
-  );
+    connectorSecrets,
+    options,
+  });
+  if (!context) {
+    return null;
+  }
 
   try {
-    const result = await handler.refreshToken(
-      clientId,
-      clientSecret ?? "",
-      currentRefreshToken,
-    );
-
-    // Persist new tokens to database
-    await upsertConnectorSecret(
+    const result = await refreshPreparedConnectorAccessToken(context);
+    await persistRefreshSuccess({
       orgId,
-      secretUserId,
-      accessTokenSecret,
-      result.accessToken,
-      sourceType,
-    );
-    if (result.refreshToken) {
-      await upsertConnectorSecret(
-        orgId,
-        secretUserId,
-        refreshTokenSecret,
-        result.refreshToken,
-        sourceType,
-      );
-    }
-
-    // Update tokenExpiresAt so subsequent expiry checks are accurate.
-    const expiresAt = new Date(
-      Date.now() +
-        (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
-    );
-    if (sourceType === "model-provider") {
-      await globalThis.services.db
-        .update(modelProviders)
-        .set({
-          tokenExpiresAt: expiresAt,
-          needsReconnect: false,
-          lastRefreshErrorCode: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(modelProviders.orgId, orgId),
-            eq(modelProviders.userId, secretUserId),
-            // metadataKey is non-null due to the upfront guard
-            eq(modelProviders.type, options.metadataKey!),
-          ),
-        );
-    } else {
-      await globalThis.services.db
-        .update(connectors)
-        .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })
-        .where(
-          and(
-            eq(connectors.orgId, orgId),
-            eq(connectors.userId, userId),
-            eq(connectors.type, connectorType),
-          ),
-        );
-    }
-
-    // Update in-memory secrets map so subsequent mapping uses fresh token
-    connectorSecrets[accessTokenSecret] = result.accessToken;
-    if (result.refreshToken) {
-      connectorSecrets[refreshTokenSecret] = result.refreshToken;
-    }
+      userId,
+      context,
+      result,
+      connectorSecrets,
+    });
 
     log.debug(`${connectorType} access token refreshed successfully`);
     return result.accessToken;
@@ -742,35 +908,7 @@ export async function refreshConnectorAccessToken(
       errorCode,
     });
 
-    // Mark provider/connector as needing reconnect so the UI can surface the
-    // failure. For model-provider sources, also persist the typed error code.
-    if (sourceType === "model-provider") {
-      await globalThis.services.db
-        .update(modelProviders)
-        .set({
-          needsReconnect: true,
-          lastRefreshErrorCode: errorCode,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(modelProviders.orgId, orgId),
-            eq(modelProviders.userId, secretUserId),
-            eq(modelProviders.type, options.metadataKey!),
-          ),
-        );
-    } else {
-      await globalThis.services.db
-        .update(connectors)
-        .set({ needsReconnect: true, updatedAt: new Date() })
-        .where(
-          and(
-            eq(connectors.orgId, orgId),
-            eq(connectors.userId, userId),
-            eq(connectors.type, connectorType),
-          ),
-        );
-    }
+    await persistRefreshFailure({ orgId, userId, context, errorCode });
     return null;
   }
 }

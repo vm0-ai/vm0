@@ -38,6 +38,13 @@ export const gumroad = {
     oauth: {
       authorizationUrl: "https://gumroad.com/oauth/authorize",
       tokenUrl: "https://gumroad.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
+        clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "view_profile",
         "edit_products",

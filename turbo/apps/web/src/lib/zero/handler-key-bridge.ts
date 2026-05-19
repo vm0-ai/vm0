@@ -42,11 +42,11 @@ export const SOURCE_HANDLER_TO_PROVIDER_TYPE: Record<
 };
 
 /**
- * Resolve the secret source for a connector handler key.
+ * Resolve the OAuth secret source for a connector handler key.
  * Returns "model-provider" for handlers that back model-provider OAuth types,
  * "connector" for everything else (the default).
  */
-export function getRefreshSourceType(
+export function getOAuthSecretSource(
   handlerKey: string,
 ): "connector" | "model-provider" {
   return HANDLER_KEY_SOURCE_TYPE[handlerKey] ?? "connector";

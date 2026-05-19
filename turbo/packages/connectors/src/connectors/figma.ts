@@ -42,6 +42,13 @@ export const figma = {
     oauth: {
       authorizationUrl: "https://www.figma.com/oauth",
       tokenUrl: "https://api.figma.com/v1/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
+        clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "current_user:read",
         "file_content:read",

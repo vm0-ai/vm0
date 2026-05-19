@@ -29,6 +29,13 @@ export const xero = {
     oauth: {
       authorizationUrl: "https://login.xero.com/identity/connect/authorize",
       tokenUrl: "https://identity.xero.com/connect/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "XERO_OAUTH_CLIENT_ID",
+        clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "openid",
         "profile",

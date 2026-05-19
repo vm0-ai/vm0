@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  findTestConnectorTokenExpiresAt,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
@@ -132,7 +135,31 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     expect(sessionCookie).toBeUndefined();
   });
 
-  it("should return 400 for refresh-only codex-oauth connector", async () => {
+  it("deletes existing connector before authorization URL creation", async () => {
+    const user = await context.setupUser();
+    vi.stubEnv("GH_OAUTH_CLIENT_ID", "");
+    vi.stubEnv("GH_OAUTH_CLIENT_SECRET", "");
+    reloadEnv();
+    await context.createConnector(user.orgId, {
+      userId: user.userId,
+      type: "github",
+      authMethod: "oauth",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/connectors/github/authorize",
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ type: "github" }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(
+      findTestConnectorTokenExpiresAt(user.orgId, "github"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("should return 400 for model-provider stored OAuth connectors", async () => {
     await context.setupUser();
 
     const request = createTestRequest(
@@ -144,7 +171,9 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     const data = await response.json();
 
     expect(response.status).toBe(400);
-    expect(data.error).toContain("auth.json paste flow");
+    expect(data.error).toBe(
+      "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
+    );
   });
 
   describe("Slack connector", () => {

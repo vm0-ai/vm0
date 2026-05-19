@@ -29,6 +29,13 @@ export const strava = {
     oauth: {
       authorizationUrl: "https://www.strava.com/oauth/authorize",
       tokenUrl: "https://www.strava.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
+        clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "read",
         "profile:read_all",

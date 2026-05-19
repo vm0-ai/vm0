@@ -430,7 +430,9 @@ async function revokeConnectorToken(args: {
 }): Promise<void> {
   const envKeys = getConnectorOAuthEnvKeys(args.type);
   const clientId = envKeys ? optionalEnv(envKeys.clientId) : undefined;
-  const clientSecret = envKeys ? optionalEnv(envKeys.clientSecret) : undefined;
+  const clientSecret = envKeys?.clientSecret
+    ? optionalEnv(envKeys.clientSecret)
+    : undefined;
   if (!clientId || !clientSecret) {
     return;
   }

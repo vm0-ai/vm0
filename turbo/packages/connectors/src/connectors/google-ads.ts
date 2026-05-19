@@ -32,6 +32,13 @@ export const googleAds = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "https://www.googleapis.com/auth/adwords",
         "https://www.googleapis.com/auth/userinfo.email",

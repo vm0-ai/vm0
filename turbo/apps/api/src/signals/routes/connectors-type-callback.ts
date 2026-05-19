@@ -1,6 +1,10 @@
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthCredentials,
+  getConnectorOAuthConfig,
+  getConnectorOAuthStorage,
+} from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type ConnectorType,
@@ -26,6 +30,7 @@ import type { RouteEntry } from "../route";
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
+const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const REDIRECT_STATUS = 307;
 
 type OAuthConnectorType = Exclude<ConnectorType, "computer">;
@@ -79,6 +84,10 @@ function clearOAuthCookies(response: Response): void {
     "Set-Cookie",
     buildDeleteCookieHeader(PKCE_COOKIE_NAME),
   );
+  response.headers.append(
+    "Set-Cookie",
+    buildDeleteCookieHeader(OAUTH_CONTEXT_COOKIE_NAME),
+  );
 }
 
 function redirectWithError(
@@ -115,22 +124,51 @@ async function exchangeTokenForConnector(args: {
   readonly redirectUri: string;
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
+  if (getConnectorOAuthStorage(args.connectorType) !== "connector") {
+    throw new Error(`${args.connectorType} OAuth not configured`);
+  }
   const handler = PROVIDER_HANDLERS[args.connectorType];
   const env = providerEnv();
-  const clientId = handler.getClientId(env);
-  const clientSecret = handler.getClientSecret(env);
-  if (!clientId || !clientSecret) {
+  const credentials = getConnectorOAuthCredentials(
+    args.connectorType,
+    (name) => {
+      return env[name];
+    },
+  );
+  if (!credentials?.configured) {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
+  if (credentials.client?.clientRegistration === "dynamic") {
+    if (!handler.exchangeCodeWithoutClient) {
+      throw new Error(`${args.connectorType} OAuth not configured`);
+    }
+    return await handler.exchangeCodeWithoutClient(
+      args.code,
+      args.redirectUri,
+      args.state,
+      args.codeVerifier,
+      args.oauthContext,
+    );
+  }
+
+  if (
+    !credentials.clientId ||
+    (credentials.client?.clientType === "confidential" &&
+      !credentials.clientSecret)
+  ) {
+    throw new Error(`${args.connectorType} OAuth not configured`);
+  }
   return await handler.exchangeCode(
-    clientId,
-    clientSecret,
+    credentials.clientId,
+    credentials.clientSecret ?? "",
     args.code,
     args.redirectUri,
     args.state,
     args.codeVerifier,
+    args.oauthContext,
   );
 }
 
@@ -235,6 +273,7 @@ const callbackConnectorInner$ = command(
     const savedState = getCookie(request, STATE_COOKIE_NAME);
     const sessionId = getCookie(request, SESSION_COOKIE_NAME);
     const codeVerifier = getCookie(request, PKCE_COOKIE_NAME);
+    const oauthContext = getCookie(request, OAUTH_CONTEXT_COOKIE_NAME);
 
     if (query.error) {
       return redirectWithError(
@@ -284,6 +323,7 @@ const callbackConnectorInner$ = command(
           redirectUri,
           state,
           codeVerifier,
+          oauthContext,
         });
         signal.throwIfAborted();
 

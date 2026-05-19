@@ -8,7 +8,10 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
+  getConnectorOAuthClientConfig,
+  getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
+  getConnectorOAuthStorage,
   getConfiguredConnectorTypes,
   isGoogleOAuthConnector,
 } from "../connector-utils";
@@ -307,6 +310,69 @@ describe("getConfiguredConnectorTypes", () => {
 
     expect(configuredTypes).toContain("airtable");
     expect(configuredTypes).not.toContain("sentry");
+  });
+
+  it("derives static confidential OAuth credentials from connector config", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return (
+        {
+          GH_OAUTH_CLIENT_ID: "github-client-id",
+          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
+        } as Record<string, string>
+      )[name];
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+      clientSecret: "github-client-secret",
+    });
+  });
+
+  it("does not configure static confidential OAuth when the secret is missing", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: false,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+    });
+  });
+
+  it("can derive a static OAuth client id without requiring the client secret", () => {
+    const credentials = getConnectorOAuthCredentials(
+      "github",
+      (name) => {
+        return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
+      },
+      { requireClientSecret: false },
+    );
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+      clientSecret: undefined,
+    });
+  });
+
+  it("supports literal static OAuth clients without environment credentials", () => {
+    const credentials = getConnectorOAuthCredentials("test-oauth", emptyEnv);
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("test-oauth"),
+      clientId: "test-oauth-client",
+      clientSecret: "test-oauth-secret",
+    });
+  });
+
+  it("derives OAuth storage from connector config", () => {
+    expect(getConnectorOAuthStorage("github")).toBe("connector");
+    expect(getConnectorOAuthStorage("codex-oauth")).toBe("model-provider");
   });
 
   it("includes all connectors that share a configured OAuth app", () => {

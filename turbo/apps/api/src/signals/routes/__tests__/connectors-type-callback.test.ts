@@ -45,6 +45,7 @@ function callbackHeaders(args: {
   readonly stateCookie?: string;
   readonly sessionId?: string;
   readonly codeVerifier?: string;
+  readonly oauthContext?: string;
 }): HeadersInit {
   const cookies = ["__session=opaque"];
   if (args.stateCookie) {
@@ -55,6 +56,9 @@ function callbackHeaders(args: {
   }
   if (args.codeVerifier) {
     cookies.push(`connector_oauth_pkce=${args.codeVerifier}`);
+  }
+  if (args.oauthContext) {
+    cookies.push(`connector_oauth_context=${args.oauthContext}`);
   }
   return { cookie: cookies.join("; ") };
 }
@@ -274,6 +278,37 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("message")).toBe("Not authenticated");
   });
 
+  it("rejects refresh-only connector callbacks", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "codex-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("type")).toBe("codex-oauth");
+    expect(url.searchParams.get("message")).toBe(
+      "OAuth authorization failed. Please try again.",
+    );
+    expect(response.headers.getSetCookie()).toStrictEqual(
+      expect.arrayContaining([
+        "connector_oauth_state=; Max-Age=0; Path=/",
+        "connector_oauth_session=; Max-Age=0; Path=/",
+        "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
+      ]),
+    );
+  });
+
   it("rejects state mismatch and clears OAuth cookies", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -300,6 +335,7 @@ describe("GET /api/connectors/:type/callback", () => {
         "connector_oauth_state=; Max-Age=0; Path=/",
         "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
     );
   });
@@ -324,6 +360,7 @@ describe("GET /api/connectors/:type/callback", () => {
       headers: callbackHeaders({
         stateCookie: "state-123",
         sessionId,
+        oauthContext: "opaque-provider-context",
       }),
     });
 
@@ -339,6 +376,7 @@ describe("GET /api/connectors/:type/callback", () => {
         "connector_oauth_state=; Max-Age=0; Path=/",
         "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
     );
 

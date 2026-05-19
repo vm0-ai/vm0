@@ -31,12 +31,17 @@ export interface OAuthTokenResult {
  */
 export interface AuthUrlResult {
   url: string;
-  codeVerifier: string;
+  codeVerifier?: string;
+  oauthContext?: string;
 }
 
 export interface ProviderHandler {
   buildAuthUrl(
     clientId: string,
+    redirectUri: string,
+    state: string,
+  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
+  buildAuthUrlWithoutClient?(
     redirectUri: string,
     state: string,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
@@ -47,6 +52,14 @@ export interface ProviderHandler {
     redirectUri: string,
     state?: string,
     codeVerifier?: string,
+    oauthContext?: string,
+  ): Promise<OAuthTokenResult>;
+  exchangeCodeWithoutClient?(
+    code: string,
+    redirectUri: string,
+    state?: string,
+    codeVerifier?: string,
+    oauthContext?: string,
   ): Promise<OAuthTokenResult>;
   getClientId(currentEnv: ProviderEnv): string | undefined;
   getClientSecret(currentEnv: ProviderEnv): string | undefined;
@@ -57,6 +70,11 @@ export interface ProviderHandler {
     clientSecret: string,
     refreshToken: string,
   ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    expiresIn?: number;
+  }>;
+  refreshTokenWithoutClient?(refreshToken: string): Promise<{
     accessToken: string;
     refreshToken: string | null;
     expiresIn?: number;

@@ -166,7 +166,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeFalsy();
   });
 
-  it("returns 400 for refresh-only codex-oauth connector", async () => {
+  it("returns 400 for model-provider stored OAuth connectors", async () => {
     const response = await requestAuthorize("codex-oauth", {
       authenticated: true,
     });

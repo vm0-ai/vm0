@@ -29,6 +29,13 @@ export const notion = {
     oauth: {
       authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
       tokenUrl: "https://api.notion.com/v1/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
+        clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
+      },
       scopes: [],
     },
   },

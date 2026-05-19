@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import {
+  connectorTypeSchema,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
 import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
@@ -10,6 +13,10 @@ import {
   PROVIDER_HANDLERS,
   providerEnvFromObject,
 } from "@vm0/connectors/oauth-providers";
+import {
+  getConnectorOAuthCredentials,
+  getConnectorOAuthStorage,
+} from "@vm0/connectors/connector-utils";
 import { deleteConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { and, eq } from "drizzle-orm";
@@ -29,8 +36,10 @@ const log = logger("api:connectors:authorize");
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
+const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
-const REFRESH_ONLY_CONNECTOR_TYPES = new Set<string>(["codex-oauth"]);
+
+type BrowserOAuthConnectorType = Exclude<ConnectorType, "computer">;
 
 /**
  * Generate a random state string for CSRF protection
@@ -62,6 +71,36 @@ function buildCookieHeader(
     parts.push("Secure");
   }
   return parts.join("; ");
+}
+
+function connectorOAuthAuthorizationError(
+  connectorType: BrowserOAuthConnectorType,
+): string {
+  if (connectorType === "codex-oauth") {
+    return "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow";
+  }
+  return `${connectorType} does not use connector OAuth authorization`;
+}
+
+function rejectUnsupportedConnectorOAuth(
+  connectorType: BrowserOAuthConnectorType,
+): NextResponse | undefined {
+  const oauthStorage = getConnectorOAuthStorage(connectorType);
+  if (!oauthStorage) {
+    return NextResponse.json(
+      { error: `${connectorType} connector does not use OAuth` },
+      { status: 400 },
+    );
+  }
+
+  if (oauthStorage !== "connector") {
+    return NextResponse.json(
+      { error: connectorOAuthAuthorizationError(connectorType) },
+      { status: 400 },
+    );
+  }
+
+  return undefined;
 }
 
 export async function GET(
@@ -105,14 +144,10 @@ export async function GET(
     );
   }
 
-  if (REFRESH_ONLY_CONNECTOR_TYPES.has(connectorType)) {
-    return NextResponse.json(
-      {
-        error:
-          "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-      },
-      { status: 400 },
-    );
+  const unsupportedOAuthResponse =
+    rejectUnsupportedConnectorOAuth(connectorType);
+  if (unsupportedOAuthResponse) {
+    return unsupportedOAuthResponse;
   }
 
   // Auto-disconnect existing connector before re-authorizing.
@@ -152,14 +187,31 @@ export async function GET(
   // Build authorization URL via provider registry
   const currentEnv = providerEnvFromObject(env());
   const handler = PROVIDER_HANDLERS[connectorType];
-  const clientId = handler.getClientId(currentEnv);
-  if (!clientId) {
+  const credentials = getConnectorOAuthCredentials(
+    connectorType,
+    (name) => {
+      return currentEnv[name];
+    },
+    { requireClientSecret: false },
+  );
+  if (!credentials?.configured) {
     return NextResponse.json(
       { error: `${connectorType} OAuth not configured` },
       { status: 500 },
     );
   }
-  const authResult = await handler.buildAuthUrl(clientId, redirectUri, state);
+  const authResult =
+    credentials.client?.clientRegistration === "dynamic"
+      ? await handler.buildAuthUrlWithoutClient?.(redirectUri, state)
+      : credentials.clientId
+        ? await handler.buildAuthUrl(credentials.clientId, redirectUri, state)
+        : undefined;
+  if (!authResult) {
+    return NextResponse.json(
+      { error: `${connectorType} OAuth not configured` },
+      { status: 500 },
+    );
+  }
 
   // Normalize result — handlers may return a plain URL string or { url, codeVerifier }
   const isAuthUrlResult = (v: string | AuthUrlResult): v is AuthUrlResult => {
@@ -168,6 +220,9 @@ export async function GET(
   const authUrl = isAuthUrlResult(authResult) ? authResult.url : authResult;
   const codeVerifier = isAuthUrlResult(authResult)
     ? authResult.codeVerifier
+    : undefined;
+  const oauthContext = isAuthUrlResult(authResult)
+    ? authResult.oauthContext
     : undefined;
 
   // Create redirect response with state cookie
@@ -182,6 +237,17 @@ export async function GET(
     response.headers.append(
       "Set-Cookie",
       buildCookieHeader(PKCE_COOKIE_NAME, codeVerifier, COOKIE_MAX_AGE),
+    );
+  }
+
+  if (oauthContext) {
+    response.headers.append(
+      "Set-Cookie",
+      buildCookieHeader(
+        OAUTH_CONTEXT_COOKIE_NAME,
+        oauthContext,
+        COOKIE_MAX_AGE,
+      ),
     );
   }
 

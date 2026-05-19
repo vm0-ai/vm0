@@ -16,7 +16,7 @@ import {
   type OAuthSecretSource,
 } from "../../../../../../src/lib/zero/connector/connector-service";
 import {
-  getRefreshSourceType,
+  getOAuthSecretSource,
   SOURCE_HANDLER_TO_PROVIDER_TYPE,
 } from "../../../../../../src/lib/zero/handler-key-bridge";
 import { ORG_SENTINEL_USER_ID } from "../../../../../../src/lib/zero/org/org-sentinel";
@@ -75,7 +75,7 @@ function resolveRefreshMetadata(
   metadata: SecretConnectorMetadata | undefined,
 ): SecretConnectorMetadata {
   const sourceType =
-    metadata?.sourceType ?? getRefreshSourceType(connectorType);
+    metadata?.sourceType ?? getOAuthSecretSource(connectorType);
   return {
     sourceType,
     sourceUserId:
@@ -152,10 +152,10 @@ async function getExpiryByHandlerKey(
   metadataByConnector: Map<string, SecretConnectorMetadata>,
 ): Promise<Map<string, number | null>> {
   const connectorOnly = connectorTypes.filter((ct) => {
-    return getRefreshSourceType(ct) === "connector";
+    return getOAuthSecretSource(ct) === "connector";
   });
   const modelProviderHandlerKeys = connectorTypes.filter((ct) => {
-    return getRefreshSourceType(ct) === "model-provider";
+    return getOAuthSecretSource(ct) === "model-provider";
   });
   const [connectorExpiry, modelProviderEntries] = await Promise.all([
     getConnectorExpiry(orgId, userId, connectorOnly),

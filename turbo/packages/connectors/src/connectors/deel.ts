@@ -42,6 +42,13 @@ export const deel = {
     oauth: {
       authorizationUrl: "https://app.deel.com/oauth2/authorize",
       tokenUrl: "https://app.deel.com/oauth2/tokens",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
+        clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "contracts:read",
         "people:read",

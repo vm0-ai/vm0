@@ -31,6 +31,13 @@ export const zoom = {
     oauth: {
       authorizationUrl: "https://zoom.us/oauth/authorize",
       tokenUrl: "https://zoom.us/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
+        clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
+      },
       // Granular scopes (Zoom's "resource:action:target" format). Covers the
       // core read/write flows documented in the zoom skill: users, meetings,
       // past-meeting data, cloud recordings, and webinars.

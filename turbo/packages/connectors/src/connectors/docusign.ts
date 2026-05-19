@@ -31,6 +31,13 @@ export const docusign = {
     oauth: {
       authorizationUrl: "https://account-d.docusign.com/oauth/auth",
       tokenUrl: "https://account-d.docusign.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "DOCUSIGN_OAUTH_CLIENT_ID",
+        clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["signature", "extended", "openid"],
     },
   },
