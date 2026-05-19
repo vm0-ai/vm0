@@ -89,13 +89,19 @@ function callbackHeaders(args: {
 }): HeadersInit {
   const cookies = ["__session=opaque"];
   if (args.stateCookie) {
-    cookies.push(`connector_oauth_state=${args.stateCookie}`);
+    cookies.push(
+      `connector_oauth_state=${encodeURIComponent(args.stateCookie)}`,
+    );
   }
   if (args.sessionId) {
-    cookies.push(`connector_oauth_session=${args.sessionId}`);
+    cookies.push(
+      `connector_oauth_session=${encodeURIComponent(args.sessionId)}`,
+    );
   }
   if (args.codeVerifier) {
-    cookies.push(`connector_oauth_pkce=${args.codeVerifier}`);
+    cookies.push(
+      `connector_oauth_pkce=${encodeURIComponent(args.codeVerifier)}`,
+    );
   }
   if (args.oauthContext) {
     cookies.push(`connector_oauth_context=${args.oauthContext}`);

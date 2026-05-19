@@ -43,7 +43,7 @@ function getCookie(request: Request, name: string): string | undefined {
   for (const cookie of cookieHeader.split(";")) {
     const [cookieName, ...rest] = cookie.trim().split("=");
     if (cookieName === name) {
-      return rest.join("=");
+      return decodeCookieComponent(rest.join("="));
     }
   }
   return undefined;
