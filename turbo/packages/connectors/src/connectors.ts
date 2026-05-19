@@ -190,7 +190,6 @@ import { stabilityAi } from "./connectors/stability-ai";
 import { strapi } from "./connectors/strapi";
 import { streak } from "./connectors/streak";
 import { stripe } from "./connectors/stripe";
-import { suno } from "./connectors/suno";
 import { supabase } from "./connectors/supabase";
 import { supadata } from "./connectors/supadata";
 import { supermemory } from "./connectors/supermemory";
@@ -640,7 +639,6 @@ const CONNECTOR_TYPES_DEF = {
   ...strapi,
   ...streak,
   ...stripe,
-  ...suno,
   ...supabase,
   ...supadata,
   ...supermemory,

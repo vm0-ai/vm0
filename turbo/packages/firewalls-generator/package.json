@@ -204,8 +204,7 @@
     "generate:nyne": "tsx src/index.ts nyne",
     "generate:openrouter": "tsx src/index.ts openrouter",
     "generate:openweather": "tsx src/index.ts openweather",
-    "generate:reducto": "tsx src/index.ts reducto",
-    "generate:suno": "tsx src/index.ts suno"
+    "generate:reducto": "tsx src/index.ts reducto"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

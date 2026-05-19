@@ -170,7 +170,6 @@ import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
 import { generate as generateStrapi } from "./strapi";
 import { generate as generateStripe } from "./stripe";
-import { generate as generateSuno } from "./suno";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
 import { generate as generateSupermemory } from "./supermemory";
@@ -412,7 +411,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   openrouter: generateOpenrouter,
   openweather: generateOpenweather,
   reducto: generateReducto,
-  suno: generateSuno,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

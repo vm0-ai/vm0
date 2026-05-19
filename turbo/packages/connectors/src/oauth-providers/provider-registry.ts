@@ -150,7 +150,6 @@ import { shortioHandler } from "./providers/shortio-handler";
 import { stabilityAiHandler } from "./providers/stability-ai-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
-import { sunoHandler } from "./providers/suno-handler";
 import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
@@ -442,7 +441,6 @@ export const PROVIDER_HANDLERS: Record<
   openrouter: openrouterHandler,
   openweather: openweatherHandler,
   reducto: reductoHandler,
-  suno: sunoHandler,
 };
 
 /**
