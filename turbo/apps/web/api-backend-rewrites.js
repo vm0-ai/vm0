@@ -154,6 +154,9 @@ const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
 const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPOSES_REWRITE_SOURCE = "/api/zero/composes";
 const ZERO_COMPOSES_LIST_REWRITE_SOURCE = "/api/zero/composes/list";
+const ZERO_COMPOSES_BY_ID_REWRITE_SOURCE =
+  "/api/zero/composes/:id((?!list$)[^/]+)";
+const ZERO_COMPOSES_BY_ID_PATH_RE = /^\/api\/zero\/composes\/(?!list$)[^/]+$/;
 const ZERO_COMPOSES_METADATA_REWRITE_SOURCE = "/api/zero/composes/:id/metadata";
 const ZERO_COMPOSES_METADATA_PATH_RE =
   /^\/api\/zero\/composes\/[^/]+\/metadata$/;
@@ -511,6 +514,11 @@ export const API_BACKEND_REWRITES = [
   ],
   [ZERO_COMPOSES_REWRITE_SOURCE, "/api/zero/composes"],
   [ZERO_COMPOSES_LIST_REWRITE_SOURCE, "/api/zero/composes/list"],
+  [
+    ZERO_COMPOSES_BY_ID_REWRITE_SOURCE,
+    "/api/zero/composes/:id",
+    ZERO_COMPOSES_BY_ID_PATH_RE,
+  ],
   [
     ZERO_COMPOSES_METADATA_REWRITE_SOURCE,
     "/api/zero/composes/:id/metadata",

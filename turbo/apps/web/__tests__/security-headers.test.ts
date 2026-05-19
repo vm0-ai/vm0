@@ -761,10 +761,7 @@ const ZERO_COMPOSES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/composes/extra",
   "/api/zero/compose",
 ] as const;
-const ZERO_COMPOSES_PROXY_NEGATIVE_PATHS = [
-  "/api/zero/composes/extra",
-  "/api/zero/compose",
-] as const;
+const ZERO_COMPOSES_PROXY_NEGATIVE_PATHS = ["/api/zero/compose"] as const;
 const ZERO_COMPOSES_LIST_REWRITE_SOURCE = "/api/zero/composes/list";
 const ZERO_COMPOSES_LIST_PATH = "/api/zero/composes/list";
 const ZERO_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
@@ -774,7 +771,22 @@ const ZERO_COMPOSES_LIST_NEXT_NEGATIVE_PATHS = [
 ] as const;
 const ZERO_COMPOSES_LIST_PROXY_NEGATIVE_PATHS = [
   "/api/zero/composes/list/extra",
-  "/api/zero/composes/lists",
+] as const;
+const ZERO_COMPOSES_BY_ID_REWRITE_SOURCE =
+  "/api/zero/composes/:id((?!list$)[^/]+)";
+const ZERO_COMPOSES_BY_ID_PATH =
+  "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000";
+const ZERO_COMPOSES_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/composes",
+  "/api/zero/composes/list",
+  "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/metadata",
+  "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/extra",
+  "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000",
+] as const;
+const ZERO_COMPOSES_BY_ID_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/composes/list/extra",
+  "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/extra",
+  "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000",
 ] as const;
 const ZERO_COMPOSES_METADATA_REWRITE_SOURCE = "/api/zero/composes/:id/metadata";
 const ZERO_COMPOSES_METADATA_PATH =
@@ -787,7 +799,6 @@ const ZERO_COMPOSES_METADATA_NEXT_NEGATIVE_PATHS = [
   "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000/metadata",
 ] as const;
 const ZERO_COMPOSES_METADATA_PROXY_NEGATIVE_PATHS = [
-  "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000",
   "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/metadata/extra",
   "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000/metadata",
 ] as const;
@@ -1960,6 +1971,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_COMPOSES_LIST_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/composes/list",
+        },
+        {
+          source: ZERO_COMPOSES_BY_ID_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/composes/:id",
         },
         {
           source: ZERO_COMPOSES_METADATA_REWRITE_SOURCE,
@@ -3936,6 +3951,37 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only zero composes by-id rewrite paths", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_COMPOSES_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_COMPOSES_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/composes/:id",
+    });
+
+    const matcher = getPathMatch(ZERO_COMPOSES_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_COMPOSES_BY_ID_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    expect(matcher("/api/zero/composes/not-a-uuid")).toStrictEqual({
+      id: "not-a-uuid",
+    });
+    expect(matcher("/api/zero/composes/metadata")).toStrictEqual({
+      id: "metadata",
+    });
+    for (const pathname of ZERO_COMPOSES_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only zero composes metadata rewrite paths", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -5816,6 +5862,19 @@ describe("API backend rewrites", () => {
   it("should match the zero composes list route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_COMPOSES_LIST_PATH)).toBe(true);
     for (const pathname of ZERO_COMPOSES_LIST_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should match the zero composes by-id route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_COMPOSES_BY_ID_PATH)).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/not-a-uuid")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/composes/metadata")).toBe(
+      true,
+    );
+    for (const pathname of ZERO_COMPOSES_BY_ID_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

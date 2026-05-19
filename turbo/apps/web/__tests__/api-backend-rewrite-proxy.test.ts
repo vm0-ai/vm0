@@ -1291,9 +1291,6 @@ describe("API backend rewrite proxy behavior", () => {
 
   it("matches the zero composes rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/composes")).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/composes/extra")).toBe(
-      false,
-    );
     expect(matchesApiBackendRewritePath("/api/zero/compose")).toBe(false);
   });
 
@@ -1302,9 +1299,34 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/composes/list/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/zero/composes/lists")).toBe(
+  });
+
+  it("matches the zero composes by-id rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/not-a-uuid")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/composes/metadata")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/composes/lists")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/list/extra")).toBe(
       false,
     );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000",
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero composes metadata rewrite path exactly", () => {
@@ -1313,9 +1335,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/metadata",
       ),
     ).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/composes/metadata")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/composes/not-a-uuid/metadata"),
     ).toBe(true);
