@@ -2,7 +2,12 @@ import type { IpcMainInvokeEvent } from "electron";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { DESKTOP_LOCAL_AGENT_CHANNELS } from "./desktop-local-agent-ipc-channels";
 import type { DesktopLocalAgentManager } from "./desktop-local-agent-manager";
+import { isDesktopLocalAgentPageUrl } from "./desktop-local-agent-page-url";
 import type { DesktopLocalAgentAddOptions } from "./desktop-local-agent-types";
+
+interface DesktopLocalAgentIpcOptions {
+  readonly allowedAppOrigins: ReadonlySet<string>;
+}
 
 function stringArg(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) {
@@ -34,46 +39,66 @@ export function notifyDesktopLocalAgentsChanged(): void {
 
 export function installDesktopLocalAgentIpc(
   manager: DesktopLocalAgentManager,
+  options: DesktopLocalAgentIpcOptions,
 ): void {
+  const assertLocalAgentPage = (event: IpcMainInvokeEvent): void => {
+    if (
+      !isDesktopLocalAgentPageUrl(
+        event.senderFrame?.url ?? "",
+        options.allowedAppOrigins,
+      )
+    ) {
+      throw new Error("Desktop local agent is unavailable on this page");
+    }
+  };
+
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.setEnabled,
-    async (_event: IpcMainInvokeEvent, enabled: unknown) => {
+    async (event: IpcMainInvokeEvent, enabled: unknown) => {
+      assertLocalAgentPage(event);
       await manager.setEnabled(enabled === true);
     },
   );
-  ipcMain.handle(DESKTOP_LOCAL_AGENT_CHANNELS.list, async () => {
+  ipcMain.handle(DESKTOP_LOCAL_AGENT_CHANNELS.list, async (event) => {
+    assertLocalAgentPage(event);
     return manager.list();
   });
-  ipcMain.handle(DESKTOP_LOCAL_AGENT_CHANNELS.detectBackends, async () => {
+  ipcMain.handle(DESKTOP_LOCAL_AGENT_CHANNELS.detectBackends, async (event) => {
+    assertLocalAgentPage(event);
     return manager.detectBackends();
   });
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.add,
-    async (_event: IpcMainInvokeEvent, options: unknown) => {
-      return manager.add(addOptionsArg(options));
+    async (event: IpcMainInvokeEvent, addOptions: unknown) => {
+      assertLocalAgentPage(event);
+      return manager.add(addOptionsArg(addOptions));
     },
   );
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.start,
-    async (_event: IpcMainInvokeEvent, id: unknown) => {
+    async (event: IpcMainInvokeEvent, id: unknown) => {
+      assertLocalAgentPage(event);
       return manager.start(stringArg(id));
     },
   );
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.stop,
-    async (_event: IpcMainInvokeEvent, id: unknown) => {
+    async (event: IpcMainInvokeEvent, id: unknown) => {
+      assertLocalAgentPage(event);
       return manager.stop(stringArg(id));
     },
   );
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.remove,
-    async (_event: IpcMainInvokeEvent, id: unknown) => {
+    async (event: IpcMainInvokeEvent, id: unknown) => {
+      assertLocalAgentPage(event);
       await manager.remove(stringArg(id));
     },
   );
   ipcMain.handle(
     DESKTOP_LOCAL_AGENT_CHANNELS.openFolder,
-    async (_event: IpcMainInvokeEvent, id: unknown) => {
+    async (event: IpcMainInvokeEvent, id: unknown) => {
+      assertLocalAgentPage(event);
       await manager.openFolder(stringArg(id));
     },
   );

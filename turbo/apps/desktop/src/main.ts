@@ -80,7 +80,9 @@ function installDesktopLocalAgent(): void {
     return;
   }
   desktopLocalAgentManager = createDesktopLocalAgentManager();
-  installDesktopLocalAgentIpc(desktopLocalAgentManager);
+  installDesktopLocalAgentIpc(desktopLocalAgentManager, {
+    allowedAppOrigins: config.allowedAppOrigins,
+  });
 }
 
 function openExternal(url: string): void {

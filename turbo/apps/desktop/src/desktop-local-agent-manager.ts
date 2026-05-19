@@ -225,6 +225,11 @@ export class DesktopLocalAgentManager {
   }
 
   async stop(id: string): Promise<DesktopLocalAgentEntry> {
+    this.assertEnabled();
+    return this.stopEntry(id);
+  }
+
+  private async stopEntry(id: string): Promise<DesktopLocalAgentEntry> {
     await this.ensureLoaded();
     const entry = this.requireEntry(id);
     const running = this.runningAgents.get(id);
@@ -237,8 +242,8 @@ export class DesktopLocalAgentManager {
     this.updateEntry(id, { status: "stopping" });
     await this.persistAndNotify();
     running.controller.abort();
-    await this.closeRunningHost(running);
     await running.promise.catch(() => {});
+    await this.closeRunningHost(running);
     this.runningAgents.delete(id);
     this.updateEntry(id, { status: "stopped", errorMessage: undefined });
     await this.persistAndNotify();
@@ -249,13 +254,14 @@ export class DesktopLocalAgentManager {
     await this.ensureLoaded();
     await Promise.all(
       [...this.runningAgents.keys()].map((id) => {
-        return this.stop(id).then(() => {});
+        return this.stopEntry(id).then(() => {});
       }),
     );
   }
 
   async remove(id: string): Promise<void> {
-    await this.stop(id).catch(() => {});
+    this.assertEnabled();
+    await this.stopEntry(id).catch(() => {});
     await this.ensureLoaded();
     this.entries = this.entriesOrThrow().filter((entry) => {
       return entry.id !== id;
@@ -339,7 +345,7 @@ export class DesktopLocalAgentManager {
       hostToken: params.hostToken,
       jobId: params.jobId,
       result,
-      signal: params.signal,
+      signal: params.signal.aborted ? undefined : params.signal,
     });
   }
 
@@ -347,7 +353,7 @@ export class DesktopLocalAgentManager {
     readonly hostToken: string;
     readonly jobId: string;
     readonly result: DesktopLocalAgentExecutionResult;
-    readonly signal: AbortSignal;
+    readonly signal?: AbortSignal;
   }): Promise<void> {
     await this.deps.api.completeJob({
       hostToken: params.hostToken,
