@@ -41,7 +41,6 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import { createAgentRun$ } from "../services/agent-run-create.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
 import {
   formatChatRunErrorMessage,
@@ -54,6 +53,7 @@ import {
   generateAndPersistChatThreadTitleFromCallback,
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
+import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { settle, tapError } from "../utils";
 
 const log = logger("callback:chat");
@@ -174,21 +174,23 @@ function parseModelProviderCredentialScope(
   throw new Error(`Unknown model provider credential scope "${value}"`);
 }
 
-function buildQueuedCreateAgentRunArgs(
+function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
 ) {
   return {
-    userId: input.userId,
-    orgId: input.orgId,
+    auth: {
+      tokenType: "session" as const,
+      userId: input.userId,
+      orgId: input.orgId,
+      orgRole: "member" as const,
+    },
     apiStartTime,
     chatThreadId: input.threadId,
     modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
-    modelProviderType: input.queuedMessage.modelProviderType ?? undefined,
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
-    includeZeroTokenSecret: true,
     callbacks: [
       {
         url: chatCallbackUrl(),
@@ -199,13 +201,15 @@ function buildQueuedCreateAgentRunArgs(
         },
       },
     ],
+    triggerSource: "web" as const,
+    appendSystemPrompt: input.appendSystemPrompt,
     body: {
       prompt: input.prompt,
-      agentComposeId: input.agentId,
+      agentId: input.agentId,
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-      triggerSource: "web" as const,
-      appendSystemPrompt: input.appendSystemPrompt,
-      vars: { ZERO_AGENT_ID: input.agentId },
+      ...(input.queuedMessage.modelProviderType
+        ? { modelProvider: input.queuedMessage.modelProviderType }
+        : {}),
     },
   };
 }
@@ -1325,8 +1329,8 @@ const handleChatCallback$ = command(
           signal,
           createRun: async (runInput) => {
             const runResult = await set(
-              createAgentRun$,
-              buildQueuedCreateAgentRunArgs(runInput, apiStartTime),
+              createZeroRun$,
+              buildQueuedCreateZeroRunArgs(runInput, apiStartTime),
               signal,
             );
             if (runResult.status !== 201) {
