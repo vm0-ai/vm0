@@ -629,7 +629,24 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/slack/oauth/install/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/slack/oauth")).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/slack/events")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/oauth/events")).toBe(
+      false,
+    );
+  });
+
+  it("matches Slack provider callback rewrite paths exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/slack/events")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/commands")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/interactive")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/events/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/command")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/interactions")).toBe(
+      false,
+    );
   });
 
   it("matches only one segment for agent session by-id rewrites", () => {
@@ -2068,6 +2085,75 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers.cookie).toBe("session=opaque");
         expect(payload.headers["x-forwarded-host"]).toContain("127.0.0.1:");
         expect(payload.body).toBe(JSON.stringify({ device_type: "bb0" }));
+      },
+    );
+  });
+
+  it("forwards Slack provider callback POST bodies and signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const callbackRequests = [
+          {
+            path: "/api/zero/slack/events",
+            contentType: "application/json",
+            body: JSON.stringify({
+              type: "url_verification",
+              challenge: "challenge-123",
+            }),
+          },
+          {
+            path: "/api/zero/slack/commands",
+            contentType: "application/x-www-form-urlencoded",
+            body: new URLSearchParams({
+              command: "/zero",
+              text: "help",
+            }).toString(),
+          },
+          {
+            path: "/api/zero/slack/interactive",
+            contentType: "application/x-www-form-urlencoded",
+            body: new URLSearchParams({
+              payload: JSON.stringify({ type: "block_actions" }),
+            }).toString(),
+          },
+        ] as const;
+
+        for (const callbackRequest of callbackRequests) {
+          const response = await fetch(
+            `${origin}${callbackRequest.path}?from=slack`,
+            {
+              method: "POST",
+              headers: {
+                "content-type": callbackRequest.contentType,
+                "x-slack-request-timestamp": "1710000000",
+                "x-slack-signature": "v0=test-signature",
+              },
+              body: callbackRequest.body,
+            },
+          );
+
+          const payload = (await response.json()) as EchoPayload;
+          expect(payload.method).toBe("POST");
+          expect(payload.url).toBe(`${callbackRequest.path}?from=slack`);
+          expect(payload.headers["content-type"]).toContain(
+            callbackRequest.contentType,
+          );
+          expect(payload.headers["x-slack-request-timestamp"]).toBe(
+            "1710000000",
+          );
+          expect(payload.headers["x-slack-signature"]).toBe(
+            "v0=test-signature",
+          );
+          expect(payload.body).toBe(callbackRequest.body);
+        }
       },
     );
   });
