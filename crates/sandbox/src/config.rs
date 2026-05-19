@@ -64,8 +64,9 @@ pub struct ResourceLimits {
 
 /// Provider-neutral block device I/O limits for one sandbox instance.
 ///
-/// Rates are positive when a limiter is enabled. Use `None` at the factory
-/// level to disable device limiting; do not encode disabled limiters as zeros.
+/// Rates are positive when a limiter is enabled. Use `None` at the sandbox
+/// config level to disable device limiting; do not encode disabled limiters as
+/// zeros.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockRateLimits {
     /// Sustained block-device bandwidth in bytes per second.
@@ -76,8 +77,9 @@ pub struct BlockRateLimits {
 
 /// Provider-neutral network I/O limits for one sandbox instance.
 ///
-/// Rates are positive when a limiter is enabled. Use `None` at the factory
-/// level to disable device limiting; do not encode disabled limiters as zeros.
+/// Rates are positive when a limiter is enabled. Use `None` at the sandbox
+/// config level to disable device limiting; do not encode disabled limiters as
+/// zeros.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetworkRateLimits {
     /// Sustained receive bandwidth in bytes per second.
