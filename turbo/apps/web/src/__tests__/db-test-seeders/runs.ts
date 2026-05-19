@@ -1,6 +1,5 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { orgTierSchema } from "@vm0/api-contracts/contracts/orgs";
-import type { SandboxReuseResult } from "@vm0/api-contracts/contracts/webhooks";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { ContextArtifact } from "../../lib/infra/run/types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -674,24 +673,6 @@ export async function setTestRunModelProviderMetadata(
     .update(zeroRuns)
     .set(metadata)
     .where(eq(zeroRuns.id, runId));
-}
-
-/**
- * Set the sandbox-reuse-result outcome on an existing run.
- *
- * @why-db-direct Runner reports this field via the agent-complete webhook
- * during normal execution; tests for the runner-tab API need to seed it
- * directly without invoking the webhook pipeline.
- */
-export async function setTestRunSandboxReuseResult(
-  runId: string,
-  sandboxReuseResult: SandboxReuseResult,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({ sandboxReuseResult })
-    .where(eq(agentRuns.id, runId));
 }
 
 /**

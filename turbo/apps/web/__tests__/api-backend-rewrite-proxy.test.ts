@@ -34,6 +34,7 @@ const { proxyRequest } =
   };
 const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -1138,6 +1139,23 @@ describe("API backend rewrite proxy behavior", () => {
     );
     expect(matchesApiBackendRewritePath("/api/zero/runs/queues")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/run/queue")).toBe(false);
+  });
+
+  it("matches the zero runs runner rewrite path only for UUID run IDs", () => {
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/runs/${ZERO_RUN_ID}/runner`),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/runs/queue/runner")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/runs/not-a-uuid/runner"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/runs/${ZERO_RUN_ID}/runner/extra`,
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero schedules run rewrite path exactly", () => {
