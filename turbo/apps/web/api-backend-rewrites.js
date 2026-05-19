@@ -244,6 +244,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [
+    "/api/cron/reconcile-billing-entitlements",
+    "/api/cron/reconcile-billing-entitlements",
+  ],
+  [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
     CONNECTORS_AUTHORIZE_PATH_RE,

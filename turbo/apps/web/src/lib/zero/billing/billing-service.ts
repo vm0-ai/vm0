@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { getStripe } from "../stripe";
 import { env } from "../../../env";
@@ -77,8 +77,6 @@ const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
 };
 
 const ENTITLEMENT_PERIOD_REFRESH_STATUSES = new Set(["active", "trialing"]);
-const PAYMENT_FAILED_SUBSCRIPTION_STATUSES = ["past_due", "unpaid"] as const;
-const PAYMENT_FAILURE_DOWNGRADE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
@@ -91,12 +89,6 @@ function subscriptionCanRefreshPaidThrough(
   subscription: SubscriptionInput,
 ): boolean {
   return ENTITLEMENT_PERIOD_REFRESH_STATUSES.has(subscription.status);
-}
-
-function subscriptionIsPaymentFailed(subscription: SubscriptionInput): boolean {
-  return PAYMENT_FAILED_SUBSCRIPTION_STATUSES.includes(
-    subscription.status as (typeof PAYMENT_FAILED_SUBSCRIPTION_STATUSES)[number],
-  );
 }
 
 function tierFromPriceId(priceId: string): OrgTier {
@@ -618,173 +610,6 @@ export async function handleSubscriptionDeleted(
   log.info("subscription deleted — downgraded to free", {
     subscriptionId: subscription.id,
   });
-}
-
-/**
- * Local billing entitlement reconciliation for the known webhook gap where an
- * org can stay on a paid tier after Stripe moves the subscription to a failed
- * payment state. Local stale candidates are verified against Stripe before
- * downgrade; if Stripe shows fresher billing state, the local row is repaired.
- */
-export async function downgradeStalePaymentFailedSubscriptions(options?: {
-  now?: Date;
-}): Promise<{ downgraded: number }> {
-  const db = globalThis.services.db;
-  const stripe = getStripe();
-  const now = options?.now ?? new Date();
-  const staleBefore = new Date(
-    now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
-  );
-
-  const candidates = await db
-    .select({
-      orgId: orgMetadata.orgId,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-    })
-    .from(orgMetadata)
-    .where(
-      and(
-        inArray(orgMetadata.tier, ["pro", "team"]),
-        isNotNull(orgMetadata.stripeSubscriptionId),
-        inArray(orgMetadata.subscriptionStatus, [
-          ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-        ]),
-        or(
-          and(
-            isNull(orgMetadata.currentPeriodEnd),
-            lte(orgMetadata.updatedAt, staleBefore),
-          ),
-          lte(orgMetadata.currentPeriodEnd, staleBefore),
-        ),
-      ),
-    );
-
-  const downgraded: Array<{
-    orgId: string;
-    subscriptionId: string | null;
-    status: string | null;
-  }> = [];
-
-  for (const candidate of candidates) {
-    if (!candidate.stripeSubscriptionId) continue;
-
-    const subscription = await stripe.subscriptions.retrieve(
-      candidate.stripeSubscriptionId,
-    );
-    const stripePeriodEnd = subscriptionPeriodEnd(subscription);
-    const canRefreshPaidThrough =
-      subscriptionCanRefreshPaidThrough(subscription);
-    const isPaymentFailed = subscriptionIsPaymentFailed(subscription);
-    const syncedFields = {
-      subscriptionStatus: subscription.status,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      updatedAt: now,
-      ...(stripePeriodEnd ? { currentPeriodEnd: stripePeriodEnd } : {}),
-    };
-
-    const currentCandidate = and(
-      eq(orgMetadata.orgId, candidate.orgId),
-      eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
-      inArray(orgMetadata.tier, ["pro", "team"]),
-      inArray(orgMetadata.subscriptionStatus, [
-        ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-      ]),
-    );
-
-    // Scheduled cancellations stay active with cancel_at_period_end=true until
-    // the period ends. If Stripe now says canceled, this is a missed
-    // subscription.deleted-equivalent terminal state.
-    if (subscription.status === "canceled") {
-      const rows = await db
-        .update(orgMetadata)
-        .set({
-          tier: "free",
-          subscriptionStatus: "canceled",
-          stripeSubscriptionId: null,
-          cancelAtPeriodEnd: false,
-          updatedAt: now,
-        })
-        .where(currentCandidate)
-        .returning({
-          orgId: orgMetadata.orgId,
-          status: orgMetadata.subscriptionStatus,
-        });
-      downgraded.push(
-        ...rows.map((row) => {
-          return {
-            ...row,
-            subscriptionId: candidate.stripeSubscriptionId,
-          };
-        }),
-      );
-      continue;
-    }
-
-    if (!isPaymentFailed) {
-      if (!canRefreshPaidThrough) {
-        log.warn(
-          "payment-failed local subscription has unexpected Stripe status; skipping downgrade",
-          {
-            orgId: candidate.orgId,
-            subscriptionId: candidate.stripeSubscriptionId,
-            status: subscription.status,
-          },
-        );
-        continue;
-      }
-
-      const priceId = subscription.items.data[0]?.price?.id;
-      const tier = priceId ? tierFromPriceId(priceId) : undefined;
-
-      await db
-        .update(orgMetadata)
-        .set({
-          ...syncedFields,
-          ...(tier ? { tier } : {}),
-        })
-        .where(currentCandidate);
-      continue;
-    }
-
-    if (!stripePeriodEnd) {
-      log.warn(
-        "payment-failed subscription missing paid-through in Stripe; downgrading",
-        {
-          orgId: candidate.orgId,
-          subscriptionId: candidate.stripeSubscriptionId,
-          status: subscription.status,
-        },
-      );
-    } else if (stripePeriodEnd > staleBefore) {
-      await db.update(orgMetadata).set(syncedFields).where(currentCandidate);
-      continue;
-    }
-
-    const rows = await db
-      .update(orgMetadata)
-      .set({
-        tier: "free",
-        ...syncedFields,
-      })
-      .where(currentCandidate)
-      .returning({
-        orgId: orgMetadata.orgId,
-        subscriptionId: orgMetadata.stripeSubscriptionId,
-        status: orgMetadata.subscriptionStatus,
-      });
-    downgraded.push(...rows);
-  }
-
-  if (downgraded.length > 0) {
-    log.warn("stale payment-failed subscriptions downgraded", {
-      count: downgraded.length,
-      subscriptionIds: downgraded.slice(0, 10).map((row) => {
-        return row.subscriptionId;
-      }),
-    });
-  }
-
-  return { downgraded: downgraded.length };
 }
 
 // ---------------------------------------------------------------------------

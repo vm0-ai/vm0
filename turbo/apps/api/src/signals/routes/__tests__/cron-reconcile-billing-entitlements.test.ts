@@ -34,6 +34,14 @@ function hoursAgo(hours: number): Date {
   return new Date(nowDate().getTime() - hours * 60 * 60 * 1000);
 }
 
+function daysFromNow(days: number): Date {
+  return new Date(nowDate().getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function stripePeriodDaysFromNow(days: number): Date {
+  return new Date(Math.floor(daysFromNow(days).getTime() / 1000) * 1000);
+}
+
 function stripeSubscription(
   subscriptionId: string,
   options: {
@@ -127,6 +135,17 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
     });
   });
 
+  it("rejects requests with missing cron authorization", async () => {
+    const response = await accept(
+      apiClient().reconcile({ headers: {} }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("downgrades stale payment-failed subscriptions without paid-through", async () => {
     const fixture = await track(
       seedBillingOrg({ status: "past_due", currentPeriodEnd: null }),
@@ -176,6 +195,137 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
     await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
       tier: "team",
       subscriptionStatus: "active",
+      currentPeriodEnd: paidThrough,
+    });
+  });
+
+  it("repairs missing local paid-through from Stripe instead of downgrading", async () => {
+    const fixture = await track(
+      seedBillingOrg({ status: "past_due", currentPeriodEnd: null }),
+    );
+    const paidThrough = stripePeriodDaysFromNow(7);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture.subscriptionId, {
+        status: "past_due",
+        periodEnd: paidThrough,
+      }),
+    );
+
+    const response = await accept(
+      apiClient().reconcile({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    expect(context.mocks.stripe.subscriptions.retrieve).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+    );
+    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
+      tier: "pro",
+      subscriptionStatus: "past_due",
+      currentPeriodEnd: paidThrough,
+    });
+  });
+
+  it("downgrades canceled Stripe subscriptions as missed deleted hooks", async () => {
+    const fixture = await track(
+      seedBillingOrg({ status: "past_due", currentPeriodEnd: null }),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture.subscriptionId, {
+        status: "canceled",
+        periodEnd: daysFromNow(7),
+      }),
+    );
+
+    const response = await accept(
+      apiClient().reconcile({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
+      tier: "free",
+      subscriptionStatus: "canceled",
+      stripeSubscriptionId: null,
+    });
+  });
+
+  it("downgrades stale unpaid subscriptions after paid-through expires", async () => {
+    const fixture = await track(
+      seedBillingOrg({
+        status: "unpaid",
+        currentPeriodEnd: hoursAgo(48),
+        tier: "team",
+      }),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture.subscriptionId, {
+        status: "unpaid",
+        periodEnd: hoursAgo(48),
+      }),
+    );
+
+    const response = await accept(
+      apiClient().reconcile({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
+      tier: "free",
+      subscriptionStatus: "unpaid",
+      stripeSubscriptionId: fixture.subscriptionId,
+    });
+  });
+
+  it("downgrades expired paid-through even if org metadata was recently updated", async () => {
+    const fixture = await track(
+      seedBillingOrg({
+        status: "past_due",
+        currentPeriodEnd: hoursAgo(48),
+        updatedAt: hoursAgo(1),
+      }),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      stripeSubscription(fixture.subscriptionId, {
+        status: "past_due",
+        periodEnd: hoursAgo(48),
+      }),
+    );
+
+    const response = await accept(
+      apiClient().reconcile({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
+      tier: "free",
+      subscriptionStatus: "past_due",
+    });
+  });
+
+  it("keeps stale payment-failed subscriptions with future paid-through", async () => {
+    const paidThrough = daysFromNow(7);
+    const fixture = await track(
+      seedBillingOrg({
+        status: "past_due",
+        currentPeriodEnd: paidThrough,
+        updatedAt: hoursAgo(48),
+      }),
+    );
+
+    const response = await accept(
+      apiClient().reconcile({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
+      tier: "pro",
+      subscriptionStatus: "past_due",
       currentPeriodEnd: paidThrough,
     });
   });
