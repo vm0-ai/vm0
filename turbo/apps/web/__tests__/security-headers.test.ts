@@ -25,6 +25,7 @@ const { getPathMatch } =
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_API_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_CHECKPOINT_REWRITE_SOURCE = "/api/agent/checkpoints/:id";
 const AGENT_CHECKPOINT_PATH = "/api/agent/checkpoints/checkpoint_123";
 const AGENT_CHECKPOINT_NEXT_NEGATIVE_PATHS = [
@@ -385,8 +386,19 @@ const ZERO_API_KEYS_REWRITE_SOURCE = "/api/zero/api-keys";
 const ZERO_API_KEYS_PATH = "/api/zero/api-keys";
 const ZERO_API_KEYS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/api-key",
-  "/api/zero/api-keys/550e8400-e29b-41d4-a716-446655440000",
   "/api/zero/api-keys/extra",
+] as const;
+const ZERO_API_KEY_BY_ID_REWRITE_SOURCE =
+  "/api/zero/api-keys/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const ZERO_API_KEY_BY_ID_PATH = `/api/zero/api-keys/${ZERO_API_KEY_ID}`;
+const ZERO_API_KEY_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/api-keys",
+  "/api/zero/api-keys/not-a-uuid",
+  `/api/zero/api-keys/${ZERO_API_KEY_ID}/extra`,
+] as const;
+const ZERO_API_KEY_BY_ID_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/api-keys/not-a-uuid",
+  `/api/zero/api-keys/${ZERO_API_KEY_ID}/extra`,
 ] as const;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_ME_MODEL_PROVIDERS_PATH = "/api/zero/me/model-providers";
@@ -1101,6 +1113,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_API_KEYS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/api-keys",
+        },
+        {
+          source: ZERO_API_KEY_BY_ID_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/api-keys/:id",
         },
         {
           source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -2870,6 +2886,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only UUID-shaped zero api key by-id rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_API_KEY_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_API_KEY_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/api-keys/:id",
+    });
+
+    const matcher = getPathMatch(ZERO_API_KEY_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_API_KEY_BY_ID_PATH)).toStrictEqual({
+      id: ZERO_API_KEY_ID,
+    });
+    for (const pathname of ZERO_API_KEY_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact permission policies rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -3813,6 +3854,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero api keys path", () => {
     expect(matchesApiBackendRewritePath(ZERO_API_KEYS_PATH)).toBe(true);
     for (const pathname of ZERO_API_KEYS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped zero api key by-id paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_API_KEY_BY_ID_PATH)).toBe(true);
+    for (const pathname of ZERO_API_KEY_BY_ID_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

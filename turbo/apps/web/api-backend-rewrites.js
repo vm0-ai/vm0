@@ -128,6 +128,10 @@ const ZERO_CHAT_THREAD_UNPIN_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/unpin";
 const ZERO_CHAT_THREAD_UNPIN_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/unpin$/;
+const ZERO_API_KEY_BY_ID_REWRITE_SOURCE = `/api/zero/api-keys/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_API_KEY_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/api-keys/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 
 export const API_BACKEND_REWRITES = [
   [
@@ -271,6 +275,11 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
   ["/api/zero/api-keys", "/api/zero/api-keys"],
+  [
+    ZERO_API_KEY_BY_ID_REWRITE_SOURCE,
+    "/api/zero/api-keys/:id",
+    ZERO_API_KEY_BY_ID_PATH_RE,
+  ],
   [
     ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/zero/connectors/:type/authorize",
