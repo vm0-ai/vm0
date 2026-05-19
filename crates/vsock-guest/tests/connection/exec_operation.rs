@@ -77,7 +77,7 @@ fn exec_operation_rejects_unsupported_start_policies() {
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
-            command: "sleep 1",
+            command: "printf should-not-run",
             env: &[],
             sudo: false,
             label: "test",
@@ -98,7 +98,7 @@ fn exec_operation_rejects_unsupported_start_policies() {
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
             timeout: ExecTimeoutPolicy::None,
-            command: "sleep 1",
+            command: "printf should-not-run",
             env: &[],
             sudo: false,
             label: "test",
@@ -119,7 +119,7 @@ fn exec_operation_rejects_unsupported_start_policies() {
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
-            command: "sleep 1",
+            command: "printf should-not-run",
             env: &[],
             sudo: false,
             label: "test",
