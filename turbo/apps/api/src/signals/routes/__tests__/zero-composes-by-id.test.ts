@@ -88,7 +88,9 @@ describe("GET /api/zero/composes/:id", () => {
       [404],
     );
 
-    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
   });
 
   it("returns the compose by id", async () => {
@@ -137,6 +139,8 @@ describe("GET /api/zero/composes/:id", () => {
       [404],
     );
 
-    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent compose not found", code: "NOT_FOUND" },
+    });
   });
 });

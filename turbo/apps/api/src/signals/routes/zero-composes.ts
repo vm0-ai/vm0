@@ -47,7 +47,7 @@ const getComposeByIdInner$ = computed(async (get) => {
     }),
   );
   if (!compose) {
-    return composeNotFound(params.id);
+    return notFound("Agent compose not found");
   }
 
   return { status: 200 as const, body: compose };
