@@ -6,8 +6,10 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -167,6 +169,11 @@ async function seedWebsiteFixture(): Promise<WebsiteFixture> {
     userId,
     creditEnabled: true,
   });
+  await writeDb.insert(userFeatureSwitches).values({
+    orgId,
+    userId,
+    switches: { [FeatureSwitchKey.HostedSites]: true },
+  });
 
   const pricing = await ensureWebsitePricing();
   return {
@@ -179,6 +186,14 @@ async function seedWebsiteFixture(): Promise<WebsiteFixture> {
 async function deleteWebsiteFixture(fixture: WebsiteFixture): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb.delete(usageEvent).where(eq(usageEvent.orgId, fixture.orgId));
+  await writeDb
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, fixture.orgId),
+        eq(userFeatureSwitches.userId, fixture.userId),
+      ),
+    );
   await writeDb
     .delete(orgMembersMetadata)
     .where(
@@ -289,7 +304,8 @@ describe("POST /api/zero/website-io/generate", () => {
   });
 
   it("returns 400 when prompt is missing", async () => {
-    mocks.clerk.session("user_missing_prompt", "org_missing_prompt");
+    const fixture = await track(seedWebsiteFixture());
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const app = createApp({ signal: context.signal });
     const response = await app.request("/api/zero/website-io/generate", {
@@ -301,6 +317,25 @@ describe("POST /api/zero/website-io/generate", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "prompt is required", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("returns 403 when hosted sites are disabled", async () => {
+    mocks.clerk.session(
+      "user_hosted_sites_disabled",
+      "org_hosted_sites_disabled",
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/website-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt: "A website" }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Hosted sites are not enabled", code: "FORBIDDEN" },
     });
   });
 

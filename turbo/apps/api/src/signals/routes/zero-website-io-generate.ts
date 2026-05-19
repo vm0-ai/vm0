@@ -1,10 +1,13 @@
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { zeroWebsiteIoGenerateContract } from "@vm0/api-contracts/contracts/zero-website-io-generate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   checkWebsiteCredits$,
   generateWebsite$,
@@ -14,10 +17,40 @@ import {
   websiteServiceUnavailable,
 } from "../services/zero-website-io-generate.service";
 
+const hostedSitesDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Hosted sites are not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const websiteBody$ = bodyResultOf(zeroWebsiteIoGenerateContract.post);
+
+async function hostedSitesEnabled(
+  get: <T>(computed: Computed<T>) => T,
+  auth: { readonly orgId: string; readonly userId: string },
+): Promise<boolean> {
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  return isFeatureEnabled(FeatureSwitchKey.HostedSites, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+}
 
 const postWebsiteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const enabled = await hostedSitesEnabled(get, auth);
+  signal.throwIfAborted();
+  if (!enabled) {
+    return hostedSitesDisabled;
+  }
+
   const bodyResult = await get(websiteBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
