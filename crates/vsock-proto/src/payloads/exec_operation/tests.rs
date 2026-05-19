@@ -1,7 +1,7 @@
 use super::*;
 use crate::wire::MAX_PAYLOAD_SIZE;
 
-const ONE_SHOT_DURATION_START_HEADER_LEN: usize = 1 + 1 + 1 + 4 + 1;
+const ONE_SHOT_DURATION_START_HEADER_LEN: usize = 1 + 1 + 4 + 1;
 const NONCE: ProcessControlNonce = *b"0123456789abcdef";
 
 #[test]
@@ -537,36 +537,21 @@ fn exec_start_rejects_truncated_fields() {
     assert!(matches!(
         decode_exec_start(&[]),
         Err(ProtocolError::InvalidPayload(
-            "exec start version truncated"
-        ))
-    ));
-    assert!(matches!(
-        decode_exec_start(&[EXEC_START_VERSION_V1]),
-        Err(ProtocolError::InvalidPayload(
             "exec start lifecycle truncated"
         ))
     ));
     assert!(matches!(
-        decode_exec_start(&[EXEC_START_VERSION_V1, EXEC_LIFECYCLE_ONE_SHOT]),
+        decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT]),
         Err(ProtocolError::InvalidPayload(
             "exec start timeout policy truncated"
         ))
     ));
     assert!(matches!(
-        decode_exec_start(&[
-            EXEC_START_VERSION_V1,
-            EXEC_LIFECYCLE_ONE_SHOT,
-            EXEC_TIMEOUT_DURATION,
-            0,
-            0,
-            0,
-            1,
-        ]),
+        decode_exec_start(&[EXEC_LIFECYCLE_ONE_SHOT, EXEC_TIMEOUT_DURATION, 0, 0, 0, 1,]),
         Err(ProtocolError::InvalidPayload("exec start flags truncated"))
     ));
     assert!(matches!(
         decode_exec_start(&[
-            EXEC_START_VERSION_V1,
             EXEC_LIFECYCLE_ONE_SHOT,
             EXEC_TIMEOUT_DURATION,
             0,
@@ -835,7 +820,7 @@ fn exec_start_rejects_truncated_policy_fields() {
 }
 
 #[test]
-fn exec_start_rejects_invalid_version_lifecycle_timeout_and_control() {
+fn exec_start_rejects_invalid_lifecycle_timeout_and_control() {
     let mut payload = encode_exec_start(
         1,
         "cmd",
@@ -846,23 +831,7 @@ fn exec_start_rejects_invalid_version_lifecycle_timeout_and_control() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    payload[0] = 0x02;
-    assert!(matches!(
-        decode_exec_start(&payload),
-        Err(ProtocolError::InvalidPayload("exec start version invalid"))
-    ));
-
-    let mut payload = encode_exec_start(
-        1,
-        "cmd",
-        &[],
-        false,
-        "",
-        ExecOutputPolicy::Discard,
-        ExecOutputPolicy::Discard,
-    )
-    .unwrap();
-    payload[1] = 0xFE;
+    payload[0] = 0xFE;
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(
@@ -880,7 +849,7 @@ fn exec_start_rejects_invalid_version_lifecycle_timeout_and_control() {
         ExecOutputPolicy::Discard,
     )
     .unwrap();
-    payload[2] = 0xFE;
+    payload[1] = 0xFE;
     assert!(matches!(
         decode_exec_start(&payload),
         Err(ProtocolError::InvalidPayload(

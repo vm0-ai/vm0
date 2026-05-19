@@ -28,7 +28,7 @@
 //! | 0x08 | H→G       | shutdown          | (empty) |
 //! | 0x09 | G→H       | shutdown_ack      | (empty) |
 //! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
-//! | 0x0B | H→G       | exec_start     | `[1B version][1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]` |
+//! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]` |
 //! | 0x0C | G→H       | exec_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | exec_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
 //! | 0x0E | H→G       | exec_cancel    | (empty) |
@@ -72,12 +72,12 @@ pub use payloads::empty::decode_empty_payload;
 pub use payloads::error::{decode_error, encode_error};
 pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
-    DecodedExecStart, DecodedExecStarted, EXEC_START_VERSION_V1, ExecCapturedOutput,
-    ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, decode_exec_cancel,
-    decode_exec_control, decode_exec_control_result, decode_exec_output, decode_exec_result,
-    decode_exec_start, decode_exec_started, encode_exec_cancel, encode_exec_control,
-    encode_exec_control_result, encode_exec_output, encode_exec_result, encode_exec_start,
+    DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy, ExecControlStatus,
+    ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
+    ExecTermination, ExecTimeoutPolicy, decode_exec_cancel, decode_exec_control,
+    decode_exec_control_result, decode_exec_output, decode_exec_result, decode_exec_start,
+    decode_exec_started, encode_exec_cancel, encode_exec_control, encode_exec_control_result,
+    encode_exec_output, encode_exec_result, encode_exec_start,
     encode_exec_start_with_expected_exit_codes, encode_exec_started,
 };
 pub use payloads::process::{

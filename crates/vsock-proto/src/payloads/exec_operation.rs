@@ -21,8 +21,6 @@ const EXEC_OUTPUT_POLICY_CAPTURE: u8 = 0x01;
 const EXEC_OUTPUT_POLICY_STREAM: u8 = 0x02;
 const EXEC_OUTPUT_POLICY_CAPTURE_AND_STREAM: u8 = 0x03;
 
-pub const EXEC_START_VERSION_V1: u8 = 0x01;
-
 const EXEC_LIFECYCLE_ONE_SHOT: u8 = 0x00;
 const EXEC_LIFECYCLE_SUPERVISED: u8 = 0x01;
 
@@ -334,7 +332,7 @@ pub fn encode_exec_start(
 /// Encode exec_start payload.
 ///
 /// Wire format:
-/// `[1B version][1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]`.
+/// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]`.
 pub fn encode_exec_start_with_expected_exit_codes(
     request: ExecStartEncodeRequest<'_>,
 ) -> Result<Vec<u8>, ProtocolError> {
@@ -363,7 +361,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let timeout_policy_len = exec_timeout_policy_encoded_len(request.timeout);
     let control_policy_len = exec_control_policy_encoded_len(request.control);
 
-    let mut payload_len = 1 + 1 + timeout_policy_len + 1 + 4;
+    let mut payload_len = 1 + timeout_policy_len + 1 + 4;
     payload_len = checked_payload_len_add(payload_len, cmd.len())?;
     payload_len = checked_payload_len_add(payload_len, 4)?;
     for (key, val) in request.env {
@@ -385,7 +383,6 @@ pub fn encode_exec_start_with_expected_exit_codes(
     ensure_payload_fits_message(payload_len)?;
 
     let mut p = Vec::with_capacity(payload_len);
-    p.push(EXEC_START_VERSION_V1);
     append_exec_lifecycle(&mut p, request.lifecycle);
     append_exec_timeout_policy(&mut p, request.timeout);
     p.push(if request.sudo { EXEC_FLAG_SUDO } else { 0 });
@@ -701,10 +698,6 @@ fn decode_exec_control_policy(
 /// Decode exec_start payload into a [`DecodedExecStart`] struct.
 pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, ProtocolError> {
     let mut offset = 0;
-    let version = read_u8(payload, &mut offset, "exec start version truncated")?;
-    if version != EXEC_START_VERSION_V1 {
-        return Err(ProtocolError::InvalidPayload("exec start version invalid"));
-    }
     let lifecycle = decode_exec_lifecycle(payload, &mut offset)?;
     let timeout = decode_exec_timeout_policy(payload, &mut offset)?;
     let flags = read_u8(payload, &mut offset, "exec start flags truncated")?;
