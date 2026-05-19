@@ -394,7 +394,7 @@ impl GuestProcessControlHandle {
     /// Send a control payload and report the exact guest terminal outcome.
     ///
     /// The `write_observer` fires immediately before the request frame is
-    /// written. Callers that gate sandbox reuse use this boundary to distinguish
+    /// written. Tests and diagnostics can use this boundary to distinguish
     /// pre-write validation failures from post-write uncertainty.
     pub async fn control_with_write_observer(
         &self,

@@ -3,7 +3,6 @@ use std::future::Future;
 use std::io;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -29,15 +28,12 @@ use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
-use crate::guest_operations::{
-    GuestOperation, GuestOperationGate, GuestOperationStartError, GuestOperationWriteBoundary,
-    guest_error_is_terminal,
-};
+use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
-    CoordinatorState, DirtyReason, LeaseRejection, OperationLease, OperationTransitionError,
-    ParkAttempt, ParkCoordinator, PrepareParkError, PrepareParkEvidence,
+    CoordinatorState, DirtyReason, OperationStartRejection, ParkAttempt, ParkCoordinator,
+    PrepareParkError, PrepareParkEvidence,
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
@@ -650,17 +646,6 @@ impl FirecrackerSandbox {
         }
     }
 
-    fn operation_gate_transition_error(
-        operation: SandboxOperation,
-        error: OperationTransitionError,
-    ) -> SandboxError {
-        SandboxError::Operation {
-            operation,
-            reason: SandboxOperationReason::Other,
-            message: format!("operation gate transition failed: {error:?}"),
-        }
-    }
-
     fn operation_start_error(
         &self,
         operation: SandboxOperation,
@@ -686,15 +671,15 @@ impl FirecrackerSandbox {
         publish_process_state(&self.state, &self.state_publish_lock, &self.state_tx, state);
     }
 
-    fn guest_operations(&self) -> GuestOperationGate {
-        GuestOperationGate::new(Arc::clone(&self.guest), self.park_coordinator.clone())
+    fn guest_operation_start_gate(&self) -> GuestOperationStartGate {
+        GuestOperationStartGate::new(Arc::clone(&self.guest), self.park_coordinator.clone())
     }
 
     async fn begin_guest_operation(
         &self,
         operation: SandboxOperation,
-    ) -> sandbox::Result<GuestOperation> {
-        self.guest_operations()
+    ) -> sandbox::Result<Arc<VsockHost>> {
+        self.guest_operation_start_gate()
             .begin_sandbox_operation(|| self.current_state())
             .await
             .map_err(|error| self.operation_start_error(operation, error))
@@ -703,7 +688,7 @@ impl FirecrackerSandbox {
     async fn run_bounded_guest_operation<T, Fut>(
         &self,
         operation: SandboxOperation,
-        call: impl FnOnce(Arc<VsockHost>, vsock_host::FrameWriteObserver) -> Fut,
+        call: impl FnOnce(Arc<VsockHost>) -> Fut,
     ) -> sandbox::Result<T>
     where
         Fut: Future<Output = io::Result<T>>,
@@ -713,13 +698,10 @@ impl FirecrackerSandbox {
             BackendCrashed,
         }
 
-        let guest_operation = self.begin_guest_operation(operation).await?;
-        let vsock = guest_operation.guest();
-        let guest = guest_operation.into_write_boundary();
-        let write_observer = guest.write_observer();
+        let vsock = self.begin_guest_operation(operation).await?;
 
         let outcome = tokio::select! {
-            result = call(vsock, write_observer) => {
+            result = call(vsock) => {
                 GuestCallOutcome::Returned(result)
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -728,22 +710,10 @@ impl FirecrackerSandbox {
         };
 
         match outcome {
-            GuestCallOutcome::Returned(Ok(value)) => {
-                guest
-                    .complete()
-                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                Ok(value)
-            }
+            GuestCallOutcome::Returned(Ok(value)) => Ok(value),
             GuestCallOutcome::Returned(Err(error)) => {
                 let backend_crashed = self.has_backend_crashed();
-                let is_terminal = guest_error_is_terminal(&error, backend_crashed);
-                let result = Err(Self::operation_error(operation, error, backend_crashed));
-                if is_terminal {
-                    guest
-                        .complete_if_write_started()
-                        .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                }
-                result
+                Err(Self::operation_error(operation, error, backend_crashed))
             }
             GuestCallOutcome::BackendCrashed => Err(Self::backend_crashed_error(operation)),
         }
@@ -753,20 +723,20 @@ impl FirecrackerSandbox {
         SandboxState::from_u8(state.load(Ordering::Acquire))
     }
 
-    fn begin_process_control_boundary(
+    fn begin_process_control(
         coordinator: &ParkCoordinator,
         current_state: impl Fn() -> SandboxState,
-    ) -> Result<GuestOperationWriteBoundary, GuestOperationStartError> {
+    ) -> Result<(), GuestOperationStartError> {
         match current_state() {
             SandboxState::Running => {}
             SandboxState::Crashed => return Err(GuestOperationStartError::BackendCrashed),
             state => return Err(GuestOperationStartError::NotRunning { state }),
         }
 
-        let lease = coordinator
-            .reserve_operation()
+        coordinator
+            .ensure_operation_start_allowed()
             .map_err(|error| match error {
-                LeaseRejection::GateClosed { state } => {
+                OperationStartRejection::GateClosed { state } => {
                     GuestOperationStartError::GateClosed { state }
                 }
             })?;
@@ -777,7 +747,7 @@ impl FirecrackerSandbox {
             state => return Err(GuestOperationStartError::NotRunning { state }),
         }
 
-        Ok(GuestOperationWriteBoundary::new(lease))
+        Ok(())
     }
 
     fn operation_start_io_error(
@@ -800,13 +770,6 @@ impl FirecrackerSandbox {
         io::Error::other(error)
     }
 
-    fn operation_transition_io_error(
-        operation: SandboxOperation,
-        error: OperationTransitionError,
-    ) -> io::Error {
-        io::Error::other(Self::operation_gate_transition_error(operation, error))
-    }
-
     async fn process_control(
         coordinator: ParkCoordinator,
         state: Arc<AtomicU8>,
@@ -817,42 +780,30 @@ impl FirecrackerSandbox {
         timeout: Duration,
     ) -> io::Result<ProcessControlAck> {
         enum ControlOutcome {
-            Returned(io::Result<vsock_host::ProcessControlOutcome>),
+            Returned(io::Result<vsock_host::ProcessControlAck>),
             BackendCrashed,
         }
 
         let operation = SandboxOperation::ProcessControl;
-        let guest =
-            Self::begin_process_control_boundary(&coordinator, || Self::current_state_from(&state))
-                .map_err(|error| {
-                    Self::operation_start_io_error(
-                        operation,
-                        error,
-                        Self::current_state_from(&state),
-                    )
-                })?;
-        let write_observer = guest.write_observer();
+        Self::begin_process_control(&coordinator, || Self::current_state_from(&state)).map_err(
+            |error| {
+                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
+            },
+        )?;
 
         let outcome = tokio::select! {
-            result = control.control_with_write_observer(
+            result = control.control(
                 &message_id,
                 &payload,
                 timeout,
-                write_observer,
             ) => ControlOutcome::Returned(result),
             () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
         };
 
         match outcome {
-            ControlOutcome::Returned(Ok(outcome)) => {
-                guest
-                    .complete()
-                    .map_err(|error| Self::operation_transition_io_error(operation, error))?;
-                let ack = outcome.into_ack()?;
-                Ok(ProcessControlAck {
-                    message_id: ack.message_id,
-                })
-            }
+            ControlOutcome::Returned(Ok(ack)) => Ok(ProcessControlAck {
+                message_id: ack.message_id,
+            }),
             ControlOutcome::Returned(Err(error)) => {
                 if Self::current_state_from(&state) == SandboxState::Crashed {
                     return Err(io::Error::other(Self::backend_crashed_error(operation)));
@@ -1186,22 +1137,6 @@ async fn wait_for_backend_crash(mut state_rx: watch::Receiver<SandboxState>) {
     }
 }
 
-fn gated_spawn_exit_future<F>(
-    exit: F,
-    lease: OperationLease,
-) -> Pin<Box<dyn Future<Output = io::Result<ProcessExit>> + Send + 'static>>
-where
-    F: Future<Output = io::Result<ProcessExit>> + Send + 'static,
-{
-    Box::pin(async move {
-        let process_exit = exit.await?;
-        lease
-            .complete()
-            .map_err(|error| io::Error::other(format!("operation gate completion: {error:?}")))?;
-        Ok(process_exit)
-    })
-}
-
 fn state_publish_guard(state_publish_lock: &Mutex<()>) -> MutexGuard<'_, ()> {
     state_publish_lock
         .lock()
@@ -1417,20 +1352,19 @@ impl Sandbox for FirecrackerSandbox {
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         let control_sock_path = self.sock_paths.control_sock();
-        let control_server =
-            match control::bind_server(control_sock_path.clone(), self.guest_operations()) {
-                Ok(server) => server,
-                Err(e) => {
-                    self.guest.lock().await.take();
-                    self.runtime.kill_process().await;
-                    return Err(SandboxError::Start {
-                        message: format!(
-                            "control socket bind {}: {e}",
-                            control_sock_path.display()
-                        ),
-                    });
-                }
-            };
+        let control_server = match control::bind_server(
+            control_sock_path.clone(),
+            self.guest_operation_start_gate(),
+        ) {
+            Ok(server) => server,
+            Err(e) => {
+                self.guest.lock().await.take();
+                self.runtime.kill_process().await;
+                return Err(SandboxError::Start {
+                    message: format!("control socket bind {}: {e}", control_sock_path.display()),
+                });
+            }
+        };
 
         // Use CAS to avoid overwriting Stopped if the process crashed between
         // spawn and vsock connect (the process monitor may have already
@@ -1678,22 +1612,19 @@ impl Sandbox for FirecrackerSandbox {
         let limits = request.output_limits;
         let timeout_ms = request.timeout_ms();
 
-        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
+        self.run_bounded_guest_operation(operation, |guest| async move {
             guest
-                .exec_capture_with_write_observer(
-                    vsock_host::ExecCaptureRequest {
-                        command: request.cmd,
-                        timeout_ms,
-                        env: request.env,
-                        sudo: request.sudo,
-                        label: "sandbox-exec",
-                        stdout_limit_bytes: limits.stdout_limit_bytes,
-                        stderr_limit_bytes: limits.stderr_limit_bytes,
-                        expected_exit_codes: &[],
-                        wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-                    },
-                    write_observer,
-                )
+                .exec_capture(vsock_host::ExecCaptureRequest {
+                    command: request.cmd,
+                    timeout_ms,
+                    env: request.env,
+                    sudo: request.sudo,
+                    label: "sandbox-exec",
+                    stdout_limit_bytes: limits.stdout_limit_bytes,
+                    stderr_limit_bytes: limits.stderr_limit_bytes,
+                    expected_exit_codes: &[],
+                    wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+                })
                 .await
                 .map(|result| ExecResult {
                     exit_code: result.exit_code,
@@ -1709,10 +1640,8 @@ impl Sandbox for FirecrackerSandbox {
     async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
         let operation = SandboxOperation::Exec;
 
-        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
-            guest
-                .read_file_with_write_observer(path, max_bytes, 5000, write_observer)
-                .await
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.read_file(path, max_bytes, 5000).await
         })
         .await
     }
@@ -1726,9 +1655,9 @@ impl Sandbox for FirecrackerSandbox {
         let operation = SandboxOperation::Exec;
         let timeout_ms = u32::try_from(options.timeout.as_millis()).unwrap_or(u32::MAX);
 
-        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
+        self.run_bounded_guest_operation(operation, |guest| async move {
             guest
-                .copy_file_with_write_observer(
+                .copy_file(
                     path,
                     host_path,
                     vsock_host::CopyFileOptions {
@@ -1736,7 +1665,6 @@ impl Sandbox for FirecrackerSandbox {
                         timeout_ms,
                         missing_ok: options.missing_ok,
                     },
-                    write_observer,
                 )
                 .await
                 .map(|result| CopyFileResult {
@@ -1749,10 +1677,8 @@ impl Sandbox for FirecrackerSandbox {
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         let operation = SandboxOperation::WriteFile;
 
-        self.run_bounded_guest_operation(operation, |guest, write_observer| async move {
-            guest
-                .write_file_with_write_observer(path, content, false, write_observer)
-                .await
+        self.run_bounded_guest_operation(operation, |guest| async move {
+            guest.write_file(path, content, false).await
         })
         .await
     }
@@ -1762,40 +1688,35 @@ impl Sandbox for FirecrackerSandbox {
         request: &SpawnProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         let operation = SandboxOperation::SpawnProcess;
-        let guest_operation = self.begin_guest_operation(operation).await?;
-        let vsock = guest_operation.guest();
-        let guest = guest_operation.into_write_boundary();
-        let write_observer = guest.write_observer();
+        let vsock = self.begin_guest_operation(operation).await?;
 
-        let spawn_future: Pin<
-            Box<dyn Future<Output = io::Result<vsock_host::GuestProcessHandle>> + Send + '_>,
-        > = match request.control {
-            SpawnProcessControl::None => {
-                Box::pin(vsock.spawn_process_with_request_and_write_observer(
-                    vsock_host::ProcessSpawnRequest {
-                        command: request.cmd,
-                        timeout_ms: request.timeout_ms(),
-                        env: request.env,
-                        sudo: request.sudo,
-                        stream_stdout: request.output.streams_stdout(),
-                        stdout_log_path: request.output.guest_log_path(),
-                    },
-                    write_observer,
-                ))
+        let spawn_future = async move {
+            match request.control {
+                SpawnProcessControl::None => {
+                    vsock
+                        .spawn_process(
+                            request.cmd,
+                            request.timeout_ms(),
+                            request.env,
+                            request.sudo,
+                            request.output.streams_stdout(),
+                            request.output.guest_log_path(),
+                        )
+                        .await
+                }
+                SpawnProcessControl::Enabled => {
+                    vsock
+                        .spawn_process_with_control_sink(
+                            request.cmd,
+                            request.timeout_ms(),
+                            request.env,
+                            request.sudo,
+                            request.output.streams_stdout(),
+                            request.output.guest_log_path(),
+                        )
+                        .await
+                }
             }
-            SpawnProcessControl::Enabled => Box::pin(
-                vsock.spawn_process_with_control_sink_request_and_write_observer(
-                    vsock_host::ProcessSpawnRequest {
-                        command: request.cmd,
-                        timeout_ms: request.timeout_ms(),
-                        env: request.env,
-                        sudo: request.sudo,
-                        stream_stdout: request.output.streams_stdout(),
-                        stdout_log_path: request.output.guest_log_path(),
-                    },
-                    write_observer,
-                ),
-            ),
         };
 
         tokio::select! {
@@ -1804,14 +1725,7 @@ impl Sandbox for FirecrackerSandbox {
                     Ok(handle) => handle,
                     Err(error) => {
                         let backend_crashed = self.has_backend_crashed();
-                        let is_terminal = guest_error_is_terminal(&error, backend_crashed);
-                        let result = Err(Self::operation_error(operation, error, backend_crashed));
-                        if is_terminal {
-                            guest
-                                .complete_if_write_started()
-                                .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                        }
-                        return result;
+                        return Err(Self::operation_error(operation, error, backend_crashed));
                     }
                 };
                 let pid = handle.pid();
@@ -1838,21 +1752,15 @@ impl Sandbox for FirecrackerSandbox {
                     .streams_stdout()
                     .then(|| handle.take_stdout_receiver())
                     .flatten();
-                let lease = guest
-                    .into_in_guest_lease()
-                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                let exit = gated_spawn_exit_future(
-                    async move {
-                        let event = handle.wait().await?;
-                        Ok(ProcessExit {
-                            pid: event.pid,
-                            exit_code: event.exit_code,
-                            stdout: event.stdout,
-                            stderr: event.stderr,
-                        })
-                    },
-                    lease,
-                );
+                let exit = Box::pin(async move {
+                    let event = handle.wait().await?;
+                    Ok(ProcessExit {
+                        pid: event.pid,
+                        exit_code: event.exit_code,
+                        stdout: event.stdout,
+                        stderr: event.stderr,
+                    })
+                });
                 Ok(GuestProcessHandle::new(pid, stdout_rx, process_control, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -1967,7 +1875,7 @@ impl<Fence> ParkBoundaryGuard<Fence> {
             }
             Err(error) => {
                 let message = format!(
-                    "operation gate failed to mark parked after Firecracker park: {}",
+                    "park policy failed to mark parked after Firecracker park: {}",
                     prepare_park_error_message(&error)
                 );
                 self.coordinator
@@ -2090,7 +1998,7 @@ where
                 PrepareParkError::InvalidState { .. } | PrepareParkError::StaleAttempt { .. }
             ) {
                 coordinator.mark_dirty(DirtyReason::new(format!(
-                    "operation gate failed to start park prepare: {}",
+                    "park policy failed to start park prepare: {}",
                     error_message
                 )));
             }
@@ -2186,7 +2094,7 @@ where
         let reason_kind = prepare_park_error_reason_kind(&error);
         let error_message = prepare_park_error_message(&error);
         let message = format!(
-            "operation gate failed to enter ReadyForPark: {}",
+            "park policy failed to enter ReadyForPark: {}",
             error_message
         );
         warn!(
@@ -2228,7 +2136,7 @@ where
             let reason_kind = prepare_park_error_reason_kind(&error);
             let error_message = prepare_park_error_message(&error);
             let message = format!(
-                "operation gate failed to mark parked after Firecracker park: {}",
+                "park policy failed to mark parked after Firecracker park: {}",
                 error_message
             );
             warn!(
@@ -2333,7 +2241,7 @@ where
         let reason_kind = prepare_park_error_reason_kind(&error);
         let error_message = prepare_park_error_message(&error);
         let message = format!(
-            "operation gate failed to reopen after unpark: {}",
+            "park policy failed to reopen after unpark: {}",
             error_message
         );
         warn!(
@@ -2366,10 +2274,10 @@ fn ensure_parked_before_unpark(coordinator: &ParkCoordinator) -> sandbox::Result
         CoordinatorState::Parked => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Unpark,
-            format!("operation gate dirty while unpark is starting: {reason}"),
+            format!("park policy dirty while unpark is starting: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while unpark is starting");
+            let message = format!("park policy is {state:?} while unpark is starting");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(
                 SandboxIdleTransition::Unpark,
@@ -2384,10 +2292,10 @@ fn ensure_park_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()> 
         CoordinatorState::Parked => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Park,
-            format!("operation gate dirty while park is a no-op: {reason}"),
+            format!("park policy dirty while park is a no-op: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while park is a no-op");
+            let message = format!("park policy is {state:?} while park is a no-op");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(SandboxIdleTransition::Park, message))
         }
@@ -2399,10 +2307,10 @@ fn ensure_unpark_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()
         CoordinatorState::Open => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Unpark,
-            format!("operation gate dirty while unpark is a no-op: {reason}"),
+            format!("park policy dirty while unpark is a no-op: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while unpark is a no-op");
+            let message = format!("park policy is {state:?} while unpark is a no-op");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(
                 SandboxIdleTransition::Unpark,
@@ -2418,20 +2326,18 @@ fn prepare_park_error(transition: SandboxIdleTransition, error: PrepareParkError
 
 fn prepare_park_error_message(error: &PrepareParkError) -> String {
     match error {
-        PrepareParkError::Busy => "operation gate busy while preparing park".into(),
-        PrepareParkError::Dirty { reason } => format!("operation gate dirty: {reason}"),
+        PrepareParkError::Dirty { reason } => format!("park policy dirty: {reason}"),
         PrepareParkError::InvalidState { state } => {
-            format!("operation gate state {state:?} cannot continue park lifecycle")
+            format!("park policy state {state:?} cannot continue park lifecycle")
         }
         PrepareParkError::StaleAttempt { attempt_id, state } => {
-            format!("stale park attempt {attempt_id:?} while operation gate is {state:?}")
+            format!("stale park attempt {attempt_id:?} while park policy is {state:?}")
         }
     }
 }
 
 fn prepare_park_error_reason_kind(error: &PrepareParkError) -> &'static str {
     match error {
-        PrepareParkError::Busy => "busy",
         PrepareParkError::Dirty { .. } => "dirty",
         PrepareParkError::InvalidState { .. } => "invalid_state",
         PrepareParkError::StaleAttempt { .. } => "stale_attempt",
@@ -2898,10 +2804,10 @@ mod tests {
     }
 
     #[test]
-    fn process_control_boundary_stop_after_reserve_releases_lease() {
+    fn process_control_stop_after_policy_check_keeps_policy_open() {
         let coordinator = ParkCoordinator::new();
 
-        let error = match FirecrackerSandbox::begin_process_control_boundary(
+        let error = match FirecrackerSandbox::begin_process_control(
             &coordinator,
             state_after_first_read(SandboxState::Stopped),
         ) {
@@ -2916,14 +2822,13 @@ mod tests {
             }
         );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
     }
 
     #[test]
-    fn process_control_boundary_crash_after_reserve_releases_lease() {
+    fn process_control_crash_after_policy_check_keeps_policy_open() {
         let coordinator = ParkCoordinator::new();
 
-        let error = match FirecrackerSandbox::begin_process_control_boundary(
+        let error = match FirecrackerSandbox::begin_process_control(
             &coordinator,
             state_after_first_read(SandboxState::Crashed),
         ) {
@@ -2933,7 +2838,6 @@ mod tests {
 
         assert_eq!(error, GuestOperationStartError::BackendCrashed);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
     }
 
     async fn send_process_control_result(
@@ -3197,13 +3101,6 @@ mod tests {
             SandboxError::Operation { reason, .. } => assert_eq!(reason, expected),
             other => panic!("expected operation error, got {other:?}"),
         }
-    }
-
-    fn active_spawn_process_lease(coordinator: &ParkCoordinator) -> OperationLease {
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        lease.mark_writing().expect("mark writing");
-        lease.mark_in_guest().expect("mark in guest");
-        lease
     }
 
     fn mark_coordinator_parked(coordinator: &ParkCoordinator) {
@@ -3500,33 +3397,6 @@ mod tests {
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
-    }
-
-    #[tokio::test]
-    async fn ready_for_park_boundary_busy_prevents_quiesce_and_pause() {
-        let coordinator = ParkCoordinator::new();
-        let _lease = active_spawn_process_lease(&coordinator);
-        let events = event_log();
-        let quiesce_events = Arc::clone(&events);
-        let park_events = Arc::clone(&events);
-
-        let result = park_with_ready_for_park(
-            "test-sandbox",
-            &coordinator,
-            || async move {
-                quiesce_events.lock().unwrap().push("guest_quiesce");
-                Ok(())
-            },
-            || async move {
-                park_events.lock().unwrap().push("firecracker_park");
-                Ok(())
-            },
-        )
-        .await;
-
-        assert_idle_transition(result, SandboxIdleTransition::Park);
-        assert!(matches!(coordinator.state(), CoordinatorState::Open));
-        assert!(logged_events(&events).is_empty());
     }
 
     #[tokio::test]
@@ -4323,7 +4193,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_control_rejects_closed_operation_gate_without_dirtying() {
+    async fn process_control_rejects_closed_policy_gate_without_dirtying() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4354,7 +4224,6 @@ mod tests {
             error.to_string().contains("sandbox operation gate closed"),
             "unexpected error: {error}",
         );
-        assert_eq!(coordinator.active_operation_count(), 0);
         coordinator.abort_prepare_park(&attempt).unwrap();
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
@@ -4392,7 +4261,6 @@ mod tests {
             "unexpected error: {error}",
         );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
@@ -4426,7 +4294,6 @@ mod tests {
 
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
             coordinator.clone(),
@@ -4443,14 +4310,13 @@ mod tests {
         let ack = control_task.await.unwrap().unwrap();
         assert_eq!(ack.message_id, "valid-after-local-failure");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_guest_status_completes_gate() {
+    async fn process_control_guest_status_keeps_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4484,14 +4350,13 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
         assert_eq!(error.to_string(), "guest sink timed out");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_guest_error_completes_gate() {
+    async fn process_control_guest_error_keeps_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4519,14 +4384,13 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "guest rejected control");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_concurrent_requests_release_gate_leases() {
+    async fn process_control_allows_concurrent_requests_while_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4571,7 +4435,6 @@ mod tests {
         ];
         message_ids.sort();
         assert_eq!(message_ids, ["concurrent-a", "concurrent-b"]);
-        assert_eq!(coordinator.active_operation_count(), 2);
 
         send_process_control_result(
             &mut guest,
@@ -4593,14 +4456,13 @@ mod tests {
         assert_eq!(first_ack.message_id, "concurrent-a");
         assert_eq!(second_ack.message_id, "concurrent-b");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_protocol_error_after_guest_write_marks_gate_dirty() {
+    async fn process_control_protocol_error_after_guest_write_keeps_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4632,15 +4494,11 @@ mod tests {
                 .contains("process_control_result target seq mismatch"),
             "unexpected error: {error}",
         );
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
     #[tokio::test]
-    async fn process_control_backend_crash_after_guest_write_marks_gate_dirty() {
+    async fn process_control_backend_crash_after_guest_write_keeps_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4676,18 +4534,14 @@ mod tests {
             error.to_string().contains("firecracker process crashed"),
             "unexpected error: {error}",
         );
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_timeout_after_guest_write_marks_gate_dirty() {
+    async fn process_control_timeout_after_guest_write_keeps_policy_open() {
         let ProcessControlFixture {
             host: _host,
             handle,
@@ -4717,90 +4571,10 @@ mod tests {
             .unwrap()
             .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(coordinator.active_operation_count(), 0);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn gated_spawn_exit_future_completes_lease_on_process_exit() {
-        let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit = gated_spawn_exit_future(
-            async {
-                Ok(ProcessExit {
-                    pid: 42,
-                    exit_code: 0,
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
-                })
-            },
-            lease,
-        );
-
-        assert!(matches!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Busy)
-        ));
-
-        let result = exit.await.expect("process exit should complete");
-        assert_eq!(result.pid, 42);
-
-        let attempt = coordinator
-            .begin_prepare_park()
-            .expect("completed spawn_process lease should allow prepare");
-        coordinator.abort_prepare_park(&attempt).unwrap();
-    }
-
-    #[test]
-    fn dropped_gated_spawn_exit_future_marks_dirty() {
-        let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit =
-            gated_spawn_exit_future(std::future::pending::<io::Result<ProcessExit>>(), lease);
-
-        drop(exit);
-
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(
-            coordinator.active_operation_count(),
-            0,
-            "dropped spawn exit future should not leave an active operation"
-        );
-    }
-
-    #[tokio::test]
-    async fn gated_spawn_exit_future_error_marks_dirty() {
-        let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit = gated_spawn_exit_future(
-            async { Err(io::Error::new(io::ErrorKind::ConnectionReset, "closed")) },
-            lease,
-        );
-
-        let error = match exit.await {
-            Ok(_) => panic!("expected spawn exit error"),
-            Err(error) => error,
-        };
-
-        assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(
-            coordinator.active_operation_count(),
-            0,
-            "failed spawn exit future should not leave an active operation"
-        );
     }
 
     /// Exercise the `monitor_process` crash detection flow through real child
@@ -4853,7 +4627,7 @@ mod tests {
         let runtime_cancel = CancellationToken::new();
         let mut control = crate::control::bind_server(
             sock_path.clone(),
-            GuestOperationGate::new(Arc::clone(&guest), ParkCoordinator::new()),
+            GuestOperationStartGate::new(Arc::clone(&guest), ParkCoordinator::new()),
         )
         .unwrap()
         .spawn(runtime_cancel.clone());

@@ -30,9 +30,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::guest_operations::{
-    GuestOperationGate, GuestOperationStartError, guest_error_is_terminal,
-};
+use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::paths::{RuntimePaths, SockPaths};
 
 // -----------------------------------------------------------------------
@@ -149,7 +147,7 @@ async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
 pub(crate) struct BoundControlServer {
     sock_path: Option<SocketPathGuard>,
     listener: Option<UnixListener>,
-    guest_operations: GuestOperationGate,
+    guest_operations: GuestOperationStartGate,
 }
 
 impl BoundControlServer {
@@ -292,7 +290,7 @@ impl SocketPathGuard {
 /// Bind the control socket before spawning the accept loop.
 pub(crate) fn bind_server(
     sock_path: PathBuf,
-    guest_operations: GuestOperationGate,
+    guest_operations: GuestOperationStartGate,
 ) -> io::Result<BoundControlServer> {
     let listener = bind_unix_listener(&sock_path)?;
     let sock_path = SocketPathGuard::new(sock_path);
@@ -323,7 +321,7 @@ fn remove_socket_path(sock_path: &Path) {
 fn spawn_bound_server(
     listener: UnixListener,
     sock_path: SocketPathGuard,
-    guest_operations: GuestOperationGate,
+    guest_operations: GuestOperationStartGate,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -408,7 +406,7 @@ async fn shutdown_handlers(handlers: &mut JoinSet<()>) {
 /// Handle a single control socket connection.
 async fn handle_connection(
     mut stream: UnixStream,
-    guest_operations: GuestOperationGate,
+    guest_operations: GuestOperationStartGate,
     shutdown: CancellationToken,
 ) -> io::Result<()> {
     let frame = tokio::select! {
@@ -439,10 +437,10 @@ async fn handle_connection(
     Ok(())
 }
 
-/// Execute an [`ExecRequest`] through the sandbox operation gate.
-async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) -> ExecResponse {
-    let operation = match guest_operations.begin_control_operation().await {
-        Ok(operation) => operation,
+/// Execute an [`ExecRequest`] through the sandbox operation start gate.
+async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGate) -> ExecResponse {
+    let vsock = match guest_operations.begin_control_operation().await {
+        Ok(vsock) => vsock,
         Err(error) => {
             return ExecResponse::Error {
                 error: control_start_error(error),
@@ -450,55 +448,34 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationGate) ->
         }
     };
 
-    let vsock = operation.guest();
-    let operation = operation.into_write_boundary();
-    let write_observer = operation.write_observer();
     let timeout_ms = request.timeout_secs.saturating_mul(1000);
     let env: &[(&str, &str)] = &[];
 
     let result = vsock
-        .exec_capture_with_write_observer(
-            vsock_host::ExecCaptureRequest {
-                command: &request.command,
-                timeout_ms,
-                env,
-                sudo: request.sudo,
-                label: "runner-exec",
-                stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-                stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
-                expected_exit_codes: &[],
-                wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
-            },
-            write_observer,
-        )
+        .exec_capture(vsock_host::ExecCaptureRequest {
+            command: &request.command,
+            timeout_ms,
+            env,
+            sudo: request.sudo,
+            label: "runner-exec",
+            stdout_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
+            wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+        })
         .await;
 
     match result {
-        Ok(result) => {
-            if let Err(error) = operation.complete() {
-                return ExecResponse::Error {
-                    error: format!("operation gate completion failed: {error:?}"),
-                };
-            }
-            ExecResponse::Success {
-                exit_code: result.exit_code,
-                stdout: BASE64.encode(&result.stdout),
-                stderr: BASE64.encode(&result.stderr),
-                stdout_truncated: result.stdout_truncated,
-                stderr_truncated: result.stderr_truncated,
-            }
-        }
-        Err(e) => {
-            let message = format!("exec failed: {e}");
-            if guest_error_is_terminal(&e, false)
-                && let Err(error) = operation.complete_if_write_started()
-            {
-                return ExecResponse::Error {
-                    error: format!("operation gate completion failed: {error:?}"),
-                };
-            }
-            ExecResponse::Error { error: message }
-        }
+        Ok(result) => ExecResponse::Success {
+            exit_code: result.exit_code,
+            stdout: BASE64.encode(&result.stdout),
+            stderr: BASE64.encode(&result.stderr),
+            stdout_truncated: result.stdout_truncated,
+            stderr_truncated: result.stderr_truncated,
+        },
+        Err(e) => ExecResponse::Error {
+            error: format!("exec failed: {e}"),
+        },
     }
 }
 
@@ -680,21 +657,23 @@ mod tests {
     use super::*;
     use crate::park_coordinator::{CoordinatorState, ParkCoordinator};
     use tokio::sync::oneshot;
-    use vsock_host::VsockHost;
+    use vsock_host::{NormalOperationFenceRejection, VsockHost};
     use vsock_proto::{
         Decoder, MSG_ERROR, MSG_EXEC_START, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
     };
 
-    fn test_gate(guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>) -> GuestOperationGate {
-        GuestOperationGate::new(guest, ParkCoordinator::new())
+    fn test_gate(
+        guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    ) -> GuestOperationStartGate {
+        GuestOperationStartGate::new(guest, ParkCoordinator::new())
     }
 
     fn test_gate_with_coordinator(
         guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-    ) -> (GuestOperationGate, ParkCoordinator) {
+    ) -> (GuestOperationStartGate, ParkCoordinator) {
         let coordinator = ParkCoordinator::new();
         (
-            GuestOperationGate::new(guest, coordinator.clone()),
+            GuestOperationStartGate::new(guest, coordinator.clone()),
             coordinator,
         )
     }
@@ -944,10 +923,10 @@ mod tests {
         };
         let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
         let guest_task = tokio::spawn(mock_guest_holds_exec(vsock_base, exec_seen_tx));
-        let vsock = host_task.await.unwrap().unwrap();
+        let vsock = Arc::new(host_task.await.unwrap().unwrap());
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
         let mut handle = bind_server(sock_path.clone(), gate)
             .unwrap()
@@ -977,14 +956,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(client_result.is_err());
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert!(
-            matches!(coordinator.state(), CoordinatorState::Dirty { .. }),
-            "cancelled in-flight control exec should mark the operation gate dirty"
-        );
-        assert_eq!(
-            coordinator.active_operation_count(),
-            0,
-            "cancelled in-flight control exec should not leave an active operation"
+            matches!(
+                vsock.try_fence_normal_operations(),
+                Err(NormalOperationFenceRejection::NotParkable
+                    | NormalOperationFenceRejection::Closed)
+            ),
+            "cancelled in-flight control exec should leave vsock-host not parkable"
         );
 
         guest_task.abort();
@@ -992,7 +971,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn control_exec_rejects_when_operation_gate_is_closing() {
+    async fn control_exec_rejects_when_policy_gate_is_closing() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock");
         let host_task = {
@@ -1045,7 +1024,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn control_exec_terminal_guest_error_completes_operation_gate() {
+    async fn control_exec_terminal_guest_error_completes_vsock_operation() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock");
         let host_task = {
@@ -1055,10 +1034,10 @@ mod tests {
             })
         };
         let guest_task = tokio::spawn(mock_guest_errors_exec(vsock_base, "guest refused exec"));
-        let vsock = host_task.await.unwrap().unwrap();
+        let vsock = Arc::new(host_task.await.unwrap().unwrap());
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
         let mut handle = bind_server(sock_path.clone(), gate)
             .unwrap()
@@ -1082,18 +1061,19 @@ mod tests {
             }
             ExecResponse::Success { .. } => panic!("expected guest error"),
         }
-        assert_eq!(coordinator.active_operation_count(), 0);
+        assert!(vsock.try_fence_normal_operations().is_ok());
         let attempt = coordinator
             .begin_prepare_park()
-            .expect("terminal guest error should complete the operation");
+            .expect("terminal guest error should leave park policy open");
         coordinator.abort_prepare_park(&attempt).unwrap();
 
         handle.shutdown().await;
-        guest_task.await.unwrap();
+        guest_task.abort();
+        let _ = guest_task.await;
     }
 
     #[tokio::test]
-    async fn control_exec_transport_error_marks_operation_gate_dirty() {
+    async fn control_exec_transport_error_makes_vsock_not_parkable() {
         let dir = tempfile::tempdir().unwrap();
         let vsock_base = dir.path().join("vsock");
         let host_task = {
@@ -1104,10 +1084,10 @@ mod tests {
         };
         let (exec_seen_tx, exec_seen_rx) = oneshot::channel();
         let guest_task = tokio::spawn(mock_guest_records_exec(vsock_base, exec_seen_tx));
-        let vsock = host_task.await.unwrap().unwrap();
+        let vsock = Arc::new(host_task.await.unwrap().unwrap());
 
         let sock_path = dir.path().join("control.sock");
-        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::new(vsock))));
+        let guest = Arc::new(tokio::sync::Mutex::new(Some(Arc::clone(&vsock))));
         let (gate, coordinator) = test_gate_with_coordinator(guest);
         let mut handle = bind_server(sock_path.clone(), gate)
             .unwrap()
@@ -1132,11 +1112,15 @@ mod tests {
             }
             ExecResponse::Success { .. } => panic!("expected transport error"),
         }
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert!(
-            matches!(coordinator.state(), CoordinatorState::Dirty { .. }),
-            "transport error after command write should dirty the operation gate"
+            matches!(
+                vsock.try_fence_normal_operations(),
+                Err(NormalOperationFenceRejection::NotParkable
+                    | NormalOperationFenceRejection::Closed)
+            ),
+            "transport error after command write should leave vsock-host not parkable"
         );
-        assert_eq!(coordinator.active_operation_count(), 0);
 
         handle.shutdown().await;
         guest_task.await.unwrap();
@@ -1233,7 +1217,7 @@ mod tests {
                 let payload = vsock_proto::encode_error(error);
                 let frame = vsock_proto::encode(MSG_ERROR, message.seq, &payload).unwrap();
                 stream.write_all(&frame).await.unwrap();
-                return;
+                std::future::pending::<()>().await;
             }
         }
     }

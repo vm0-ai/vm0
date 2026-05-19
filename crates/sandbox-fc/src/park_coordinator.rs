@@ -1,4 +1,4 @@
-//! Host-side park gate for same-session idle park.
+//! Host-side park policy gate for same-session idle park.
 //!
 //! `AgentQuiesced` is guest evidence that guest-agent-managed operations are
 //! fenced and settled. The host coordinator owns the stronger `ReadyForPark`
@@ -10,15 +10,16 @@
 //! authorize cross-run reuse or snapshot publication.
 //!
 //! Invariants:
-//! - A `Poisoned` operation keeps the coordinator `Dirty`; dirty sandboxes are
-//!   destroy-only and cannot re-enter the park lifecycle.
+//! - `sandbox-fc` owns park policy and operation-start admission only.
+//! - `vsock-host` owns normal guest operation lifetime. Its normal-operation
+//!   token acquisition is the authoritative operation lifetime linearization
+//!   point.
 //! - `ReadyForPark` means the host policy gate is closed, guest lifecycle
 //!   quiesce has completed, and the caller owns the authoritative `vsock-host`
 //!   normal-operation fence.
 //! - Coordinator locks are never held across `.await`.
 #![cfg_attr(not(test), allow(dead_code))]
 
-use std::collections::BTreeMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -32,9 +33,7 @@ impl ParkCoordinator {
         Self {
             inner: Arc::new(Mutex::new(Inner {
                 state: CoordinatorState::Open,
-                next_operation_id: 1,
                 next_attempt_id: 1,
-                operations: BTreeMap::new(),
             })),
         }
     }
@@ -43,25 +42,10 @@ impl ParkCoordinator {
         self.inner().state.clone()
     }
 
-    pub(crate) fn reserve_operation(&self) -> Result<OperationLease, LeaseRejection> {
-        let mut inner = self.inner();
-        match inner.state.clone() {
-            CoordinatorState::Open => {
-                let id = OperationId(inner.next_operation_id);
-                inner.next_operation_id += 1;
-                inner.operations.insert(
-                    id,
-                    OperationEntry {
-                        liveness: OperationLiveness::Reserved,
-                    },
-                );
-                Ok(OperationLease {
-                    id,
-                    inner: Arc::clone(&self.inner),
-                    released: false,
-                })
-            }
-            state => Err(LeaseRejection::GateClosed { state }),
+    pub(crate) fn ensure_operation_start_allowed(&self) -> Result<(), OperationStartRejection> {
+        match self.inner().state.clone() {
+            CoordinatorState::Open => Ok(()),
+            state => Err(OperationStartRejection::GateClosed { state }),
         }
     }
 
@@ -80,16 +64,6 @@ impl ParkCoordinator {
         let attempt_id = ParkAttemptId(inner.next_attempt_id);
         inner.next_attempt_id += 1;
         inner.state = CoordinatorState::ClosingForPark { attempt_id };
-
-        if let Some(reason) = inner.poisoned_reason() {
-            inner.mark_dirty(reason.clone());
-            return Err(PrepareParkError::Dirty { reason });
-        }
-
-        if inner.has_active_operations() {
-            inner.state = CoordinatorState::Open;
-            return Err(PrepareParkError::Busy);
-        }
 
         Ok(ParkAttempt { id: attempt_id })
     }
@@ -171,30 +145,6 @@ impl ParkCoordinator {
         self.inner().mark_dirty(reason);
     }
 
-    pub(crate) fn poison_unresolved_operations(&self, reason: DirtyReason) -> bool {
-        let mut inner = self.inner();
-        let mut poisoned = false;
-
-        for entry in inner.operations.values_mut() {
-            if entry.liveness.blocks_park() {
-                entry.liveness = OperationLiveness::Poisoned;
-                poisoned = true;
-            }
-        }
-        if poisoned {
-            inner.mark_dirty(reason);
-        }
-        poisoned
-    }
-
-    pub(crate) fn active_operation_count(&self) -> usize {
-        self.inner()
-            .operations
-            .values()
-            .filter(|entry| entry.liveness.blocks_park())
-            .count()
-    }
-
     fn inner(&self) -> MutexGuard<'_, Inner> {
         lock_inner(&self.inner)
     }
@@ -228,28 +178,6 @@ impl std::fmt::Display for DirtyReason {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct OperationId(u64);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum OperationLiveness {
-    Reserved,
-    Writing,
-    InGuest,
-    Cancelling,
-    Terminal,
-    Poisoned,
-}
-
-impl OperationLiveness {
-    fn blocks_park(self) -> bool {
-        matches!(
-            self,
-            Self::Reserved | Self::Writing | Self::InGuest | Self::Cancelling
-        )
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ParkAttemptId(u64);
 
@@ -264,13 +192,12 @@ pub(crate) enum PrepareParkEvidence {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LeaseRejection {
+pub(crate) enum OperationStartRejection {
     GateClosed { state: CoordinatorState },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PrepareParkError {
-    Busy,
     Dirty {
         reason: DirtyReason,
     },
@@ -283,149 +210,10 @@ pub(crate) enum PrepareParkError {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum OperationTransitionError {
-    UnknownOperation {
-        operation_id: OperationId,
-    },
-    InvalidTransition {
-        operation_id: OperationId,
-        from: OperationLiveness,
-        to: OperationLiveness,
-    },
-}
-
-#[derive(Debug)]
-pub(crate) struct OperationLease {
-    id: OperationId,
-    inner: Arc<Mutex<Inner>>,
-    released: bool,
-}
-
-impl OperationLease {
-    pub(crate) fn id(&self) -> OperationId {
-        self.id
-    }
-
-    pub(crate) fn mark_writing(&mut self) -> Result<(), OperationTransitionError> {
-        self.transition(OperationLiveness::Writing)
-    }
-
-    pub(crate) fn mark_in_guest(&mut self) -> Result<(), OperationTransitionError> {
-        self.transition(OperationLiveness::InGuest)
-    }
-
-    pub(crate) fn mark_cancelling(&mut self) -> Result<(), OperationTransitionError> {
-        self.transition(OperationLiveness::Cancelling)
-    }
-
-    pub(crate) fn complete(mut self) -> Result<(), OperationTransitionError> {
-        let mut inner = lock_inner(&self.inner);
-        let Some(entry) = inner.operations.get_mut(&self.id) else {
-            return Err(OperationTransitionError::UnknownOperation {
-                operation_id: self.id,
-            });
-        };
-
-        if !can_transition(entry.liveness, OperationLiveness::Terminal) {
-            return Err(OperationTransitionError::InvalidTransition {
-                operation_id: self.id,
-                from: entry.liveness,
-                to: OperationLiveness::Terminal,
-            });
-        }
-
-        entry.liveness = OperationLiveness::Terminal;
-        inner.operations.remove(&self.id);
-        self.released = true;
-        Ok(())
-    }
-
-    pub(crate) fn poison(mut self, reason: DirtyReason) -> Result<(), OperationTransitionError> {
-        let mut inner = lock_inner(&self.inner);
-        let Some(entry) = inner.operations.get_mut(&self.id) else {
-            return Err(OperationTransitionError::UnknownOperation {
-                operation_id: self.id,
-            });
-        };
-
-        if !can_transition(entry.liveness, OperationLiveness::Poisoned) {
-            return Err(OperationTransitionError::InvalidTransition {
-                operation_id: self.id,
-                from: entry.liveness,
-                to: OperationLiveness::Poisoned,
-            });
-        }
-
-        entry.liveness = OperationLiveness::Poisoned;
-        inner.mark_dirty(reason);
-        self.released = true;
-        Ok(())
-    }
-
-    fn transition(&mut self, to: OperationLiveness) -> Result<(), OperationTransitionError> {
-        let mut inner = lock_inner(&self.inner);
-        let Some(entry) = inner.operations.get_mut(&self.id) else {
-            return Err(OperationTransitionError::UnknownOperation {
-                operation_id: self.id,
-            });
-        };
-
-        if !can_transition(entry.liveness, to) {
-            return Err(OperationTransitionError::InvalidTransition {
-                operation_id: self.id,
-                from: entry.liveness,
-                to,
-            });
-        }
-
-        entry.liveness = to;
-        Ok(())
-    }
-}
-
-impl Drop for OperationLease {
-    fn drop(&mut self) {
-        if self.released {
-            return;
-        }
-
-        let mut inner = lock_inner(&self.inner);
-        let Some(liveness) = inner.operations.get(&self.id).map(|entry| entry.liveness) else {
-            return;
-        };
-
-        match liveness {
-            OperationLiveness::Reserved => {
-                inner.operations.remove(&self.id);
-            }
-            OperationLiveness::Writing
-            | OperationLiveness::InGuest
-            | OperationLiveness::Cancelling => {
-                if let Some(entry) = inner.operations.get_mut(&self.id) {
-                    entry.liveness = OperationLiveness::Poisoned;
-                }
-                inner.mark_dirty(DirtyReason::new(format!(
-                    "operation {} dropped after possible guest write",
-                    self.id.0
-                )));
-            }
-            OperationLiveness::Terminal | OperationLiveness::Poisoned => {}
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct OperationEntry {
-    liveness: OperationLiveness,
-}
-
 #[derive(Debug)]
 struct Inner {
     state: CoordinatorState,
-    next_operation_id: u64,
     next_attempt_id: u64,
-    operations: BTreeMap<OperationId, OperationEntry>,
 }
 
 struct ParkAttemptDropGuard {
@@ -472,36 +260,6 @@ impl Inner {
 
         self.state = CoordinatorState::Dirty { reason };
     }
-
-    fn has_active_operations(&self) -> bool {
-        self.operations
-            .values()
-            .any(|entry| entry.liveness.blocks_park())
-    }
-
-    fn poisoned_reason(&self) -> Option<DirtyReason> {
-        self.operations
-            .iter()
-            .find(|(_, entry)| entry.liveness == OperationLiveness::Poisoned)
-            .map(|(id, _)| DirtyReason::new(format!("operation {} poisoned", id.0)))
-    }
-}
-
-fn can_transition(from: OperationLiveness, to: OperationLiveness) -> bool {
-    matches!(
-        (from, to),
-        (OperationLiveness::Reserved, OperationLiveness::Writing)
-            | (OperationLiveness::Reserved, OperationLiveness::Poisoned)
-            | (OperationLiveness::Writing, OperationLiveness::InGuest)
-            | (OperationLiveness::Writing, OperationLiveness::Cancelling)
-            | (OperationLiveness::Writing, OperationLiveness::Terminal)
-            | (OperationLiveness::Writing, OperationLiveness::Poisoned)
-            | (OperationLiveness::InGuest, OperationLiveness::Cancelling)
-            | (OperationLiveness::InGuest, OperationLiveness::Terminal)
-            | (OperationLiveness::InGuest, OperationLiveness::Poisoned)
-            | (OperationLiveness::Cancelling, OperationLiveness::Terminal)
-            | (OperationLiveness::Cancelling, OperationLiveness::Poisoned)
-    )
 }
 
 fn lock_inner(inner: &Mutex<Inner>) -> MutexGuard<'_, Inner> {
@@ -534,13 +292,6 @@ mod tests {
         }
     }
 
-    fn assert_dirty_state(coordinator: &ParkCoordinator) {
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-    }
-
     fn dirty_reason(coordinator: &ParkCoordinator) -> DirtyReason {
         match coordinator.state() {
             CoordinatorState::Dirty { reason } => reason,
@@ -548,290 +299,55 @@ mod tests {
         }
     }
 
-    fn operation_registry_len(coordinator: &ParkCoordinator) -> usize {
-        coordinator.inner().operations.len()
-    }
-
     #[test]
     fn initial_state_is_open() {
         let coordinator = ParkCoordinator::new();
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.ensure_operation_start_allowed(), Ok(()));
     }
 
     #[test]
-    fn poisoned_mutex_marks_coordinator_dirty() {
-        let coordinator = ParkCoordinator::new();
-        let poisoned_coordinator = coordinator.clone();
-
-        let join_result = std::thread::spawn(move || {
-            let _guard = poisoned_coordinator.inner();
-            panic!("poison coordinator lock");
-        })
-        .join();
-
-        assert!(join_result.is_err());
-        assert_eq!(
-            dirty_reason(&coordinator),
-            DirtyReason::new("park coordinator mutex poisoned")
-        );
+    fn operation_start_is_rejected_when_policy_gate_is_not_open() {
+        let closing = ParkCoordinator::new();
+        let closing_attempt = begin_attempt(&closing);
         assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
-                state: CoordinatorState::Dirty { .. }
-            })
-        ));
-    }
-
-    #[test]
-    fn reservations_succeed_only_when_open() {
-        let coordinator = ParkCoordinator::new();
-        let lease = coordinator.reserve_operation();
-        assert!(lease.is_ok());
-        drop(lease);
-
-        let attempt = begin_attempt(&coordinator);
-        assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+            closing.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::ClosingForPark { .. }
             })
         ));
+        closing.abort_prepare_park(&closing_attempt).unwrap();
 
-        complete_attempt(&coordinator, &attempt);
+        let ready = ParkCoordinator::new();
+        let ready_attempt = begin_attempt(&ready);
+        complete_attempt(&ready, &ready_attempt);
         assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+            ready.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::ReadyForPark { .. }
             })
         ));
 
-        assert!(coordinator.mark_parked(&attempt).is_ok());
-        assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+        let parked = ParkCoordinator::new();
+        let parked_attempt = begin_attempt(&parked);
+        complete_attempt(&parked, &parked_attempt);
+        parked.mark_parked(&parked_attempt).unwrap();
+        assert_eq!(
+            parked.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::Parked
             })
-        ));
+        );
 
-        coordinator.mark_dirty(DirtyReason::new("test dirty"));
+        let dirty = ParkCoordinator::new();
+        dirty.mark_dirty(DirtyReason::new("test dirty"));
         assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+            dirty.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::Dirty { .. }
             })
         ));
-    }
-
-    #[test]
-    fn dropping_reserved_lease_releases_without_dirtying() {
-        let coordinator = ParkCoordinator::new();
-        let lease = coordinator.reserve_operation();
-        assert!(lease.is_ok());
-        assert_eq!(coordinator.active_operation_count(), 1);
-
-        drop(lease);
-
-        assert_eq!(coordinator.active_operation_count(), 0);
-        assert_eq!(operation_registry_len(&coordinator), 0);
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-    }
-
-    #[test]
-    fn completed_operations_are_removed_from_registry() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert_eq!(operation_registry_len(&coordinator), 1);
-
-        assert!(lease.mark_writing().is_ok());
-        assert!(lease.mark_in_guest().is_ok());
-        assert!(lease.complete().is_ok());
-
-        assert_eq!(coordinator.active_operation_count(), 0);
-        assert_eq!(operation_registry_len(&coordinator), 0);
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-    }
-
-    #[test]
-    fn failed_reserved_complete_releases_without_dirtying() {
-        let coordinator = ParkCoordinator::new();
-        let lease = coordinator.reserve_operation().expect("reserve operation");
-        assert_eq!(operation_registry_len(&coordinator), 1);
-
-        assert!(matches!(
-            lease.complete(),
-            Err(OperationTransitionError::InvalidTransition {
-                from: OperationLiveness::Reserved,
-                to: OperationLiveness::Terminal,
-                ..
-            })
-        ));
-
-        assert_eq!(coordinator.active_operation_count(), 0);
-        assert_eq!(operation_registry_len(&coordinator), 0);
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-    }
-
-    #[test]
-    fn dropping_after_possible_write_marks_dirty() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator
-            .reserve_operation()
-            .expect("reserve operation before possible write");
-        assert!(lease.mark_writing().is_ok());
-
-        drop(lease);
-
-        assert_dirty_state(&coordinator);
-        assert!(matches!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Dirty { .. })
-        ));
-    }
-
-    #[test]
-    fn dropping_in_guest_or_cancelling_operation_marks_dirty() {
-        for enter_cancelling in [false, true] {
-            let coordinator = ParkCoordinator::new();
-            let mut lease = coordinator
-                .reserve_operation()
-                .expect("reserve operation before possible write");
-
-            assert!(lease.mark_writing().is_ok());
-            assert!(lease.mark_in_guest().is_ok());
-            if enter_cancelling {
-                assert!(lease.mark_cancelling().is_ok());
-            }
-
-            drop(lease);
-
-            assert_dirty_state(&coordinator);
-            assert_eq!(operation_registry_len(&coordinator), 1);
-        }
-    }
-
-    #[test]
-    fn active_operation_returns_busy_and_reopens_gate() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert!(lease.mark_writing().is_ok());
-
-        assert_eq!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Busy)
-        );
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert!(coordinator.reserve_operation().is_ok());
-
-        assert!(lease.complete().is_ok());
-    }
-
-    #[test]
-    fn reserved_operation_returns_busy() {
-        let coordinator = ParkCoordinator::new();
-        let lease = coordinator.reserve_operation().expect("reserve operation");
-
-        assert_eq!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Busy)
-        );
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-
-        drop(lease);
-    }
-
-    #[test]
-    fn cancelling_operation_returns_busy_without_dirtying() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert!(lease.mark_writing().is_ok());
-        assert!(lease.mark_in_guest().is_ok());
-        assert!(lease.mark_cancelling().is_ok());
-
-        assert_eq!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Busy)
-        );
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-
-        assert!(lease.complete().is_ok());
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-    }
-
-    #[test]
-    fn poison_marks_dirty_permanently() {
-        let coordinator = ParkCoordinator::new();
-        let lease = coordinator.reserve_operation().expect("reserve operation");
-
-        assert!(
-            lease
-                .poison(DirtyReason::new("transport uncertain"))
-                .is_ok()
-        );
-        assert_dirty_state(&coordinator);
-        assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
-                state: CoordinatorState::Dirty { .. }
-            })
-        ));
-        assert!(matches!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Dirty { .. })
-        ));
-    }
-
-    #[test]
-    fn driver_shutdown_poisons_unresolved_operations() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert!(lease.mark_writing().is_ok());
-
-        assert!(coordinator.poison_unresolved_operations(DirtyReason::new("driver shutdown")));
-
-        assert_dirty_state(&coordinator);
-        drop(lease);
-        assert_dirty_state(&coordinator);
-    }
-
-    #[test]
-    fn driver_shutdown_poison_is_idempotent() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert!(lease.mark_writing().is_ok());
-
-        assert!(coordinator.poison_unresolved_operations(DirtyReason::new("driver shutdown")));
-        assert!(!coordinator.poison_unresolved_operations(DirtyReason::new("second shutdown")));
-
-        assert_eq!(
-            dirty_reason(&coordinator),
-            DirtyReason::new("driver shutdown")
-        );
-        drop(lease);
-        assert_eq!(
-            dirty_reason(&coordinator),
-            DirtyReason::new("driver shutdown")
-        );
-    }
-
-    #[test]
-    fn driver_shutdown_without_unresolved_operations_does_not_dirty() {
-        let coordinator = ParkCoordinator::new();
-
-        assert!(!coordinator.poison_unresolved_operations(DirtyReason::new("driver shutdown")));
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-    }
-
-    #[test]
-    fn first_dirty_reason_is_preserved() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert!(lease.mark_writing().is_ok());
-
-        coordinator.mark_dirty(DirtyReason::new("first cause"));
-        drop(lease);
-
-        assert_eq!(dirty_reason(&coordinator), DirtyReason::new("first cause"));
     }
 
     #[test]
@@ -863,6 +379,7 @@ mod tests {
 
         assert!(coordinator.reopen_after_unpark().is_ok());
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.ensure_operation_start_allowed(), Ok(()));
     }
 
     #[test]
@@ -956,25 +473,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn operation_transitions_are_validated() {
-        let coordinator = ParkCoordinator::new();
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        assert_eq!(lease.id(), OperationId(1));
-
-        assert!(matches!(
-            lease.mark_in_guest(),
-            Err(OperationTransitionError::InvalidTransition {
-                from: OperationLiveness::Reserved,
-                to: OperationLiveness::InGuest,
-                ..
-            })
-        ));
-        assert!(lease.mark_writing().is_ok());
-        assert!(lease.mark_in_guest().is_ok());
-        assert!(lease.complete().is_ok());
-    }
-
     #[tokio::test]
     async fn async_prepare_hook_runs_without_holding_coordinator_lock() {
         let coordinator = ParkCoordinator::new();
@@ -983,8 +481,8 @@ mod tests {
         let result = coordinator
             .prepare_park_with(|_| async move {
                 assert!(matches!(
-                    observed.reserve_operation(),
-                    Err(LeaseRejection::GateClosed {
+                    observed.ensure_operation_start_allowed(),
+                    Err(OperationStartRejection::GateClosed {
                         state: CoordinatorState::ClosingForPark { .. }
                     })
                 ));
@@ -1044,7 +542,7 @@ mod tests {
         assert!(join_error.is_cancelled());
 
         assert_eq!(coordinator.state(), CoordinatorState::Open);
-        assert!(coordinator.reserve_operation().is_ok());
+        assert_eq!(coordinator.ensure_operation_start_allowed(), Ok(()));
         assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
         assert!(matches!(
             coordinator.complete_prepare_park(&stale_attempt, PrepareParkEvidence::AgentQuiesced),
@@ -1089,15 +587,15 @@ mod tests {
         );
         assert_eq!(std::sync::Arc::strong_count(&coordinator.inner), 1);
         assert!(matches!(
-            coordinator.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+            coordinator.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::Dirty { .. }
             })
         ));
     }
 
     #[test]
-    fn concurrent_prepare_and_reserve_are_linearized() {
+    fn concurrent_prepare_and_operation_start_admission_are_linearized() {
         for _ in 0..64 {
             let coordinator = ParkCoordinator::new();
             let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
@@ -1109,33 +607,26 @@ mod tests {
                 prepare_coordinator.begin_prepare_park()
             });
 
-            let reserve_coordinator = coordinator.clone();
-            let reserve_barrier = std::sync::Arc::clone(&barrier);
-            let reserve_thread = std::thread::spawn(move || {
-                reserve_barrier.wait();
-                reserve_coordinator.reserve_operation()
+            let start_coordinator = coordinator.clone();
+            let start_barrier = std::sync::Arc::clone(&barrier);
+            let start_thread = std::thread::spawn(move || {
+                start_barrier.wait();
+                start_coordinator.ensure_operation_start_allowed()
             });
 
             let prepare_result = prepare_thread
                 .join()
                 .expect("prepare thread should not panic");
-            let reserve_result = reserve_thread
-                .join()
-                .expect("reserve thread should not panic");
+            let start_result = start_thread.join().expect("start thread should not panic");
 
-            match (prepare_result, reserve_result) {
-                (
-                    Ok(attempt),
-                    Err(LeaseRejection::GateClosed {
-                        state: CoordinatorState::ClosingForPark { .. },
-                    }),
-                ) => {
+            match (prepare_result, start_result) {
+                (Ok(attempt), Err(OperationStartRejection::GateClosed { .. })) => {
                     assert!(coordinator.abort_prepare_park(&attempt).is_ok());
                 }
-                (Err(PrepareParkError::Busy), Ok(lease)) => {
-                    drop(lease);
+                (Ok(attempt), Ok(())) => {
+                    assert!(coordinator.abort_prepare_park(&attempt).is_ok());
                 }
-                other => panic!("unexpected concurrent prepare/reserve result: {other:?}"),
+                other => panic!("unexpected concurrent prepare/start result: {other:?}"),
             }
 
             assert_eq!(coordinator.state(), CoordinatorState::Open);
@@ -1143,78 +634,13 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_prepare_and_reserved_drop_are_linearized() {
-        for _ in 0..64 {
-            let coordinator = ParkCoordinator::new();
-            let lease = coordinator.reserve_operation().expect("reserve operation");
-            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    fn first_dirty_reason_is_preserved() {
+        let coordinator = ParkCoordinator::new();
 
-            let prepare_coordinator = coordinator.clone();
-            let prepare_barrier = std::sync::Arc::clone(&barrier);
-            let prepare_thread = std::thread::spawn(move || {
-                prepare_barrier.wait();
-                prepare_coordinator.begin_prepare_park()
-            });
+        coordinator.mark_dirty(DirtyReason::new("first cause"));
+        coordinator.mark_dirty(DirtyReason::new("second cause"));
 
-            let drop_barrier = std::sync::Arc::clone(&barrier);
-            let drop_thread = std::thread::spawn(move || {
-                drop_barrier.wait();
-                drop(lease);
-            });
-
-            let prepare_result = prepare_thread
-                .join()
-                .expect("prepare thread should not panic");
-            drop_thread.join().expect("drop thread should not panic");
-
-            match prepare_result {
-                Ok(attempt) => {
-                    assert!(coordinator.abort_prepare_park(&attempt).is_ok());
-                }
-                Err(PrepareParkError::Busy) => {}
-                other => panic!("unexpected concurrent prepare/drop result: {other:?}"),
-            }
-
-            assert_eq!(coordinator.state(), CoordinatorState::Open);
-            assert_eq!(coordinator.active_operation_count(), 0);
-            assert_eq!(operation_registry_len(&coordinator), 0);
-        }
-    }
-
-    #[test]
-    fn concurrent_prepare_and_possible_guest_write_drop_mark_dirty() {
-        for _ in 0..64 {
-            let coordinator = ParkCoordinator::new();
-            let mut lease = coordinator.reserve_operation().expect("reserve operation");
-            assert!(lease.mark_writing().is_ok());
-            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
-
-            let prepare_coordinator = coordinator.clone();
-            let prepare_barrier = std::sync::Arc::clone(&barrier);
-            let prepare_thread = std::thread::spawn(move || {
-                prepare_barrier.wait();
-                prepare_coordinator.begin_prepare_park()
-            });
-
-            let drop_barrier = std::sync::Arc::clone(&barrier);
-            let drop_thread = std::thread::spawn(move || {
-                drop_barrier.wait();
-                drop(lease);
-            });
-
-            let prepare_result = prepare_thread
-                .join()
-                .expect("prepare thread should not panic");
-            drop_thread.join().expect("drop thread should not panic");
-
-            assert!(matches!(
-                prepare_result,
-                Err(PrepareParkError::Busy | PrepareParkError::Dirty { .. })
-            ));
-            assert_dirty_state(&coordinator);
-            assert_eq!(coordinator.active_operation_count(), 0);
-            assert_eq!(operation_registry_len(&coordinator), 1);
-        }
+        assert_eq!(dirty_reason(&coordinator), DirtyReason::new("first cause"));
     }
 
     #[test]
@@ -1224,17 +650,12 @@ mod tests {
         let first_attempt = begin_attempt(&first);
 
         assert!(matches!(
-            first.reserve_operation(),
-            Err(LeaseRejection::GateClosed {
+            first.ensure_operation_start_allowed(),
+            Err(OperationStartRejection::GateClosed {
                 state: CoordinatorState::ClosingForPark { .. }
             })
         ));
-
-        let second_lease = second
-            .reserve_operation()
-            .expect("second coordinator should stay open");
-        assert_eq!(second.state(), CoordinatorState::Open);
-        drop(second_lease);
+        assert_eq!(second.ensure_operation_start_allowed(), Ok(()));
 
         assert!(first.abort_prepare_park(&first_attempt).is_ok());
         assert_eq!(first.state(), CoordinatorState::Open);
