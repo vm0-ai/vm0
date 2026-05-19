@@ -92,13 +92,26 @@ mod tests {
         )
     }
 
-    fn state_reader(state: &AtomicU8) -> impl Fn() -> SandboxState + '_ {
-        || match state.load(Ordering::Acquire) {
+    fn state_from_atomic(state: &AtomicU8) -> SandboxState {
+        match state.load(Ordering::Acquire) {
             value if value == SandboxState::Running as u8 => SandboxState::Running,
             value if value == SandboxState::Crashed as u8 => SandboxState::Crashed,
             value if value == SandboxState::Stopping as u8 => SandboxState::Stopping,
             value if value == SandboxState::Stopped as u8 => SandboxState::Stopped,
             _ => SandboxState::Created,
+        }
+    }
+
+    fn signaled_state_reader(
+        state: Arc<AtomicU8>,
+        first_read: tokio::sync::oneshot::Sender<()>,
+    ) -> impl Fn() -> SandboxState + Send + 'static {
+        let first_read = std::sync::Mutex::new(Some(first_read));
+        move || {
+            if let Some(first_read) = first_read.lock().unwrap().take() {
+                let _ = first_read.send(());
+            }
+            state_from_atomic(&state)
         }
     }
 
@@ -152,12 +165,18 @@ mod tests {
         let gate = GuestOperationStartGate::new(Arc::clone(&guest), coordinator.clone());
         let locked_guest = guest.lock().await;
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let (first_read_tx, first_read_rx) = tokio::sync::oneshot::channel();
 
         let operation = {
             let state = Arc::clone(&state);
-            tokio::spawn(async move { gate.begin_sandbox_operation(state_reader(&state)).await })
+            tokio::spawn(async move {
+                gate.begin_sandbox_operation(signaled_state_reader(state, first_read_tx))
+                    .await
+            })
         };
-        tokio::task::yield_now().await;
+        first_read_rx
+            .await
+            .expect("operation should pass the first state check");
         state.store(SandboxState::Crashed as u8, Ordering::Release);
         drop(locked_guest);
 
@@ -167,14 +186,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn operation_rechecks_policy_after_guest_lock_wait() {
+    async fn sandbox_operation_rechecks_policy_after_guest_lock_wait() {
         let coordinator = ParkCoordinator::new();
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let gate = GuestOperationStartGate::new(Arc::clone(&guest), coordinator.clone());
         let locked_guest = guest.lock().await;
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let (first_read_tx, first_read_rx) = tokio::sync::oneshot::channel();
 
-        let operation = tokio::spawn(async move { gate.begin_control_operation().await });
-        tokio::task::yield_now().await;
+        let operation = tokio::spawn(async move {
+            gate.begin_sandbox_operation(signaled_state_reader(state, first_read_tx))
+                .await
+        });
+        first_read_rx
+            .await
+            .expect("operation should pass the first policy check");
         let attempt = coordinator.begin_prepare_park().expect("begin prepare");
         drop(locked_guest);
 
