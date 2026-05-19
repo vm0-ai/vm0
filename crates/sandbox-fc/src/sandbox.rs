@@ -2754,6 +2754,22 @@ mod tests {
         stream.write_all(&response).await.unwrap();
     }
 
+    async fn send_mismatched_process_control_result(stream: &mut UnixStream, request: RawMessage) {
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        let decoded = vsock_proto::decode_process_control(&request.payload).unwrap();
+        let payload = vsock_proto::encode_process_control_result(
+            decoded.target_seq + 1,
+            decoded.control_nonce,
+            decoded.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .unwrap();
+        let response =
+            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request.seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
+
     async fn send_process_exit(stream: &mut UnixStream, spawn_seq: u32, pid: u32) {
         let payload = vsock_proto::encode_process_exit(pid, 0, b"", b"");
         let response = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &payload).unwrap();
@@ -3901,6 +3917,93 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "guest rejected control");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_protocol_error_after_guest_write_marks_gate_dirty() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq: _,
+            pid: _,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "malformed-result".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_mismatched_process_control_result(&mut guest, request).await;
+
+        let error = control_task.await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            error
+                .to_string()
+                .contains("process_control_result target seq mismatch"),
+            "unexpected error: {error}",
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+        assert_eq!(coordinator.active_operation_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn process_control_backend_crash_after_guest_write_marks_gate_dirty() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control,
+            "backend-crash".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+
+        state.store(SandboxState::Crashed as u8, Ordering::Release);
+        state_tx.send(SandboxState::Crashed).unwrap();
+
+        let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("firecracker process crashed"),
+            "unexpected error: {error}",
+        );
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
         assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
