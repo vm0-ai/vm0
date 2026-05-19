@@ -758,7 +758,7 @@ describe("POST /api/zero/runs", () => {
     expect(decrypted).not.toHaveProperty("CHATGPT_REFRESH_TOKEN");
     expect(decrypted).not.toHaveProperty("CHATGPT_ID_TOKEN");
     expect(executionContext.secretConnectorMap).toMatchObject({
-      CHATGPT_ACCESS_TOKEN: "codex-oauth",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
     });
     expect(
       executionContext.secretConnectorMetadataMap?.CHATGPT_ACCESS_TOKEN,

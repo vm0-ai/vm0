@@ -390,7 +390,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toEqual({
-      CHATGPT_ACCESS_TOKEN: "codex-oauth",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
     });
     expect(result.secretConnectorMetadataMap).toEqual({
       CHATGPT_ACCESS_TOKEN: {

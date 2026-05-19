@@ -128,10 +128,6 @@ function generateConnectorSessionCode(
   return code;
 }
 
-function isRefreshOnlyConnectorType(type: ConnectorType): boolean {
-  return type === "codex-oauth";
-}
-
 function buildCookieHeader(
   name: string,
   value: string,
@@ -546,15 +542,6 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    if (isRefreshOnlyConnectorType(type)) {
-      return jsonResponse(
-        {
-          error:
-            "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-        },
-        400,
-      );
-    }
     if (!getConnectorAuthMethod(type, "oauth")) {
       return jsonResponse(
         { error: `${type} connector does not use OAuth` },

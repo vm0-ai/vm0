@@ -637,9 +637,6 @@ export type NonFirewallConnectorType =
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
-  // OAuth-only connectors used by model-provider pipelines (firewall integration
-  // lives in MODEL_PROVIDER_FIREWALL_CONFIGS, not here).
-  | "codex-oauth"
   // Other
   | "computer" // not an API connector
   | "local-browser" // virtual connector backed by a user-authorized browser host

@@ -855,7 +855,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
-            CHATGPT_ACCESS_TOKEN: "codex-oauth",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
           },
           secretConnectorMetadataMap: {
             CHATGPT_ACCESS_TOKEN: {
@@ -873,7 +873,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.headers.Authorization).toBe(
       "Bearer fresh-chatgpt-token",
     );
-    expect(response.body.refreshedConnectors).toStrictEqual(["codex-oauth"]);
+    expect(response.body.refreshedConnectors).toStrictEqual([
+      "codex-oauth-token",
+    ]);
     expect(response.body.refreshedSecrets).toStrictEqual([
       "CHATGPT_ACCESS_TOKEN",
     ]);
@@ -904,7 +906,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
-            CHATGPT_ACCESS_TOKEN: "codex-oauth",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
           },
           secretConnectorMetadataMap: {
             CHATGPT_ACCESS_TOKEN: {
@@ -955,7 +957,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
           },
           secretConnectorMap: {
-            CHATGPT_ACCESS_TOKEN: "codex-oauth",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
           },
           secretConnectorMetadataMap: {
             CHATGPT_ACCESS_TOKEN: {
@@ -972,7 +974,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
-      connectors: ["codex-oauth"],
+      connectors: ["codex-oauth-token"],
     });
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: true,

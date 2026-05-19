@@ -4,6 +4,7 @@ import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runne
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
+  MODEL_PROVIDER_OAUTH_HANDLERS,
   PROVIDER_HANDLERS,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
@@ -32,7 +33,8 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
 type ProviderHandler =
-  (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS];
+  | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
+  | (typeof MODEL_PROVIDER_OAUTH_HANDLERS)[keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS];
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
@@ -198,11 +200,15 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function getRefreshSourceType(handlerKey: string): OAuthSecretSource {
-  return handlerKey === "codex-oauth" ? "model-provider" : "connector";
+  return Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, handlerKey)
+    ? "model-provider"
+    : "connector";
 }
 
 function sourceHandlerToProviderType(handlerKey: string): string | undefined {
-  return handlerKey === "codex-oauth" ? "codex-oauth-token" : undefined;
+  return Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, handlerKey)
+    ? handlerKey
+    : undefined;
 }
 
 function resolveSecretUserId(
@@ -233,6 +239,11 @@ function resolveRefreshMetadata(
 }
 
 function providerHandler(connectorType: string) {
+  if (Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, connectorType)) {
+    return MODEL_PROVIDER_OAUTH_HANDLERS[
+      connectorType as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
+    ];
+  }
   if (!Object.hasOwn(PROVIDER_HANDLERS, connectorType)) {
     return null;
   }

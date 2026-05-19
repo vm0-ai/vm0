@@ -378,10 +378,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
-    const oauthTypesWithoutRuntimeClientCredentials = new Set([
-      "codex-oauth",
-      "mailchimp",
-    ]);
+    const oauthTypesWithoutRuntimeClientCredentials = new Set(["mailchimp"]);
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
       return (
         getConnectorOAuthConfig(type) &&

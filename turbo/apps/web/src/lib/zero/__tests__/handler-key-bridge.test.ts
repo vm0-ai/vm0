@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   HANDLER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_HANDLER_KEY,
@@ -39,7 +39,9 @@ describe("handler-key bridge tables stay in sync", () => {
   it("every bridged handler key resolves to a registered ProviderHandler with refreshToken", () => {
     for (const handlerKey of Object.values(MODEL_PROVIDER_HANDLER_KEY)) {
       const handler =
-        PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+        MODEL_PROVIDER_OAUTH_HANDLERS[
+          handlerKey as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
+        ];
       expect(handler).toBeDefined();
       expect(handler.refreshToken).toBeDefined();
     }
@@ -48,7 +50,7 @@ describe("handler-key bridge tables stay in sync", () => {
 
 describe("getRefreshSourceType", () => {
   it("returns 'model-provider' for bridged handler keys", () => {
-    expect(getRefreshSourceType("codex-oauth")).toBe("model-provider");
+    expect(getRefreshSourceType("codex-oauth-token")).toBe("model-provider");
   });
 
   it("returns 'connector' for unbridged handler keys (default)", () => {

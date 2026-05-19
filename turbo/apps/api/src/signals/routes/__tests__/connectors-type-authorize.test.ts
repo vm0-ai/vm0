@@ -141,18 +141,6 @@ describe("GET /api/connectors/:type/authorize", () => {
     ).toBeFalsy();
   });
 
-  it("returns 400 for refresh-only codex-oauth connector", async () => {
-    const response = await requestAuthorize("codex-oauth", {
-      authenticated: true,
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toStrictEqual({
-      error:
-        "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-    });
-  });
-
   it("uses Slack user_scope rather than scope", async () => {
     const response = await requestAuthorize("slack", { authenticated: true });
 

@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   exchangeChatgptCode,
   refreshChatgptToken,
@@ -258,8 +258,10 @@ describe("connector/providers/codex-oauth", () => {
   });
 
   describe("codexOauthHandler", () => {
-    it("is registered in PROVIDER_HANDLERS under codex-oauth key", () => {
-      expect(PROVIDER_HANDLERS["codex-oauth"]).toBe(codexOauthHandler);
+    it("is registered as a model-provider OAuth handler", () => {
+      expect(MODEL_PROVIDER_OAUTH_HANDLERS["codex-oauth-token"]).toBe(
+        codexOauthHandler,
+      );
     });
 
     it("buildAuthUrl returns OpenAI OAuth authorization URL with PKCE", async () => {

@@ -229,6 +229,10 @@ export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
 export { providerEnvFromObject } from "./provider-types";
 
+export const MODEL_PROVIDER_OAUTH_HANDLERS = {
+  "codex-oauth-token": codexOauthHandler,
+} as const satisfies Record<string, ProviderHandler>;
+
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
   ProviderHandler
@@ -348,7 +352,6 @@ export const PROVIDER_HANDLERS: Record<
   notion: notionHandler,
   onyx: onyxHandler,
   openai: openaiHandler,
-  "codex-oauth": codexOauthHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   railway: railwayHandler,

@@ -35,7 +35,10 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  MODEL_PROVIDER_OAUTH_HANDLERS,
+  PROVIDER_HANDLERS,
+} from "@vm0/connectors/oauth-providers";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
@@ -840,10 +843,10 @@ function providerEnvironmentFromSecretMap(
 
 function modelProviderHandlerKey(
   providerType: ModelProviderType,
-): keyof typeof PROVIDER_HANDLERS | undefined {
+): keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS | undefined {
   switch (providerType) {
     case "codex-oauth-token": {
-      return "codex-oauth";
+      return "codex-oauth-token";
     }
     default: {
       return undefined;
@@ -868,7 +871,7 @@ function modelProviderRefreshMaps(
     return undefined;
   }
 
-  const handler = PROVIDER_HANDLERS[handlerKey];
+  const handler = MODEL_PROVIDER_OAUTH_HANDLERS[handlerKey];
   if (!handler.refreshToken) {
     return undefined;
   }

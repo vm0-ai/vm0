@@ -1,11 +1,19 @@
 import { z } from "zod";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { throwOAuthError } from "./oauth-error";
 
 const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_ISSUER = "https://auth.openai.com";
 
+const AUTHORIZATION_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/authorize`;
 const TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
+const CHATGPT_OAUTH_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "api.connectors.read",
+  "api.connectors.invoke",
+] as const;
 
 export type ChatgptRefreshErrorCode =
   | "refresh_token_expired"
@@ -215,25 +223,20 @@ export async function buildChatgptAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const oauthConfig = getConnectorOAuthConfig("codex-oauth");
-  if (!oauthConfig?.authorizationUrl) {
-    throw new Error("ChatGPT OAuth config not found");
-  }
-
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: CHATGPT_OAUTH_SCOPES.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   });
 
   return {
-    url: `${oauthConfig.authorizationUrl}?${params.toString()}`,
+    url: `${AUTHORIZATION_URL}?${params.toString()}`,
     codeVerifier,
   };
 }
