@@ -461,6 +461,20 @@ const CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS = [
   "/api/connectors/callback",
   "/api/connectors/github/callbacks",
 ] as const;
+const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
+const AGENTPHONE_CONNECT_PATH = "/api/agentphone/connect";
+const AGENTPHONE_CONNECT_NEXT_NEGATIVE_PATHS = [
+  "/api/agentphone/connect/extra",
+  "/api/agentphone",
+  "/api/agentphone/webhook",
+] as const;
+const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
+const AGENTPHONE_WEBHOOK_PATH = "/api/agentphone/webhook";
+const AGENTPHONE_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/agentphone/webhook/extra",
+  "/api/agentphone",
+  "/api/agentphone/messages",
+] as const;
 const INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE = "/api/internal/callbacks/agent";
 const INTERNAL_CALLBACKS_AGENT_PATH = "/api/internal/callbacks/agent";
 const INTERNAL_CALLBACKS_AGENT_NEXT_NEGATIVE_PATHS = [
@@ -1658,8 +1672,12 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/test/slack-state",
         },
         {
-          source: "/api/agentphone/:path*",
-          destination: "https://api.example.test/api/agentphone/:path*",
+          source: AGENTPHONE_CONNECT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agentphone/connect",
+        },
+        {
+          source: AGENTPHONE_WEBHOOK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agentphone/webhook",
         },
         {
           source: INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE,
@@ -3045,6 +3063,52 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact AgentPhone connect rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENTPHONE_CONNECT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENTPHONE_CONNECT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agentphone/connect",
+    });
+
+    const matcher = getPathMatch(AGENTPHONE_CONNECT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENTPHONE_CONNECT_PATH)).toStrictEqual({});
+    for (const pathname of AGENTPHONE_CONNECT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact AgentPhone webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENTPHONE_WEBHOOK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENTPHONE_WEBHOOK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agentphone/webhook",
+    });
+
+    const matcher = getPathMatch(AGENTPHONE_WEBHOOK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENTPHONE_WEBHOOK_PATH)).toStrictEqual({});
+    for (const pathname of AGENTPHONE_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

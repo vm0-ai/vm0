@@ -708,6 +708,21 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches AgentPhone connect and webhook rewrite paths exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agentphone/connect")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agentphone/webhook")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agentphone/connect/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/agentphone/webhook/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/agentphone")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agentphone/messages")).toBe(
+      false,
+    );
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -2282,6 +2297,55 @@ describe("API backend rewrite proxy behavior", () => {
         expect(authPayload.url).toBe(
           "/api/integrations/telegram/auth-callback?id=1001&hash=telegram-hash",
         );
+      },
+    );
+  });
+
+  it("forwards AgentPhone webhook POST bodies and signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          event: "agent.message",
+          data: {
+            messageId: "msg-agentphone-1",
+            agentId: "agt-agentphone",
+            from: "+15551234567",
+            to: "+15557654321",
+            body: "hello",
+          },
+        });
+        const response = await fetch(
+          `${origin}/api/agentphone/webhook?from=agentphone`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-webhook-id": "webhook-agentphone-1",
+              "x-webhook-timestamp": "1710000000",
+              "x-webhook-signature": "sha256=test-signature",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/agentphone/webhook?from=agentphone");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["x-webhook-id"]).toBe("webhook-agentphone-1");
+        expect(payload.headers["x-webhook-timestamp"]).toBe("1710000000");
+        expect(payload.headers["x-webhook-signature"]).toBe(
+          "sha256=test-signature",
+        );
+        expect(payload.body).toBe(webhookBody);
       },
     );
   });

@@ -133,6 +133,8 @@ const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
 );
 const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
+const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
+const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
 const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
 const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
@@ -316,7 +318,8 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
-  ["/api/agentphone/:path*", "/api/agentphone/:path*"],
+  [AGENTPHONE_CONNECT_REWRITE_SOURCE, "/api/agentphone/connect"],
+  [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/generate-image", "/api/generate-image"],
   ["/api/github/oauth/callback", "/api/github/oauth/callback"],
