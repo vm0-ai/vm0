@@ -34,7 +34,7 @@ fn context_with_session_opt(
 fn context_with_io_limiter_flag(run_id: RunId, session_id: &str) -> crate::types::ExecutionContext {
     let mut ctx = context_with_session(run_id, session_id);
     ctx.feature_flags = Some(std::collections::HashMap::from([(
-        crate::io_limits::FIRECRACKER_IO_LIMITERS_FEATURE_FLAG.to_string(),
+        crate::io_limits::SANDBOX_IO_LIMITERS_FEATURE_FLAG.to_string(),
         true,
     )]));
     ctx

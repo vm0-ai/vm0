@@ -399,7 +399,7 @@ describe("POST /api/agent/runs", () => {
       userId: fx.userId,
       switches: {
         [FeatureSwitchKey.ComputerUse]: true,
-        [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+        [FeatureSwitchKey.SandboxIoLimiters]: true,
       },
     });
     const compose = await createCompose({ fixture: fx });
@@ -425,7 +425,7 @@ describe("POST /api/agent/runs", () => {
 
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,
-      [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+      [FeatureSwitchKey.SandboxIoLimiters]: true,
     });
   });
 

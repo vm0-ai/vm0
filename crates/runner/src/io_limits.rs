@@ -14,7 +14,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::types::ExecutionContext;
 
 const MIB: f64 = 1024.0 * 1024.0;
-pub(crate) const FIRECRACKER_IO_LIMITERS_FEATURE_FLAG: &str = "firecrackerIoLimiters";
+pub(crate) const SANDBOX_IO_LIMITERS_FEATURE_FLAG: &str = "sandboxIoLimiters";
 // Keep host-level headroom outside Firecracker token buckets for system daemons,
 // filesystem metadata bursts, and other non-sandbox traffic.
 const IO_CAPACITY_PERCENT: u128 = 100;
@@ -56,7 +56,7 @@ pub(crate) fn device_rate_limits_for_context(
 
 fn io_limit_feature_enabled(feature_flags: Option<&HashMap<String, bool>>) -> bool {
     feature_flags
-        .and_then(|flags| flags.get(FIRECRACKER_IO_LIMITERS_FEATURE_FLAG))
+        .and_then(|flags| flags.get(SANDBOX_IO_LIMITERS_FEATURE_FLAG))
         .copied()
         .unwrap_or(false)
 }
@@ -351,8 +351,8 @@ mod tests {
 
     #[test]
     fn io_limit_feature_enabled_requires_explicit_true_flag() {
-        let enabled = HashMap::from([(FIRECRACKER_IO_LIMITERS_FEATURE_FLAG.to_string(), true)]);
-        let disabled = HashMap::from([(FIRECRACKER_IO_LIMITERS_FEATURE_FLAG.to_string(), false)]);
+        let enabled = HashMap::from([(SANDBOX_IO_LIMITERS_FEATURE_FLAG.to_string(), true)]);
+        let disabled = HashMap::from([(SANDBOX_IO_LIMITERS_FEATURE_FLAG.to_string(), false)]);
         let unrelated = HashMap::from([("otherFlag".to_string(), true)]);
 
         assert!(io_limit_feature_enabled(Some(&enabled)));

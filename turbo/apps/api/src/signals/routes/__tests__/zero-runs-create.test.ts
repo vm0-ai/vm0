@@ -483,7 +483,7 @@ describe("POST /api/zero/runs", () => {
       userId: fx.userId,
       switches: {
         [FeatureSwitchKey.ComputerUse]: true,
-        [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+        [FeatureSwitchKey.SandboxIoLimiters]: true,
       },
     });
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -564,7 +564,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
     expect(executionContext.featureFlags).toMatchObject({
       [FeatureSwitchKey.ComputerUse]: true,
-      [FeatureSwitchKey.FirecrackerIoLimiters]: true,
+      [FeatureSwitchKey.SandboxIoLimiters]: true,
     });
     const zeroToken = decryptSecretsMap(
       executionContext.encryptedSecrets ?? null,
