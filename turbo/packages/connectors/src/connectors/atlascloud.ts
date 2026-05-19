@@ -7,7 +7,7 @@ export const atlascloud = {
     generation: ["audio", "image", "text", "video"],
     tags: ["llm", "multimodal", "openai-compatible"],
     environmentMapping: {
-      ATLASCLOUD_API_KEY: "$secrets.ATLASCLOUD_API_KEY",
+      ATLASCLAUDE_TOKEN: "$secrets.ATLASCLAUDE_TOKEN",
     },
     helpText:
       "Connect Atlas Cloud to access multimodal AI models for chat, image generation, video generation, and audio through one API key",
@@ -17,10 +17,10 @@ export const atlascloud = {
         helpText:
           "1. Sign in to [Atlas Cloud](https://console.atlascloud.ai)\n2. Go to **API Keys**\n3. Click **Create API Key**\n4. Copy the key and use it with `https://api.atlascloud.ai/v1` for OpenAI-compatible chat or `https://api.atlascloud.ai/api/v1` for image, video, and media APIs",
         secrets: {
-          ATLASCLOUD_API_KEY: {
-            label: "API Key",
+          ATLASCLAUDE_TOKEN: {
+            label: "API Token",
             required: true,
-            placeholder: "your-atlascloud-api-key",
+            placeholder: "your-atlasclaude-token",
           },
         },
       },
