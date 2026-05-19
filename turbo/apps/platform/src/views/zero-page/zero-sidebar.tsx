@@ -13,6 +13,7 @@ import {
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
+  IconDeviceDesktop,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -74,9 +75,10 @@ interface ManageNavItem {
   readonly pathname: string;
   readonly label: string;
   readonly icon: NavIcon;
+  readonly featureGate?: FeatureSwitchKey;
 }
 
-const MANAGE_NAV = [
+const MANAGE_NAV: readonly ManageNavItem[] = [
   {
     id: "agents",
     activeKeys: ["agents", "agentDetail", "agentPermissions"],
@@ -92,6 +94,14 @@ const MANAGE_NAV = [
     icon: IconPlug as NavIcon,
   },
   {
+    id: "localAgents",
+    activeKeys: ["desktopLocalAgents"],
+    pathname: "/local-agents",
+    label: "Local agents",
+    icon: IconDeviceDesktop as NavIcon,
+    featureGate: FeatureSwitchKey.DesktopLocalAgent,
+  },
+  {
     id: "schedules",
     activeKeys: ["schedules", "scheduleDetail"],
     pathname: "/schedules",
@@ -105,7 +115,7 @@ const MANAGE_NAV = [
     label: "Activity logs",
     icon: IconChartLine as NavIcon,
   },
-] as const satisfies readonly ManageNavItem[];
+];
 
 interface FooterNavItem {
   readonly id: SidebarNavId;
@@ -191,9 +201,20 @@ function SidebarNavContent() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
+  const desktopLocalAgentAvailable =
+    typeof window !== "undefined" && Boolean(window.vm0DesktopLocalAgent);
 
   const manageNav = MANAGE_NAV.filter((item) => {
-    return item.id !== "activities" || features?.[FeatureSwitchKey.ZeroDebug];
+    if (item.id === "activities") {
+      return features?.[FeatureSwitchKey.ZeroDebug];
+    }
+    if (item.featureGate && !features?.[item.featureGate]) {
+      return false;
+    }
+    if (item.id === "localAgents") {
+      return desktopLocalAgentAvailable;
+    }
+    return true;
   });
   const footerNav = FOOTER_NAV.map((item) => {
     return {

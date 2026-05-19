@@ -1,6 +1,19 @@
 import path from "node:path";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, session, shell } from "electron";
 import { resolveDesktopConfig } from "./config";
+import { createDesktopLocalAgentApiClient } from "./desktop-local-agent-api";
+import {
+  installDesktopLocalAgentIpc,
+  notifyDesktopLocalAgentsChanged,
+  openLocalAgentFolder,
+  selectLocalAgentFolder,
+} from "./desktop-local-agent-electron";
+import { DesktopLocalAgentManager } from "./desktop-local-agent-manager";
+import {
+  detectLocalAgentBackends,
+  executeLocalAgentBackend,
+} from "./desktop-local-agent-runtime";
+import { createDesktopLocalAgentStore } from "./desktop-local-agent-store";
 import {
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
@@ -21,6 +34,8 @@ const desktopAuthStartUrl = buildDesktopAuthStartUrl(
 const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
+let desktopLocalAgentManager: DesktopLocalAgentManager | null = null;
+let quittingAfterLocalAgentStop = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 
 function preloadPath(): string {
@@ -40,6 +55,32 @@ function applyDockIcon(): void {
   if (process.platform === "darwin" && app.dock) {
     app.dock.setIcon(appIconPath());
   }
+}
+
+function createDesktopLocalAgentManager(): DesktopLocalAgentManager {
+  const electronSession = session.fromPartition(config.sessionPartition);
+  return new DesktopLocalAgentManager({
+    store: createDesktopLocalAgentStore(
+      path.join(app.getPath("userData"), "local-agents.json"),
+    ),
+    api: createDesktopLocalAgentApiClient({
+      platformUrl: config.platformUrl,
+      session: electronSession,
+    }),
+    selectFolder: selectLocalAgentFolder,
+    openFolder: openLocalAgentFolder,
+    detectBackends: detectLocalAgentBackends,
+    executeBackend: executeLocalAgentBackend,
+    onChange: notifyDesktopLocalAgentsChanged,
+  });
+}
+
+function installDesktopLocalAgent(): void {
+  if (desktopLocalAgentManager) {
+    return;
+  }
+  desktopLocalAgentManager = createDesktopLocalAgentManager();
+  installDesktopLocalAgentIpc(desktopLocalAgentManager);
 }
 
 function openExternal(url: string): void {
@@ -315,9 +356,27 @@ if (!hasSingleInstanceLock) {
     handleDesktopAuthCallback(url);
   });
 
+  app.on("before-quit", (event) => {
+    const manager = desktopLocalAgentManager;
+    if (
+      !manager ||
+      !manager.hasRunningAgents() ||
+      quittingAfterLocalAgentStop
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    quittingAfterLocalAgentStop = true;
+    void manager.stopAll().finally(() => {
+      app.quit();
+    });
+  });
+
   void app.whenReady().then(async () => {
     applyDockIcon();
     registerDesktopAuthProtocol();
+    installDesktopLocalAgent();
     queueDesktopAuthCallbackArgv(process.argv);
 
     const pendingCode = pendingDesktopAuthCode;
