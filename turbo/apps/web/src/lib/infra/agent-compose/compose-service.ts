@@ -13,43 +13,6 @@ import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import type { AgentComposeYaml } from "./types";
 
 /**
- * Get a compose by name within an org, returning the API response shape.
- * Returns null if not found.
- */
-export async function getComposeByName(
-  orgId: string,
-  name: string,
-): Promise<ComposeResponse | null> {
-  const [result] = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      createdAt: agentComposes.createdAt,
-      updatedAt: agentComposes.updatedAt,
-      content: agentComposeVersions.content,
-    })
-    .from(agentComposes)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentComposes.headVersionId, agentComposeVersions.id),
-    )
-    .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, name)))
-    .limit(1);
-
-  if (!result) return null;
-
-  return {
-    id: result.id,
-    name: result.name,
-    headVersionId: result.headVersionId,
-    content: (result.content as AgentComposeYaml) ?? null,
-    createdAt: result.createdAt.toISOString(),
-    updatedAt: result.updatedAt.toISOString(),
-  };
-}
-
-/**
  * Get a compose by ID with access check, returning the API response shape.
  *
  * Throws notFound if compose doesn't exist or caller lacks access.

@@ -1059,6 +1059,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat/message")).toBe(false);
   });
 
+  it("matches the zero composes rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/composes")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/list")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/compose")).toBe(false);
+  });
+
   it("matches the zero computer-use host rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use/host")).toBe(
       true,
