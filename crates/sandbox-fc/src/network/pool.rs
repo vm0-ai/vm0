@@ -2285,6 +2285,13 @@ mod tests {
                 namespace_index: 255,
             })
         );
+        assert_eq!(
+            parse_netns_name("vm0-ns-0a-00"),
+            Some(ParsedNetnsName {
+                pool_index: 10,
+                namespace_index: 0,
+            })
+        );
     }
 
     #[test]

@@ -1258,14 +1258,18 @@ mod tests {
 
     #[test]
     fn parse_netns_list_line_ignores_malformed_names() {
+        assert_eq!(parse_netns_list_line(""), None);
+        assert_eq!(parse_netns_list_line("   "), None);
         assert_eq!(parse_netns_list_line("not-a-ns"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-extra"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-zz"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-0a-extra"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-0A-00"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-0A"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-40-00"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-ff-00"), None);
     }
 
     fn status_info(active: Vec<(&str, &str)>, idle_sandboxes: Vec<&str>) -> StatusInfo {
