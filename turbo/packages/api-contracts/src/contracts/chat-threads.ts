@@ -22,10 +22,8 @@ const attachFileSchema = z.object({
 
 /**
  * Attach file returned to the frontend with a resolved URL.
- * `url` is the permanent `${APP_URL}/f/{publicUserId}/{id}/{filename}`
- * redirect served by the app — consumers may render, cache, or share it
- * freely; the underlying short-lived presigned signature is materialized
- * per-request inside the /f route.
+ * `url` is the public artifact CDN URL; consumers may render, cache, or share
+ * it freely.
  */
 const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
@@ -56,9 +54,9 @@ const chatThreadArtifactRunSchema = z.object({
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
- * `url` is the permanent `/f/{publicUserId}/{id}/{filename}` form.
+ * `url` is the public artifact CDN URL.
  * Historically this stored a 7-day presigned URL that could silently expire
- * while drafts sat in the DB; the permanent redirect removes that footgun.
+ * while drafts sat in the DB; the public artifact URL removes that footgun.
  */
 const persistedAttachmentSchema = z.object({
   id: z.string(),

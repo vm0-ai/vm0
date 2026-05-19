@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { integrationsPhoneUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -28,8 +28,8 @@ const init$ = command(async ({ get }, signal: AbortSignal) => {
   const body = bodyResult.data;
   const uploadId = crypto.randomUUID();
   const filename = sanitizeFilename(body.filename);
-  const s3Key = `uploads/${auth.userId}/${uploadId}/${filename}`;
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  const s3Key = buildArtifactKey(auth.userId, uploadId, filename);
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
     generatePresignedPutUrl(
       bucket,

@@ -186,7 +186,7 @@ describe("zero chat composer - file input", () => {
               filename: "spec.pdf",
               contentType: "application/pdf",
               size: 1234,
-              url: "http://localhost:3000/f/user-1/file-1/spec.pdf",
+              url: "https://cdn.vm7.io/artifacts/user-1/file-1/spec.pdf",
             },
           ],
         },

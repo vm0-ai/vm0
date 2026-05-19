@@ -18,3 +18,5 @@ R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
 R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
+R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
+PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io

@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -85,8 +85,8 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const body = bodyResult.data;
 
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const prefix = `uploads/${auth.userId}/${body.uploadId}/`;
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
   const objects = await get(listS3Objects(bucket, prefix));
   signal.throwIfAborted();
   const object = objects[0];

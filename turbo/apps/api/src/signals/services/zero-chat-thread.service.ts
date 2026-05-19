@@ -41,7 +41,7 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { db$, writeDb$ } from "../external/db";
 import {
   publishThreadListChanged,
@@ -327,13 +327,10 @@ export function resolveAttachFileUrls(
   fileIds: readonly string[],
 ): Computed<Promise<readonly ResolvedAttachFile[]>> {
   return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    if (!bucket) {
-      return [];
-    }
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const resolved = await Promise.all(
       fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const prefix = `uploads/${userId}/${fileId}/`;
+        const prefix = buildArtifactPrefix(userId, fileId);
         const objects = await get(listS3Objects(bucket, prefix));
         const object = objects[0];
         if (!object) {

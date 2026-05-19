@@ -88,28 +88,11 @@ function filenameFromUrl(url: string): string {
 }
 
 function getAttachmentDownloadUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    return url;
-  }
-  const parsed = new URL(url, window.location.origin);
-  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
-  if (isFileRoute) {
-    parsed.searchParams.set("download", "1");
-  }
-  return parsed.toString();
+  return url;
 }
 
 export function getAttachmentRawUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    return url;
-  }
-  const parsed = new URL(url, window.location.origin);
-  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
-  if (isFileRoute) {
-    parsed.searchParams.delete("download");
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
+  return url;
 }
 
 function triggerDirectDownload(url: string, filename: string): void {
@@ -238,8 +221,8 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // CORS failure. The `.catch` is intentionally scoped to the fetch branch so
 // only network failures fall back — any synchronous DOM / blob failure after
 // a successful fetch is a real bug and propagates to the caller. The
-// fallback keeps the user on the same page and lets the app's `/f/...`
-// route force `Content-Disposition: attachment` via `?download=1`.
+// fallback keeps the user on the same page and leaves file delivery behavior
+// to the artifact CDN.
 async function fetchBlobOrOpen(
   url: string,
   signal: AbortSignal,

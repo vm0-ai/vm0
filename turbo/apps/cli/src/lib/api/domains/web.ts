@@ -674,8 +674,8 @@ async function readBuiltInGenerationResponse<T>(args: {
 }
 
 /**
- * Upload a local file and receive back metadata including a 7-day presigned
- * GET URL. Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
+ * Upload a local file and receive back metadata including a public CDN URL.
+ * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
  * Three-step flow:
@@ -780,7 +780,7 @@ export async function uploadWebFile(
 }
 
 /**
- * Generate billed speech audio from text and receive the permanent /f URL.
+ * Generate billed speech audio from text and receive the public CDN URL.
  * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
@@ -824,7 +824,7 @@ export async function generateWebVoice(
 }
 
 /**
- * Generate a billed image from a prompt and receive the permanent /f URL.
+ * Generate a billed image from a prompt and receive the public CDN URL.
  * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
@@ -900,7 +900,7 @@ export async function generateWebImage(
 }
 
 /**
- * Generate a billed video from a prompt and receive the permanent /f URL.
+ * Generate a billed video from a prompt and receive the public CDN URL.
  * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */

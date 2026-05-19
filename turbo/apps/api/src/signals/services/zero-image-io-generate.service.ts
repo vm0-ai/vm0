@@ -6,7 +6,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
@@ -1613,11 +1613,11 @@ export const recordGeneratedImage$ = command(
     const filename = `image-${fileId.slice(0, 8)}.${extensionForFormat(
       params.generation.outputFormat,
     )}`;
-    const s3Key = `uploads/${params.userId}/${fileId}/${filename}`;
+    const s3Key = buildArtifactKey(params.userId, fileId, filename);
     const contentType = contentTypeForFormat(params.generation.outputFormat);
     await get(
       putS3Object(
-        env("R2_USER_STORAGES_BUCKET_NAME"),
+        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         s3Key,
         params.generation.imageBytes,
         contentType,

@@ -26,7 +26,6 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const TEST_BUCKET = "test-user-storages";
 
 function apiClient() {
   return setupApp({ context })(zeroUploadsContract);
@@ -154,8 +153,8 @@ describe("POST /api/zero/uploads/complete", () => {
 
   function s3Object(userId: string, fileId: string, ext: string, size = 1234) {
     return {
-      bucket: TEST_BUCKET,
-      key: `uploads/${userId}/${fileId}/${ext}`,
+      bucket: "test-user-artifacts",
+      key: `artifacts/${userId.replace(/^user_/, "")}/${fileId}/${ext}`,
       size,
     };
   }
@@ -194,7 +193,7 @@ describe("POST /api/zero/uploads/complete", () => {
       sizeBytes: 1234,
     });
     expect(rows[0]?.metadata).toMatchObject({
-      s3Key: `uploads/${fixture.userId}/${fileId}/report.pdf`,
+      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/report.pdf`,
     });
   });
 

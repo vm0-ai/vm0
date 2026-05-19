@@ -46,7 +46,7 @@ import { clearAllDetached } from "../../utils";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const TEST_BUCKET = "test-user-storages";
+const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake visual image bytes");
 const FAL_GPT_IMAGE_1_URL = "https://fal.run/fal-ai/gpt-image-1/text-to-image";
 const FAL_GPT_IMAGE_1_5_URL = "https://fal.run/fal-ai/gpt-image-1.5";
@@ -966,11 +966,11 @@ describe("POST /api/zero/presentation-io/generate", () => {
     const imageUrl = String(body.imageUrls[0]);
     expect(filename).toBe(`presentation-${fileId.slice(0, 8)}.html`);
     expect(url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(
         fixture.userId.replace(/^user_/, ""),
       )}/${fileId}/${filename}`,
     );
-    expect(imageUrl).toContain("/f/");
+    expect(imageUrl).toContain("https://cdn.vm7.io/artifacts/");
     expect(imageUrl).toContain("/image-");
     expect(imageUrl).toContain(".webp");
 
@@ -991,7 +991,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(imagePutInput.Body).toStrictEqual(IMAGE_BYTES);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `uploads/${fixture.userId}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("text/html");
     const putBody = putInput.Body;
@@ -1046,7 +1046,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
       imageIds: [expect.any(String)],
       title: "API Migration Plan",
       responseId: "resp_presentation_test",
-      s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     });
     const runUploadRows = await store
       .set(writeDb$)

@@ -28,4 +28,23 @@ describe("parseBodyRenderBlocks", () => {
       ]);
     },
   );
+
+  it("renders CDN artifact URLs as inline preview cards", () => {
+    const imageUrl =
+      "https://cdn.vm7.io/artifacts/36PnTFtD4dBQ9zg5jj6E5r918aV/24b42fb4-4b7b-4521-800f-defc356ae7b4/image-24b42fb4.png";
+
+    const { blocks } = parseBodyRenderBlocks(`图也存好了：${imageUrl}`);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "preview",
+        id: "preview-1",
+        preview: {
+          filename: "image-24b42fb4.png",
+          url: imageUrl,
+          kind: "image",
+        },
+      },
+    ]);
+  });
 });

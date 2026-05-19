@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
 
 import { env } from "../../lib/env";
+import { buildArtifactPrefix } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { downloadS3Buffer, listS3Objects } from "../external/s3";
 
@@ -19,12 +20,12 @@ export function zeroWebDownloadFile(
   userId: string,
 ): Computed<Promise<DownloadFileResult | null>> {
   return computed(async (get): Promise<DownloadFileResult | null> => {
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     if (!bucket) {
       return null;
     }
 
-    const prefix = `uploads/${userId}/${fileId}/`;
+    const prefix = buildArtifactPrefix(userId, fileId);
     const objects = await get(listS3Objects(bucket, prefix));
 
     if (objects.length === 0) {

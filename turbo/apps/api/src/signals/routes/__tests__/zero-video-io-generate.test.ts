@@ -41,7 +41,7 @@ import { clearAllDetached } from "../../utils";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const TEST_BUCKET = "test-user-storages";
+const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
 const FAL_STATUS_URL =
   "https://queue.fal.run/fal-ai/veo3.1/fast/requests/video-request/status";
@@ -758,7 +758,7 @@ describe("POST /api/zero/video-io/generate", () => {
     const url = String(body.url);
     expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
     expect(url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(
         fixture.userId.replace(/^user_/, ""),
       )}/${fileId}/${filename}`,
     );
@@ -766,7 +766,7 @@ describe("POST /api/zero/video-io/generate", () => {
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `uploads/${fixture.userId}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("video/mp4");
     const putBody = putInput.Body;
@@ -803,7 +803,7 @@ describe("POST /api/zero/video-io/generate", () => {
       durationSeconds: 8,
       resolution: "720p",
       generateAudio: true,
-      s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     });
 
     const usageRows = await store

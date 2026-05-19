@@ -131,6 +131,8 @@ runs:
           slack_redirect_base_url="$(repo_var SLACK_REDIRECT_BASE_URL)"
           plausible_script_url="$(first_non_empty "$(repo_var PLAUSIBLE_SCRIPT_URL_PROD)" "$(repo_var PLAUSIBLE_SCRIPT_URL)")"
           strapi_url="$(repo_var STRAPI_URL)"
+          user_artifacts_bucket="$(first_non_empty "$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME)" "user-artifact-prod")"
+          public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm0.io")"
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
@@ -143,6 +145,8 @@ runs:
           slack_redirect_base_url="$INPUT_WEB_URL"
           plausible_script_url="$(repo_var PLAUSIBLE_SCRIPT_URL)"
           strapi_url=""
+          user_artifacts_bucket="$(first_non_empty "$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME_DEV)" "$(repo_var R2_USER_ARTIFACTS_BUCKET_NAME)" "user-artifact-dev")"
+          public_artifacts_base_url="$(first_non_empty "$(repo_var PUBLIC_ARTIFACTS_BASE_URL_DEV)" "$(repo_var PUBLIC_ARTIFACTS_BASE_URL)" "https://cdn.vm7.io")"
         fi
 
         add_env VM0_API_URL "$api_url"
@@ -168,6 +172,8 @@ runs:
         add_secret R2_ACCESS_KEY_ID R2_ACCESS_KEY_ID
         add_secret R2_SECRET_ACCESS_KEY R2_SECRET_ACCESS_KEY
         add_var R2_USER_STORAGES_BUCKET_NAME R2_USER_STORAGES_BUCKET_NAME
+        add_env R2_USER_ARTIFACTS_BUCKET_NAME "$user_artifacts_bucket"
+        add_env PUBLIC_ARTIFACTS_BASE_URL "$public_artifacts_base_url"
         add_var R2_HOSTED_SITES_BUCKET_NAME R2_HOSTED_SITES_BUCKET_NAME
         add_secret R2_HOSTED_SITES_ACCESS_KEY_ID R2_HOSTED_SITES_ACCESS_KEY_ID
         add_secret R2_HOSTED_SITES_SECRET_ACCESS_KEY R2_HOSTED_SITES_SECRET_ACCESS_KEY

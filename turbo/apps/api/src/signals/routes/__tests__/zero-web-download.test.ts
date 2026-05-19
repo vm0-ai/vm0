@@ -22,7 +22,7 @@ const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
     return store.set(deleteOrgMembership$, fixture, context.signal);
   },
 );
-const BUCKET = "test-user-storage";
+const BUCKET = "test-user-artifacts";
 const ROUTE = "/api/zero/web/download-file";
 
 interface S3FixtureObject {
@@ -97,7 +97,7 @@ function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
 }
 
 function mockS3Objects(objects: readonly S3FixtureObject[]): void {
-  mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
+  mockEnv("R2_USER_ARTIFACTS_BUCKET_NAME", BUCKET);
   context.mocks.s3.send.mockImplementation((command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
@@ -148,6 +148,10 @@ function requestDownload(args: {
   return Promise.resolve(
     app.request(`${ROUTE}${search}`, { method: "GET", headers }),
   );
+}
+
+function artifactKey(userId: string, fileId: string, filename: string): string {
+  return `artifacts/${userId.replace(/^user_/, "")}/${fileId}/${filename}`;
 }
 
 async function expectErrorResponse(
@@ -212,7 +216,7 @@ describe("GET /api/zero/web/download-file", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([
       {
-        key: `uploads/${userId}/${fileId}/test_file.txt`,
+        key: artifactKey(userId, fileId, "test_file.txt"),
         size: fileContent.length,
         body: fileContent,
       },
@@ -238,7 +242,7 @@ describe("GET /api/zero/web/download-file", () => {
     const filename = "report 2026 #final.bin";
     mockS3Objects([
       {
-        key: `uploads/${userId}/${fileId}/${filename}`,
+        key: artifactKey(userId, fileId, filename),
         size: fileContent.length,
         body: fileContent,
       },
@@ -263,7 +267,7 @@ describe("GET /api/zero/web/download-file", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([
       {
-        key: `uploads/${userId}/${fileId}/photo.png`,
+        key: artifactKey(userId, fileId, "photo.png"),
         size: fileContent.length,
         body: fileContent,
       },
@@ -282,7 +286,7 @@ describe("GET /api/zero/web/download-file", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([
       {
-        key: `uploads/${userId}/${fileId}/budget.xlsx`,
+        key: artifactKey(userId, fileId, "budget.xlsx"),
         size: fileContent.length,
         body: fileContent,
       },
@@ -303,7 +307,7 @@ describe("GET /api/zero/web/download-file", () => {
     const { token, userId } = await mintFileReadToken();
     mockS3Objects([
       {
-        key: `uploads/${userId}/${fileId}/data.xyz`,
+        key: artifactKey(userId, fileId, "data.xyz"),
         size: fileContent.length,
         body: fileContent,
       },
@@ -331,6 +335,8 @@ describe("GET /api/zero/web/download-file", () => {
       .filter((prefix): prefix is string => {
         return typeof prefix === "string";
       });
-    expect(prefixes).toContain(`uploads/${userId}/${fileId}/`);
+    expect(prefixes).toContain(
+      `artifacts/${userId.replace(/^user_/, "")}/${fileId}/`,
+    );
   });
 });

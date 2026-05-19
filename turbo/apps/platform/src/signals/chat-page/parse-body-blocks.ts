@@ -51,9 +51,10 @@ type ExtractedPreviewUrl = {
 // ---------------------------------------------------------------------------
 
 const TEXT_PREVIEW_MAX_BYTES = 65_536;
-const PLATFORM_FILE_PATH_PATTERN = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
+const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
-const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/f\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
+const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
+const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -252,13 +253,30 @@ function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
 function platformFileHosts(): Set<string> {
   const hosts = new Set<string>();
   addPlatformFileHostVariants(hosts, browserHost());
+  addPlatformFileHostVariants(
+    hosts,
+    artifactsCdnHost(import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL),
+  );
   return hosts;
 }
 
 function isPlatformFileHostname(hostname: string): boolean {
-  return PLATFORM_FILE_HOST_SUFFIXES.some((suffix) => {
+  const isAppHost = PLATFORM_FILE_HOST_SUFFIXES.some((suffix) => {
     return hostname === suffix || hostname.endsWith(`.${suffix}`);
   });
+  if (isAppHost) {
+    return true;
+  }
+  return PLATFORM_FILE_CDN_HOSTS.some((host) => {
+    return hostname === host;
+  });
+}
+
+function artifactsCdnHost(baseUrl: string | undefined): string | null {
+  if (!baseUrl || !URL.canParse(baseUrl)) {
+    return null;
+  }
+  return new URL(baseUrl).host;
 }
 
 function hasExplicitUrlOrigin(url: string): boolean {
@@ -538,7 +556,7 @@ export function parseBodyRenderBlocks(content: string): {
     }
 
     if (isBodyPreviewKind(kind)) {
-      // Only render platform /f/ file URLs as inline preview cards.
+      // Only render platform artifact URLs as inline preview cards.
       // External URLs stay as plain markdown links so the recipient
       // isn't misled into thinking the file was uploaded to vm0.
       if (!isPlatformFileUrl(url)) {
@@ -612,21 +630,7 @@ async function readLimitedText(response: Response): Promise<string> {
 }
 
 function toRawUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    const hashIndex = url.indexOf("#");
-    const base = hashIndex === -1 ? url : url.slice(0, hashIndex);
-    const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
-    if (base.includes("raw=1")) {
-      return url;
-    }
-    return `${base}${base.includes("?") ? "&" : "?"}raw=1${hash}`;
-  }
-
-  const parsed = new URL(url, window.location.origin);
-  if (parsed.searchParams.get("raw") !== "1") {
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
+  return url;
 }
 
 export async function fetchPreviewText(

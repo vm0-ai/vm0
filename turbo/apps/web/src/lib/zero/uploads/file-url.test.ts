@@ -6,15 +6,15 @@ import {
 } from "./file-url";
 
 describe("file URL user ID segments", () => {
-  it("omits the Clerk user_ prefix from generated /f URLs", () => {
+  it("omits the Clerk user_ prefix from generated CDN URLs", () => {
     expect(buildFileUrl("user_alice", "file-id", "report.pdf")).toBe(
-      "http://localhost:3000/f/alice/file-id/report.pdf",
+      "https://cdn.vm7.io/artifacts/alice/file-id/report.pdf",
     );
   });
 
-  it("leaves non-Clerk user IDs unchanged in generated /f URLs", () => {
+  it("leaves non-Clerk user IDs unchanged in generated CDN URLs", () => {
     expect(buildFileUrl("user-1", "file-id", "report.pdf")).toBe(
-      "http://localhost:3000/f/user-1/file-id/report.pdf",
+      "https://cdn.vm7.io/artifacts/user-1/file-id/report.pdf",
     );
   });
 

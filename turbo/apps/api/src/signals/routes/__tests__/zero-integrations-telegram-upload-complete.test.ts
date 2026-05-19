@@ -133,11 +133,12 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
 
     const uploadId = randomUUID();
     const telegramFileId = `tg-doc-${randomUUID().slice(0, 8)}`;
-    const s3Key = `uploads/${fixture.userId}/${uploadId}/report.pdf`;
-    const fileUrl = `http://localhost:3000/f/${encodeURIComponent(fixture.userId.replace(/^user_/, ""))}/${uploadId}/report.pdf`;
+    const publicUserId = fixture.userId.replace(/^user_/, "");
+    const s3Key = `artifacts/${publicUserId}/${uploadId}/report.pdf`;
+    const fileUrl = `https://cdn.vm7.io/artifacts/${publicUserId}/${uploadId}/report.pdf`;
 
     mocks.s3.listObjects([
-      { bucket: "test-user-storages", key: s3Key, size: 1234 },
+      { bucket: "test-user-artifacts", key: s3Key, size: 1234 },
     ]);
 
     let telegramBody: Record<string, unknown> | undefined;
@@ -267,9 +268,9 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     memberships.push(fixture.membership);
 
     const uploadId = randomUUID();
-    const s3Key = `uploads/${fixture.userId}/${uploadId}/report.pdf`;
+    const s3Key = `artifacts/${fixture.userId.replace(/^user_/, "")}/${uploadId}/report.pdf`;
     mocks.s3.listObjects([
-      { bucket: "test-user-storages", key: s3Key, size: 1234 },
+      { bucket: "test-user-artifacts", key: s3Key, size: 1234 },
     ]);
 
     server.use(

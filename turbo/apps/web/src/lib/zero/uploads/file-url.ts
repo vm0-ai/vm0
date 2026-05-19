@@ -1,21 +1,14 @@
-import { getApiUrl } from "../../infra/callback/dispatcher";
+import { env } from "../../../env";
 
 /**
  * Build the permanent URL for an uploaded attachment.
  *
- * The three path segments together reconstruct the S3 key, so the /f route
- * can generate a presigned GET without any database or listing lookup.
- * Because the URL embeds only stable identifiers (no signature, no expiry),
- * callers may persist it in chat message content, draft rows, Slack unfurls,
- * or CLI output — the short-lived signature is materialized per-request
- * inside the /f route on each access.
- *
- * Uses VM0_API_URL (public host) rather than NEXT_PUBLIC_APP_URL so the
- * URL is reachable by anonymous share-by-link consumers (Slack unfurl
- * bots, email clients, external viewers) that never sign in to the app
- * domain.
+ * New artifact URLs point directly at the public CDN. Legacy `/f/...` URLs
+ * remain supported by the web compatibility route, but callers should persist
+ * and copy the CDN URL returned here.
  */
 const CLERK_USER_ID_PREFIX = "user_";
+const ARTIFACTS_PREFIX = "artifacts";
 
 export function publicFileUserIdSegment(userId: string): string {
   return userId.startsWith(CLERK_USER_ID_PREFIX)
@@ -35,11 +28,28 @@ export function storageUserIdFromFileUrlSegment(userIdSegment: string): string {
   return `${CLERK_USER_ID_PREFIX}${userIdSegment}`;
 }
 
-export function buildFileUrl(
+function publicArtifactsBaseUrl(): string {
+  return env().PUBLIC_ARTIFACTS_BASE_URL.replace(/\/+$/, "");
+}
+
+export function buildArtifactKey(
   userId: string,
   id: string,
   filename: string,
 ): string {
   const publicUserId = publicFileUserIdSegment(userId);
-  return `${getApiUrl()}/f/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
+}
+
+export function buildArtifactPrefix(userId: string, id: string): string {
+  const publicUserId = publicFileUserIdSegment(userId);
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/`;
+}
+
+export function buildFileUrl(
+  userId: string,
+  id: string,
+  filename: string,
+): string {
+  return `${publicArtifactsBaseUrl()}/${buildArtifactKey(userId, id, filename)}`;
 }

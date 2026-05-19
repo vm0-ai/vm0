@@ -132,7 +132,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.error.message).toContain("Unsupported file type");
   });
 
-  it("returns presigned upload URL and final GET URL with full body shape", async () => {
+  it("returns presigned upload URL and final CDN URL with full body shape", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -152,7 +152,9 @@ describe("POST /api/zero/uploads/prepare", () => {
       size: 13,
     });
     expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
-    expect(response.body.url).toMatch(/^https?:\/\//);
+    expect(response.body.url).toBe(
+      `https://cdn.vm7.io/artifacts/${userId.replace(/^user_/, "")}/${response.body.id}/hello.txt`,
+    );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
@@ -221,9 +223,14 @@ describe("POST /api/zero/uploads/prepare", () => {
 
     const calls = context.mocks.s3.getSignedUrl.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
-    const command = calls[0]?.[1] as { input: { Key: string } };
+    const command = calls[0]?.[1] as {
+      input: { Bucket: string; Key: string };
+    };
+    expect(command.input.Bucket).toBe("test-user-artifacts");
     expect(command.input.Key).toContain("my_file__1_.txt");
-    expect(command.input.Key).toContain(`uploads/${userId}/`);
+    expect(command.input.Key).toContain(
+      `artifacts/${userId.replace(/^user_/, "")}/`,
+    );
   });
 
   it("accepts representative MIME types from the allowlist", async () => {

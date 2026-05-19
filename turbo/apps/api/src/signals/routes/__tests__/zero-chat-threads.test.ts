@@ -56,8 +56,12 @@ describe("GET /api/zero/chat-threads/:id", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: `uploads/${fixture.userId}/file_123/report.pdf`,
+        bucket: "test-user-artifacts",
+        key: `artifacts/${
+          fixture.userId.startsWith("user_")
+            ? fixture.userId.slice("user_".length)
+            : fixture.userId
+        }/file_123/report.pdf`,
         size: 42,
       },
     ]);
@@ -96,7 +100,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
               filename: "report.pdf",
               contentType: "application/pdf",
               size: 42,
-              url: `http://localhost:3000/f/${encodeURIComponent(
+              url: `https://cdn.vm7.io/artifacts/${encodeURIComponent(
                 fixture.userId.startsWith("user_")
                   ? fixture.userId.slice("user_".length)
                   : fixture.userId,
@@ -116,7 +120,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
 
   it("strips Clerk user_ prefix from attachment file URLs", async () => {
     // Users authenticated via Clerk have IDs prefixed with "user_".
-    // The public /f/ URL must omit this prefix (matching web behavior)
+    // The public CDN URL must omit this prefix (matching web behavior)
     // so the URL is stable regardless of auth source.
     const fixture = await track(
       store.set(
@@ -139,8 +143,8 @@ describe("GET /api/zero/chat-threads/:id", () => {
     mocks.clerk.session("user_clerk123", fixture.orgId);
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: "uploads/user_clerk123/file_abc/photo.png",
+        bucket: "test-user-artifacts",
+        key: "artifacts/clerk123/file_abc/photo.png",
         size: 256,
       },
     ]);
@@ -156,7 +160,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     );
 
     expect(response.body.chatMessages[0]?.attachFiles?.[0]?.url).toBe(
-      "http://localhost:3000/f/clerk123/file_abc/photo.png",
+      "https://cdn.vm7.io/artifacts/clerk123/file_abc/photo.png",
     );
   });
 
@@ -734,8 +738,12 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: `uploads/${fixture.userId}/image_file/screenshot.png`,
+        bucket: "test-user-artifacts",
+        key: `artifacts/${
+          fixture.userId.startsWith("user_")
+            ? fixture.userId.slice("user_".length)
+            : fixture.userId
+        }/image_file/screenshot.png`,
         size: 128,
       },
     ]);
@@ -763,7 +771,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
               filename: "screenshot.png",
               contentType: "image/png",
               size: 128,
-              url: `http://localhost:3000/f/${encodeURIComponent(
+              url: `https://cdn.vm7.io/artifacts/${encodeURIComponent(
                 fixture.userId.startsWith("user_")
                   ? fixture.userId.slice("user_".length)
                   : fixture.userId,

@@ -18,7 +18,7 @@ interface MockUploadResult {
   filename: string;
   contentType: string;
   size: number;
-  /** Final presigned GET URL returned to the app. */
+  /** Final public artifact URL returned to the app. */
   url: string;
 }
 

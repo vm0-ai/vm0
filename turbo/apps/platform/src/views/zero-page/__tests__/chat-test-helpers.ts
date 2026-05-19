@@ -336,7 +336,7 @@ export function mockChatLifecycle(options?: {
     const attachFiles = body.attachFiles?.map((file) => {
       return {
         ...file,
-        url: `/f/test/${file.id}/${file.filename}`,
+        url: `https://cdn.vm7.io/artifacts/test/${file.id}/${file.filename}`,
       };
     });
     options?.onQueuedMessageAppend?.({

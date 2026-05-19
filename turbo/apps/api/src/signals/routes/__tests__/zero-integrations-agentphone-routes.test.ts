@@ -195,7 +195,7 @@ function uniquePhone(): string {
 
 function configureAgentPhoneEnv(): void {
   mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
-  mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
+  mockEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
   mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
   mockOptionalEnv("AGENTPHONE_PHONE_NUMBER", "+19039853128");
@@ -852,7 +852,7 @@ describe("AgentPhone migrated API routes", () => {
       contentType: "image/png",
       size: 123,
     });
-    expect(response.body.fileUrl).toContain("/f/");
+    expect(response.body.fileUrl).toContain("https://cdn.vm7.io/artifacts/");
   });
 
   it("post /api/zero/integrations/phone/upload-file/complete sends uploaded media", async () => {
@@ -866,8 +866,8 @@ describe("AgentPhone migrated API routes", () => {
     await seedAgentPhoneLink({ phoneHandle, userId, orgId });
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: `uploads/${userId}/${uploadId}/photo.png`,
+        bucket: "test-user-artifacts",
+        key: `artifacts/${userId.replace(/^user_/, "")}/${uploadId}/photo.png`,
         size: 456,
       },
     ]);

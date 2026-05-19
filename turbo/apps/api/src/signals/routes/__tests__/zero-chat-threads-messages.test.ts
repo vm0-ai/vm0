@@ -324,7 +324,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(response.body.messages[0]).not.toHaveProperty("status");
   });
 
-  it("resolves attach files to permanent /f/ URLs in paged messages", async () => {
+  it("resolves attach files to permanent CDN URLs in paged messages", async () => {
     const fixture = await trackThread(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -342,8 +342,12 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: `uploads/${fixture.userId}/paged-resolve-uuid/data.csv`,
+        bucket: "test-user-artifacts",
+        key: `artifacts/${
+          fixture.userId.startsWith("user_")
+            ? fixture.userId.slice("user_".length)
+            : fixture.userId
+        }/paged-resolve-uuid/data.csv`,
         size: 512,
       },
     ]);
@@ -368,7 +372,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       ? fixture.userId.slice("user_".length)
       : fixture.userId;
     expect(userMsg?.attachFiles?.[0]?.url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(userIdSlug)}/paged-resolve-uuid/data.csv`,
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(userIdSlug)}/paged-resolve-uuid/data.csv`,
     );
   });
 

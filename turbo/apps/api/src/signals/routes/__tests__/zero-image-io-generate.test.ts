@@ -43,7 +43,7 @@ import { clearAllDetached } from "../../utils";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const TEST_BUCKET = "test-user-storages";
+const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
@@ -1019,7 +1019,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const url = String(body.url);
     expect(filename).toBe(`image-${fileId.slice(0, 8)}.webp`);
     expect(url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(
         fixture.userId.replace(/^user_/, ""),
       )}/${fileId}/${filename}`,
     );
@@ -1027,7 +1027,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `uploads/${fixture.userId}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("image/webp");
     const putBody = putInput.Body;
@@ -1062,7 +1062,7 @@ describe("POST /api/zero/image-io/generate", () => {
       background: "opaque",
       outputFormat: "webp",
       moderation: "auto",
-      s3Key: `uploads/${fixture.userId}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     });
 
     const usageRows = await store
@@ -1328,7 +1328,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const filename = String(body.filename);
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Key).toBe(
-      `uploads/${fixture.userId}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("image/jpeg");
 

@@ -21,7 +21,7 @@ const prepareResponseSchema = z.object({
   size: z.number(),
   /** Presigned PUT URL — browser uploads the file body here directly. */
   uploadUrl: z.string().url(),
-  /** Presigned GET URL returned to the app after upload succeeds. */
+  /** Public CDN URL returned to the app after upload succeeds. */
   url: z.string().url(),
 });
 

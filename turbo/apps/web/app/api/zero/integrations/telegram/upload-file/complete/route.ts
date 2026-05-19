@@ -12,7 +12,10 @@ import {
 } from "../../../../../../../src/lib/auth/require-auth";
 import { listS3Objects } from "../../../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../../../src/env";
-import { buildFileUrl } from "../../../../../../../src/lib/zero/uploads/file-url";
+import {
+  buildArtifactPrefix,
+  buildFileUrl,
+} from "../../../../../../../src/lib/zero/uploads/file-url";
 import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { decryptSecretValue } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { inferMimetype } from "../../../../../../../src/lib/shared/mimetype";
@@ -100,8 +103,8 @@ async function resolveUploadedObject(
   userId: string,
   uploadId: string,
 ): Promise<UploadedObject | null> {
-  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  const prefix = `uploads/${userId}/${uploadId}/`;
+  const bucket = env().R2_USER_ARTIFACTS_BUCKET_NAME;
+  const prefix = buildArtifactPrefix(userId, uploadId);
   const objects = await listS3Objects(bucket, prefix);
   return objects[0] ?? null;
 }

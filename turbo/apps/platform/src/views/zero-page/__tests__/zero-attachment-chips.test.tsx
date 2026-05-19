@@ -397,19 +397,16 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CHAT-I-066: Lightbox download fallback stays in-page and forces attachment
+// CHAT-I-066: Lightbox download fallback stays in-page and uses artifact URL
 // ---------------------------------------------------------------------------
 
 describe("chat-i-066: lightbox download fallback uses direct download", () => {
-  it("appends download=1 and avoids opening a new tab", async () => {
+  it("uses the original artifact URL and avoids opening a new tab", async () => {
     const user = userEvent.setup();
     const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
     server.use(
-      http.get(imageUrl, ({ request }) => {
-        if (new URL(request.url).searchParams.get("download") === "1") {
-          return HttpResponse.error();
-        }
-        return new HttpResponse(null, { status: 200 });
+      http.get(imageUrl, () => {
+        return HttpResponse.error();
       }),
     );
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
@@ -466,7 +463,7 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
       expect(anchorClickSpy).toHaveBeenCalledOnce();
     });
 
-    expect(clickedHref).toBe(`${imageUrl}?download=1`);
+    expect(clickedHref).toBe(imageUrl);
     expect(clickedDownload).toBe("photo.png");
     expect(openSpy).not.toHaveBeenCalled();
   });
@@ -550,7 +547,7 @@ describe("chat-d-063: preview button renders for previewable file attachment", (
   });
 
   it("renders a preview button from the structured attachFiles field", async () => {
-    const fileUrl = "http://localhost:3000/f/user-1/file-1/spec.pdf";
+    const fileUrl = "https://cdn.vm7.io/artifacts/user-1/file-1/spec.pdf";
     const filename = "spec.pdf";
 
     mockChatLifecycle({

@@ -84,13 +84,14 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
     });
     expect(body.uploadId).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.uploadUrl).toBeTypeOf("string");
-    expect(body.fileUrl).toContain(
-      `/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${body.uploadId}/daily_report.pdf`,
+    expect(body.fileUrl).toBe(
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${body.uploadId}/daily_report.pdf`,
     );
 
     const putCall = context.mocks.s3.generatePresignedPutUrl.mock.calls[0];
+    expect(putCall?.[0]).toBe("test-artifacts-bucket");
     expect(putCall?.[1]).toBe(
-      `uploads/${user.userId}/${body.uploadId}/daily_report.pdf`,
+      `artifacts/${user.userId.replace(/^user_/, "")}/${body.uploadId}/daily_report.pdf`,
     );
   });
 

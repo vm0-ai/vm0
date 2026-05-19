@@ -72,8 +72,9 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     });
     const uploadId = randomUUID();
     const telegramFileId = uniqueId("tg-doc-file-id");
-    const s3Key = `uploads/${user.userId}/${uploadId}/report.pdf`;
-    const fileUrl = `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${uploadId}/report.pdf`;
+    const publicUserId = user.userId.replace(/^user_/, "");
+    const s3Key = `artifacts/${publicUserId}/${uploadId}/report.pdf`;
+    const fileUrl = `https://cdn.vm7.io/artifacts/${publicUserId}/${uploadId}/report.pdf`;
 
     context.mocks.s3.listS3Objects.mockResolvedValueOnce([
       { key: s3Key, size: 1234 },
@@ -189,7 +190,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
       ownerUserId: user.userId,
     });
     const uploadId = randomUUID();
-    const s3Key = `uploads/${user.userId}/${uploadId}/report.pdf`;
+    const s3Key = `artifacts/${user.userId.replace(/^user_/, "")}/${uploadId}/report.pdf`;
 
     context.mocks.s3.listS3Objects.mockResolvedValueOnce([
       { key: s3Key, size: 1234 },

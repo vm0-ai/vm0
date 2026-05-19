@@ -147,7 +147,7 @@ describe("zero chat thread page display - attachment document preview", () => {
       expect(screen.getByText("PRD")).toBeInTheDocument();
       expect(screen.getByText("Preview body")).toBeInTheDocument();
     });
-    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
     expect(requestedRange).toBe("bytes=0-65535");
   });
 });
@@ -304,7 +304,7 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(within(preview).getByText("ZIP")).toBeInTheDocument();
     expect(screen.getByLabelText("Download test_files.zip")).toHaveAttribute(
       "href",
-      `${fileUrl}?download=1`,
+      fileUrl,
     );
   });
 
@@ -649,11 +649,11 @@ describe("zero chat thread page display - body link document preview", () => {
       expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
       expect(screen.getByText("hello from text preview")).toBeInTheDocument();
     });
-    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
     expect(requestedRange).toBe("bytes=0-65535");
     expect(screen.getByLabelText("Download readme.txt")).toHaveAttribute(
       "href",
-      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt?download=1#summary",
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt#summary",
     );
 
     await userEvent.click(
@@ -741,7 +741,7 @@ describe("zero chat thread page display - body link document preview", () => {
       expect(within(preview).getByText("XLSX")).toBeInTheDocument();
       expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
         "href",
-        `${docUrl}?download=1`,
+        docUrl,
       );
     });
   });
@@ -780,7 +780,7 @@ describe("zero chat thread page display - body link document preview", () => {
         within(preview).getByTestId("attachment-chip-file-icon"),
       ).toBeInTheDocument();
       expect(within(preview).getByText("XLSX")).toBeInTheDocument();
-      expect(preview).toHaveAttribute("href", `${fileUrl}?download=1`);
+      expect(preview).toHaveAttribute("href", fileUrl);
     });
   });
 
@@ -1190,7 +1190,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(screen.getByText("发布说明")).toBeInTheDocument();
       expect(screen.getByText("这里是中文内容")).toBeInTheDocument();
     });
-    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
     expect(requestedRange).toBe("bytes=0-65535");
     expect(
       document.querySelector('iframe[title="Preview readme.md"]'),

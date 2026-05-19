@@ -64,28 +64,8 @@ function normalizePlatformFileUrl(url: string): string {
   return url;
 }
 
-function appendSearchParam(url: string, key: string, value: string): string {
-  const normalizedUrl = normalizePlatformFileUrl(url);
-  if (!URL.canParse(normalizedUrl, window.location.origin)) {
-    const hashIndex = normalizedUrl.indexOf("#");
-    const base =
-      hashIndex === -1 ? normalizedUrl : normalizedUrl.slice(0, hashIndex);
-    const hash = hashIndex === -1 ? "" : normalizedUrl.slice(hashIndex);
-    if (base.includes(`${key}=${value}`)) {
-      return normalizedUrl;
-    }
-    return `${base}${base.includes("?") ? "&" : "?"}${key}=${value}${hash}`;
-  }
-
-  const parsed = new URL(normalizedUrl, window.location.origin);
-  if (parsed.searchParams.get(key) !== value) {
-    parsed.searchParams.set(key, value);
-  }
-  return parsed.toString();
-}
-
 function toDownloadUrl(url: string): string {
-  return appendSearchParam(url, "download", "1");
+  return normalizePlatformFileUrl(url);
 }
 
 function formatPreviewText(kind: "text" | "json", text: string): string {

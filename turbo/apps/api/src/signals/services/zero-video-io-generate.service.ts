@@ -6,7 +6,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { db$, writeDb$ } from "../external/db";
 import { putS3Object } from "../external/s3";
@@ -887,10 +887,10 @@ export const recordGeneratedVideo$ = command(
     const filename = `video-${fileId.slice(0, 8)}.${extensionForContentType(
       params.generation.contentType,
     )}`;
-    const s3Key = `uploads/${params.userId}/${fileId}/${filename}`;
+    const s3Key = buildArtifactKey(params.userId, fileId, filename);
     await get(
       putS3Object(
-        env("R2_USER_STORAGES_BUCKET_NAME"),
+        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         s3Key,
         params.generation.videoBytes,
         params.generation.contentType,

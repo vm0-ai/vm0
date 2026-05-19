@@ -3,7 +3,7 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import {
   isAllowedUploadType,
   MAX_UPLOAD_SIZE_BYTES,
@@ -39,8 +39,8 @@ const prepareUploadInner$ = command(async ({ get }, signal: AbortSignal) => {
 
   const id = crypto.randomUUID();
   const sanitizedName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const s3Key = `uploads/${auth.userId}/${id}/${sanitizedName}`;
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  const s3Key = buildArtifactKey(auth.userId, id, sanitizedName);
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
 
   const uploadUrl = await get(
     generatePresignedPutUrl(

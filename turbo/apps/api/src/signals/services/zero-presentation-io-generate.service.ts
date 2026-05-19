@@ -6,7 +6,7 @@ import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now } from "../../lib/time";
@@ -2094,14 +2094,14 @@ export const recordGeneratedPresentation$ = command(
     const writeDb = set(writeDb$);
     const fileId = randomUUID();
     const filename = `presentation-${fileId.slice(0, 8)}.html`;
-    const s3Key = `uploads/${params.userId}/${fileId}/${filename}`;
+    const s3Key = buildArtifactKey(params.userId, fileId, filename);
     const htmlBytes = Buffer.from(
       renderDeckHtml(params.generation.deck, params.options, params.visuals),
       "utf8",
     );
     await get(
       putS3Object(
-        env("R2_USER_STORAGES_BUCKET_NAME"),
+        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         s3Key,
         htmlBytes,
         PRESENTATION_CONTENT_TYPE,

@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { listS3Objects } from "../external/s3";
 import { env } from "../../lib/env";
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
@@ -41,8 +41,8 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     };
   }
 
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const prefix = `uploads/${auth.userId}/${id}/`;
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const prefix = buildArtifactPrefix(auth.userId, id);
   const objects = await get(listS3Objects(bucket, prefix));
   signal.throwIfAborted();
   if (objects.length === 0) {

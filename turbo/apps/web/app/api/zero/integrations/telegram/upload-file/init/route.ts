@@ -9,7 +9,10 @@ import {
   isAuthError,
 } from "../../../../../../../src/lib/auth/require-auth";
 import { generatePresignedPutUrl } from "../../../../../../../src/lib/infra/s3/s3-client";
-import { buildFileUrl } from "../../../../../../../src/lib/zero/uploads/file-url";
+import {
+  buildArtifactKey,
+  buildFileUrl,
+} from "../../../../../../../src/lib/zero/uploads/file-url";
 import { env } from "../../../../../../../src/env";
 
 const PUT_URL_TTL_SECONDS = 3600;
@@ -29,8 +32,8 @@ const router = tsr.router(integrationsTelegramUploadInitContract, {
 
     const uploadId = crypto.randomUUID();
     const filename = sanitizeFilename(body.filename);
-    const s3Key = `uploads/${authCtx.userId}/${uploadId}/${filename}`;
-    const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
+    const s3Key = buildArtifactKey(authCtx.userId, uploadId, filename);
+    const bucket = env().R2_USER_ARTIFACTS_BUCKET_NAME;
     const uploadUrl = await generatePresignedPutUrl(
       bucket,
       s3Key,

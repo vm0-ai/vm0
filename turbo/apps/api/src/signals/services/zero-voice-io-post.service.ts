@@ -8,7 +8,7 @@ import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { buildFileUrl } from "../../lib/file-url";
+import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
@@ -792,8 +792,8 @@ export const recordGeneratedSpeech$ = command(
     const writeDb = set(writeDb$);
     const fileId = randomUUID();
     const filename = `voice-${fileId.slice(0, 8)}.wav`;
-    const s3Key = `uploads/${params.userId}/${fileId}/${filename}`;
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const s3Key = buildArtifactKey(params.userId, fileId, filename);
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     await get(
       putS3Object(
         bucket,
