@@ -139,6 +139,7 @@ const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
+const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
 const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
@@ -363,6 +364,7 @@ export const API_BACKEND_REWRITES = [
   [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
+  [CLERK_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/clerk"],
   [GITHUB_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/github"],
   [STRIPE_WEBHOOK_REWRITE_SOURCE, "/api/webhooks/stripe"],
   [

@@ -1123,6 +1123,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
   });
 
+  it("matches the Clerk webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/clerk")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/webhooks/clerk/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
+  });
+
   it("matches the Stripe webhook rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/stripe")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/webhooks/stripe/extra")).toBe(
@@ -2520,6 +2528,47 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers["x-hub-signature-256"]).toBe(
           "sha256=test-signature",
         );
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards Clerk webhook POST bodies and Svix signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          data: { id: "org_clerk_1" },
+          type: "organization.deleted",
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/clerk?from=clerk`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "svix-id": "msg_clerk_1",
+              "svix-signature": "v1,test-signature",
+              "svix-timestamp": "1710000000",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/webhooks/clerk?from=clerk");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["svix-id"]).toBe("msg_clerk_1");
+        expect(payload.headers["svix-signature"]).toBe("v1,test-signature");
+        expect(payload.headers["svix-timestamp"]).toBe("1710000000");
         expect(payload.body).toBe(webhookBody);
       },
     );

@@ -519,6 +519,33 @@ describe("proxy middleware: sandbox token handling", () => {
     );
   });
 
+  it("should not add OAuth web origin headers for Clerk provider webhooks", async () => {
+    const request = new NextRequest("https://www.vm0.ai/api/webhooks/clerk", {
+      method: "POST",
+      headers: {
+        "svix-id": "msg_clerk_1",
+        "svix-signature": "v1,test-signature",
+        "svix-timestamp": "1710000000",
+      },
+    });
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(response.headers.has("x-middleware-request-x-vm0-web-origin")).toBe(
+      false,
+    );
+  });
+
   it("should not add OAuth web origin headers for Stripe provider webhooks", async () => {
     const request = new NextRequest("https://www.vm0.ai/api/webhooks/stripe", {
       method: "POST",

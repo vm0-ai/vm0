@@ -598,6 +598,12 @@ const INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS = [
   "/api/integrations/github/extra",
   "/api/integrations",
 ] as const;
+const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
+const CLERK_WEBHOOK_PATH = "/api/webhooks/clerk";
+const CLERK_WEBHOOK_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/clerk/extra",
+  "/api/webhooks",
+] as const;
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
 const GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS = [
@@ -1700,6 +1706,10 @@ describe("API backend rewrites", () => {
         {
           source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
           destination: "https://api.example.test/api/integrations/github",
+        },
+        {
+          source: CLERK_WEBHOOK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/webhooks/clerk",
         },
         {
           source: GITHUB_WEBHOOK_REWRITE_SOURCE,
@@ -3633,6 +3643,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(GITHUB_WEBHOOK_PATH)).toStrictEqual({});
     for (const pathname of GITHUB_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact Clerk webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CLERK_WEBHOOK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CLERK_WEBHOOK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/clerk",
+    });
+
+    const matcher = getPathMatch(CLERK_WEBHOOK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CLERK_WEBHOOK_PATH)).toStrictEqual({});
+    for (const pathname of CLERK_WEBHOOK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
