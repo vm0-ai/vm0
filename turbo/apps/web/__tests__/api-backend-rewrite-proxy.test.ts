@@ -807,6 +807,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
   });
 
+  it("matches the zero computer-use register rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/register"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/register/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
+  });
+
   it("matches the zero chat threads collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(

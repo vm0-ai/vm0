@@ -16,6 +16,7 @@ export {
   findTestDeviceCode,
   findTestCliToken,
 } from "./auth";
+export { registerTestComputerUseHost } from "../db-test-seeders/computer-use";
 export {
   createTestOrg,
   deleteOrgRow,

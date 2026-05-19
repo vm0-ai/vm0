@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../src/mocks/server";
-import { POST } from "../register/route";
 import { DELETE } from "../unregister/route";
 import {
   createTestRequest,
   createTestOrg,
+  registerTestComputerUseHost,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -35,10 +35,6 @@ async function setupOrg(userId: string) {
   mockClerk({ userId, orgId, orgRole: "org:admin" });
   await createTestOrg(slug);
   return { slug, orgId };
-}
-
-function registerUrl(): string {
-  return `http://localhost:3000/api/zero/computer-use/register`;
 }
 
 function unregisterUrl(): string {
@@ -155,146 +151,6 @@ function setupNgrokMocks() {
   return calls;
 }
 
-function createPostRequest() {
-  return createTestRequest(registerUrl(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-}
-
-describe("POST /api/zero/computer-use/register", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    mockIsFeatureEnabled.mockReturnValue(true);
-  });
-
-  it("should return 401 when not authenticated", async () => {
-    mockClerk({ userId: null });
-
-    const response = await POST(createPostRequest());
-    expect(response.status).toBe(401);
-  });
-
-  it("should return 403 when feature flag is disabled", async () => {
-    const userId = uniqueId("zcu-ff");
-    await setupOrg(userId);
-    mockIsFeatureEnabled.mockReturnValue(false);
-
-    const response = await POST(createPostRequest());
-    expect(response.status).toBe(403);
-  });
-
-  it("should register computer-use host", async () => {
-    const userId = uniqueId("zcu-reg");
-    await setupOrg(userId);
-    const ngrokCalls = setupNgrokMocks();
-
-    const response = await POST(createPostRequest());
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.id).toBeDefined();
-    expect(data.ngrokToken).toBe("2abc_test_ngrok_cu_authtoken");
-    expect(data.token).toBeDefined();
-    expect(data.endpointPrefix).toContain("vm0-cu-");
-    expect(data.domain).toContain(".ngrok-free.app");
-
-    expect(ngrokCalls.createBotUser.length).toBe(1);
-    expect(ngrokCalls.createCredential.length).toBe(1);
-    expect(ngrokCalls.filterReservedDomains.length).toBe(1);
-    expect(ngrokCalls.createReservedDomain.length).toBe(1);
-    expect(ngrokCalls.filterEndpoints.length).toBe(1);
-    expect(ngrokCalls.createEndpoint.length).toBe(1);
-  });
-
-  it("should clean up resources when endpoint creation fails", async () => {
-    const userId = uniqueId("zcu-fail");
-    await setupOrg(userId);
-    const ngrokCalls = setupNgrokMocks();
-
-    // Override endpoint creation to fail
-    server.use(
-      http.post("https://api.ngrok.com/endpoints", () => {
-        return HttpResponse.json({ error: "internal error" }, { status: 500 });
-      }),
-    );
-
-    const response = await POST(createPostRequest());
-    expect(response.status).toBe(500);
-
-    // Verify all previously-created resources were cleaned up
-    expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_cu_123"]);
-    expect(ngrokCalls.deleteCredential).toEqual(["cr_test_cu_456"]);
-    expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
-  });
-
-  it("should update existing orphaned endpoint instead of creating new one", async () => {
-    const userId = uniqueId("zcu-orphan");
-    await setupOrg(userId);
-    const ngrokCalls = setupNgrokMocks();
-
-    // Override reserved domain lookup to return "orphan.ngrok-free.app" so the
-    // endpoint URL built by the service (`https://*.orphan.ngrok-free.app`)
-    // matches the orphaned endpoint below.
-    server.use(
-      http.get("https://api.ngrok.com/reserved_domains", ({ request }) => {
-        const url = new URL(request.url);
-        const filter = url.searchParams.get("filter");
-        ngrokCalls.filterReservedDomains.push(filter ?? "");
-        return HttpResponse.json({
-          reserved_domains: [
-            {
-              id: "rd_orphan_123",
-              domain: "orphan.ngrok-free.app",
-              region: "us",
-              cname_target: null,
-            },
-          ],
-          next_page_uri: null,
-        });
-      }),
-      http.get("https://api.ngrok.com/endpoints", ({ request }) => {
-        const url = new URL(request.url);
-        const filter = url.searchParams.get("filter");
-        ngrokCalls.filterEndpoints.push(filter ?? "");
-        return HttpResponse.json({
-          endpoints: [
-            { id: "ep_orphaned_123", url: "https://*.orphan.ngrok-free.app" },
-          ],
-          next_page_uri: null,
-        });
-      }),
-    );
-
-    const response = await POST(createPostRequest());
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.id).toBeDefined();
-
-    // Should PATCH the existing endpoint, not create a new one
-    expect(ngrokCalls.patchEndpoint).toEqual(["ep_orphaned_123"]);
-    expect(ngrokCalls.createEndpoint.length).toBe(0);
-  });
-
-  it("should return 200 on re-registration (idempotent)", async () => {
-    const userId = uniqueId("zcu-dup");
-    await setupOrg(userId);
-    setupNgrokMocks();
-
-    const response1 = await POST(createPostRequest());
-    expect(response1.status).toBe(200);
-
-    setupNgrokMocks();
-    const response2 = await POST(createPostRequest());
-    expect(response2.status).toBe(200);
-    const data = await response2.json();
-    expect(data.domain).toBeDefined();
-    expect(data.token).toBeDefined();
-  });
-});
-
 describe("DELETE /api/zero/computer-use/unregister", () => {
   beforeEach(() => {
     context.setupMocks();
@@ -333,10 +189,10 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
 
   it("should unregister host and clean up ngrok resources", async () => {
     const userId = uniqueId("zcu-unreg");
-    await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
     const ngrokCalls = setupNgrokMocks();
 
-    await POST(createPostRequest());
+    await registerTestComputerUseHost(orgId, userId);
 
     const response = await DELETE(
       createTestRequest(unregisterUrl(), { method: "DELETE" }),
