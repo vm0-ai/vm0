@@ -266,7 +266,22 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
+      matchesApiBackendRewritePath("/api/connectors/github/authorizes"),
+    ).toBe(false);
+  });
+
+  it("matches the connector callback rewrite path exactly", () => {
+    expect(
       matchesApiBackendRewritePath("/api/connectors/github/callback"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/callback/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/connectors/callback")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/callbacks"),
     ).toBe(false);
   });
 

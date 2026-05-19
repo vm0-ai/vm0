@@ -331,7 +331,14 @@ const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
   "/api/connectors/github/authorize/extra",
   "/api/connectors/authorize",
-  "/api/connectors/github/callback",
+  "/api/connectors/github/authorizes",
+] as const;
+const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
+const CONNECTORS_CALLBACK_PATH = "/api/connectors/github/callback";
+const CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/connectors/github/callback/extra",
+  "/api/connectors/callback",
+  "/api/connectors/github/callbacks",
 ] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
@@ -1058,6 +1065,10 @@ describe("API backend rewrites", () => {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/connectors/:type/authorize",
+        },
+        {
+          source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/connectors/:type/callback",
         },
         {
           source: "/api/device-token",
@@ -2166,6 +2177,31 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the connector callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CONNECTORS_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/connectors/:type/callback",
+    });
+
+    const matcher = getPathMatch(CONNECTORS_CALLBACK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CONNECTORS_CALLBACK_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

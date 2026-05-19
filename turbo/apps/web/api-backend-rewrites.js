@@ -96,6 +96,8 @@ const AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE = `/api/agent/runs/:id(${UUI
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/system-log$`,
 );
+const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
+const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -229,6 +231,11 @@ export const API_BACKEND_REWRITES = [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
     CONNECTORS_AUTHORIZE_PATH_RE,
+  ],
+  [
+    CONNECTORS_CALLBACK_REWRITE_SOURCE,
+    "/api/connectors/:type/callback",
+    CONNECTORS_CALLBACK_PATH_RE,
   ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
