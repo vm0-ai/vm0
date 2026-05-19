@@ -485,6 +485,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
+  it("matches the internal GitHub issues callback rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/github/issues"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/internal/callbacks/github/issues/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks/github")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

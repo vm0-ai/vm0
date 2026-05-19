@@ -56,7 +56,7 @@ export async function fetchIssueComments(
  * Post a comment to a GitHub issue.
  * Returns the comment ID on success, throws on failure.
  */
-export async function postIssueComment(
+async function postIssueComment(
   token: string,
   repo: string,
   issueNumber: number,

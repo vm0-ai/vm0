@@ -275,8 +275,11 @@ async function enableAuditLink(fixture: GitHubIssuesFixture): Promise<void> {
   });
 }
 
-function signedHeaders(rawBody: string, secret = TEST_CALLBACK_SECRET) {
-  const timestamp = Math.floor(now() / 1000);
+function signedHeaders(
+  rawBody: string,
+  secret = TEST_CALLBACK_SECRET,
+  timestamp = Math.floor(now() / 1000),
+) {
   return {
     "Content-Type": "application/json",
     "X-VM0-Signature": computeHmacSignature(rawBody, secret, timestamp),
@@ -287,12 +290,13 @@ function signedHeaders(rawBody: string, secret = TEST_CALLBACK_SECRET) {
 async function postSignedCallback(
   body: Record<string, unknown>,
   secret?: string,
+  timestamp?: number,
 ): Promise<Response> {
   const rawBody = JSON.stringify(body);
   const app = createApp({ signal: context.signal });
   return await app.request(PATH, {
     method: "POST",
-    headers: signedHeaders(rawBody, secret),
+    headers: signedHeaders(rawBody, secret, timestamp),
     body: rawBody,
   });
 }
@@ -313,6 +317,23 @@ afterEach(() => {
 describe("POST /api/internal/callbacks/github/issues", () => {
   const track = createFixtureTracker<GitHubIssuesFixture>((fixture) => {
     return deleteFixture(fixture);
+  });
+
+  it("rejects callback bodies missing runId", async () => {
+    const response = await postSignedCallback({
+      status: "completed",
+      payload: {
+        installationId: "00000000-0000-0000-0000-000000000001",
+        repo: "test-org/test-repo",
+        issueNumber: 42,
+        agentId: "00000000-0000-0000-0000-000000000002",
+      },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Missing runId",
+    });
   });
 
   it("rejects requests with invalid signatures", async () => {
@@ -337,6 +358,35 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("rejects requests with expired timestamps", async () => {
+    const fixture = await track(seedFixture());
+    const installation = await seedGithubInstallation({
+      composeId: fixture.composeId,
+    });
+    const payload: GitHubIssuesPayload = {
+      installationId: installation.id,
+      repo: "test-org/test-repo",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+    };
+    const { runId, callbackId } = await seedRunAndCallback({
+      fixture,
+      payload,
+    });
+    const expiredTimestamp = Math.floor((now() - 10 * 60_000) / 1000);
+
+    const response = await postSignedCallback(
+      { callbackId, runId, status: "completed", payload },
+      TEST_CALLBACK_SECRET,
+      expiredTimestamp,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Timestamp expired",
+    });
   });
 
   it("returns 404 when no callback record exists", async () => {
