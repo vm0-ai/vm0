@@ -807,7 +807,7 @@ impl FirecrackerSandbox {
     async fn process_control(
         coordinator: ParkCoordinator,
         state: Arc<AtomicU8>,
-        state_tx: watch::Sender<SandboxState>,
+        state_rx: watch::Receiver<SandboxState>,
         control: vsock_host::GuestProcessControlHandle,
         message_id: String,
         payload: Vec<u8>,
@@ -837,7 +837,7 @@ impl FirecrackerSandbox {
                 timeout,
                 write_observer,
             ) => ControlOutcome::Returned(result),
-            () = wait_for_backend_crash(state_tx.subscribe()) => ControlOutcome::BackendCrashed,
+            () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
         };
 
         match outcome {
@@ -1766,15 +1766,15 @@ impl Sandbox for FirecrackerSandbox {
                     let control = handle.control_handle();
                     let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
-                    let state_tx = self.state_tx.clone();
+                    let state_rx = self.state_tx.subscribe();
                     GuestProcessControlHandle::new(move |message_id, payload, timeout| {
                         let control = control.clone();
                         let coordinator = coordinator.clone();
                         let state = Arc::clone(&state);
-                        let state_tx = state_tx.clone();
+                        let state_rx = state_rx.clone();
                         Box::pin(async move {
                             Self::process_control(
-                                coordinator, state, state_tx, control, message_id, payload, timeout,
+                                coordinator, state, state_rx, control, message_id, payload, timeout,
                             )
                             .await
                         })
@@ -3724,7 +3724,7 @@ mod tests {
         let error = FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "gate-closed".to_owned(),
             b"payload".to_vec(),
@@ -3761,7 +3761,7 @@ mod tests {
         let error = FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "stopped".to_owned(),
             b"payload".to_vec(),
@@ -3798,7 +3798,7 @@ mod tests {
         let error = FirecrackerSandbox::process_control(
             coordinator.clone(),
             Arc::clone(&state),
-            state_tx.clone(),
+            state_tx.subscribe(),
             control.clone(),
             "too-large".to_owned(),
             too_large,
@@ -3814,7 +3814,7 @@ mod tests {
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "valid-after-local-failure".to_owned(),
             b"payload".to_vec(),
@@ -3847,7 +3847,7 @@ mod tests {
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "sink-timeout".to_owned(),
             b"payload".to_vec(),
@@ -3888,7 +3888,7 @@ mod tests {
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "guest-error".to_owned(),
             b"payload".to_vec(),
@@ -3923,7 +3923,7 @@ mod tests {
         let control_task = tokio::spawn(FirecrackerSandbox::process_control(
             coordinator.clone(),
             state,
-            state_tx,
+            state_tx.subscribe(),
             control,
             "timeout-after-write".to_owned(),
             b"payload".to_vec(),
