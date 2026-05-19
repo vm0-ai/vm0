@@ -532,7 +532,7 @@ async fn supervised_exec_control_reports_guest_status_and_error() {
 }
 
 #[tokio::test]
-async fn supervised_exec_control_mismatched_result_poisons_connection() {
+async fn supervised_exec_control_nonce_mismatch_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let task = {
@@ -573,6 +573,110 @@ async fn supervised_exec_control_mismatched_result_poisons_connection() {
         start.seq,
         control_nonce,
         "nonce-mismatch",
+        ProcessControlStatus::Delivered,
+        "",
+    )
+    .await;
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+}
+
+#[tokio::test]
+async fn supervised_exec_control_target_seq_mismatch_poisons_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-target-mismatch")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    let decoded_start = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    let ExecControlPolicy::Enabled { control_nonce, .. } = decoded_start.control else {
+        panic!("supervised exec should enable control");
+    };
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("target-mismatch", b"payload", Duration::from_secs(5))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    send_exec_control_result(
+        &mut guest,
+        control.seq,
+        start.seq + 1,
+        control_nonce,
+        "target-mismatch",
+        ProcessControlStatus::Delivered,
+        "",
+    )
+    .await;
+
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    let err = handle.wait(Duration::from_secs(5)).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+}
+
+#[tokio::test]
+async fn supervised_exec_control_message_id_mismatch_poisons_connection() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-message-mismatch")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    let decoded_start = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    let ExecControlPolicy::Enabled { control_nonce, .. } = decoded_start.control else {
+        panic!("supervised exec should enable control");
+    };
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("message-mismatch", b"payload", Duration::from_secs(5))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    send_exec_control_result(
+        &mut guest,
+        control.seq,
+        start.seq,
+        control_nonce,
+        "different-message-id",
         ProcessControlStatus::Delivered,
         "",
     )
