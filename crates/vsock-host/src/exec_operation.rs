@@ -814,6 +814,15 @@ impl SupervisedExecHandle {
         self.stream_rx.take()
     }
 
+    fn clear_unclaimed_stream_sender(&mut self) {
+        let Some(seq) = self.seq else {
+            return;
+        };
+        if self.stream_rx.take().is_some() {
+            clear_exec_operation_stream_sender(&self.shared, seq);
+        }
+    }
+
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
@@ -918,6 +927,7 @@ impl SupervisedExecHandle {
                 "supervised exec operation closed",
             )
         })?;
+        self.clear_unclaimed_stream_sender();
         let rx = self.result_rx.as_mut().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::ConnectionReset,
@@ -957,9 +967,7 @@ impl SupervisedExecHandle {
 
 impl Drop for SupervisedExecHandle {
     fn drop(&mut self) {
-        if let Some(seq) = self.seq {
-            clear_exec_operation_stream_sender(&self.shared, seq);
-        }
+        self.clear_unclaimed_stream_sender();
     }
 }
 
