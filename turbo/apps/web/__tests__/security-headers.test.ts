@@ -317,6 +317,14 @@ const CLI_AUTH_TEST_TOKEN_NEXT_NEGATIVE_PATHS = [
   "/api/cli/auth/test-token/extra",
   "/api/cli/auth",
 ] as const;
+const TEST_OAUTH_PROVIDER_AUTHORIZE_REWRITE_SOURCE =
+  "/api/test/oauth-provider/authorize";
+const TEST_OAUTH_PROVIDER_AUTHORIZE_PATH = "/api/test/oauth-provider/authorize";
+const TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS = [
+  "/api/test/oauth-provider/authorize/extra",
+  "/api/test/oauth-provider",
+  "/api/test/oauth-provider/token",
+] as const;
 const TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PATH = "/api/test/oauth-provider/echo";
 const TEST_OAUTH_PROVIDER_ECHO_PROXY_NEGATIVE_PATHS = [
@@ -1146,6 +1154,11 @@ describe("API backend rewrites", () => {
         {
           source: CLI_AUTH_TEST_TOKEN_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cli/auth/test-token",
+        },
+        {
+          source: TEST_OAUTH_PROVIDER_AUTHORIZE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/oauth-provider/authorize",
         },
         {
           source: TEST_OAUTH_PROVIDER_ECHO_REWRITE_SOURCE,
@@ -4322,6 +4335,15 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of TEST_OAUTH_PROVIDER_ECHO_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact test OAuth provider authorize path", () => {
+    expect(
+      matchesApiBackendRewritePath(TEST_OAUTH_PROVIDER_AUTHORIZE_PATH),
+    ).toBe(true);
+    for (const pathname of TEST_OAUTH_PROVIDER_AUTHORIZE_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

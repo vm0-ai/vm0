@@ -225,6 +225,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cli/auth")).toBe(false);
   });
 
+  it("matches the test OAuth provider authorize rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/authorize"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/authorize/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/test/oauth-provider/token")).toBe(
+      false,
+    );
+  });
+
   it("matches the test OAuth provider echo rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/oauth-provider/echo")).toBe(
       true,

@@ -30,7 +30,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/telegram/register/route.ts",
   "app/api/telegram/setup-status/route.ts",
   "app/api/telegram/webhook/[telegramBotId]/route.ts",
-  "app/api/test/oauth-provider/authorize/route.ts",
   "app/api/test/oauth-provider/token/route.ts",
   "app/api/test/oauth-provider/userinfo/route.ts",
   "app/api/test/slack-dispatch-probe/route.ts",
