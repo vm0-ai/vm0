@@ -54,12 +54,6 @@ fn resolve_io_limits_from_values(
     profiles: &BTreeMap<String, ProfileConfig>,
     budget: &ResourceBudget,
 ) -> IoLimitResolution {
-    if let Some(key) = values.invalid_process_env {
-        return IoLimitResolution::Misconfigured {
-            reason: format!("{key} must be valid UTF-8"),
-        };
-    }
-
     let entries = [
         (
             host_env::RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
@@ -300,12 +294,10 @@ fn per_sandbox_capacity(host_capacity: u64, denominator: u64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host_env::HostEnvSource;
 
     fn value(raw: &str) -> HostEnvValue {
         HostEnvValue {
             value: raw.to_string(),
-            source: HostEnvSource::HostFile,
         }
     }
 
@@ -333,7 +325,6 @@ mod tests {
             disk_iops: Some(value("200000")),
             net_rx_mib_per_sec: Some(value("1250")),
             net_tx_mib_per_sec: Some(value("1000")),
-            invalid_process_env: None,
         }
     }
 
@@ -431,22 +422,6 @@ mod tests {
         assert!(reason.contains(host_env::RUNNER_DISK_IOPS_ENV));
         assert!(reason.contains("too small"));
         assert!(reason.contains("denominator: 64"));
-    }
-
-    #[test]
-    fn non_utf8_process_env_disables_limits_as_misconfigured() {
-        let profiles = profiles(&[("vm0/default", 2, 4096)]);
-        let budget = ResourceBudget::new(8, 16_384, 1.0, 4);
-        let mut values = full_values();
-        values.invalid_process_env = Some(host_env::RUNNER_DISK_IOPS_ENV);
-
-        let resolution = resolve_io_limits_from_values(&values, &profiles, &budget);
-
-        let IoLimitResolution::Misconfigured { reason } = resolution else {
-            panic!("expected misconfigured resolution");
-        };
-        assert!(reason.contains(host_env::RUNNER_DISK_IOPS_ENV));
-        assert!(reason.contains("UTF-8"));
     }
 
     #[test]

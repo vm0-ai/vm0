@@ -5,25 +5,25 @@
 
 use crate::config;
 use crate::error::{RunnerError, RunnerResult};
-use crate::host_env::{self, HostEnvSource, HostEnvValue};
+use crate::host_env::{self, HostEnvValue};
 
 const RUNNER_YAML_SOURCE: &str = "runner.yaml";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConcurrencyFactorSource {
     RunnerYaml,
-    HostEnv(HostEnvSource),
+    HostEnvFile,
 }
 
 impl ConcurrencyFactorSource {
     pub(crate) fn is_override(self) -> bool {
-        matches!(self, Self::HostEnv(_))
+        matches!(self, Self::HostEnvFile)
     }
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::RunnerYaml => RUNNER_YAML_SOURCE,
-            Self::HostEnv(source) => source.label_for(host_env::RUNNER_CONCURRENCY_FACTOR_ENV),
+            Self::HostEnvFile => host_env::RUNNER_HOST_ENV_FILE,
         }
     }
 }
@@ -42,7 +42,7 @@ fn resolve_concurrency_factor_from_env_value(
     let Some(env_value) = env_value else {
         return Ok((yaml_value, ConcurrencyFactorSource::RunnerYaml));
     };
-    let error_source = concurrency_factor_error_source(env_value.source);
+    let error_source = concurrency_factor_error_source();
 
     let value = env_value.value.parse::<f64>().map_err(|e| {
         RunnerError::Config(format!(
@@ -53,18 +53,15 @@ fn resolve_concurrency_factor_from_env_value(
         RunnerError::Config(format!("{error_source} must be a positive finite number"))
     })?;
 
-    Ok((value, ConcurrencyFactorSource::HostEnv(env_value.source)))
+    Ok((value, ConcurrencyFactorSource::HostEnvFile))
 }
 
-fn concurrency_factor_error_source(source: HostEnvSource) -> String {
-    match source {
-        HostEnvSource::ProcessEnv => host_env::RUNNER_CONCURRENCY_FACTOR_ENV.to_string(),
-        HostEnvSource::HostFile => format!(
-            "{} in {}",
-            host_env::RUNNER_CONCURRENCY_FACTOR_ENV,
-            host_env::RUNNER_HOST_ENV_FILE
-        ),
-    }
+fn concurrency_factor_error_source() -> String {
+    format!(
+        "{} in {}",
+        host_env::RUNNER_CONCURRENCY_FACTOR_ENV,
+        host_env::RUNNER_HOST_ENV_FILE
+    )
 }
 
 #[cfg(test)]
@@ -82,29 +79,24 @@ mod tests {
     }
 
     #[test]
-    fn valid_env_overrides_yaml_value() {
+    fn valid_host_env_file_value_overrides_yaml_value() {
         let env_value = HostEnvValue {
             value: "1.5".to_string(),
-            source: HostEnvSource::ProcessEnv,
         };
         let (value, source) =
             resolve_concurrency_factor_from_env_value(1.0, Some(&env_value)).unwrap();
 
         assert_eq!(value, 1.5);
-        assert_eq!(
-            source,
-            ConcurrencyFactorSource::HostEnv(HostEnvSource::ProcessEnv)
-        );
+        assert_eq!(source, ConcurrencyFactorSource::HostEnvFile);
         assert!(source.is_override());
-        assert_eq!(source.label(), host_env::RUNNER_CONCURRENCY_FACTOR_ENV);
+        assert_eq!(source.label(), host_env::RUNNER_HOST_ENV_FILE);
     }
 
     #[test]
-    fn invalid_env_values_fail_and_name_var() {
+    fn invalid_host_env_file_values_fail_and_name_var() {
         for raw in ["0", "-1", "NaN", "inf", "-inf", "not-a-number"] {
             let env_value = HostEnvValue {
                 value: raw.to_string(),
-                source: HostEnvSource::ProcessEnv,
             };
             let err = resolve_concurrency_factor_from_env_value(1.0, Some(&env_value))
                 .unwrap_err()
@@ -121,7 +113,6 @@ mod tests {
     fn invalid_file_values_fail_and_name_source_file() {
         let env_value = HostEnvValue {
             value: "0".to_string(),
-            source: HostEnvSource::HostFile,
         };
         let err = resolve_concurrency_factor_from_env_value(1.0, Some(&env_value))
             .unwrap_err()
