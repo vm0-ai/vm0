@@ -419,9 +419,8 @@ impl GuestProcessControlHandle {
             PROCESS_CONTROL_TERMINAL_MSG_TYPES,
             timeout,
             {
-                let shared = Arc::clone(&self.shared);
                 let target_seq = self.target_seq;
-                move || ensure_process_control_target_active(&shared, target_seq)
+                move |state| ensure_process_control_target_active(state, target_seq)
             },
             write_observer,
         )
@@ -526,9 +525,11 @@ fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
         .max(1)
 }
 
-fn ensure_process_control_target_active(shared: &Arc<Shared>, target_seq: u32) -> io::Result<()> {
-    let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-    match &*guard {
+fn ensure_process_control_target_active(
+    state: &ConnectionState,
+    target_seq: u32,
+) -> io::Result<()> {
+    match state {
         ConnectionState::Connected { process, .. } if process.contains_operation(target_seq) => {
             Ok(())
         }

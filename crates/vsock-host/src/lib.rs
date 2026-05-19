@@ -682,7 +682,7 @@ async fn normal_request_on_shared_with_write_observer(
         payload,
         terminal_msg_types,
         timeout,
-        || Ok(()),
+        |_| Ok(()),
         write_observer,
     )
     .await
@@ -694,7 +694,7 @@ async fn normal_request_on_shared_with_pre_write_observer(
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
-    pre_write: impl FnOnce() -> io::Result<()>,
+    pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
     write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
@@ -727,8 +727,7 @@ async fn normal_request_on_shared_with_pre_write_observer(
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
     write_request_frame(shared, &data, || {
-        pre_write()?;
-        mark_pending_normal_operation_possible_guest_write(shared, seq)?;
+        mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
         write_observer.record_write_start()
     })
     .await?;
@@ -809,8 +808,10 @@ async fn request_on_shared_with_composite_operation_and_observer(
 fn mark_pending_normal_operation_possible_guest_write(
     shared: &Arc<Shared>,
     seq: u32,
+    pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
 ) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    pre_write(&mut guard)?;
     match &mut *guard {
         ConnectionState::Connected { pending, .. } => {
             let Some(pending_response) = pending.get_mut(&seq) else {
