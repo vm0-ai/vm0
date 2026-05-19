@@ -314,6 +314,12 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toContain("openai");
   });
 
+  it("includes static OAuth test connectors without runtime environment credentials", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toContain("test-oauth");
+  });
+
   it("includes OAuth connectors only when client id and secret are configured", () => {
     const env = new Map([
       ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
@@ -326,6 +332,22 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     });
 
     expect(runtimeAvailableTypes).toContain("airtable");
+    expect(runtimeAvailableTypes).not.toContain("sentry");
+  });
+
+  it("treats empty OAuth environment values as not configured", () => {
+    const env = new Map([
+      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
+      ["AIRTABLE_OAUTH_CLIENT_SECRET", ""],
+      ["SENTRY_OAUTH_CLIENT_ID", ""],
+      ["SENTRY_OAUTH_CLIENT_SECRET", "sentry-client-secret"],
+    ]);
+
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
+      return env.get(name);
+    });
+
+    expect(runtimeAvailableTypes).not.toContain("airtable");
     expect(runtimeAvailableTypes).not.toContain("sentry");
   });
 
