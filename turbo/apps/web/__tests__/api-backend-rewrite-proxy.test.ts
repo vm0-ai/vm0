@@ -887,6 +887,23 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the test slack mock assistant status rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/assistant.threads.setStatus",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/assistant.threads.setStatus/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/auth.test")).toBe(
+      false,
+    );
+  });
+
   it("matches the test slack state rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-state")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/test/slack-state/extra")).toBe(

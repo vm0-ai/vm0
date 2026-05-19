@@ -337,6 +337,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/test/oauth-provider/token", "/api/test/oauth-provider/token"],
   ["/api/test/oauth-provider/userinfo", "/api/test/oauth-provider/userinfo"],
   ["/api/test/slack-dispatch-probe", "/api/test/slack-dispatch-probe"],
+  [
+    "/api/test/slack-mock/assistant.threads.setStatus",
+    "/api/test/slack-mock/assistant.threads.setStatus",
+  ],
   ["/api/test/slack-state", "/api/test/slack-state"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],

@@ -507,6 +507,15 @@ const TEST_SLACK_DISPATCH_PROBE_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-dispatch-probe/extra",
   "/api/test/slack-dispatch",
 ] as const;
+const TEST_SLACK_MOCK_ASSISTANT_STATUS_REWRITE_SOURCE =
+  "/api/test/slack-mock/assistant.threads.setStatus";
+const TEST_SLACK_MOCK_ASSISTANT_STATUS_PATH =
+  "/api/test/slack-mock/assistant.threads.setStatus";
+const TEST_SLACK_MOCK_ASSISTANT_STATUS_NEXT_NEGATIVE_PATHS = [
+  "/api/test/slack-mock/assistant.threads.setStatus/extra",
+  "/api/test/slack-mock",
+  "/api/test/slack-mock/auth.test",
+] as const;
 const TEST_SLACK_STATE_REWRITE_SOURCE = "/api/test/slack-state";
 const TEST_SLACK_STATE_PATH = "/api/test/slack-state";
 const TEST_SLACK_STATE_NEXT_NEGATIVE_PATHS = [
@@ -1419,6 +1428,11 @@ describe("API backend rewrites", () => {
         {
           source: TEST_SLACK_DISPATCH_PROBE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/test/slack-dispatch-probe",
+        },
+        {
+          source: TEST_SLACK_MOCK_ASSISTANT_STATUS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/slack-mock/assistant.threads.setStatus",
         },
         {
           source: TEST_SLACK_STATE_REWRITE_SOURCE,
@@ -3119,6 +3133,33 @@ describe("API backend rewrites", () => {
 
     expect(matcher(TEST_SLACK_DISPATCH_PROBE_PATH)).toStrictEqual({});
     for (const pathname of TEST_SLACK_DISPATCH_PROBE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact test slack mock assistant status rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_SLACK_MOCK_ASSISTANT_STATUS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_SLACK_MOCK_ASSISTANT_STATUS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/test/slack-mock/assistant.threads.setStatus",
+    });
+
+    const matcher = getPathMatch(
+      TEST_SLACK_MOCK_ASSISTANT_STATUS_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(TEST_SLACK_MOCK_ASSISTANT_STATUS_PATH)).toStrictEqual({});
+    for (const pathname of TEST_SLACK_MOCK_ASSISTANT_STATUS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
