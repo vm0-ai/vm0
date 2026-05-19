@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_START,
+    ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED,
 };
 
 use super::support::*;
@@ -136,6 +137,31 @@ fn exec_operation_rejects_unsupported_start_policies() {
         read_error_response(&mut host_stream, 105),
         "exec control policy is not supported"
     );
+
+    send_quiesce_operations(&mut host_stream, 106);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 106);
+    assert!(quiesced.payload.is_empty());
+
+    send_resume_operations(&mut host_stream, 107);
+    let resumed = read_message(&mut host_stream);
+    assert_eq!(resumed.msg_type, MSG_OPERATIONS_RESUMED);
+    assert_eq!(resumed.seq, 107);
+    assert!(resumed.payload.is_empty());
+
+    send_exec_start(
+        &mut host_stream,
+        108,
+        "printf ok",
+        5000,
+        ExecOutputPolicy::Capture { limit_bytes: 64 },
+        ExecOutputPolicy::Discard,
+    );
+    let (chunks, result) = read_exec_result(&mut host_stream, 108);
+    assert!(chunks.is_empty());
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"ok".to_vec()));
 
     finish_guest_connection(handle, host_stream);
 }
