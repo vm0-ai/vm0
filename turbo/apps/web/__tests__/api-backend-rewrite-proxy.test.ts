@@ -1137,13 +1137,37 @@ describe("API backend rewrite proxy behavior", () => {
   });
 
   it("matches the zero composes list rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/composes/list")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/metadata")).toBe(
+      false,
+    );
     expect(matchesApiBackendRewritePath("/api/zero/composes/list/extra")).toBe(
       false,
     );
     expect(matchesApiBackendRewritePath("/api/zero/composes/lists")).toBe(
       false,
     );
+  });
+
+  it("matches the zero composes metadata rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/metadata",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/composes/list")).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/composes/not-a-uuid/metadata"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/composes/550e8400-e29b-41d4-a716-446655440000/metadata/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/compose/550e8400-e29b-41d4-a716-446655440000/metadata",
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero computer-use host rewrite path exactly", () => {

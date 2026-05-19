@@ -39,6 +39,26 @@ describe("PATCH /api/zero/composes/:id/metadata", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroComposesMetadataContract);
+    const response = await accept(
+      client.update({
+        params: { id: randomUUID() },
+        body: { displayName: "Test" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
   it("updates compose metadata on a fresh zero_agents row", async () => {
     const fixture = await track(
       store.set(
