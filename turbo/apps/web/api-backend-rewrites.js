@@ -643,3 +643,11 @@ export function matchesApiBackendRewritePath(pathname) {
     return pathname === source;
   });
 }
+
+export function matchesConnectorOAuthRewritePath(pathname) {
+  return (
+    CONNECTORS_AUTHORIZE_PATH_RE.test(pathname) ||
+    CONNECTORS_CALLBACK_PATH_RE.test(pathname) ||
+    ZERO_CONNECTORS_AUTHORIZE_PATH_RE.test(pathname)
+  );
+}

@@ -25,9 +25,15 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
+const API_ORIGIN = "https://api.vm0.ai";
+const WEB_ORIGIN = "https://www.vm0.ai";
 
-function authorizeUrl(type: string, session?: string): string {
-  const url = new URL(`/api/zero/connectors/${type}/authorize`, BASE_URL);
+function authorizeUrl(
+  type: string,
+  session?: string,
+  origin = BASE_URL,
+): string {
+  const url = new URL(`/api/zero/connectors/${type}/authorize`, origin);
   if (session) {
     url.searchParams.set("session", session);
   }
@@ -111,6 +117,7 @@ async function requestAuthorize(
     readonly session?: string;
     readonly authenticated?: boolean;
     readonly headers?: HeadersInit;
+    readonly origin?: string;
   } = {},
 ): Promise<Response> {
   if (options.authenticated) {
@@ -121,10 +128,13 @@ async function requestAuthorize(
     headers.set("cookie", "__session=opaque");
   }
   const app = createApp({ signal: context.signal });
-  return await app.request(authorizeUrl(type, options.session), {
-    method: "GET",
-    headers,
-  });
+  return await app.request(
+    authorizeUrl(type, options.session, options.origin),
+    {
+      method: "GET",
+      headers,
+    },
+  );
 }
 
 describe("GET /api/zero/connectors/:type/authorize", () => {
@@ -169,11 +179,11 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(url.searchParams.get("redirect_url")).toBe(authorizeUrl("github"));
   });
 
-  it("redirects unauthenticated users to sign-in on the forwarded web origin", async () => {
+  it("redirects unauthenticated users to sign-in on the web rewrite origin", async () => {
     const response = await requestAuthorize("github", {
+      origin: API_ORIGIN,
       headers: {
-        "x-forwarded-host": "www.vm0.ai",
-        "x-forwarded-proto": "https",
+        "x-vm0-web-origin": WEB_ORIGIN,
       },
     });
 
@@ -181,9 +191,20 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     const location = response.headers.get("location");
     expect(location).not.toBeNull();
     const url = new URL(location!);
-    expect(`${url.origin}${url.pathname}`).toBe("https://www.vm0.ai/sign-in");
+    expect(`${url.origin}${url.pathname}`).toBe(`${WEB_ORIGIN}/sign-in`);
     expect(url.searchParams.get("redirect_url")).toBe(
-      "https://www.vm0.ai/api/zero/connectors/github/authorize",
+      `${WEB_ORIGIN}/api/zero/connectors/github/authorize`,
+    );
+  });
+
+  it("redirects direct API host authorize requests to the canonical web route", async () => {
+    const response = await requestAuthorize("github", {
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/api/zero/connectors/github/authorize`,
     );
   });
 
@@ -212,12 +233,12 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeTruthy();
   });
 
-  it("uses the forwarded web origin for OAuth callback URLs", async () => {
+  it("uses the web rewrite origin for OAuth callback URLs", async () => {
     const response = await requestAuthorize("github", {
       authenticated: true,
+      origin: API_ORIGIN,
       headers: {
-        "x-forwarded-host": "www.vm0.ai",
-        "x-forwarded-proto": "https",
+        "x-vm0-web-origin": WEB_ORIGIN,
       },
     });
 
@@ -226,7 +247,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(location).not.toBeNull();
     const url = new URL(location!);
     expect(url.searchParams.get("redirect_uri")).toBe(
-      "https://www.vm0.ai/api/connectors/github/callback",
+      `${WEB_ORIGIN}/api/connectors/github/callback`,
     );
   });
 

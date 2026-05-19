@@ -49,7 +49,7 @@ import {
   deleteConnector$,
   reloadConnectors$,
 } from "../../external/connectors.ts";
-import { apiBaseForNavigation$ } from "../../fetch.ts";
+import { resolveApiBaseForNavigation } from "../../api-base.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import {
   jsonParseOr,
@@ -1650,7 +1650,7 @@ export const connectConnector$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    const baseUrl = await get(apiBaseForNavigation$);
+    const baseUrl = resolveApiBaseForNavigation(false);
     signal.throwIfAborted();
 
     const flow = createConnectorConnectFlowState(type);

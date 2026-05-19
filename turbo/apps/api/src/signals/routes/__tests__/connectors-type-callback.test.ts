@@ -28,6 +28,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
+const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
@@ -72,8 +73,9 @@ type OAuthConnectorType = Exclude<ConnectorType, "computer">;
 function callbackUrl(
   type: string,
   query: Record<string, string | undefined>,
+  origin = BASE_URL,
 ): string {
-  const url = new URL(`/api/connectors/${type}/callback`, BASE_URL);
+  const url = new URL(`/api/connectors/${type}/callback`, origin);
   for (const [name, value] of Object.entries(query)) {
     if (value !== undefined) {
       url.searchParams.set(name, value);
@@ -87,8 +89,7 @@ function callbackHeaders(args: {
   readonly sessionId?: string;
   readonly codeVerifier?: string;
   readonly oauthContext?: string;
-  readonly forwardedHost?: string;
-  readonly forwardedProto?: string;
+  readonly webOrigin?: string;
 }): HeadersInit {
   const cookies = ["__session=opaque"];
   if (args.stateCookie) {
@@ -112,11 +113,8 @@ function callbackHeaders(args: {
     );
   }
   const headers: Record<string, string> = { cookie: cookies.join("; ") };
-  if (args.forwardedHost) {
-    headers["x-forwarded-host"] = args.forwardedHost;
-  }
-  if (args.forwardedProto) {
-    headers["x-forwarded-proto"] = args.forwardedProto;
+  if (args.webOrigin) {
+    headers["x-vm0-web-origin"] = args.webOrigin;
   }
   return headers;
 }
@@ -132,9 +130,10 @@ async function requestCallback(args: {
   readonly type: string;
   readonly query: Record<string, string | undefined>;
   readonly headers?: HeadersInit;
+  readonly origin?: string;
 }): Promise<Response> {
   const app = createApp({ signal: context.signal });
-  return await app.request(callbackUrl(args.type, args.query), {
+  return await app.request(callbackUrl(args.type, args.query, args.origin), {
     method: "GET",
     headers: args.headers,
   });
@@ -1337,7 +1336,7 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("uses the forwarded web origin for callback error redirects", async () => {
+  it("uses the web rewrite origin for callback error redirects", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -1346,10 +1345,10 @@ describe("GET /api/connectors/:type/callback", () => {
     const response = await requestCallback({
       type: "github",
       query: { code: "code-123", state: "returned-state" },
+      origin: API_ORIGIN,
       headers: callbackHeaders({
         stateCookie: "saved-state",
-        forwardedHost: "www.vm0.ai",
-        forwardedProto: "https",
+        webOrigin: WEB_ORIGIN,
       }),
     });
 
@@ -1362,6 +1361,20 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("type")).toBe("github");
     expect(url.searchParams.get("message")).toBe(
       "Invalid state - please try again",
+    );
+  });
+
+  it("redirects direct API host callback requests to the canonical web route", async () => {
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/api/connectors/github/callback?code=code-123&state=state-123`,
     );
   });
 
@@ -1533,7 +1546,7 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("uses the forwarded web origin for token exchange and success redirects", async () => {
+  it("uses the web rewrite origin for token exchange and success redirects", async () => {
     const dynamicOAuth = useDynamicTestOAuthExchange();
     restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
     const { exchanges } = dynamicOAuth;
@@ -1545,12 +1558,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const response = await requestCallback({
       type: "test-oauth",
       query: { code: "code-123", state: "state-123" },
+      origin: API_ORIGIN,
       headers: callbackHeaders({
         stateCookie: "state-123",
         codeVerifier: "pkce-verifier",
         oauthContext: "dynamic-oauth-context; tenant=example",
-        forwardedHost: "www.vm0.ai",
-        forwardedProto: "https",
+        webOrigin: WEB_ORIGIN,
       }),
     });
 

@@ -27,6 +27,10 @@ import { optionalEnv } from "../../lib/env";
 import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route";
+import {
+  getConnectorOAuthCanonicalRedirectUrl,
+  getConnectorOAuthOrigin,
+} from "./connector-oauth-origin";
 
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
@@ -35,6 +39,8 @@ const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const REDIRECT_STATUS = 307;
 
 type OAuthConnectorType = Exclude<ConnectorType, "computer">;
+
+const connectorCallbackAuth = { requireOrganization: true } as const;
 
 function getCookie(request: Request, name: string): string | undefined {
   const cookieHeader = request.headers.get("cookie");
@@ -49,16 +55,6 @@ function getCookie(request: Request, name: string): string | undefined {
     }
   }
   return undefined;
-}
-
-function getRequestOrigin(request: Request): string {
-  const url = new URL(request.url);
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  if (forwardedHost) {
-    return `${forwardedProto ?? "https"}://${forwardedHost}`;
-  }
-  return url.origin;
 }
 
 function buildDeleteCookieHeader(name: string): string {
@@ -200,7 +196,11 @@ const callbackConnectorInner$ = command(
     const params = get(pathParamsOf(connectorsTypeCallbackContract.callback));
     const query = get(queryOf(connectorsTypeCallbackContract.callback));
     const request = get(request$).raw;
-    const origin = getRequestOrigin(request);
+    const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return redirectResponse(canonicalRedirectUrl);
+    }
+    const origin = getConnectorOAuthOrigin(request);
 
     const typeResult = connectorTypeSchema.safeParse(params.type);
     if (!typeResult.success) {
@@ -208,11 +208,7 @@ const callbackConnectorInner$ = command(
     }
     const connectorType = typeResult.data;
 
-    const auth = await set(
-      requiredAuthContext$,
-      { requireOrganization: true },
-      signal,
-    );
+    const auth = await set(requiredAuthContext$, connectorCallbackAuth, signal);
     signal.throwIfAborted();
     if ("status" in auth) {
       return redirectWithError(origin, params.type, "Not authenticated");

@@ -148,6 +148,51 @@ describe("connectConnector$", () => {
     expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 
+  it("opens connector OAuth on the web host when apiBackend is enabled", async () => {
+    vi.stubGlobal("location", new URL("https://app.vm0.ai/connectors"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { apiBackend: true },
+    });
+
+    const mockWindow = { closed: false, close: vi.fn() };
+    const open = vi
+      .spyOn(window, "open")
+      .mockReturnValue(mockWindow as unknown as Window);
+
+    let pollCount = 0;
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        pollCount++;
+        if (pollCount <= 1) {
+          return respond(200, makeEmptyConnectorResponse());
+        }
+        return respond(200, makeGithubConnectorResponse());
+      }),
+    );
+
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      {},
+      context.signal,
+    );
+
+    await vi.waitFor(() => {
+      expect(open).toHaveBeenCalledWith(
+        "https://www.vm0.ai/api/zero/connectors/github/authorize",
+        "_blank",
+        "width=600,height=700",
+      );
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    triggerAblyEvent("connector:changed");
+
+    await expect(connectPromise).resolves.toBeTruthy();
+  });
+
   it("keeps subscribing on reconnect until updatedAt changes", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 

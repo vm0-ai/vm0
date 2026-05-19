@@ -12,7 +12,10 @@ import {
 } from "./proxy.layers";
 import { applyCorsHeaders, handleCors } from "./proxy.cors";
 import { env } from "./src/env";
-import { matchesApiBackendRewritePath } from "./api-backend-rewrites";
+import {
+  matchesApiBackendRewritePath,
+  matchesConnectorOAuthRewritePath,
+} from "./api-backend-rewrites";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -74,6 +77,7 @@ const isPublicRoute = createRouteMatcher([
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
+const CONNECTOR_OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
@@ -82,6 +86,12 @@ function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
     "x-forwarded-proto",
     request.nextUrl.protocol.slice(0, -1),
   );
+  if (matchesConnectorOAuthRewritePath(request.nextUrl.pathname)) {
+    requestHeaders.set(
+      CONNECTOR_OAUTH_WEB_ORIGIN_HEADER,
+      request.nextUrl.origin,
+    );
+  }
   const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypass) {
     requestHeaders.set("x-vercel-protection-bypass", bypass);

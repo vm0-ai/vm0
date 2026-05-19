@@ -213,6 +213,9 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
       "https",
     );
+    expect(response.headers.get("x-middleware-request-x-vm0-web-origin")).toBe(
+      null,
+    );
     expect(
       response.headers.get("x-middleware-request-x-vm0-test-endpoint-bypass"),
     ).toBeNull();
@@ -277,6 +280,9 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
       "https",
     );
+    expect(response.headers.get("x-middleware-request-x-vm0-web-origin")).toBe(
+      "https://www.vm0.ai",
+    );
   });
 
   it("should preserve web origin headers for API backend OAuth callback routes", async () => {
@@ -303,6 +309,9 @@ describe("proxy middleware: sandbox token handling", () => {
     );
     expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
       "https",
+    );
+    expect(response.headers.get("x-middleware-request-x-vm0-web-origin")).toBe(
+      "https://www.vm0.ai",
     );
   });
 });

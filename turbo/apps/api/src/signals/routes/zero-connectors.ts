@@ -60,6 +60,10 @@ import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.se
 import { connectLocalAgentConnector$ } from "../services/zero-local-agent.service";
 import { createComputerConnector$ } from "../services/zero-computer-connector.service";
 import type { RouteEntry } from "../route";
+import {
+  getConnectorOAuthCanonicalRedirectUrl,
+  getConnectorOAuthOrigin,
+} from "./connector-oauth-origin";
 
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
@@ -150,16 +154,6 @@ function buildCookieHeader(
     parts.push("Secure");
   }
   return parts.join("; ");
-}
-
-function getRequestOrigin(request: Request): string {
-  const url = new URL(request.url);
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  if (forwardedHost) {
-    return `${forwardedProto ?? "https"}://${forwardedHost}`;
-  }
-  return url.origin;
 }
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -529,7 +523,11 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     const params = get(pathParamsOf(route));
     const query = get(queryOf(route));
     const request = get(request$).raw;
-    const origin = getRequestOrigin(request);
+    const canonicalRedirectUrl = getConnectorOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return redirectResponse(canonicalRedirectUrl);
+    }
+    const origin = getConnectorOAuthOrigin(request);
     const requestUrl = new URL(request.url);
 
     const typeResult = connectorTypeSchema.safeParse(params.type);
