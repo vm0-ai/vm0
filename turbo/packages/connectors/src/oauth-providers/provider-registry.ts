@@ -138,7 +138,6 @@ import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
 import { openrouterHandler } from "./providers/openrouter-handler";
 import { openweatherHandler } from "./providers/openweather-handler";
-import { codexOauthHandler } from "./providers/codex-oauth-handler";
 import { railwayHandler } from "./providers/railway-handler";
 import { railwayProjectHandler } from "./providers/railway-project-handler";
 import { redditHandler } from "./providers/reddit-handler";
@@ -228,10 +227,6 @@ import { snowflakeHandler } from "./providers/snowflake-handler";
 export type { AuthUrlResult, OAuthTokenResult };
 export type { ProviderEnv };
 export { providerEnvFromObject } from "./provider-types";
-
-export const MODEL_PROVIDER_OAUTH_HANDLERS = {
-  "codex-oauth-token": codexOauthHandler,
-} as const satisfies Record<string, ProviderHandler>;
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,

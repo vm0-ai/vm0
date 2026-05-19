@@ -18,10 +18,10 @@ import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
-  MODEL_PROVIDER_OAUTH_HANDLERS,
   PROVIDER_HANDLERS,
   providerEnvFromObject,
 } from "@vm0/connectors/oauth-providers";
+import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";

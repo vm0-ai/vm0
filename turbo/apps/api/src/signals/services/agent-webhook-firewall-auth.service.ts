@@ -4,10 +4,10 @@ import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runne
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  MODEL_PROVIDER_OAUTH_HANDLERS,
   PROVIDER_HANDLERS,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
+import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";

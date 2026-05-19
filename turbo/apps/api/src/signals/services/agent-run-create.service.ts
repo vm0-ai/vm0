@@ -35,10 +35,8 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import {
-  MODEL_PROVIDER_OAUTH_HANDLERS,
-  PROVIDER_HANDLERS,
-} from "@vm0/connectors/oauth-providers";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
