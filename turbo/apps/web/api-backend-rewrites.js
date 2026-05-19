@@ -162,6 +162,35 @@ const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/register";
 const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/unregister";
+const ZERO_COMPUTER_USE_AUDIT_EVENTS_REWRITE_SOURCE =
+  "/api/zero/computer-use/audit-events";
+const ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE =
+  "/api/zero/computer-use/commands";
+const ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE = `/api/zero/computer-use/commands/:commandId(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_COMPUTER_USE_COMMAND_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const ZERO_COMPUTER_USE_COMMAND_APPROVAL_REWRITE_SOURCE = `${ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE}/approval`;
+const ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}/approval$`,
+);
+const ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE =
+  "/api/zero/computer-use/heartbeat";
+const ZERO_COMPUTER_USE_HOST_COMMANDS_NEXT_REWRITE_SOURCE =
+  "/api/zero/computer-use/host/commands/next";
+const ZERO_COMPUTER_USE_HOST_COMMAND_COMPLETE_REWRITE_SOURCE = `/api/zero/computer-use/host/commands/:commandId(${UUID_PATH_SEGMENT_PATTERN})/complete`;
+const ZERO_COMPUTER_USE_HOST_COMMAND_COMPLETE_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/host/commands/${UUID_PATH_SEGMENT_PATTERN}/complete$`,
+);
+const ZERO_COMPUTER_USE_HOSTS_REWRITE_SOURCE = "/api/zero/computer-use/hosts";
+const ZERO_COMPUTER_USE_HOST_BY_ID_REWRITE_SOURCE = `/api/zero/computer-use/hosts/:hostId(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_COMPUTER_USE_HOST_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/hosts/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
+const ZERO_COMPUTER_USE_HOSTS_START_REWRITE_SOURCE =
+  "/api/zero/computer-use/hosts/start";
+const ZERO_COMPUTER_USE_WRITE_COMMANDS_REWRITE_SOURCE =
+  "/api/zero/computer-use/write-commands";
 const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
   "/api/zero/connectors/:type/authorize";
 const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
@@ -524,6 +553,51 @@ export const API_BACKEND_REWRITES = [
   [
     ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
     "/api/zero/computer-use/unregister",
+  ],
+  [
+    ZERO_COMPUTER_USE_AUDIT_EVENTS_REWRITE_SOURCE,
+    "/api/zero/computer-use/audit-events",
+  ],
+  [
+    ZERO_COMPUTER_USE_COMMANDS_REWRITE_SOURCE,
+    "/api/zero/computer-use/commands",
+  ],
+  [
+    ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE,
+    "/api/zero/computer-use/commands/:commandId",
+    ZERO_COMPUTER_USE_COMMAND_BY_ID_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_COMMAND_APPROVAL_REWRITE_SOURCE,
+    "/api/zero/computer-use/commands/:commandId/approval",
+    ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE,
+    "/api/zero/computer-use/heartbeat",
+  ],
+  [
+    ZERO_COMPUTER_USE_HOST_COMMANDS_NEXT_REWRITE_SOURCE,
+    "/api/zero/computer-use/host/commands/next",
+  ],
+  [
+    ZERO_COMPUTER_USE_HOST_COMMAND_COMPLETE_REWRITE_SOURCE,
+    "/api/zero/computer-use/host/commands/:commandId/complete",
+    ZERO_COMPUTER_USE_HOST_COMMAND_COMPLETE_PATH_RE,
+  ],
+  [ZERO_COMPUTER_USE_HOSTS_REWRITE_SOURCE, "/api/zero/computer-use/hosts"],
+  [
+    ZERO_COMPUTER_USE_HOST_BY_ID_REWRITE_SOURCE,
+    "/api/zero/computer-use/hosts/:hostId",
+    ZERO_COMPUTER_USE_HOST_BY_ID_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_HOSTS_START_REWRITE_SOURCE,
+    "/api/zero/computer-use/hosts/start",
+  ],
+  [
+    ZERO_COMPUTER_USE_WRITE_COMMANDS_REWRITE_SOURCE,
+    "/api/zero/computer-use/write-commands",
   ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
   [
