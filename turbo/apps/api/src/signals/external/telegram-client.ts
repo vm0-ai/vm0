@@ -1,3 +1,7 @@
+import { optionalEnv } from "../../lib/env";
+
+const DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org/bot";
+
 interface TelegramApiErrorPayload {
   readonly ok: false;
   readonly description: string;
@@ -42,17 +46,63 @@ export function isTelegramApiError(
   return value instanceof TelegramApiError;
 }
 
+function isE2eTelegramMockEnabled(): boolean {
+  const flag = optionalEnv("E2E_TELEGRAM_MOCK_ENABLED");
+  return flag === "1" || flag === "true";
+}
+
+function resolveTelegramApiBase(): string {
+  const telegramApiUrl = optionalEnv("TELEGRAM_API_URL");
+  if (telegramApiUrl) {
+    return telegramApiUrl;
+  }
+
+  if (!isE2eTelegramMockEnabled()) {
+    return DEFAULT_TELEGRAM_API_BASE;
+  }
+
+  const vercelUrl = optionalEnv("VERCEL_URL");
+  if (!vercelUrl) {
+    throw new Error(
+      "E2E_TELEGRAM_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Telegram Bot API traffic to the preview mock routes",
+    );
+  }
+
+  return `https://${vercelUrl}/api/test/telegram-mock/bot`;
+}
+
+function buildTelegramApiUrl(token: string, method: string): string {
+  return `${resolveTelegramApiBase()}${token}/${method}`;
+}
+
+function buildTelegramApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
+  if (isE2eTelegramMockEnabled() && bypass) {
+    headers["x-vercel-protection-bypass"] = bypass;
+    headers["x-vm0-test-endpoint-bypass"] = bypass;
+  }
+  return headers;
+}
+
 async function callTelegramApi<T>(
   token: string,
   method: string,
   params?: Record<string, string>,
 ): Promise<T> {
-  const url = `https://api.telegram.org/bot${token}/${method}`;
-  const searchParams = params
-    ? `?${new URLSearchParams(params).toString()}`
-    : "";
-
-  const response = await fetch(`${url}${searchParams}`);
+  const url = buildTelegramApiUrl(token, method);
+  const response = isE2eTelegramMockEnabled()
+    ? await fetch(url, {
+        method: "POST",
+        headers: buildTelegramApiHeaders(),
+        body: JSON.stringify(params ?? {}),
+      })
+    : await fetch(
+        `${url}${params ? `?${new URLSearchParams(params).toString()}` : ""}`,
+        { headers: buildTelegramApiHeaders() },
+      );
 
   const data: unknown = await response.json();
 
@@ -106,10 +156,10 @@ export function buildFileDownloadUrl(token: string, filePath: string): string {
 }
 
 export async function deleteWebhook(token: string): Promise<void> {
-  const response = await fetch(
-    `https://api.telegram.org/bot${token}/deleteWebhook`,
-    { method: "POST" },
-  );
+  const response = await fetch(buildTelegramApiUrl(token, "deleteWebhook"), {
+    method: "POST",
+    headers: buildTelegramApiHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -128,18 +178,15 @@ export async function setWebhook(
   url: string,
   secretToken: string,
 ): Promise<void> {
-  const response = await fetch(
-    `https://api.telegram.org/bot${token}/setWebhook`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        secret_token: secretToken,
-        allowed_updates: ["message"],
-      }),
-    },
-  );
+  const response = await fetch(buildTelegramApiUrl(token, "setWebhook"), {
+    method: "POST",
+    headers: buildTelegramApiHeaders(),
+    body: JSON.stringify({
+      url,
+      secret_token: secretToken,
+      allowed_updates: ["message"],
+    }),
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -160,14 +207,11 @@ export async function setMyCommands(
     readonly description: string;
   }[],
 ): Promise<void> {
-  const response = await fetch(
-    `https://api.telegram.org/bot${token}/setMyCommands`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands }),
-    },
-  );
+  const response = await fetch(buildTelegramApiUrl(token, "setMyCommands"), {
+    method: "POST",
+    headers: buildTelegramApiHeaders(),
+    body: JSON.stringify({ commands }),
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -219,10 +263,9 @@ export async function sendChatAction(
   chatId: string,
   action: string,
 ): Promise<void> {
-  const url = `https://api.telegram.org/bot${token}/sendChatAction`;
-  const response = await fetch(url, {
+  const response = await fetch(buildTelegramApiUrl(token, "sendChatAction"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildTelegramApiHeaders(),
     body: JSON.stringify({ chat_id: chatId, action }),
   });
   if (!response.ok) {
@@ -247,10 +290,9 @@ export async function deleteMessage(
   chatId: string,
   messageId: number,
 ): Promise<void> {
-  const url = `https://api.telegram.org/bot${token}/deleteMessage`;
-  const response = await fetch(url, {
+  const response = await fetch(buildTelegramApiUrl(token, "deleteMessage"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildTelegramApiHeaders(),
     body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
   });
   if (!response.ok) {
@@ -304,7 +346,6 @@ export async function sendMessage(
     readonly replyMarkup?: TelegramReplyMarkup;
   } = {},
 ): Promise<SendTelegramMessageResult> {
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const payload: Record<string, unknown> = {
     chat_id: chatId,
     text,
@@ -320,9 +361,9 @@ export async function sendMessage(
     payload.reply_markup = options.replyMarkup;
   }
 
-  const response = await fetch(url, {
+  const response = await fetch(buildTelegramApiUrl(token, "sendMessage"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildTelegramApiHeaders(),
     body: JSON.stringify(payload),
   });
 
@@ -403,7 +444,6 @@ export async function sendDocument(
     readonly messageThreadId?: number;
   } = {},
 ): Promise<SendTelegramDocumentResult> {
-  const url = `https://api.telegram.org/bot${token}/sendDocument`;
   const payload: Record<string, unknown> = {
     chat_id: chatId,
     document,
@@ -415,9 +455,9 @@ export async function sendDocument(
     payload.message_thread_id = options.messageThreadId;
   }
 
-  const response = await fetch(url, {
+  const response = await fetch(buildTelegramApiUrl(token, "sendDocument"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildTelegramApiHeaders(),
     body: JSON.stringify(payload),
   });
 

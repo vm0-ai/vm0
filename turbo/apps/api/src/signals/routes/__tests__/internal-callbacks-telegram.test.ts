@@ -20,7 +20,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
-import { clearMockedEnv, mockEnv } from "../../../lib/env";
+import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
@@ -572,6 +572,67 @@ describe("POST /api/internal/callbacks/telegram", () => {
       '<a href="https://example.com/connect?agentId=123">connect Notion</a>',
     );
     expect(text).not.toContain("[connect Notion](");
+  });
+
+  it("sends completed replies through the preview Telegram mock when enabled", async () => {
+    const fixture = await track(seedFixture());
+    const calls: {
+      readonly headers: Headers;
+      readonly body: TelegramSendMessageBody;
+    }[] = [];
+    mockOptionalEnv("E2E_TELEGRAM_MOCK_ENABLED", "1");
+    mockOptionalEnv("VERCEL_URL", "preview.example.test");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    server.use(
+      http.post(
+        `https://preview.example.test/api/test/telegram-mock/bot${TEST_BOT_TOKEN}/sendChatAction`,
+        () => {
+          return HttpResponse.json({ ok: true, result: true });
+        },
+      ),
+      http.post(
+        `https://preview.example.test/api/test/telegram-mock/bot${TEST_BOT_TOKEN}/sendMessage`,
+        async ({ request }) => {
+          const body = (await request.json()) as TelegramSendMessageBody;
+          calls.push({ headers: request.headers, body });
+          return HttpResponse.json({
+            ok: true,
+            result: {
+              message_id: 901,
+              chat: { id: Number(body.chat_id) },
+              text: body.text,
+            },
+          });
+        },
+      ),
+    );
+    completedOutput("Mocked preview reply");
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: fixture.payload,
+    });
+
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    const [call] = calls;
+    if (!call) {
+      throw new Error("Expected preview Telegram mock call");
+    }
+    expect(call.body).toMatchObject({
+      chat_id: fixture.payload.chatId,
+      text: "Mocked preview reply",
+      parse_mode: "HTML",
+      reply_parameters: { message_id: Number(fixture.payload.messageId) },
+    });
+    expect(call.headers.get("x-vercel-protection-bypass")).toBe(
+      "preview-secret",
+    );
+    expect(call.headers.get("x-vm0-test-endpoint-bypass")).toBe(
+      "preview-secret",
+    );
   });
 
   it("includes audit links and agent reply footer text when configured", async () => {
