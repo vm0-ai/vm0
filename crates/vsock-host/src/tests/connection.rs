@@ -172,6 +172,7 @@ async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
 async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
     let (host_stream, mut guest) = make_pair();
     let release_exec = Arc::new(tokio::sync::Notify::new());
+    let (request_seen_tx, request_seen_rx) = tokio::sync::oneshot::channel();
     let guest_task = {
         let release_exec = Arc::clone(&release_exec);
         tokio::spawn(async move {
@@ -179,6 +180,7 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
             mock_handshake(&mut guest, &mut decoder).await;
             let request = read_guest_message(&mut guest).await;
             assert_eq!(request.msg_type, MSG_EXEC_START);
+            let _ = request_seen_tx.send(());
             release_exec.notified().await;
             send_exec_result(
                 &mut guest,
@@ -197,13 +199,10 @@ async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
         let host = Arc::clone(&host);
         tokio::spawn(async move { host.exec("sleep", 5000, &[], false).await })
     };
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), request_seen_rx)
+        .await
+        .expect("guest should receive exec start before busy assertion")
+        .unwrap();
     assert_eq!(
         host.try_fence_normal_operations().unwrap_err(),
         NormalOperationFenceRejection::Busy
