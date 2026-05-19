@@ -1144,6 +1144,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test slack mock oauth.v2.access rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/oauth.v2.access"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/oauth.v2.access/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/oauth.v2")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/oauth.v2.accesses"),
+    ).toBe(false);
+  });
+
   it("matches the test slack state rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-state")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/test/slack-state/extra")).toBe(

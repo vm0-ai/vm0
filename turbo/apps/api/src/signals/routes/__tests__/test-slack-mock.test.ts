@@ -87,6 +87,17 @@ describe("POST /api/test/slack-mock/*", () => {
     await expect(response.text()).resolves.toBe("Not found");
   });
 
+  it("returns 404 for oauth.v2.access outside allowed test environments", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(`${BASE_ROUTE}/oauth.v2.access`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
   it("returns 404 for conversations.history outside allowed test environments", async () => {
     mockEnv("ENV", "production");
 

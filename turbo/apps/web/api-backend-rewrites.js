@@ -408,6 +408,10 @@ export const API_BACKEND_REWRITES = [
     "/api/test/slack-mock/conversations.replies",
     "/api/test/slack-mock/conversations.replies",
   ],
+  [
+    "/api/test/slack-mock/oauth.v2.access",
+    "/api/test/slack-mock/oauth.v2.access",
+  ],
   ["/api/test/slack-state", "/api/test/slack-state"],
   [
     TELEGRAM_WEBHOOK_REWRITE_SOURCE,
