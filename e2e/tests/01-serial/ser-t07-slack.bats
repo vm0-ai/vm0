@@ -112,7 +112,18 @@ teardown_file() {
     # The probe either returns {ok: true} (dispatch ran, run row created)
     # or {ok: false, error: {...}}. Anything else is a transport bug.
     local ok
-    ok=$(echo "$probe_resp" | jq -r '.ok')
+    if ! ok=$(echo "$probe_resp" | jq -r '.ok' 2>/tmp/slack-dispatch-probe-jq.err); then
+        echo "# dispatch-probe returned a non-JSON response" >&2
+        echo "# endpoint: $(_slack_api_backend_url)/api/test/slack-dispatch-probe" >&2
+        if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            echo "# bypass secret env: set" >&2
+        else
+            echo "# bypass secret env: unset" >&2
+        fi
+        echo "# jq error: $(cat /tmp/slack-dispatch-probe-jq.err)" >&2
+        echo "# response: $probe_resp" >&2
+        return 1
+    fi
     if [[ "$ok" != "true" ]]; then
         echo "# dispatch-probe returned failure:" >&2
         echo "$probe_resp" | jq '.' >&2

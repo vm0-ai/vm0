@@ -304,6 +304,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/internal/vercel-sandbox/smoke", "/api/internal/vercel-sandbox/smoke"],
   ["/api/test/oauth-provider/echo", "/api/test/oauth-provider/echo"],
+  ["/api/test/slack-dispatch-probe", "/api/test/slack-dispatch-probe"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],
   ["/api/v1/audio/transcriptions", "/api/v1/audio/transcriptions"],

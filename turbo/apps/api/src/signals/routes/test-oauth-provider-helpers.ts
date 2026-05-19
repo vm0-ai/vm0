@@ -25,6 +25,26 @@ interface HeaderReader {
   readonly header: (name: string) => string | undefined;
 }
 
+function isPreviewRuntime(deployEnv: string): boolean {
+  return deployEnv === "preview" || optionalEnv("VERCEL_ENV") === "preview";
+}
+
+function expectedTestEndpointBypassSecret(): string | undefined {
+  return (
+    optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET") ??
+    env("VERCEL_AUTOMATION_BYPASS_SECRET")
+  );
+}
+
+// Vercel consumes the protection-bypass header before protected preview
+// rewrites reach the API runtime. Production still stays denied.
+function isProtectedPreviewRewrite(): boolean {
+  return (
+    optionalEnv("USE_MOCK_CLAUDE") === "true" &&
+    !!expectedTestEndpointBypassSecret()
+  );
+}
+
 function randomId(): string {
   return randomBytes(16).toString("hex");
 }
@@ -36,14 +56,15 @@ export function isTestEndpointAllowed(request: HeaderReader): boolean {
     return true;
   }
 
-  if (deployEnv === "preview") {
+  if (isPreviewRuntime(deployEnv)) {
     const vercelBypassHeader = request.header("x-vercel-protection-bypass");
     const internalBypassHeader = request.header(TEST_ENDPOINT_BYPASS_HEADER);
-    const expectedSecret = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
+    const expectedSecret = expectedTestEndpointBypassSecret();
     return (
-      !!expectedSecret &&
-      (vercelBypassHeader === expectedSecret ||
-        internalBypassHeader === expectedSecret)
+      isProtectedPreviewRewrite() ||
+      (!!expectedSecret &&
+        (vercelBypassHeader === expectedSecret ||
+          internalBypassHeader === expectedSecret))
     );
   }
 

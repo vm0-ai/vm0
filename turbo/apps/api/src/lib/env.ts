@@ -17,6 +17,7 @@ const SCHEMA = {
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
+  VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   VM0_API_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),

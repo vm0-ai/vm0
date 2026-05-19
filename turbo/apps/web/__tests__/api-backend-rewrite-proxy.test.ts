@@ -745,6 +745,18 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/usages")).toBe(false);
   });
 
+  it("matches the test slack dispatch probe rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/test/slack-dispatch-probe")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-dispatch-probe/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-dispatch")).toBe(
+      false,
+    );
+  });
+
   it("matches the internal event consumer axiom rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),

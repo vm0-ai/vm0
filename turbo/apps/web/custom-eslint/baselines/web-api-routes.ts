@@ -33,7 +33,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/test/oauth-provider/authorize/route.ts",
   "app/api/test/oauth-provider/token/route.ts",
   "app/api/test/oauth-provider/userinfo/route.ts",
-  "app/api/test/slack-dispatch-probe/route.ts",
   "app/api/test/slack-mock/assistant.threads.setStatus/route.ts",
   "app/api/test/slack-mock/auth.test/route.ts",
   "app/api/test/slack-mock/chat.postEphemeral/route.ts",
