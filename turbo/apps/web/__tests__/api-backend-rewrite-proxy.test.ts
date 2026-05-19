@@ -370,6 +370,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the internal agent callback rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks/agent")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/agent/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),
