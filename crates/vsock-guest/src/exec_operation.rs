@@ -10,13 +10,14 @@ use std::time::{Duration, Instant};
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy,
     ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_OUTPUT,
-    MSG_EXEC_RESULT,
+    MSG_EXEC_RESULT, MSG_EXEC_STARTED, ProcessControlNonce,
 };
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
 use crate::error::to_io_error;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
+use crate::process_control::ExecControlGuard;
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -126,11 +127,34 @@ struct WaitFailureContext<'a> {
     registration: &'a ExecOperationRegistration,
     writer: &'a GuestWriter,
     operation_guard: &'a OperationGuard,
+    exec_control_guard: Option<&'a ExecControlGuard>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExecOperationLifecycle {
+    OneShot,
+    Supervised,
+}
+
+#[derive(Clone, Copy)]
+enum ExecOperationTimeout {
+    Duration { timeout_ms: u32 },
+    None,
+}
+
+impl ExecOperationTimeout {
+    fn wait_timeout_ms(self) -> u32 {
+        match self {
+            Self::Duration { timeout_ms } => timeout_ms,
+            Self::None => 0,
+        }
+    }
 }
 
 pub(crate) struct ExecOperationWorkerRequest {
     seq: u32,
-    timeout_ms: u32,
+    lifecycle: ExecOperationLifecycle,
+    timeout: ExecOperationTimeout,
     command: String,
     env: Vec<(String, String)>,
     sudo: bool,
@@ -138,6 +162,9 @@ pub(crate) struct ExecOperationWorkerRequest {
     stdout: ExecOutputPolicy,
     stderr: ExecOutputPolicy,
     expected_exit_codes: Vec<i32>,
+    control: ExecControlPolicy,
+    exec_control_guard: Option<ExecControlGuard>,
+    exec_control_bootstrap_endpoint: Option<String>,
 }
 
 impl ExecOperationWorkerRequest {
@@ -145,34 +172,43 @@ impl ExecOperationWorkerRequest {
         seq: u32,
         decoded: vsock_proto::DecodedExecStart<'_>,
     ) -> io::Result<Self> {
-        if decoded.lifecycle != ExecLifecyclePolicy::OneShot {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "exec supervised lifecycle is not supported",
-            ));
-        }
-        let ExecTimeoutPolicy::Duration { timeout_ms } = decoded.timeout else {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "exec timeout policy none is not supported",
-            ));
+        let lifecycle = match decoded.lifecycle {
+            ExecLifecyclePolicy::OneShot => ExecOperationLifecycle::OneShot,
+            ExecLifecyclePolicy::Supervised => ExecOperationLifecycle::Supervised,
         };
-        if timeout_ms == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "exec timeout duration must be positive",
-            ));
-        }
-        if decoded.control != ExecControlPolicy::Disabled {
+        let timeout = match decoded.timeout {
+            ExecTimeoutPolicy::Duration { timeout_ms } => {
+                if timeout_ms == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "exec timeout duration must be positive",
+                    ));
+                }
+                ExecOperationTimeout::Duration { timeout_ms }
+            }
+            ExecTimeoutPolicy::None => {
+                if lifecycle != ExecOperationLifecycle::Supervised {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "exec timeout policy none requires supervised lifecycle",
+                    ));
+                }
+                ExecOperationTimeout::None
+            }
+        };
+        if lifecycle == ExecOperationLifecycle::OneShot
+            && decoded.control != ExecControlPolicy::Disabled
+        {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "exec control policy is not supported",
+                "exec control policy requires supervised lifecycle",
             ));
         }
 
         Ok(Self {
             seq,
-            timeout_ms,
+            lifecycle,
+            timeout,
             command: decoded.command.to_owned(),
             env: decoded
                 .env
@@ -184,7 +220,30 @@ impl ExecOperationWorkerRequest {
             stdout: decoded.stdout,
             stderr: decoded.stderr,
             expected_exit_codes: decoded.expected_exit_codes,
+            control: decoded.control,
+            exec_control_guard: None,
+            exec_control_bootstrap_endpoint: None,
         })
+    }
+
+    pub(crate) fn exec_control_registration(&self) -> Option<(ProcessControlNonce, bool)> {
+        match self.control {
+            ExecControlPolicy::Disabled => None,
+            ExecControlPolicy::Enabled {
+                control_nonce,
+                sink,
+            } => Some((control_nonce, sink)),
+        }
+    }
+
+    pub(crate) fn attach_exec_control(
+        &mut self,
+        guard: ExecControlGuard,
+        bootstrap_endpoint: Option<String>,
+    ) {
+        debug_assert!(matches!(self.control, ExecControlPolicy::Enabled { .. }));
+        self.exec_control_guard = Some(guard);
+        self.exec_control_bootstrap_endpoint = bootstrap_endpoint;
     }
 }
 
@@ -338,34 +397,46 @@ fn run_exec_operation_worker<S>(
             },
             &writer,
             &operation_guard,
+            request.exec_control_guard.as_ref(),
         );
         return;
     }
 
     let env_refs = env_refs(&request.env);
-    let spawned = match spawn_shell_command_with_pipes(&request.command, &env_refs, request.sudo) {
-        Ok(spawned) => spawned,
-        Err(e) => {
-            let diagnostic = format!(
-                "Failed to execute: {e} ({})",
-                format_env_diagnostics(&request.command, &env_refs)
-            );
-            send_final_and_complete(
-                &registration,
-                ExecResultFrame {
-                    seq: request.seq,
-                    termination: ExecTermination::StartFailed,
-                    duration_ms: duration_ms(started),
-                    stdout: empty_output_for_policy(request.stdout),
-                    stderr: empty_output_for_policy(request.stderr),
-                    diagnostic: &diagnostic,
-                },
-                &writer,
-                &operation_guard,
-            );
-            return;
-        }
+    let mut env_with_control;
+    let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
+        env_with_control = Vec::with_capacity(env_refs.len() + 1);
+        env_with_control.extend_from_slice(&env_refs);
+        env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
+        env_with_control.as_slice()
+    } else {
+        env_refs.as_slice()
     };
+    let spawned =
+        match spawn_shell_command_with_pipes(&request.command, effective_env, request.sudo) {
+            Ok(spawned) => spawned,
+            Err(e) => {
+                let diagnostic = format!(
+                    "Failed to execute: {e} ({})",
+                    format_env_diagnostics(&request.command, &env_refs)
+                );
+                send_final_and_complete(
+                    &registration,
+                    ExecResultFrame {
+                        seq: request.seq,
+                        termination: ExecTermination::StartFailed,
+                        duration_ms: duration_ms(started),
+                        stdout: empty_output_for_policy(request.stdout),
+                        stderr: empty_output_for_policy(request.stderr),
+                        diagnostic: &diagnostic,
+                    },
+                    &writer,
+                    &operation_guard,
+                    request.exec_control_guard.as_ref(),
+                );
+                return;
+            }
+        };
 
     let SpawnedShellCommand {
         mut child,
@@ -380,7 +451,26 @@ fn run_exec_operation_worker<S>(
         registration: &registration,
         writer: &writer,
         operation_guard: &operation_guard,
+        exec_control_guard: request.exec_control_guard.as_ref(),
     };
+
+    if request.lifecycle == ExecOperationLifecycle::Supervised
+        && let Err(e) = send_exec_started(request.seq, child.id(), &writer)
+    {
+        log(
+            "WARN",
+            &format!(
+                "exec operation: failed to send exec_started seq={} label={}: {e}",
+                request.seq,
+                truncate_command_preview(&request.label)
+            ),
+        );
+        kill_and_reap_child(child);
+        release_exec_control_guard(request.exec_control_guard.as_ref());
+        operation_guard.release();
+        registration.complete();
+        return;
+    }
 
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
@@ -489,6 +579,7 @@ fn run_exec_operation_worker<S>(
                 },
                 &writer,
                 &operation_guard,
+                request.exec_control_guard.as_ref(),
             );
             return;
         }
@@ -498,7 +589,7 @@ fn run_exec_operation_worker<S>(
 
     let outcome = wait_with_kill_timeout_or_cancelled_either(
         child,
-        request.timeout_ms,
+        request.timeout.wait_timeout_ms(),
         &connection_cancel,
         &exec_cancel,
     );
@@ -564,6 +655,7 @@ fn run_exec_operation_worker<S>(
         },
         &writer,
         &operation_guard,
+        request.exec_control_guard.as_ref(),
     );
 }
 
@@ -798,6 +890,7 @@ fn kill_and_send_wait_failed(child: Child, diagnostic: &str, failure: WaitFailur
         },
         failure.writer,
         failure.operation_guard,
+        failure.exec_control_guard,
     );
 }
 
@@ -806,12 +899,32 @@ fn send_final_and_complete(
     frame: ExecResultFrame<'_>,
     writer: &GuestWriter,
     operation_guard: &OperationGuard,
+    exec_control_guard: Option<&ExecControlGuard>,
 ) {
-    let result = send_exec_result_after_lock(frame, writer, || operation_guard.release());
+    let result = send_exec_result_after_lock(frame, writer, || {
+        release_exec_control_guard(exec_control_guard);
+        operation_guard.release();
+    });
     registration.complete();
+    if result.is_err() {
+        release_exec_control_guard(exec_control_guard);
+        operation_guard.release();
+    }
     if let Err(e) = result {
         log("ERROR", &format!("Failed to send exec_result: {e}"));
     }
+}
+
+fn release_exec_control_guard(guard: Option<&ExecControlGuard>) {
+    if let Some(guard) = guard {
+        guard.release();
+    }
+}
+
+fn send_exec_started(seq: u32, pid: u32, writer: &GuestWriter) -> io::Result<()> {
+    let payload = vsock_proto::encode_exec_started(pid).map_err(to_io_error)?;
+    let encoded = vsock_proto::encode(MSG_EXEC_STARTED, seq, &payload).map_err(to_io_error)?;
+    writer.write_frame(&encoded)
 }
 
 fn send_exec_result_after_lock<F>(
@@ -945,7 +1058,8 @@ mod tests {
     fn request(seq: u32, command: &str) -> ExecOperationWorkerRequest {
         ExecOperationWorkerRequest {
             seq,
-            timeout_ms: 0,
+            lifecycle: ExecOperationLifecycle::OneShot,
+            timeout: ExecOperationTimeout::Duration { timeout_ms: 0 },
             command: command.to_string(),
             env: Vec::new(),
             sudo: false,
@@ -953,6 +1067,9 @@ mod tests {
             stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: Vec::new(),
+            control: ExecControlPolicy::Disabled,
+            exec_control_guard: None,
+            exec_control_bootstrap_endpoint: None,
         }
     }
 

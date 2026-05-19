@@ -1,13 +1,96 @@
 use std::io::Write;
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED,
+    ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CONTROL,
+    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, ProcessControlNonce, ProcessControlStatus,
 };
 
 use super::support::*;
+
+const EXEC_CONTROL_NONCE: ProcessControlNonce = *b"exec-ctrl-000001";
+
+fn send_supervised_exec_start(
+    stream: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    timeout: ExecTimeoutPolicy,
+    stdout: ExecOutputPolicy,
+    control: ExecControlPolicy,
+) {
+    send_exec_start_request(
+        stream,
+        seq,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout,
+            command,
+            env: &[],
+            sudo: false,
+            label: "supervised-test",
+            stdout,
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control,
+        },
+    );
+}
+
+fn read_exec_started(stream: &mut impl std::io::Read, seq: u32) -> u32 {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_STARTED);
+    assert_eq!(msg.seq, seq);
+    vsock_proto::decode_exec_started(&msg.payload).unwrap().pid
+}
+
+fn send_exec_control(
+    stream: &mut impl std::io::Write,
+    request_seq: u32,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+) {
+    let payload =
+        vsock_proto::encode_exec_control(target_seq, control_nonce, message_id, b"payload", 5000)
+            .unwrap();
+    let msg = vsock_proto::encode(MSG_EXEC_CONTROL, request_seq, &payload).unwrap();
+    stream.write_all(&msg).unwrap();
+}
+
+fn assert_exec_control_result(
+    stream: &mut impl std::io::Read,
+    request_seq: u32,
+    expected_target_seq: u32,
+    expected_status: ProcessControlStatus,
+    expected_diagnostic: &str,
+) {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_CONTROL_RESULT);
+    assert_eq!(msg.seq, request_seq);
+    let decoded = vsock_proto::decode_exec_control_result(&msg.payload).unwrap();
+    assert_eq!(decoded.target_seq, expected_target_seq);
+    assert_eq!(decoded.control_nonce, EXEC_CONTROL_NONCE);
+    assert_eq!(decoded.message_id, "message");
+    assert_eq!(decoded.status, expected_status);
+    assert_eq!(decoded.diagnostic, expected_diagnostic);
+}
+
+fn wait_for_file(path: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match std::fs::read_to_string(path) {
+            Ok(value) if !value.is_empty() => return value,
+            Ok(_) | Err(_) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Ok(_) => panic!("file remained empty: {path}"),
+            Err(error) => panic!("file was not created before deadline: {path}: {error}"),
+        }
+    }
+}
 
 #[test]
 fn exec_operation_capture_only_stdout_stderr_success() {
@@ -69,33 +152,12 @@ fn exec_operation_expected_nonzero_exit_still_returns_result() {
 }
 
 #[test]
-fn exec_operation_rejects_unsupported_start_policies() {
+fn exec_operation_rejects_invalid_one_shot_start_policies() {
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start_request(
         &mut host_stream,
         103,
-        vsock_proto::ExecStartEncodeRequest {
-            lifecycle: ExecLifecyclePolicy::Supervised,
-            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
-            command: "printf should-not-run",
-            env: &[],
-            sudo: false,
-            label: "test",
-            stdout: ExecOutputPolicy::Discard,
-            stderr: ExecOutputPolicy::Discard,
-            expected_exit_codes: &[],
-            control: ExecControlPolicy::Disabled,
-        },
-    );
-    assert_eq!(
-        read_error_response(&mut host_stream, 103),
-        "exec supervised lifecycle is not supported"
-    );
-
-    send_exec_start_request(
-        &mut host_stream,
-        104,
         vsock_proto::ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::OneShot,
             timeout: ExecTimeoutPolicy::None,
@@ -110,8 +172,8 @@ fn exec_operation_rejects_unsupported_start_policies() {
         },
     );
     assert_eq!(
-        read_error_response(&mut host_stream, 104),
-        "exec timeout policy none is not supported"
+        read_error_response(&mut host_stream, 103),
+        "exec timeout policy none requires supervised lifecycle"
     );
 
     let mut zero_timeout_payload = vsock_proto::encode_exec_start(
@@ -125,10 +187,10 @@ fn exec_operation_rejects_unsupported_start_policies() {
     )
     .unwrap();
     zero_timeout_payload[2..6].copy_from_slice(&0u32.to_be_bytes());
-    let zero_timeout_msg = vsock_proto::encode(MSG_EXEC_START, 109, &zero_timeout_payload).unwrap();
+    let zero_timeout_msg = vsock_proto::encode(MSG_EXEC_START, 104, &zero_timeout_payload).unwrap();
     host_stream.write_all(&zero_timeout_msg).unwrap();
     assert_eq!(
-        read_error_response(&mut host_stream, 109),
+        read_error_response(&mut host_stream, 104),
         "invalid payload: exec start timeout duration must be positive"
     );
 
@@ -153,7 +215,7 @@ fn exec_operation_rejects_unsupported_start_policies() {
     );
     assert_eq!(
         read_error_response(&mut host_stream, 105),
-        "exec control policy is not supported"
+        "exec control policy requires supervised lifecycle"
     );
 
     send_quiesce_operations(&mut host_stream, 106);
@@ -180,6 +242,166 @@ fn exec_operation_rejects_unsupported_start_policies() {
     assert!(chunks.is_empty());
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
     assert_eq!(result.stdout, Some(b"ok".to_vec()));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_sends_started_before_output() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        201,
+        "printf ready",
+        ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+        ExecOutputPolicy::Stream {
+            limit_bytes: 1024,
+            chunk_limit_bytes: 1024,
+        },
+        ExecControlPolicy::Disabled,
+    );
+
+    assert!(read_exec_started(&mut host_stream, 201) > 0);
+    let (chunks, result) = read_exec_result(&mut host_stream, 201);
+
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(stdout_data(&chunks), b"ready".to_vec());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_spawn_failure_returns_start_failed_without_started_ack() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        202,
+        "bad\0command",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        ExecControlPolicy::Disabled,
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(msg.seq, 202);
+    let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+    assert_eq!(result.termination, ExecTermination::StartFailed);
+    assert!(result.diagnostic.contains("Failed to execute"));
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_control_forwards_to_bootstrap_sink() {
+    let endpoint_path = unique_tmp_path("supervised-exec-control-endpoint", ".txt");
+    let command = format!(
+        "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\" > '{}'; sleep 60",
+        endpoint_path.as_str()
+    );
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        203,
+        &command,
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: true,
+        },
+    );
+    assert!(read_exec_started(&mut host_stream, 203) > 0);
+
+    let endpoint = wait_for_file(endpoint_path.as_str());
+    let client = thread::spawn(move || {
+        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        process_control_ipc::write_hello(&mut stream).unwrap();
+        let request = process_control_ipc::read_request(&mut stream).unwrap();
+        assert_eq!(request.message_id, "message");
+        assert_eq!(request.payload, b"payload");
+        process_control_ipc::write_response(
+            &mut stream,
+            &process_control_ipc::ControlResponse {
+                message_id: request.message_id,
+                status: process_control_ipc::ControlResponseStatus::Accepted,
+                diagnostic: "ok".to_owned(),
+            },
+        )
+        .unwrap();
+    });
+
+    send_exec_control(&mut host_stream, 303, 203, EXEC_CONTROL_NONCE, "message");
+    assert_exec_control_result(
+        &mut host_stream,
+        303,
+        203,
+        ProcessControlStatus::Delivered,
+        "ok",
+    );
+    client.join().unwrap();
+
+    send_exec_cancel(&mut host_stream, 203);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 203);
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_control_reports_unsupported_without_sink() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        204,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+    assert!(read_exec_started(&mut host_stream, 204) > 0);
+
+    send_exec_control(&mut host_stream, 304, 204, EXEC_CONTROL_NONCE, "message");
+    assert_exec_control_result(
+        &mut host_stream,
+        304,
+        204,
+        ProcessControlStatus::Unsupported,
+        "exec control sink is not configured",
+    );
+
+    send_exec_cancel(&mut host_stream, 204);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 204);
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_none_timeout_runs_until_cancelled() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        205,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Disabled,
+    );
+    assert!(read_exec_started(&mut host_stream, 205) > 0);
+
+    send_exec_cancel(&mut host_stream, 205);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 205);
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+    assert_eq!(result.stdout, None);
 
     finish_guest_connection(handle, host_stream);
 }

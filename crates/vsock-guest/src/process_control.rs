@@ -7,7 +7,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use process_control_ipc::{ControlRequest, ControlResponseStatus};
-use vsock_proto::{MSG_PROCESS_CONTROL_RESULT, ProcessControlNonce, ProcessControlStatus};
+use vsock_proto::{
+    MSG_EXEC_CONTROL_RESULT, MSG_PROCESS_CONTROL_RESULT, ProcessControlNonce, ProcessControlStatus,
+};
 
 use crate::error::to_io_error;
 use crate::log::log;
@@ -18,12 +20,120 @@ const THREAD_PROCESS_CONTROL_FORWARD: &str = "vsock-process-control-forward";
 const CONTROL_ACCEPT_POLL_TIMEOUT: Duration = Duration::from_millis(100);
 const CONTROL_SINK_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING_CONTROL_REQUESTS: usize = 8;
-const REQUEST_TIMEOUT_DIAGNOSTIC: &str = "process control request timed out";
+const PROCESS_REQUEST_TIMEOUT_DIAGNOSTIC: &str = "process control request timed out";
+const EXEC_REQUEST_TIMEOUT_DIAGNOSTIC: &str = "exec control request timed out";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum OperationControlProtocol {
+    #[default]
+    Process,
+    Exec,
+}
+
+impl OperationControlProtocol {
+    fn log_name(self) -> &'static str {
+        match self {
+            Self::Process => "process_control",
+            Self::Exec => "exec_control",
+        }
+    }
+
+    fn accept_thread_name(self) -> &'static str {
+        match self {
+            Self::Process => THREAD_PROCESS_CONTROL_ACCEPT,
+            Self::Exec => THREAD_EXEC_CONTROL_ACCEPT,
+        }
+    }
+
+    fn forward_thread_name(self) -> &'static str {
+        match self {
+            Self::Process => THREAD_PROCESS_CONTROL_FORWARD,
+            Self::Exec => THREAD_EXEC_CONTROL_FORWARD,
+        }
+    }
+
+    fn result_msg_type(self) -> u8 {
+        match self {
+            Self::Process => MSG_PROCESS_CONTROL_RESULT,
+            Self::Exec => MSG_EXEC_CONTROL_RESULT,
+        }
+    }
+
+    fn operation_already_active_message(self) -> &'static str {
+        match self {
+            Self::Process => "process operation already active",
+            Self::Exec => "exec operation already active",
+        }
+    }
+
+    fn inactive_message(self) -> &'static str {
+        match self {
+            Self::Process => "process operation is not active",
+            Self::Exec => "exec operation is not active",
+        }
+    }
+
+    fn nonce_mismatch_message(self) -> &'static str {
+        match self {
+            Self::Process => "process operation nonce mismatch",
+            Self::Exec => "exec operation nonce mismatch",
+        }
+    }
+
+    fn sink_not_configured_message(self) -> &'static str {
+        match self {
+            Self::Process => "process control sink is not configured",
+            Self::Exec => "exec control sink is not configured",
+        }
+    }
+
+    fn queue_full_message(self) -> &'static str {
+        match self {
+            Self::Process => "process control queue is full",
+            Self::Exec => "exec control queue is full",
+        }
+    }
+
+    fn request_timeout_diagnostic(self) -> &'static str {
+        match self {
+            Self::Process => PROCESS_REQUEST_TIMEOUT_DIAGNOSTIC,
+            Self::Exec => EXEC_REQUEST_TIMEOUT_DIAGNOSTIC,
+        }
+    }
+
+    fn clone_sink_error_prefix(self) -> &'static str {
+        match self {
+            Self::Process => "failed to clone process control sink",
+            Self::Exec => "failed to clone exec control sink",
+        }
+    }
+
+    fn worker_start_error_prefix(self) -> &'static str {
+        match self {
+            Self::Process => "failed to start process control worker",
+            Self::Exec => "failed to start exec control worker",
+        }
+    }
+
+    fn message_id_mismatch_prefix(self) -> &'static str {
+        match self {
+            Self::Process => "process control sink message id mismatch",
+            Self::Exec => "exec control sink message id mismatch",
+        }
+    }
+}
+
+const THREAD_EXEC_CONTROL_ACCEPT: &str = "vsock-exec-control-accept";
+const THREAD_EXEC_CONTROL_FORWARD: &str = "vsock-exec-control-forward";
 
 #[derive(Clone, Default)]
 pub(crate) struct ProcessControlRegistry {
+    protocol: OperationControlProtocol,
     inner: Arc<Mutex<HashMap<u32, ProcessControlEntry>>>,
 }
+
+pub(crate) type ExecControlRegistry = ProcessControlRegistry;
+pub(crate) type ExecControlGuard = ProcessControlGuard;
 
 /// Active `spawn_process` registration for a seq.
 ///
@@ -49,6 +159,7 @@ pub(crate) struct ProcessControlGuard {
 }
 
 struct ControlSinkState {
+    protocol: OperationControlProtocol,
     inner: Mutex<ControlSinkInner>,
     ready: Condvar,
     active: AtomicBool,
@@ -105,6 +216,13 @@ impl Drop for PendingControlSlot {
 }
 
 impl ProcessControlRegistry {
+    pub(crate) fn exec() -> Self {
+        Self {
+            protocol: OperationControlProtocol::Exec,
+            inner: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
     pub(crate) fn register(
         &self,
         seq: u32,
@@ -114,7 +232,7 @@ impl ProcessControlRegistry {
         let (bootstrap_endpoint, accept_sink) = match control_nonce {
             Some(nonce) if control_sink => {
                 let endpoint = process_control_ipc::endpoint_name(seq, &nonce);
-                let sink = Arc::new(ControlSinkState::new());
+                let sink = Arc::new(ControlSinkState::new_for(self.protocol));
                 self.insert(
                     seq,
                     ProcessControlEntry::WithNonce {
@@ -135,7 +253,9 @@ impl ProcessControlRegistry {
         };
 
         let start_result = match (&bootstrap_endpoint, accept_sink) {
-            (Some(endpoint), Some(sink)) => start_control_sink_accept_thread(endpoint, sink),
+            (Some(endpoint), Some(sink)) => {
+                start_control_sink_accept_thread(self.protocol, endpoint, sink)
+            }
             _ => Ok(()),
         };
         if let Err(error) = start_result {
@@ -156,7 +276,7 @@ impl ProcessControlRegistry {
     fn insert(&self, seq: u32, entry: ProcessControlEntry) -> io::Result<()> {
         let mut active = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if active.contains_key(&seq) {
-            return Err(operation_already_active_error());
+            return Err(operation_already_active_error(self.protocol));
         }
         active.insert(seq, entry);
         Ok(())
@@ -190,25 +310,25 @@ impl ProcessControlRegistry {
         let Some(entry) = guard.get(&target_seq) else {
             return Err((
                 ProcessControlStatus::Inactive,
-                "process operation is not active",
+                self.protocol.inactive_message(),
             ));
         };
         let ProcessControlEntry::WithNonce { nonce, sink } = entry else {
             return Err((
                 ProcessControlStatus::Inactive,
-                "process operation is not active",
+                self.protocol.inactive_message(),
             ));
         };
         if *nonce != control_nonce {
             return Err((
                 ProcessControlStatus::NonceMismatch,
-                "process operation nonce mismatch",
+                self.protocol.nonce_mismatch_message(),
             ));
         }
         let Some(sink) = sink else {
             return Err((
                 ProcessControlStatus::Unsupported,
-                "process control sink is not configured",
+                self.protocol.sink_not_configured_message(),
             ));
         };
         Ok(Arc::clone(sink))
@@ -226,17 +346,21 @@ impl ProcessControlEntry {
     }
 }
 
-fn operation_already_active_error() -> io::Error {
+fn operation_already_active_error(protocol: OperationControlProtocol) -> io::Error {
     io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "process operation already active",
+        protocol.operation_already_active_message(),
     )
 }
 
-fn start_control_sink_accept_thread(endpoint: &str, sink: Arc<ControlSinkState>) -> io::Result<()> {
+fn start_control_sink_accept_thread(
+    protocol: OperationControlProtocol,
+    endpoint: &str,
+    sink: Arc<ControlSinkState>,
+) -> io::Result<()> {
     let listener = process_control_ipc::bind_abstract_listener(endpoint)?;
     thread::Builder::new()
-        .name(THREAD_PROCESS_CONTROL_ACCEPT.to_owned())
+        .name(protocol.accept_thread_name().to_owned())
         .spawn(move || accept_control_sink(listener, sink))?;
     Ok(())
 }
@@ -258,8 +382,14 @@ impl Drop for ProcessControlGuard {
 }
 
 impl ControlSinkState {
+    #[cfg(test)]
     fn new() -> Self {
+        Self::new_for(OperationControlProtocol::Process)
+    }
+
+    fn new_for(protocol: OperationControlProtocol) -> Self {
         Self {
+            protocol,
             inner: Mutex::new(ControlSinkInner::Waiting),
             ready: Condvar::new(),
             active: AtomicBool::new(true),
@@ -278,7 +408,8 @@ impl ControlSinkState {
                 let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
                 if !matches!(*guard, ControlSinkInner::Closed) {
                     *guard = ControlSinkInner::Failed(format!(
-                        "failed to clone process control sink: {error}"
+                        "{}: {error}",
+                        self.protocol.clone_sink_error_prefix()
                     ));
                 }
                 self.ready.notify_all();
@@ -351,7 +482,7 @@ impl ControlSinkState {
             if !self.active.load(Ordering::Acquire) {
                 return Err((
                     ProcessControlStatus::Inactive,
-                    "process operation is not active".to_owned(),
+                    self.protocol.inactive_message().to_owned(),
                 ));
             }
             match &*guard {
@@ -360,7 +491,7 @@ impl ControlSinkState {
                     let Some(wait) = duration_until(deadline) else {
                         return Err((
                             ProcessControlStatus::SinkTimeout,
-                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                            self.protocol.request_timeout_diagnostic().to_owned(),
                         ));
                     };
                     let (next_guard, wait_result) = self
@@ -371,7 +502,7 @@ impl ControlSinkState {
                     if wait_result.timed_out() {
                         return Err((
                             ProcessControlStatus::SinkTimeout,
-                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                            self.protocol.request_timeout_diagnostic().to_owned(),
                         ));
                     }
                 }
@@ -381,7 +512,7 @@ impl ControlSinkState {
                 ControlSinkInner::Closed => {
                     return Err((
                         ProcessControlStatus::Inactive,
-                        "process operation is not active".to_owned(),
+                        self.protocol.inactive_message().to_owned(),
                     ));
                 }
             }
@@ -400,13 +531,13 @@ impl ControlSinkState {
 
         let sink = Arc::clone(self);
         match thread::Builder::new()
-            .name(THREAD_PROCESS_CONTROL_FORWARD.to_owned())
+            .name(self.protocol.forward_thread_name().to_owned())
             .spawn(move || forward_control_request(sink, pending_slot, request, writer))
         {
             Ok(_) => None,
             Err(error) => Some((
                 ProcessControlStatus::SinkError,
-                format!("failed to start process control worker: {error}"),
+                format!("{}: {error}", self.protocol.worker_start_error_prefix()),
             )),
         }
     }
@@ -417,7 +548,7 @@ impl ControlSinkState {
         if !self.active.load(Ordering::Acquire) {
             return Err((
                 ProcessControlStatus::Inactive,
-                "process operation is not active".to_owned(),
+                self.protocol.inactive_message().to_owned(),
             ));
         }
 
@@ -426,7 +557,7 @@ impl ControlSinkState {
             self.pending.fetch_sub(1, Ordering::AcqRel);
             return Err((
                 ProcessControlStatus::QueueFull,
-                "process control queue is full".to_owned(),
+                self.protocol.queue_full_message().to_owned(),
             ));
         }
 
@@ -467,7 +598,11 @@ impl ControlStreamState {
         }
     }
 
-    fn lock_until(&self, deadline: Instant) -> io::Result<ControlStreamGuard<'_>> {
+    fn lock_until(
+        &self,
+        protocol: OperationControlProtocol,
+        deadline: Instant,
+    ) -> io::Result<ControlStreamGuard<'_>> {
         let mut locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             if !*locked {
@@ -480,7 +615,7 @@ impl ControlStreamState {
                 });
             }
             let Some(wait) = duration_until(deadline) else {
-                return Err(request_timeout_error());
+                return Err(request_timeout_error(protocol));
             };
             let (next_locked, wait_result) = self
                 .ready
@@ -488,7 +623,7 @@ impl ControlStreamState {
                 .unwrap_or_else(|e| e.into_inner());
             locked = next_locked;
             if wait_result.timed_out() {
-                return Err(request_timeout_error());
+                return Err(request_timeout_error(protocol));
             }
         }
     }
@@ -540,13 +675,19 @@ fn accept_control_sink(listener: std::os::unix::net::UnixListener, sink: Arc<Con
     };
     match result {
         Ok(stream) => {
-            log("INFO", "process_control: control sink connected");
+            log(
+                "INFO",
+                &format!("{}: control sink connected", sink.protocol.log_name()),
+            );
             sink.connect(stream);
         }
         Err(error) => {
             log(
                 "WARN",
-                &format!("process_control: control sink accept failed: {error}"),
+                &format!(
+                    "{}: control sink accept failed: {error}",
+                    sink.protocol.log_name()
+                ),
             );
             sink.fail(error.to_string());
         }
@@ -569,22 +710,28 @@ fn forward_control_request(
     } = request;
     let (status, diagnostic, mark_failed) = {
         match sink.wait_for_stream(deadline) {
-            Ok(stream) => match stream.lock_until(deadline) {
+            Ok(stream) => match stream.lock_until(sink.protocol, deadline) {
                 Ok(mut stream) => {
                     if !sink.active.load(Ordering::Acquire) {
                         (
                             ProcessControlStatus::Inactive,
-                            "process operation is not active".to_owned(),
+                            sink.protocol.inactive_message().to_owned(),
                             false,
                         )
                     } else if request_expired(deadline) {
                         (
                             ProcessControlStatus::SinkTimeout,
-                            REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                            sink.protocol.request_timeout_diagnostic().to_owned(),
                             false,
                         )
                     } else {
-                        forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
+                        forward_to_connected_sink(
+                            sink.protocol,
+                            &mut stream,
+                            &message_id,
+                            payload,
+                            deadline,
+                        )
                     }
                 }
                 Err(error) if is_timeout(&error) => {
@@ -606,10 +753,11 @@ fn forward_control_request(
         } else {
             (
                 ProcessControlStatus::Inactive,
-                "process operation is not active",
+                sink.protocol.inactive_message(),
             )
         };
-        let result_payload = vsock_proto::encode_process_control_result(
+        let result_payload = encode_control_result(
+            sink.protocol,
             target_seq,
             control_nonce,
             &message_id,
@@ -617,18 +765,26 @@ fn forward_control_request(
             diagnostic,
         )
         .map_err(to_io_error)?;
-        vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, response_seq, &result_payload)
-            .map_err(to_io_error)
+        vsock_proto::encode(
+            sink.protocol.result_msg_type(),
+            response_seq,
+            &result_payload,
+        )
+        .map_err(to_io_error)
     });
     if let Err(error) = result {
         log(
             "WARN",
-            &format!("process_control: failed to send control result: {error}"),
+            &format!(
+                "{}: failed to send control result: {error}",
+                sink.protocol.log_name()
+            ),
         );
     }
 }
 
 fn forward_to_connected_sink(
+    protocol: OperationControlProtocol,
     stream: &mut UnixStream,
     message_id: &str,
     payload: Vec<u8>,
@@ -638,7 +794,7 @@ fn forward_to_connected_sink(
         message_id: message_id.to_owned(),
         payload,
     };
-    let write_timeout = match control_sink_io_timeout(deadline) {
+    let write_timeout = match control_sink_io_timeout(protocol, deadline) {
         Ok(timeout) => timeout,
         Err(error) if is_timeout(&error) => {
             return return_control_result(ProcessControlStatus::SinkTimeout, error, false);
@@ -653,7 +809,7 @@ fn forward_to_connected_sink(
         };
     }
 
-    let read_timeout = match control_sink_io_timeout(deadline) {
+    let read_timeout = match control_sink_io_timeout(protocol, deadline) {
         Ok(timeout) => timeout,
         Err(error) if is_timeout(&error) => {
             return return_control_result(ProcessControlStatus::SinkTimeout, error, true);
@@ -664,8 +820,10 @@ fn forward_to_connected_sink(
         Ok(response) if response.message_id != message_id => (
             ProcessControlStatus::SinkError,
             format!(
-                "process control sink message id mismatch: expected {}, got {}",
-                message_id, response.message_id
+                "{}: expected {}, got {}",
+                protocol.message_id_mismatch_prefix(),
+                message_id,
+                response.message_id
             ),
             true,
         ),
@@ -710,15 +868,21 @@ fn duration_until(deadline: Instant) -> Option<Duration> {
     (now < deadline).then(|| deadline.duration_since(now))
 }
 
-fn control_sink_io_timeout(deadline: Instant) -> io::Result<Duration> {
+fn control_sink_io_timeout(
+    protocol: OperationControlProtocol,
+    deadline: Instant,
+) -> io::Result<Duration> {
     duration_until(deadline)
         .map(|remaining| remaining.min(CONTROL_SINK_IO_TIMEOUT))
         .filter(|timeout| !timeout.is_zero())
-        .ok_or_else(request_timeout_error)
+        .ok_or_else(|| request_timeout_error(protocol))
 }
 
-fn request_timeout_error() -> io::Error {
-    io::Error::new(io::ErrorKind::TimedOut, REQUEST_TIMEOUT_DIAGNOSTIC)
+fn request_timeout_error(protocol: OperationControlProtocol) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        protocol.request_timeout_diagnostic(),
+    )
 }
 
 fn write_control_request(
@@ -745,13 +909,77 @@ fn is_timeout(error: &io::Error) -> bool {
     )
 }
 
-pub(crate) fn handle_process_control(
+struct DecodedOperationControl<'a> {
+    target_seq: u32,
+    request_timeout_ms: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &'a str,
+    payload: &'a [u8],
+}
+
+fn decode_control_request<'a>(
+    protocol: OperationControlProtocol,
+    payload: &'a [u8],
+) -> Result<DecodedOperationControl<'a>, vsock_proto::ProtocolError> {
+    match protocol {
+        OperationControlProtocol::Process => {
+            let decoded = vsock_proto::decode_process_control(payload)?;
+            Ok(DecodedOperationControl {
+                target_seq: decoded.target_seq,
+                request_timeout_ms: decoded.request_timeout_ms,
+                control_nonce: decoded.control_nonce,
+                message_id: decoded.message_id,
+                payload: decoded.payload,
+            })
+        }
+        OperationControlProtocol::Exec => {
+            let decoded = vsock_proto::decode_exec_control(payload)?;
+            Ok(DecodedOperationControl {
+                target_seq: decoded.target_seq,
+                request_timeout_ms: decoded.request_timeout_ms,
+                control_nonce: decoded.control_nonce,
+                message_id: decoded.message_id,
+                payload: decoded.payload,
+            })
+        }
+    }
+}
+
+fn encode_control_result(
+    protocol: OperationControlProtocol,
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+    status: ProcessControlStatus,
+    diagnostic: &str,
+) -> Result<Vec<u8>, vsock_proto::ProtocolError> {
+    match protocol {
+        OperationControlProtocol::Process => vsock_proto::encode_process_control_result(
+            target_seq,
+            control_nonce,
+            message_id,
+            status,
+            diagnostic,
+        ),
+        OperationControlProtocol::Exec => vsock_proto::encode_exec_control_result(
+            target_seq,
+            control_nonce,
+            message_id,
+            status,
+            diagnostic,
+        ),
+    }
+}
+
+fn handle_control(
+    protocol: OperationControlProtocol,
     seq: u32,
     payload: &[u8],
     registry: &ProcessControlRegistry,
     writer: &GuestWriter,
 ) -> io::Result<()> {
-    let request = vsock_proto::decode_process_control(payload).map_err(to_io_error)?;
+    debug_assert_eq!(registry.protocol, protocol);
+    let request = decode_control_request(protocol, payload).map_err(to_io_error)?;
     let owned = OwnedProcessControlRequest {
         response_seq: seq,
         target_seq: request.target_seq,
@@ -768,7 +996,8 @@ pub(crate) fn handle_process_control(
 
     if let Some((status, diagnostic)) = immediate {
         writer.write_generated_frame_after_lock(|| {
-            let result_payload = vsock_proto::encode_process_control_result(
+            let result_payload = encode_control_result(
+                protocol,
                 request.target_seq,
                 request.control_nonce,
                 request.message_id,
@@ -776,12 +1005,42 @@ pub(crate) fn handle_process_control(
                 &diagnostic,
             )
             .map_err(to_io_error)?;
-            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, seq, &result_payload)
+            vsock_proto::encode(protocol.result_msg_type(), seq, &result_payload)
                 .map_err(to_io_error)
         })?;
     }
 
     Ok(())
+}
+
+pub(crate) fn handle_process_control(
+    seq: u32,
+    payload: &[u8],
+    registry: &ProcessControlRegistry,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    handle_control(
+        OperationControlProtocol::Process,
+        seq,
+        payload,
+        registry,
+        writer,
+    )
+}
+
+pub(crate) fn handle_exec_control(
+    seq: u32,
+    payload: &[u8],
+    registry: &ExecControlRegistry,
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    handle_control(
+        OperationControlProtocol::Exec,
+        seq,
+        payload,
+        registry,
+        writer,
+    )
 }
 
 #[cfg(test)]
@@ -1028,7 +1287,7 @@ mod tests {
         assert_eq!(seq, 29);
         assert_eq!(status, ProcessControlStatus::SinkTimeout);
         assert_eq!(message_id, "msg-timeout");
-        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
+        assert_eq!(diagnostic, PROCESS_REQUEST_TIMEOUT_DIAGNOSTIC);
         assert_eq!(sink.pending.load(Ordering::Acquire), 0);
     }
 
@@ -1058,7 +1317,7 @@ mod tests {
         assert_eq!(seq, 41);
         assert_eq!(status, ProcessControlStatus::SinkTimeout);
         assert_eq!(message_id, "msg-before-connect");
-        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
+        assert_eq!(diagnostic, PROCESS_REQUEST_TIMEOUT_DIAGNOSTIC);
 
         let client = std::thread::spawn(move || {
             let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
@@ -1527,7 +1786,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(OperationControlProtocol::Process, request_deadline(5000))
+            .unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1559,7 +1820,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(OperationControlProtocol::Process, request_deadline(5000))
+            .unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1592,7 +1855,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(OperationControlProtocol::Process, request_deadline(5000))
+            .unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
 
@@ -1641,7 +1906,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(OperationControlProtocol::Process, request_deadline(5000))
+            .unwrap();
         let pending_slot = sink.reserve_pending_slot().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -1673,7 +1940,7 @@ mod tests {
         assert_eq!(seq, 19);
         assert_eq!(status, ProcessControlStatus::SinkTimeout);
         assert_eq!(message_id, "msg-expired-behind-lock");
-        assert_eq!(diagnostic, REQUEST_TIMEOUT_DIAGNOSTIC);
+        assert_eq!(diagnostic, PROCESS_REQUEST_TIMEOUT_DIAGNOSTIC);
         assert_eq!(sink.pending.load(Ordering::Acquire), 0);
         assert!(matches!(
             *sink.inner.lock().unwrap_or_else(|e| e.into_inner()),

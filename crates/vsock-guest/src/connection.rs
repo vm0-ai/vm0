@@ -6,9 +6,9 @@ use std::thread;
 use std::time::Duration;
 
 use vsock_proto::{
-    self, MSG_EXEC_CANCEL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
-    MSG_PROCESS_CONTROL, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_SPAWN_PROCESS, MSG_WRITE_FILE, RawMessage,
+    self, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED, MSG_PROCESS_CONTROL, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_SPAWN_PROCESS, MSG_WRITE_FILE, RawMessage,
 };
 
 use crate::error::to_io_error;
@@ -23,7 +23,8 @@ use crate::handlers::{
 use crate::log::log;
 use crate::monitor::{SpawnProcessRequest, handle_spawn_process as run_spawn_process};
 use crate::process_control::{
-    ProcessControlRegistry, handle_process_control as route_process_control,
+    ExecControlRegistry, ProcessControlRegistry, handle_exec_control as route_exec_control,
+    handle_process_control as route_process_control,
 };
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
@@ -169,6 +170,7 @@ struct ConnectionDispatcher {
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     exec_operation_registry: ExecOperationRegistry,
+    exec_control_registry: ExecControlRegistry,
     process_control_registry: ProcessControlRegistry,
     operation_state: OperationState,
 }
@@ -179,6 +181,7 @@ impl ConnectionDispatcher {
             writer,
             connection_cancel,
             exec_operation_registry: ExecOperationRegistry::default(),
+            exec_control_registry: ExecControlRegistry::exec(),
             process_control_registry: ProcessControlRegistry::default(),
             operation_state: OperationState::default(),
         }
@@ -188,6 +191,7 @@ impl ConnectionDispatcher {
         match msg.msg_type {
             MSG_EXEC_START => self.handle_exec_start(msg)?,
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
+            MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
             MSG_SPAWN_PROCESS => self.handle_spawn_process(msg)?,
             MSG_PROCESS_CONTROL => self.handle_process_control(msg)?,
             MSG_WRITE_FILE => self.handle_write_file(msg)?,
@@ -213,7 +217,7 @@ impl ConnectionDispatcher {
                 return Ok(());
             }
         };
-        let request = match ExecOperationWorkerRequest::from_decoded(msg.seq, decoded) {
+        let mut request = match ExecOperationWorkerRequest::from_decoded(msg.seq, decoded) {
             Ok(request) => request,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -225,6 +229,30 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
+        if let Some((control_nonce, control_sink)) = request.exec_control_registration() {
+            let registration = match self.exec_control_registry.register(
+                msg.seq,
+                Some(control_nonce),
+                control_sink,
+            ) {
+                Ok(registration) => registration,
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    operation_guard.release();
+                    send_error_response(msg.seq, "exec operation already active", &self.writer)?;
+                    return Ok(());
+                }
+                Err(error) => {
+                    operation_guard.release();
+                    send_error_response(
+                        msg.seq,
+                        &format!("exec control setup failed: {error}"),
+                        &self.writer,
+                    )?;
+                    return Ok(());
+                }
+            };
+            request.attach_exec_control(registration.guard, registration.bootstrap_endpoint);
+        }
         start_exec_operation(
             request,
             operation_guard,
@@ -241,6 +269,18 @@ impl ConnectionDispatcher {
         vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
         cancel_exec_operation(&self.exec_operation_registry, msg.seq);
         Ok(())
+    }
+
+    fn handle_exec_control(&self, msg: &RawMessage) -> io::Result<()> {
+        if !require_non_zero_sequence(msg.seq, "exec control", &self.writer)? {
+            return Ok(());
+        }
+        route_exec_control(
+            msg.seq,
+            &msg.payload,
+            &self.exec_control_registry,
+            &self.writer,
+        )
     }
 
     fn handle_spawn_process(&self, msg: &RawMessage) -> io::Result<()> {
