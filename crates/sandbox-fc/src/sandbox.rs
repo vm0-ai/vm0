@@ -94,7 +94,7 @@ async fn load_snapshot_and_apply_rate_limits(
     Ok(())
 }
 
-fn build_firecracker_config(
+fn build_fresh_boot_firecracker_config(
     resources: &sandbox::ResourceLimits,
     kernel_path: String,
     cow_device_path: String,
@@ -936,7 +936,7 @@ impl FirecrackerSandbox {
         let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        build_firecracker_config(
+        build_fresh_boot_firecracker_config(
             &self.config.resources,
             kernel_path,
             cow_device_path,
@@ -3087,7 +3087,7 @@ mod tests {
 
     #[test]
     fn fresh_boot_config_omits_rate_limiters_when_disabled() {
-        let config = build_firecracker_config(
+        let config = build_fresh_boot_firecracker_config(
             &test_resources(),
             "/kernel".to_string(),
             "/dev/nbd0".to_string(),
@@ -3112,7 +3112,7 @@ mod tests {
     #[test]
     fn fresh_boot_config_includes_rate_limiters_when_enabled() {
         let rate_limits = test_rate_limits();
-        let config = build_firecracker_config(
+        let config = build_fresh_boot_firecracker_config(
             &test_resources(),
             "/kernel".to_string(),
             "/dev/nbd0".to_string(),
