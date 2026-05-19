@@ -91,7 +91,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/email/callbacks/trigger/route.ts",
   "app/api/zero/email/inbound/route.ts",
   "app/api/zero/feature-switches/route.ts",
-  "app/api/zero/insights/range/route.ts",
   "app/api/zero/insights/route.ts",
   "app/api/zero/integrations/chat/message/route.ts",
   "app/api/zero/integrations/slack/connect/route.ts",
