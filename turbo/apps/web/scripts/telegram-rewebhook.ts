@@ -18,7 +18,7 @@ import { buildTelegramWebhookUrl } from "../src/lib/zero/telegram/webhook-url";
  * Usage:
  *   pnpm -F @vm0/web exec tsx scripts/telegram-rewebhook.ts [--dry-run]
  *
- * Requires DATABASE_URL, SECRETS_ENCRYPTION_KEY, VM0_API_URL in env.
+ * Requires DATABASE_URL, SECRETS_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL in env.
  */
 
 interface Args {
@@ -34,10 +34,8 @@ async function main(): Promise<void> {
 
   initServices();
   const { db, env, pool } = globalThis.services;
-  const apiUrl = env.VM0_API_URL;
+  const webUrl = env.NEXT_PUBLIC_APP_URL;
   const secretsKey = env.SECRETS_ENCRYPTION_KEY;
-
-  if (!apiUrl) throw new Error("VM0_API_URL is required");
 
   const rows = await db
     .select({
@@ -50,7 +48,7 @@ async function main(): Promise<void> {
   console.log(`Found ${rows.length} installation(s).`);
   if (args.dryRun) {
     for (const row of rows) {
-      const url = buildTelegramWebhookUrl(apiUrl, row.telegramBotId);
+      const url = buildTelegramWebhookUrl(webUrl, row.telegramBotId);
       console.log(`[dry-run] would setWebhook ${row.telegramBotId} → ${url}`);
     }
     await pool.end();
@@ -60,7 +58,7 @@ async function main(): Promise<void> {
   let succeeded = 0;
   let failed = 0;
   for (const row of rows) {
-    const url = buildTelegramWebhookUrl(apiUrl, row.telegramBotId);
+    const url = buildTelegramWebhookUrl(webUrl, row.telegramBotId);
     try {
       const botToken = decryptSecretValue(row.encryptedBotToken, secretsKey);
       await setWebhook(botToken, url, row.webhookSecret);

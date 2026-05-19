@@ -649,6 +649,31 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches Telegram callback rewrite paths exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/telegram/webhook/123456789:telegram-bot-token",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/auth-callback"),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/telegram/webhook")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/telegram/webhook/123456789:telegram-bot-token/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/integrations/telegram/auth-callback/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/auth"),
+    ).toBe(false);
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -2171,6 +2196,58 @@ describe("API backend rewrite proxy behavior", () => {
           );
           expect(payload.body).toBe(callbackRequest.body);
         }
+      },
+    );
+  });
+
+  it("forwards Telegram callback requests and provider headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          message: { text: "/start", chat: { id: 1234 } },
+        });
+        const webhookResponse = await fetch(
+          `${origin}/api/telegram/webhook/123456789:telegram-bot-token?from=telegram`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-telegram-bot-api-secret-token": "telegram-secret",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const webhookPayload = (await webhookResponse.json()) as EchoPayload;
+        expect(webhookPayload.method).toBe("POST");
+        expect(webhookPayload.url).toBe(
+          "/api/telegram/webhook/123456789:telegram-bot-token?from=telegram",
+        );
+        expect(webhookPayload.headers["content-type"]).toContain(
+          "application/json",
+        );
+        expect(webhookPayload.headers["x-telegram-bot-api-secret-token"]).toBe(
+          "telegram-secret",
+        );
+        expect(webhookPayload.body).toBe(webhookBody);
+
+        const authResponse = await fetch(
+          `${origin}/api/integrations/telegram/auth-callback?id=1001&hash=telegram-hash`,
+        );
+
+        const authPayload = (await authResponse.json()) as EchoPayload;
+        expect(authPayload.method).toBe("GET");
+        expect(authPayload.url).toBe(
+          "/api/integrations/telegram/auth-callback?id=1001&hash=telegram-hash",
+        );
       },
     );
   });

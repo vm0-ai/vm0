@@ -475,7 +475,7 @@ describe("POST /api/telegram/register", () => {
     });
     expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
       TEST_BOT_TOKEN,
-      `https://api.example.test/api/telegram/webhook/${telegramBotId}`,
+      `https://app.example.test/api/telegram/webhook/${telegramBotId}`,
       expect.stringMatching(/^[0-9a-f]{64}$/u),
     );
     expect(context.mocks.telegram.setMyCommands).toHaveBeenCalledWith(

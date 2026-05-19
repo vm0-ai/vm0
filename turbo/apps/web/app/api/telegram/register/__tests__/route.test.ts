@@ -25,6 +25,12 @@ interface TelegramSetMyCommandsBody {
   commands: Array<{ command: string; description: string }>;
 }
 
+interface TelegramSetWebhookBody {
+  url: string;
+  secret_token: string;
+  allowed_updates: string[];
+}
+
 function telegramGetMe(
   botId: string,
   username: string,
@@ -53,14 +59,20 @@ function telegramGetMeFail(token = TEST_BOT_TOKEN) {
 }
 
 function telegramSetWebhook(succeed = true, token = TEST_BOT_TOKEN) {
-  return http.post(`https://api.telegram.org/bot${token}/setWebhook`, () => {
-    return succeed
-      ? HttpResponse.json({ ok: true, result: true })
-      : HttpResponse.json(
-          { ok: false, description: "Webhook failed" },
-          { status: 400 },
-        );
-  });
+  const calls: TelegramSetWebhookBody[] = [];
+  const handler = http.post(
+    `https://api.telegram.org/bot${token}/setWebhook`,
+    async ({ request }) => {
+      calls.push((await request.json()) as TelegramSetWebhookBody);
+      return succeed
+        ? HttpResponse.json({ ok: true, result: true })
+        : HttpResponse.json(
+            { ok: false, description: "Webhook failed" },
+            { status: 400 },
+          );
+    },
+  );
+  return { ...handler, calls };
 }
 
 function telegramSetMyCommands(token = TEST_BOT_TOKEN) {
@@ -83,8 +95,11 @@ function telegramOauthHead() {
   });
 }
 
-function registerRequest(body: Record<string, unknown>) {
-  return new Request("http://localhost:3000/api/telegram/register", {
+function registerRequest(
+  body: Record<string, unknown>,
+  requestUrl = "http://localhost:3000/api/telegram/register",
+) {
+  return new Request(requestUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -162,7 +177,10 @@ describe("POST /api/telegram/register", () => {
     );
 
     const response = await POST(
-      registerRequest({ botToken: TEST_BOT_TOKEN, defaultAgentId: composeId }),
+      registerRequest(
+        { botToken: TEST_BOT_TOKEN, defaultAgentId: composeId },
+        "https://www.vm0.ai/api/telegram/register",
+      ),
     );
     const body = await response.json();
 
@@ -181,6 +199,11 @@ describe("POST /api/telegram/register", () => {
 
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(setWebhookHandler.calls[0]).toMatchObject({
+      url: `https://www.vm0.ai/api/telegram/webhook/${botId}`,
+      secret_token: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      allowed_updates: ["message"],
+    });
     expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setCommandsHandler.calls[0]?.commands).toEqual(
       expect.arrayContaining([

@@ -373,4 +373,32 @@ describe("proxy middleware: sandbox token handling", () => {
       false,
     );
   });
+
+  it("should not add OAuth web origin headers for Telegram callbacks", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/telegram/webhook/123456789:telegram-bot-token",
+      {
+        method: "POST",
+        headers: {
+          "x-telegram-bot-api-secret-token": "telegram-secret",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(response.headers.has("x-middleware-request-x-vm0-web-origin")).toBe(
+      false,
+    );
+  });
 });

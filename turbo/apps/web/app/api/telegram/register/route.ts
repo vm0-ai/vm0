@@ -34,13 +34,9 @@ const log = logger("api:telegram:register");
 
 /**
  * Resolve webhook base URL from the request.
- * Uses VM0_API_URL when set, falls back to request origin.
+ * Telegram provider callbacks stay on the web origin during API cutover.
  */
 function getWebhookBaseUrl(requestUrl: string): string {
-  const { VM0_API_URL } = env();
-  if (VM0_API_URL) {
-    return VM0_API_URL;
-  }
   const url = new URL(requestUrl);
   return `${url.protocol}//${url.host}`;
 }

@@ -317,7 +317,7 @@ function generateCallbackSecret(): string {
 }
 
 function buildTelegramWebhookUrl(telegramBotId: string): string {
-  return `${env("VM0_API_URL")}/api/telegram/webhook/${telegramBotId}`;
+  return `${env("VM0_WEB_URL")}/api/telegram/webhook/${telegramBotId}`;
 }
 
 function normalizeTelegramUsername(

@@ -133,6 +133,10 @@ const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
 );
 const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
+const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
+const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
+const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
+  "/api/integrations/telegram/auth-callback";
 const V1_CHAT_THREADS_MESSAGES_REWRITE_SOURCE = "/api/v1/chat-threads/messages";
 const V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE =
   "/api/v1/chat-threads/:threadId((?!messages$)[^/]+)";
@@ -318,6 +322,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/github/oauth/callback", "/api/github/oauth/callback"],
   ["/api/github/oauth/install", "/api/github/oauth/install"],
   ["/api/integrations/github", "/api/integrations/github"],
+  [
+    TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE,
+    "/api/integrations/telegram/auth-callback",
+  ],
   ["/api/logs/search", "/api/logs/search"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
@@ -396,6 +404,11 @@ export const API_BACKEND_REWRITES = [
     "/api/test/slack-mock/conversations.open",
   ],
   ["/api/test/slack-state", "/api/test/slack-state"],
+  [
+    TELEGRAM_WEBHOOK_REWRITE_SOURCE,
+    "/api/telegram/webhook/:telegramBotId",
+    TELEGRAM_WEBHOOK_PATH_RE,
+  ],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],
   ["/api/v1/audio/transcriptions", "/api/v1/audio/transcriptions"],
