@@ -1756,91 +1756,176 @@ mod tests {
         assert!(!is_inactive_mode(""));
     }
 
-    /// Helper that replicates the proxy check logic from `build_runner_report`.
-    fn proxy_check_warnings(
+    struct DoctorReportFixture {
+        _dir: tempfile::TempDir,
+        config_path: PathBuf,
+    }
+
+    fn doctor_report_fixture(
         mode: &str,
         proxy_port: Option<u16>,
-        mitm_procs: &[process::MitmproxyProcessInfo],
-    ) -> Vec<Warning> {
-        let mut warnings = Vec::new();
-        let base_dir = PathBuf::from("/data/r1");
-        if let Some(port) = proxy_port {
-            let pid = mitm_procs.iter().find(|m| m.port == port).map(|m| m.pid);
-            match (mode, pid) {
-                ("running", None) => {
-                    warnings.push(Warning::NoMitmproxy {
-                        port,
-                        base_dir: base_dir.clone(),
-                    });
-                }
-                ("stopped", Some(mitm_pid)) => {
-                    warnings.push(Warning::StaleMitmproxy {
-                        pid: mitm_pid,
-                        port,
-                    });
-                }
-                _ => {}
-            }
+        dns_port: Option<u16>,
+    ) -> DoctorReportFixture {
+        let dir = tempfile::tempdir().unwrap();
+        let base_dir = dir.path().join("runner");
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let config_path = dir.path().join("runner.yaml");
+        let config = serde_json::json!({
+            "name": "test-runner",
+            "group": "vm0/test",
+            "base_dir": base_dir.display().to_string(),
+            "ca_dir": dir.path().join("ca").display().to_string(),
+            "firecracker": {
+                "binary": dir.path().join("firecracker").display().to_string(),
+                "kernel": dir.path().join("vmlinux").display().to_string(),
+            },
+            "profiles": {
+                "vm0/default": {
+                    "rootfs_hash": "rootfs",
+                    "snapshot_hash": "snapshot",
+                    "vcpu": 1,
+                    "memory_mb": 512,
+                    "disk_mb": 1024,
+                },
+            },
+        });
+        std::fs::write(&config_path, serde_yaml_ng::to_string(&config).unwrap()).unwrap();
+
+        let status = serde_json::json!({
+            "mode": mode,
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "active_runs": [],
+            "proxy_port": proxy_port,
+            "dns_port": dns_port,
+        });
+        std::fs::write(base_dir.join("status.json"), status.to_string()).unwrap();
+
+        DoctorReportFixture {
+            _dir: dir,
+            config_path,
         }
-        warnings
     }
 
-    #[test]
-    fn proxy_check_no_warning_for_stopped_without_proxy() {
-        let warnings = proxy_check_warnings("stopped", Some(32821), &[]);
+    async fn build_test_runner_report(
+        mode: &str,
+        proxy_port: Option<u16>,
+        dns_port: Option<u16>,
+        mitm_procs: Vec<process::MitmproxyProcessInfo>,
+        dns_procs: Vec<process::DnsmasqProcessInfo>,
+    ) -> RunnerReport {
+        let fixture = doctor_report_fixture(mode, proxy_port, dns_port);
+        let runner = process::RunnerProcessInfo {
+            pid: std::process::id(),
+            config_path: fixture.config_path.clone(),
+            subcommand: "start".into(),
+        };
+        let report = build_runner_report(&runner, &[], &mitm_procs, &dns_procs, &[]).await;
+        assert!(report.base_dir.is_some(), "test config should load");
+        assert!(report.status.is_some(), "test status should load");
+        report
+    }
+
+    fn mitm_proc(pid: u32, port: u16) -> process::MitmproxyProcessInfo {
+        process::MitmproxyProcessInfo {
+            pid,
+            ppid: None,
+            port,
+        }
+    }
+
+    fn dns_proc(pid: u32, port: u16) -> process::DnsmasqProcessInfo {
+        process::DnsmasqProcessInfo { pid, port }
+    }
+
+    #[tokio::test]
+    async fn report_warns_for_running_without_proxy() {
+        let report = build_test_runner_report("running", Some(32821), None, vec![], vec![]).await;
         assert!(
-            warnings.is_empty(),
-            "stopped runner without proxy should not warn"
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::NoMitmproxy { port: 32821, .. }))
         );
     }
 
-    #[test]
-    fn proxy_check_warns_for_running_without_proxy() {
-        let warnings = proxy_check_warnings("running", Some(32821), &[]);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].to_string().contains("no mitmproxy"));
+    #[tokio::test]
+    async fn report_warns_stale_proxy_on_stopped_runner() {
+        let report = build_test_runner_report(
+            "stopped",
+            Some(32821),
+            None,
+            vec![mitm_proc(999, 32821)],
+            vec![],
+        )
+        .await;
+        assert!(report.warnings.iter().any(|w| matches!(
+            w,
+            Warning::StaleMitmproxy {
+                pid: 999,
+                port: 32821,
+            }
+        )));
     }
 
-    #[test]
-    fn proxy_check_warns_stale_proxy_on_stopped_runner() {
-        let mitm_procs = vec![process::MitmproxyProcessInfo {
-            pid: 999,
-            ppid: None,
-            port: 32821,
-        }];
-        let warnings = proxy_check_warnings("stopped", Some(32821), &mitm_procs);
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].to_string().contains("stale mitmproxy"));
-        assert!(warnings[0].to_string().contains("999"));
+    #[tokio::test]
+    async fn report_no_warning_for_stopped_without_proxy() {
+        let report = build_test_runner_report("stopped", Some(32821), None, vec![], vec![]).await;
+        assert!(report.warnings.is_empty());
     }
 
-    #[test]
-    fn proxy_check_no_warning_for_draining() {
-        // Draining: no warning whether proxy is present or absent
-        let warnings = proxy_check_warnings("draining", Some(32821), &[]);
+    #[tokio::test]
+    async fn report_no_warning_for_draining_proxy() {
+        let without_proxy =
+            build_test_runner_report("draining", Some(32821), None, vec![], vec![]).await;
+        assert!(without_proxy.warnings.is_empty());
+
+        let with_proxy = build_test_runner_report(
+            "draining",
+            Some(32821),
+            None,
+            vec![mitm_proc(999, 32821)],
+            vec![],
+        )
+        .await;
+        assert!(with_proxy.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn report_no_warning_for_running_with_proxy() {
+        let report = build_test_runner_report(
+            "running",
+            Some(32821),
+            None,
+            vec![mitm_proc(999, 32821)],
+            vec![],
+        )
+        .await;
+        assert!(report.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn report_warns_for_running_without_dnsmasq() {
+        let report = build_test_runner_report("running", None, Some(5353), vec![], vec![]).await;
         assert!(
-            warnings.is_empty(),
-            "draining without proxy should not warn"
+            report
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::NoDnsmasq { port: 5353, .. }))
         );
-
-        let mitm_procs = vec![process::MitmproxyProcessInfo {
-            pid: 999,
-            ppid: None,
-            port: 32821,
-        }];
-        let warnings = proxy_check_warnings("draining", Some(32821), &mitm_procs);
-        assert!(warnings.is_empty(), "draining with proxy should not warn");
     }
 
-    #[test]
-    fn proxy_check_no_warning_for_running_with_proxy() {
-        let mitm_procs = vec![process::MitmproxyProcessInfo {
-            pid: 999,
-            ppid: None,
-            port: 32821,
-        }];
-        let warnings = proxy_check_warnings("running", Some(32821), &mitm_procs);
-        assert!(warnings.is_empty(), "running with proxy should not warn");
+    #[tokio::test]
+    async fn report_no_warning_for_running_with_dnsmasq() {
+        let report = build_test_runner_report(
+            "running",
+            None,
+            Some(5353),
+            vec![],
+            vec![dns_proc(888, 5353)],
+        )
+        .await;
+        assert!(report.warnings.is_empty());
     }
 
     #[test]
