@@ -21,7 +21,10 @@ import {
   PROVIDER_HANDLERS,
   providerEnvFromObject,
 } from "@vm0/connectors/oauth-providers";
-import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import {
+  getModelProviderOAuthHandler,
+  type ModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
@@ -35,16 +38,14 @@ export type OAuthSecretSource = "connector" | "model-provider";
 
 type OAuthHandler =
   | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
-  | (typeof MODEL_PROVIDER_OAUTH_HANDLERS)[keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS];
+  | ModelProviderOAuthHandler;
 
 function getOAuthHandler(
   handlerKey: string,
   sourceType: OAuthSecretSource,
 ): OAuthHandler | undefined {
   if (sourceType === "model-provider") {
-    return MODEL_PROVIDER_OAUTH_HANDLERS[
-      handlerKey as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
-    ];
+    return getModelProviderOAuthHandler(handlerKey);
   }
   return PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
 }

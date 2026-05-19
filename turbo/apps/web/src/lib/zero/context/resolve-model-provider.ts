@@ -27,7 +27,7 @@ import {
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
-import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
@@ -269,10 +269,7 @@ function buildModelProviderRefreshMaps(
   const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
   if (!handlerKey) return undefined;
 
-  const handler =
-    MODEL_PROVIDER_OAUTH_HANDLERS[
-      handlerKey as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
-    ];
+  const handler = getModelProviderOAuthHandler(handlerKey);
   if (!handler?.refreshToken) return undefined;
 
   const accessSecretName = handler.getSecretName();

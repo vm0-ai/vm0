@@ -7,7 +7,11 @@ import {
   PROVIDER_HANDLERS,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
-import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import {
+  getModelProviderOAuthHandler,
+  isModelProviderOAuthHandlerKey,
+  type ModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
@@ -34,7 +38,7 @@ type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
 type ProviderHandler =
   | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
-  | (typeof MODEL_PROVIDER_OAUTH_HANDLERS)[keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS];
+  | ModelProviderOAuthHandler;
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
@@ -200,15 +204,13 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function getRefreshSourceType(handlerKey: string): OAuthSecretSource {
-  return Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, handlerKey)
+  return isModelProviderOAuthHandlerKey(handlerKey)
     ? "model-provider"
     : "connector";
 }
 
 function sourceHandlerToProviderType(handlerKey: string): string | undefined {
-  return Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, handlerKey)
-    ? handlerKey
-    : undefined;
+  return isModelProviderOAuthHandlerKey(handlerKey) ? handlerKey : undefined;
 }
 
 function resolveSecretUserId(
@@ -239,10 +241,9 @@ function resolveRefreshMetadata(
 }
 
 function providerHandler(connectorType: string) {
-  if (Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, connectorType)) {
-    return MODEL_PROVIDER_OAUTH_HANDLERS[
-      connectorType as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
-    ];
+  const modelProviderHandler = getModelProviderOAuthHandler(connectorType);
+  if (modelProviderHandler) {
+    return modelProviderHandler;
   }
   if (!Object.hasOwn(PROVIDER_HANDLERS, connectorType)) {
     return null;

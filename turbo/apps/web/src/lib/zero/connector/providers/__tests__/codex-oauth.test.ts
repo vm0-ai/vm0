@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { MODEL_PROVIDER_OAUTH_HANDLERS } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   exchangeChatgptCode,
   refreshChatgptToken,
@@ -259,7 +259,7 @@ describe("connector/providers/codex-oauth", () => {
 
   describe("codexOauthHandler", () => {
     it("is registered as a model-provider OAuth handler", () => {
-      expect(MODEL_PROVIDER_OAUTH_HANDLERS["codex-oauth-token"]).toBe(
+      expect(getModelProviderOAuthHandler("codex-oauth-token")).toBe(
         codexOauthHandler,
       );
     });
