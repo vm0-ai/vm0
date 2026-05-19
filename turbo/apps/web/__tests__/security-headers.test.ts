@@ -788,6 +788,20 @@ const ZERO_RUNS_CONTEXT_PROXY_NEGATIVE_PATHS = [
   "/api/zero/runs/not-a-uuid/context",
   `/api/zero/runs/${ZERO_RUN_ID}/context/extra`,
 ] as const;
+const ZERO_RUNS_NETWORK_REWRITE_SOURCE =
+  "/api/zero/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/network";
+const ZERO_RUNS_NETWORK_PATH = `/api/zero/runs/${ZERO_RUN_ID}/network`;
+const ZERO_RUNS_NETWORK_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/runs/queue/network",
+  "/api/zero/runs/not-a-uuid/network",
+  `/api/zero/runs/${ZERO_RUN_ID}`,
+  `/api/zero/runs/${ZERO_RUN_ID}/network/extra`,
+] as const;
+const ZERO_RUNS_NETWORK_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/runs/queue/network",
+  "/api/zero/runs/not-a-uuid/network",
+  `/api/zero/runs/${ZERO_RUN_ID}/network/extra`,
+] as const;
 const ZERO_RUNS_RUNNER_REWRITE_SOURCE =
   "/api/zero/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/runner";
 const ZERO_RUNS_RUNNER_PATH = `/api/zero/runs/${ZERO_RUN_ID}/runner`;
@@ -1525,6 +1539,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_RUNS_CONTEXT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/runs/:id/context",
+        },
+        {
+          source: ZERO_RUNS_NETWORK_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/runs/:id/network",
         },
         {
           source: ZERO_RUNS_RUNNER_REWRITE_SOURCE,
@@ -3983,6 +4001,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only UUID-shaped zero runs network rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_RUNS_NETWORK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_RUNS_NETWORK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/runs/:id/network",
+    });
+
+    const matcher = getPathMatch(ZERO_RUNS_NETWORK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_RUNS_NETWORK_PATH)).toStrictEqual({
+      id: ZERO_RUN_ID,
+    });
+    for (const pathname of ZERO_RUNS_NETWORK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only UUID-shaped zero runs runner rewrites", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -5023,6 +5066,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for UUID-shaped zero runs context paths", () => {
     expect(matchesApiBackendRewritePath(ZERO_RUNS_CONTEXT_PATH)).toBe(true);
     for (const pathname of ZERO_RUNS_CONTEXT_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped zero runs network paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_RUNS_NETWORK_PATH)).toBe(true);
+    for (const pathname of ZERO_RUNS_NETWORK_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

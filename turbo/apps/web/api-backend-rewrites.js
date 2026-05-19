@@ -34,6 +34,10 @@ const ZERO_RUNS_CONTEXT_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT
 const ZERO_RUNS_CONTEXT_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/context$`,
 );
+const ZERO_RUNS_NETWORK_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/network`;
+const ZERO_RUNS_NETWORK_PATH_RE = new RegExp(
+  `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/network$`,
+);
 const ZERO_RUNS_RUNNER_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/runner`;
 const ZERO_RUNS_RUNNER_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/runner$`,
@@ -512,6 +516,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_RUNS_CONTEXT_REWRITE_SOURCE,
     "/api/zero/runs/:id/context",
     ZERO_RUNS_CONTEXT_PATH_RE,
+  ],
+  [
+    ZERO_RUNS_NETWORK_REWRITE_SOURCE,
+    "/api/zero/runs/:id/network",
+    ZERO_RUNS_NETWORK_PATH_RE,
   ],
   [
     ZERO_RUNS_RUNNER_REWRITE_SOURCE,
