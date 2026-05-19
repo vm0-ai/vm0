@@ -136,6 +136,18 @@ describe("runner apiStartTime contract", () => {
     ).toBe(false);
   });
 
+  it("rejects seconds-shaped timestamps", () => {
+    const timestamp = 1_700_000_000;
+
+    expect(
+      storedExecutionContextSchema.shape.apiStartTime.safeParse(timestamp)
+        .success,
+    ).toBe(false);
+    expect(
+      executionContextSchema.shape.apiStartTime.safeParse(timestamp).success,
+    ).toBe(false);
+  });
+
   it("computes elapsed milliseconds for valid apiStartTime values", () => {
     expect(elapsedSinceApiStartMs(1_700_000_000_000, 1_700_000_001_250)).toBe(
       1_250,

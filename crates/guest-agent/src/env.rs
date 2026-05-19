@@ -265,8 +265,8 @@ pub fn vercel_bypass() -> &'static str {
 pub fn resume_session_id() -> &'static str {
     &RESUME_SESSION_ID
 }
-/// Runner-provided API start timestamp from `VM0_API_START_TIME`; empty string
-/// means unset.
+/// Runner-provided Unix epoch millisecond API start timestamp from
+/// `VM0_API_START_TIME`; empty string means unset.
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
 }
