@@ -19,6 +19,7 @@ import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
+import { atlascloudHandler } from "./providers/atlascloud-handler";
 import { aviationstackHandler } from "./providers/aviationstack-handler";
 import { bentomlHandler } from "./providers/bentoml-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
@@ -242,6 +243,7 @@ export const PROVIDER_HANDLERS: Record<
   asana: asanaHandler,
   attio: attioHandler,
   atlassian: atlassianHandler,
+  atlascloud: atlascloudHandler,
   bentoml: bentomlHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,

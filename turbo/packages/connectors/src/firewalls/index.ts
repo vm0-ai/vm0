@@ -52,6 +52,7 @@ import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
+import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
 // mathpix/nyne/openrouter/openweather/reducto/suno were added in the same
@@ -276,6 +277,7 @@ const CONNECTOR_FIREWALLS = {
   asana: asanaFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
+  atlascloud: atlascloudFirewall,
   axiom: axiomFirewall,
   bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,

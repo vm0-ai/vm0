@@ -36,6 +36,7 @@
     "generate:asana": "tsx src/index.ts asana",
     "generate:attio": "tsx src/index.ts attio",
     "generate:atlassian": "tsx src/index.ts atlassian",
+    "generate:atlascloud": "tsx src/index.ts atlascloud",
     "generate:axiom": "tsx src/index.ts axiom",
     "generate:bentoml": "tsx src/index.ts bentoml",
     "generate:bitrix": "tsx src/index.ts bitrix",
