@@ -125,7 +125,9 @@ describe("stored secret encryption", () => {
   it("stays legacy-only when KMS env is set but StoredSecretKmsWrite is off", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
-    const encrypted = await encryptStoredSecretValue("secret-value");
+    const encrypted = await encryptStoredSecretValue("secret-value", {
+      overrides: { [FeatureSwitchKey.StoredSecretKmsWrite]: false },
+    });
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
       format: "legacy",
@@ -138,12 +140,10 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
 
-  it("dual-writes legacy AES and AWS KMS material when KMS env is set and StoredSecretKmsWrite is on", async () => {
+  it("dual-writes legacy AES and AWS KMS material by default when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
-    const encrypted = await encryptStoredSecretValue("secret-value", {
-      overrides: { [FeatureSwitchKey.StoredSecretKmsWrite]: true },
-    });
+    const encrypted = await encryptStoredSecretValue("secret-value");
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
       format: "dual",

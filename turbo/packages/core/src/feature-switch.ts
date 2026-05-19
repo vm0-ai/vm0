@@ -311,7 +311,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Dual-write stored-secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured — this gates the KMS GenerateDataKey call so a missing IAM grant does not 500 every secret save.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
