@@ -1,0 +1,131 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/desktop.yml"
+      - "turbo/apps/desktop/**"
+      - "turbo/package.json"
+      - "turbo/pnpm-lock.yaml"
+      - "turbo/turbo.json"
+      - "turbo/packages/typescript-config/**"
+
+concurrency:
+  group: desktop-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: build-macos-arm64
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: turbo
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: turbo/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
+
+      - name: Type check desktop
+        run: pnpm -F @vm0/desktop check-types
+
+      - name: Lint desktop
+        run: pnpm -F @vm0/desktop lint
+
+      - name: Test desktop
+        run: pnpm -F @vm0/desktop test
+
+      - name: Build unsigned macOS artifact
+        run: |
+          pnpm -F @vm0/desktop build
+          pnpm --dir apps/desktop exec electron-forge make --platform darwin --arch arm64
+
+          desktop_dir="$PWD/apps/desktop"
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$version.zip"
+          artifact_path="$desktop_dir/out/Zero-darwin-arm64.zip"
+
+          if [ ! -f "$forge_zip" ]; then
+            echo "No Forge zip artifact found: $forge_zip"
+            find "$desktop_dir/out" -maxdepth 6 -type f -print || true
+            exit 1
+          fi
+
+          cp "$forge_zip" "$artifact_path"
+
+      - name: Verify artifact
+        id: artifact
+        run: |
+          artifact_path=apps/desktop/out/Zero-darwin-arm64.zip
+          app_dir=apps/desktop/out/Zero-darwin-arm64/Zero.app
+          plist="$app_dir/Contents/Info.plist"
+          if [ ! -f "$artifact_path" ]; then
+            echo "No desktop zip artifact found"
+            find apps/desktop/out -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          if [ ! -d "$app_dir" ]; then
+            echo "No packaged app found: $app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/main.js" ]; then
+            echo "No packaged app main process bundle found"
+            find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/src" ]; then
+            echo "Packaged app should not contain desktop source files"
+            find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Zero"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
+          cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
+          cmp -s apps/platform/public/icons/icon-512.png "$app_dir/Contents/Resources/app/assets/icon.png"
+
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/assets/icon.png"
+          echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload unsigned macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: zero-desktop-macos-arm64-unsigned
+          path: turbo/${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14

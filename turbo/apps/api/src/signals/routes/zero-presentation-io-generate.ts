@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import { zeroPresentationIoGenerateContract } from "@vm0/api-contracts/contracts/zero-presentation-io-generate";
+import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -32,6 +33,7 @@ import {
   recordGeneratedPresentation$,
 } from "../services/zero-presentation-io-generate.service";
 import {
+  builtInGenerationRequestWithInternal,
   completeBuiltInGenerationJob$,
   createBuiltInGenerationJob$,
   failBuiltInGenerationJob$,
@@ -103,9 +105,25 @@ function presentationRequestRecord(
     style: options.style,
     slideCount: options.slideCount,
     imageCount: options.imageCount,
+    imageModel: options.imageModel,
     theme: options.theme,
     ...(options.audience ? { audience: options.audience } : {}),
     ...(options.title ? { title: options.title } : {}),
+  };
+}
+
+function acceptedPresentationResponse(
+  generationId: string,
+  realtime: ZeroBuiltInGenerationRealtimeSubscription,
+) {
+  return {
+    status: 202 as const,
+    body: {
+      generationId,
+      type: "presentation" as const,
+      status: "queued" as const,
+      realtime,
+    },
   };
 }
 
@@ -315,6 +333,10 @@ const postPresentationInner$ = command(
       ? getMissingImagePricing(imagePricing, options.imageModel)
       : [];
     if (options.imageCount > 0 && missingImagePricing.length > 0) {
+      L.error("Presentation image generation pricing is not configured", {
+        imageModel: options.imageModel,
+        missingImagePricing,
+      });
       return presentationServiceUnavailable(
         "Presentation image generation pricing is not configured",
         "NOT_CONFIGURED",
@@ -348,7 +370,12 @@ const postPresentationInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         runId,
-        request: presentationRequestRecord(options),
+        request: builtInGenerationRequestWithInternal(
+          presentationRequestRecord(options),
+          {
+            admissionId: admission?.id,
+          },
+        ),
       },
       signal,
     );
@@ -369,15 +396,7 @@ const postPresentationInner$ = command(
       ),
     );
 
-    return {
-      status: 202 as const,
-      body: {
-        generationId,
-        type: "presentation" as const,
-        status: "queued" as const,
-        realtime,
-      },
-    };
+    return acceptedPresentationResponse(generationId, realtime);
   },
 );
 

@@ -1,6 +1,7 @@
 // Zero CLI entry point - standalone binary for zero platform commands
 // Sentry must be initialized before any other imports
 import "./instrument.js";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { zeroOrgCommand } from "./commands/zero/org";
@@ -31,6 +32,7 @@ import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
   decodeZeroTokenPayload,
+  zeroTokenAllowsFeatureSwitch,
   type ZeroTokenPayload,
 } from "./lib/api/zero-token.js";
 
@@ -103,6 +105,12 @@ function shouldHideCommand(
   payload: ZeroTokenPayload | undefined,
 ): boolean {
   if (!payload) return false;
+  if (name === "built-in") {
+    return (
+      !payload.capabilities.includes("file:write") &&
+      !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
+    );
+  }
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
   if (requiredCap === null) return false;
@@ -133,6 +141,9 @@ export function buildZeroHelpText(
     "  Update yourself?       zero agent --help",
     "  Manage custom skills?  zero skill --help",
     "  Generate image?        zero built-in generate image --help",
+    ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
+      ? ["  Generate website?      zero built-in generate website --help"]
+      : []),
     "  Generate voice?        zero built-in generate voice --help",
     ...(shouldHideCommand("local-browser", payload)
       ? []

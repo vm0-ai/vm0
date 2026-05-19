@@ -94,7 +94,7 @@ export async function resolveOrg(
  * org_metadata; in that fallback case `orgMeta` is omitted so callers do not
  * mistake synthetic credits=0 for a fresh database read.
  */
-export async function resolveOrgWithMetadata(
+async function resolveOrgWithMetadata(
   authCtx: AuthContext,
 ): Promise<ResolvedOrgWithMetadataResult> {
   const orgId = authCtx.orgId ?? null;

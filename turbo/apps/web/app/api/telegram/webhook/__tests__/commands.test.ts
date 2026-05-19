@@ -14,13 +14,12 @@ import {
   telegramUserLinkExists,
   createTelegramThreadSession,
   telegramThreadSessionExists,
-  createTestRequest,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[telegramBotId]/route";
-import { PATCH as updateComposeMetadata } from "../../../agent/composes/[id]/metadata/route";
 import { seedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 
 const context = testContext();
@@ -75,20 +74,11 @@ function telegramSendChatAction() {
 }
 
 async function updateAgentDisplayName(
-  composeId: string,
+  orgId: string,
+  name: string,
   displayName = TEST_AGENT_DISPLAY_NAME,
 ): Promise<void> {
-  const response = await updateComposeMetadata(
-    createTestRequest(
-      `http://localhost:3000/api/agent/composes/${composeId}/metadata`,
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayName }),
-      },
-    ),
-  );
-  expect(response.status).toBe(200);
+  await createTestZeroAgent(orgId, name, { displayName });
 }
 
 describe("Telegram bot commands", () => {
@@ -107,7 +97,7 @@ describe("Telegram bot commands", () => {
     const compose = await createTestCompose(uniqueId("agent"));
     composeId = compose.composeId;
     composeName = compose.name;
-    await updateAgentDisplayName(composeId);
+    await updateAgentDisplayName(orgId, composeName);
 
     const result = await createTelegramCallbackInstallation(
       composeId,
@@ -324,7 +314,7 @@ describe("Telegram bot commands", () => {
     });
 
     it("should escape agent display name in connect prompts", async () => {
-      await updateAgentDisplayName(composeId, "Helper <b>& Co");
+      await updateAgentDisplayName(orgId, composeName, "Helper <b>& Co");
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 

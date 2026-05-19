@@ -5,6 +5,7 @@ import type {
   ChatThreadArtifactGoogleDriveSync,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
@@ -19,7 +20,8 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { db$, type ReadonlyDb } from "../external/db";
 import { downloadS3Buffer } from "../external/s3";
 import { settle } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptStoredSecretValue } from "./crypto.utils";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_DRIVE_UPLOAD_URL =
@@ -80,6 +82,7 @@ async function loadDriveTokens(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<ConnectorTokens | null> {
   const [connector] = await db
     .select({ needsReconnect: connectors.needsReconnect })
@@ -122,9 +125,12 @@ async function loadDriveTokens(
   }
 
   return {
-    accessToken: decryptSecretValue(accessEncrypted),
+    accessToken: await decryptStoredSecretValue(
+      accessEncrypted,
+      featureSwitchContext,
+    ),
     refreshToken: refreshEncrypted
-      ? decryptSecretValue(refreshEncrypted)
+      ? await decryptStoredSecretValue(refreshEncrypted, featureSwitchContext)
       : null,
     needsReconnect: connector.needsReconnect,
   };
@@ -282,10 +288,8 @@ export function applyGoogleDriveArtifactSyncStatuses(
 /**
  * Compute the Drive sync status lookup for a chat thread's artifacts.
  *
- * Mirrors `getGoogleDriveArtifactStatusLookup` in
- * `apps/web/src/lib/zero/chat-thread/artifact-google-drive-sync.ts` —
- * scoped to Google Drive only (no generic provider registry) since this
- * is the sole api consumer of OAuth refresh today.
+ * Scoped to Google Drive only (no generic provider registry) since this is the
+ * sole API consumer of OAuth refresh today.
  *
  * Token persistence is intentionally deferred. When the in-flight access
  * token is rejected and the refresh succeeds, the new token is used for
@@ -305,7 +309,14 @@ export function googleDriveArtifactStatusLookup(args: {
       return { type: "disconnected" };
     }
     const db = get(db$);
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    });
     if (!tokens || tokens.needsReconnect) {
       return { type: "disconnected" };
     }
@@ -332,7 +343,6 @@ export function googleDriveArtifactStatusLookup(args: {
 
 // =====================================================================
 // Upload-side: sync a single artifact to the user's Google Drive.
-// Mirrors apps/web/src/lib/zero/chat-thread/artifact-google-drive-sync.ts.
 // =====================================================================
 
 const driveFolderSchema = z.object({ id: z.string(), name: z.string() });
@@ -663,9 +673,8 @@ type BadRequestResponse = ReturnType<typeof badRequestMessage>;
 
 /**
  * Sync a chat-thread artifact file to the caller's connected Google Drive.
- * Mirrors apps/web's `syncArtifactToGoogleDrive`.
  *
- * Error mapping (matches web verbatim where applicable):
+ * Error mapping (preserves legacy web behavior where applicable):
  *  - 404 "Artifact file not found" — thread missing/cross-user, or no row.
  *  - 400 "Connect Google Drive before syncing artifacts" — connector
  *    absent or `needsReconnect`.
@@ -693,7 +702,15 @@ export const syncArtifactToGoogleDrive$ = command(
   > => {
     const db = get(db$);
 
-    const tokens = await loadDriveTokens(db, args.orgId, args.userId);
+    const featureSwitchOverrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    const tokens = await loadDriveTokens(db, args.orgId, args.userId, {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: featureSwitchOverrides,
+    });
     signal.throwIfAborted();
     if (!tokens || tokens.needsReconnect) {
       return badRequestMessage("Connect Google Drive before syncing artifacts");

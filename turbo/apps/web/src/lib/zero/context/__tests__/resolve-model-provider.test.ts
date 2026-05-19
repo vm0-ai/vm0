@@ -357,7 +357,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     context.setupMocks();
   });
 
-  it("emits CHATGPT_ACCESS_TOKEN → 'codex-oauth' for codex-oauth-token", async () => {
+  it("emits CHATGPT_ACCESS_TOKEN → 'codex-oauth-token' for codex-oauth-token", async () => {
     const userId = uniqueId("scm-chatgpt");
     const orgId = await setupOrg(userId);
     await insertUserMultiAuthModelProvider(
@@ -390,7 +390,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toEqual({
-      CHATGPT_ACCESS_TOKEN: "codex-oauth",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
     });
     expect(result.secretConnectorMetadataMap).toEqual({
       CHATGPT_ACCESS_TOKEN: {

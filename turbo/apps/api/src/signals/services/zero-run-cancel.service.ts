@@ -10,9 +10,14 @@ import {
   publishOrgSignal,
   publishUserSignal,
 } from "../external/realtime";
+import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
+import { tapError } from "../utils";
+import { dispatchRunCallbacks } from "./agent-run-callback.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+
+const L = logger("ZeroRunCancel");
 
 export interface CancelRunResult {
   readonly runId: string;
@@ -177,6 +182,7 @@ export const dispatchCancelSideEffects$ = command(
     if (result.alreadyCancelled) {
       return;
     }
+    const db = set(writeDb$);
     if (result.previousStatus === "running" && result.runnerGroup) {
       await publishCancelToRunnerGroup(result.runnerGroup, result.runId);
       signal.throwIfAborted();
@@ -186,6 +192,23 @@ export const dispatchCancelSideEffects$ = command(
     await publishUserSignal([result.userId], `runChanged:${result.runId}`, {
       status: "cancelled",
     });
+    signal.throwIfAborted();
+
+    await tapError(
+      dispatchRunCallbacks(
+        db,
+        result.runId,
+        "failed",
+        undefined,
+        "Run cancelled",
+      ),
+      (error) => {
+        L.error("Failed to dispatch cancel callbacks", {
+          runId: result.runId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
 
     // Promote one queued run to pending; the runner picks it up on its

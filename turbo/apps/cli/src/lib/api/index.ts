@@ -200,6 +200,7 @@ export {
 // Domain modules - Zero Local Agent
 export {
   claimNextLocalAgentHostJob,
+  closeLocalAgentHost,
   completeLocalAgentHostJob,
   createLocalAgentRun,
   createLocalAgentHostRealtimeSubscription,
@@ -229,6 +230,7 @@ export {
   generateWebImage,
   generateWebVideo,
   generateWebPresentation,
+  generateWebWebsite,
 } from "./domains/web";
 
 // Domain modules - Zero Host

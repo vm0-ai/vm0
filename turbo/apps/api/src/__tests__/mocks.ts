@@ -57,6 +57,9 @@ export interface ApiTestMocks {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
     };
+    readonly signInTokens: {
+      readonly createSignInToken: AsyncMock;
+    };
   };
   readonly googleGenAi: {
     readonly constructorArgs: SyncMock;
@@ -159,6 +162,10 @@ export interface ApiTestMocks {
     readonly waitCommand: AsyncMock;
     readonly logs: AsyncIterableMock;
   };
+  readonly webpush: {
+    readonly sendNotification: AsyncMock;
+    readonly setVapidDetails: SyncMock;
+  };
   readonly telegram: {
     readonly getMe: AsyncMock;
     readonly getFile: AsyncMock;
@@ -234,6 +241,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    signInTokens: {
+      createSignInToken: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
   };
 
@@ -376,6 +386,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       logs: vi.fn<(...args: unknown[]) => AsyncIterable<VercelSandboxLogMock>>(
         emptyVercelSandboxLogs,
       ),
+    },
+    webpush: {
+      sendNotification: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      setVapidDetails: vi.fn<(...args: unknown[]) => void>(),
     },
     telegram,
     otel: {
@@ -574,6 +588,27 @@ vi.mock("@vercel/sandbox", () => {
   }
 
   return { Sandbox };
+});
+
+vi.mock("web-push", async (importActual) => {
+  const actual = await importActual<typeof import("web-push")>();
+  return {
+    ...actual,
+    default: {
+      sendNotification: (...args: unknown[]): Promise<unknown> => {
+        return apiTestMocks.webpush.sendNotification(...args);
+      },
+      setVapidDetails: (...args: unknown[]): void => {
+        apiTestMocks.webpush.setVapidDetails(...args);
+      },
+    },
+    sendNotification: (...args: unknown[]): Promise<unknown> => {
+      return apiTestMocks.webpush.sendNotification(...args);
+    },
+    setVapidDetails: (...args: unknown[]): void => {
+      apiTestMocks.webpush.setVapidDetails(...args);
+    },
+  };
 });
 
 vi.mock("resend", () => {
@@ -830,6 +865,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
+  apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
   apiTestMocks.s3.send.mockReset();
   apiTestMocks.s3.getSignedUrl.mockReset();
   apiTestMocks.s3.getSignedUrl.mockResolvedValue(
@@ -905,6 +941,9 @@ export function resetApiTestMocks(): void {
       },
     };
   });
+  apiTestMocks.webpush.sendNotification.mockReset();
+  apiTestMocks.webpush.sendNotification.mockResolvedValue(undefined);
+  apiTestMocks.webpush.setVapidDetails.mockReset();
   // Re-install the Stripe client override so getStripeClient() returns
   // the centralized mock surface (the vi.mock("stripe") factory above
   // doesn't compose with `new StripeSDK()` because vi.fn isn't a real

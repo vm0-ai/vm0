@@ -39,8 +39,9 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 use operation_tracker::{
+    NormalOperationFenceRejection as TrackerNormalOperationFenceRejection,
     NormalOperationRejection, NormalOperationToken, NormalOperationTracker,
-    NormalOperationTransitionError,
+    NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_OPERATIONS_QUIESCED,
@@ -55,10 +56,75 @@ pub use exec_operation::{
 };
 pub use file::{CopyFileOptions, CopyFileResult};
 pub use process::{
-    GuestProcessControlHandle, GuestProcessHandle, ProcessControlAck, ProcessExitEvent,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessControlAck, ProcessControlGuestStatus,
+    ProcessControlOutcome, ProcessExitEvent,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;
+
+/// Observer called when a request frame reaches the guest-write boundary.
+///
+/// The callback is synchronous because it runs while the shared writer lock is
+/// held, immediately before frame bytes are written. Keep the callback fast and
+/// do not call back into the same [`VsockHost`], because that can deadlock on
+/// the writer lock. Multi-frame helper operations may invoke the same observer
+/// more than once.
+#[derive(Clone)]
+pub struct FrameWriteObserver {
+    record_write_start: Arc<dyn Fn() -> io::Result<()> + Send + Sync>,
+}
+
+impl FrameWriteObserver {
+    pub fn new(record_write_start: impl Fn() -> io::Result<()> + Send + Sync + 'static) -> Self {
+        Self {
+            record_write_start: Arc::new(record_write_start),
+        }
+    }
+
+    pub fn noop() -> Self {
+        Self::new(|| Ok(()))
+    }
+
+    fn record_write_start(&self) -> io::Result<()> {
+        (self.record_write_start)()
+    }
+}
+
+impl Default for FrameWriteObserver {
+    fn default() -> Self {
+        Self::noop()
+    }
+}
+
+/// Opaque guard that fences new normal guest operations on a [`VsockHost`].
+///
+/// While this guard is alive, normal operations such as exec, file transfer, and
+/// spawn-process requests are rejected by the host-side operation tracker.
+/// Lifecycle requests such as quiesce/resume are not normal operations and can
+/// still be sent while the guard is held.
+#[derive(Debug)]
+pub struct NormalOperationFence {
+    _inner: operation_tracker::NormalOperationFence,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NormalOperationFenceRejection {
+    Busy,
+    AlreadyFenced,
+    NotParkable,
+    Closed,
+}
+
+impl From<TrackerNormalOperationFenceRejection> for NormalOperationFenceRejection {
+    fn from(error: TrackerNormalOperationFenceRejection) -> Self {
+        match error {
+            TrackerNormalOperationFenceRejection::Busy => Self::Busy,
+            TrackerNormalOperationFenceRejection::AlreadyFenced => Self::AlreadyFenced,
+            TrackerNormalOperationFenceRejection::NotParkable => Self::NotParkable,
+            TrackerNormalOperationFenceRejection::Closed => Self::Closed,
+        }
+    }
+}
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -68,6 +134,16 @@ pub struct ExecResult {
     pub stderr: Vec<u8>,
     pub stdout_truncated: bool,
     pub stderr_truncated: bool,
+}
+
+/// Request parameters for spawning a process on the guest.
+pub struct ProcessSpawnRequest<'a> {
+    pub command: &'a str,
+    pub timeout_ms: u32,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub stream_stdout: bool,
+    pub stdout_log_path: Option<&'a str>,
 }
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
@@ -143,11 +219,16 @@ struct PendingRequestGuard {
 
 struct PendingResponse {
     response_tx: oneshot::Sender<RawMessage>,
-    normal_operation: Option<NormalOperationToken>,
+    normal_operation: Option<PendingNormalOperation>,
     normal_terminal_msg_types: &'static [u8],
 }
 
-struct PendingNormalRequestWriteGuard {
+enum PendingNormalOperation {
+    Owned(NormalOperationToken),
+    Composite(NormalOperationTransitionHandle),
+}
+
+struct RequestWriteGuard {
     shared: Arc<Shared>,
     write_started: bool,
     write_returned: bool,
@@ -165,7 +246,7 @@ impl Drop for PendingRequestGuard {
     }
 }
 
-impl PendingNormalRequestWriteGuard {
+impl RequestWriteGuard {
     fn new(shared: Arc<Shared>) -> Self {
         Self {
             shared,
@@ -183,7 +264,7 @@ impl PendingNormalRequestWriteGuard {
     }
 }
 
-impl Drop for PendingNormalRequestWriteGuard {
+impl Drop for RequestWriteGuard {
     fn drop(&mut self) {
         if self.write_started && !self.write_returned {
             self.shared.poison_connection();
@@ -285,6 +366,58 @@ impl Shared {
     }
 }
 
+pub(crate) struct CompositeNormalOperation {
+    normal_operation: Option<NormalOperationToken>,
+}
+
+impl CompositeNormalOperation {
+    fn reserve(shared: &Arc<Shared>) -> io::Result<Self> {
+        Ok(Self {
+            normal_operation: Some(shared.reserve_normal_operation()?),
+        })
+    }
+
+    fn transition_handle(&self) -> io::Result<NormalOperationTransitionHandle> {
+        self.normal_operation
+            .as_ref()
+            .map(NormalOperationToken::transition_handle)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "composite normal operation already completed",
+                )
+            })
+    }
+
+    fn mark_possible_guest_write_started(&mut self) -> io::Result<()> {
+        let normal_operation = self.normal_operation.as_mut().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "composite normal operation already completed",
+            )
+        })?;
+        normal_operation
+            .mark_possible_guest_write_started()
+            .map_err(normal_operation_transition_error)?;
+        Ok(())
+    }
+
+    fn complete(mut self) -> io::Result<()> {
+        let normal_operation = self.normal_operation.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "composite normal operation already completed",
+            )
+        })?;
+        // Terminal proof can race with connection close, which clears tracker
+        // operations. Completion is idempotent for the composite owner.
+        match normal_operation.complete() {
+            Ok(()) | Err(NormalOperationTransitionError::UnknownOperation { .. }) => Ok(()),
+            Err(error) => Err(normal_operation_transition_error(error)),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ConnectionCloseKind {
     Closed,
@@ -364,6 +497,10 @@ async fn reader_loop(
                         return;
                     }
                 }
+                if process::record_spawn_process_error(&shared, &msg).is_err() {
+                    shared.poison_connection();
+                    return;
+                }
             }
 
             if msg.msg_type == MSG_EXEC_OUTPUT {
@@ -393,6 +530,13 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
+                if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
+                    && process::reject_unexpected_process_response(&shared, msg.seq, msg.msg_type)
+                        .is_err()
+                {
+                    shared.poison_connection();
+                    return;
+                }
                 let mut normal_operation_transition_failed = false;
                 let pending_response = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -404,10 +548,7 @@ async fn reader_loop(
                                     .contains(&msg.msg_type)
                                     && let Some(normal_operation) =
                                         pending_response.normal_operation.take()
-                                    && normal_operation
-                                        .complete()
-                                        .map_err(normal_operation_transition_error)
-                                        .is_err()
+                                    && complete_pending_normal_operation(normal_operation).is_err()
                                 {
                                     normal_operation_transition_failed = true;
                                 }
@@ -444,6 +585,24 @@ async fn request_on_shared(
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
     request_raw_on_shared(shared, msg_type, seq, payload, timeout).await
+}
+
+async fn write_request_frame(
+    shared: &Arc<Shared>,
+    data: &[u8],
+    before_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
+    let mut writer = shared.writer.lock().await;
+    before_write()?;
+    write_guard.mark_started();
+    if let Err(error) = writer.write_all(data).await {
+        write_guard.mark_returned();
+        shared.poison_connection();
+        return Err(error);
+    }
+    write_guard.mark_returned();
+    Ok(())
 }
 
 /// Send a request with a pre-allocated sequence number.
@@ -486,9 +645,11 @@ async fn request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    // The guard removes the pending entry on write failure, timeout, or
-    // cancellation before reader_loop dispatches a response.
-    shared.writer.lock().await.write_all(&data).await?;
+    // The pending guard removes the pending entry on write failure, timeout,
+    // or cancellation before reader_loop dispatches a response. The write
+    // helper separately poisons the connection if cancellation interrupts an
+    // in-progress frame write.
+    write_request_frame(shared, &data, || Ok(())).await?;
 
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -507,25 +668,36 @@ async fn request_raw_on_shared(
     }
 }
 
-async fn normal_request_on_shared(
+async fn normal_request_on_shared_with_write_observer(
     shared: &Arc<Shared>,
     msg_type: u8,
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
+    write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
-    let seq = shared.next_seq();
-    normal_request_raw_on_shared(shared, msg_type, seq, payload, terminal_msg_types, timeout).await
+    normal_request_on_shared_with_pre_write_observer(
+        shared,
+        msg_type,
+        payload,
+        terminal_msg_types,
+        timeout,
+        |_| Ok(()),
+        write_observer,
+    )
+    .await
 }
 
-async fn normal_request_raw_on_shared(
+async fn normal_request_on_shared_with_pre_write_observer(
     shared: &Arc<Shared>,
     msg_type: u8,
-    seq: u32,
     payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
+    pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
+    write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
+    let seq = shared.next_seq();
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
     let normal_operation = shared.reserve_normal_operation()?;
@@ -545,7 +717,7 @@ async fn normal_request_raw_on_shared(
                     seq,
                     PendingResponse {
                         response_tx: tx,
-                        normal_operation: Some(normal_operation),
+                        normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
                         normal_terminal_msg_types: terminal_msg_types,
                     },
                 );
@@ -554,18 +726,11 @@ async fn normal_request_raw_on_shared(
     }
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let mut write_guard = PendingNormalRequestWriteGuard::new(Arc::clone(shared));
-    let mut writer = shared.writer.lock().await;
-    mark_pending_normal_operation_possible_guest_write(shared, seq)?;
-    write_guard.mark_started();
-    if let Err(error) = writer.write_all(&data).await {
-        write_guard.mark_returned();
-        shared.poison_connection();
-        return Err(error);
-    }
-    write_guard.mark_returned();
-    drop(writer);
-    drop(write_guard);
+    write_request_frame(shared, &data, || {
+        mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
+        write_observer.record_write_start()
+    })
+    .await?;
 
     tokio::select! {
         biased;
@@ -581,11 +746,72 @@ async fn normal_request_raw_on_shared(
     }
 }
 
+async fn request_on_shared_with_composite_operation_and_observer(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    payload: &[u8],
+    terminal_msg_types: &'static [u8],
+    timeout: Duration,
+    normal_operation: &mut CompositeNormalOperation,
+    write_observer: FrameWriteObserver,
+) -> io::Result<RawMessage> {
+    let seq = shared.next_seq();
+    let data = vsock_proto::encode(msg_type, seq, payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+    let (tx, rx) = oneshot::channel();
+    {
+        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        match &mut *guard {
+            ConnectionState::Closed { .. } => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ));
+            }
+            ConnectionState::Connected { pending, .. } => {
+                pending.insert(
+                    seq,
+                    PendingResponse {
+                        response_tx: tx,
+                        normal_operation: Some(PendingNormalOperation::Composite(
+                            normal_operation.transition_handle()?,
+                        )),
+                        normal_terminal_msg_types: terminal_msg_types,
+                    },
+                );
+            }
+        }
+    }
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+
+    write_request_frame(shared, &data, || {
+        normal_operation.mark_possible_guest_write_started()?;
+        write_observer.record_write_start()
+    })
+    .await?;
+
+    tokio::select! {
+        biased;
+        result = rx => {
+            result.map_err(|_| io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "connection closed",
+            ))
+        }
+        _ = tokio::time::sleep(timeout) => {
+            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+        }
+    }
+}
+
 fn mark_pending_normal_operation_possible_guest_write(
     shared: &Arc<Shared>,
     seq: u32,
+    pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
 ) -> io::Result<()> {
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    pre_write(&mut guard)?;
     match &mut *guard {
         ConnectionState::Connected { pending, .. } => {
             let Some(pending_response) = pending.get_mut(&seq) else {
@@ -600,14 +826,36 @@ fn mark_pending_normal_operation_possible_guest_write(
                     "normal request missing operation token",
                 ));
             };
-            normal_operation
-                .mark_possible_guest_write_started()
-                .map_err(normal_operation_transition_error)
+            mark_pending_normal_operation_possible_guest_write_started(normal_operation)
         }
         ConnectionState::Closed { .. } => Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
             "connection closed",
         )),
+    }
+}
+
+fn mark_pending_normal_operation_possible_guest_write_started(
+    normal_operation: &mut PendingNormalOperation,
+) -> io::Result<()> {
+    match normal_operation {
+        PendingNormalOperation::Owned(normal_operation) => normal_operation
+            .mark_possible_guest_write_started()
+            .map_err(normal_operation_transition_error),
+        PendingNormalOperation::Composite(normal_operation) => normal_operation
+            .mark_possible_guest_write_started()
+            .map_err(normal_operation_transition_error),
+    }
+}
+
+fn complete_pending_normal_operation(normal_operation: PendingNormalOperation) -> io::Result<()> {
+    match normal_operation {
+        PendingNormalOperation::Owned(normal_operation) => normal_operation
+            .complete()
+            .map_err(normal_operation_transition_error),
+        PendingNormalOperation::Composite(normal_operation) => normal_operation
+            .mark_possible_guest_write_completed()
+            .map_err(normal_operation_transition_error),
     }
 }
 
@@ -820,11 +1068,27 @@ impl VsockHost {
         validate_empty_lifecycle_response(&response, response_payload_name)
     }
 
-    /// Fence new guest operations before a higher-level lifecycle transition.
+    /// Try to fence new normal guest operations on this connection.
     ///
-    /// This is a same-connection lifecycle check: the guest either reports no
-    /// in-flight operations with `operations_quiesced`, or returns `error` and keeps
-    /// the operation fence closed until [`resume_operations`](Self::resume_operations).
+    /// The returned guard keeps normal operations fenced until it is dropped.
+    /// Lifecycle requests such as [`quiesce_operations`](Self::quiesce_operations)
+    /// and [`resume_operations`](Self::resume_operations) remain available while
+    /// the guard is held.
+    pub fn try_fence_normal_operations(
+        &self,
+    ) -> Result<NormalOperationFence, NormalOperationFenceRejection> {
+        self.shared
+            .normal_operations
+            .try_fence()
+            .map(|inner| NormalOperationFence { _inner: inner })
+            .map_err(Into::into)
+    }
+
+    /// Ask the guest to quiesce its own operation dispatcher.
+    ///
+    /// This does not fence host-side normal operations. Callers that need a
+    /// no-new-normal-operation boundary must hold a
+    /// [`NormalOperationFence`] before sending this lifecycle request.
     pub async fn quiesce_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_QUIESCE_OPERATIONS,
@@ -898,8 +1162,8 @@ impl VsockHost {
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
     /// should use [`spawn_process`](Self::spawn_process), which decouples the
-    /// host request/response cycle from the command's lifetime and does not
-    /// leak a guest-side orphan when the host stops waiting.
+    /// host request/response cycle from the command's lifetime and keeps
+    /// host-side lifecycle tracking until the guest reports process exit.
     pub async fn exec(
         &self,
         command: &str,
@@ -915,10 +1179,27 @@ impl VsockHost {
         exec_operation::exec_capture_on_shared(&self.shared, request).await
     }
 
+    /// Execute a capture-style command and report when its start frame is
+    /// about to be written to the guest.
+    pub async fn exec_capture_with_write_observer(
+        &self,
+        request: ExecCaptureRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ExecResult> {
+        exec_operation::exec_capture_on_shared_with_write_observer(
+            &self.shared,
+            request,
+            write_observer,
+        )
+        .await
+    }
+
     /// Spawn a process on the guest and monitor for exit.
     ///
     /// Returns immediately with a handle. Use [`GuestProcessHandle::wait`] to
-    /// wait for completion.
+    /// wait for completion. Dropping the handle does not cancel the guest
+    /// process; the host continues tracking lifecycle frames until process exit
+    /// or connection close.
     ///
     /// When `stream_stdout` is true, stdout chunks are streamed to the host via
     /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
@@ -935,6 +1216,35 @@ impl VsockHost {
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<GuestProcessHandle> {
+        self.spawn_process_with_request_and_write_observer(
+            ProcessSpawnRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+            },
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    /// Spawn a process and report when its request frame is about to be
+    /// written to the guest.
+    pub async fn spawn_process_with_request_and_write_observer(
+        &self,
+        request: ProcessSpawnRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<GuestProcessHandle> {
+        let ProcessSpawnRequest {
+            command,
+            timeout_ms,
+            env,
+            sudo,
+            stream_stdout,
+            stdout_log_path,
+        } = request;
         process::spawn_process_on_shared(
             &self.shared,
             process::SpawnProcessOnSharedRequest {
@@ -945,6 +1255,7 @@ impl VsockHost {
                 stream_stdout,
                 stdout_log_path,
                 control_sink: false,
+                write_observer,
             },
         )
         .await
@@ -961,6 +1272,35 @@ impl VsockHost {
         stream_stdout: bool,
         stdout_log_path: Option<&str>,
     ) -> io::Result<GuestProcessHandle> {
+        self.spawn_process_with_control_sink_request_and_write_observer(
+            ProcessSpawnRequest {
+                command,
+                timeout_ms,
+                env,
+                sudo,
+                stream_stdout,
+                stdout_log_path,
+            },
+            FrameWriteObserver::default(),
+        )
+        .await
+    }
+
+    /// Spawn a process with an operation-bound control sink and report when
+    /// its request frame is about to be written to the guest.
+    pub async fn spawn_process_with_control_sink_request_and_write_observer(
+        &self,
+        request: ProcessSpawnRequest<'_>,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<GuestProcessHandle> {
+        let ProcessSpawnRequest {
+            command,
+            timeout_ms,
+            env,
+            sudo,
+            stream_stdout,
+            stdout_log_path,
+        } = request;
         process::spawn_process_on_shared(
             &self.shared,
             process::SpawnProcessOnSharedRequest {
@@ -971,6 +1311,7 @@ impl VsockHost {
                 stream_stdout,
                 stdout_log_path,
                 control_sink: true,
+                write_observer,
             },
         )
         .await

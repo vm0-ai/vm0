@@ -8,6 +8,7 @@ const SCHEMA = {
   CLERK_SECRET_KEY: z.string().min(1),
   CLERK_PUBLISHABLE_KEY: z.string().min(1),
   SECRETS_ENCRYPTION_KEY: z.string().length(64),
+  SECRETS_KMS_KEY_ID: z.string().min(1).optional(),
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
@@ -16,6 +17,7 @@ const SCHEMA = {
   ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
+  VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   VM0_API_URL: z.url(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
@@ -81,6 +83,7 @@ const SCHEMA = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
+  CONCURRENT_RUN_LIMIT_CAP: z.coerce.number().int().min(0).optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

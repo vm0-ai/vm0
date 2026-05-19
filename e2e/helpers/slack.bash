@@ -31,6 +31,27 @@ _slack_bypass_args() {
     fi
 }
 
+_slack_test_endpoint_bypass_args() {
+    local -n _out="$1"
+    _out=()
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        _out+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        _out+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+}
+
+_slack_api_backend_url() {
+    if [[ -n "${VERCEL_SANDBOX_SMOKE_API_URL:-}" ]]; then
+        printf '%s' "$VERCEL_SANDBOX_SMOKE_API_URL"
+        return
+    fi
+    if [[ "${VM0_API_URL:-}" == *"-www."* ]]; then
+        printf '%s' "${VM0_API_URL/-www./-api.}"
+        return
+    fi
+    printf '%s' "${VM0_API_URL:-}"
+}
+
 # Compute v0 Slack signature for a given body.
 # Usage: slack_sign_body <body>
 # Sets: SLACK_TS, SLACK_SIG
@@ -198,7 +219,13 @@ slack_dispatch_probe() {
           message_text: $message_text, message_ts: $message_ts,
           channel_type: $channel_type}')
     local -a bypass=()
-    _slack_bypass_args bypass
+    _slack_test_endpoint_bypass_args bypass
+    local endpoint_base
+    endpoint_base="$(_slack_api_backend_url)"
+    endpoint_base="${endpoint_base%/}"
+    # The dispatch probe is API-authoritative. Hit the API preview alias
+    # directly so the diagnostic keeps exercising the handler without relying
+    # on external Next rewrites to preserve preview guard headers.
     # --max-time bounds the probe so a hung handler doesn't eat the
     # entire BATS budget. 60s is generous for a cold-started lambda
     # doing DB + Clerk + mock calls.
@@ -206,7 +233,7 @@ slack_dispatch_probe() {
         -H "Content-Type: application/json" \
         "${bypass[@]}" \
         --data "$body" \
-        "$VM0_API_URL/api/test/slack-dispatch-probe"
+        "$endpoint_base/api/test/slack-dispatch-probe"
 }
 
 # Poll test-state until a run reaches a terminal status or a timeout.

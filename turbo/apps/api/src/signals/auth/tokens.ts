@@ -210,11 +210,8 @@ export function verifyComposeJobToken(token: string): ComposeJobAuth | null {
 }
 
 export function verifyCliToken(token: string): CliAuth | null {
-  const prefix = token.startsWith(PAT_TOKEN_PREFIX)
-    ? PAT_TOKEN_PREFIX
-    : SANDBOX_TOKEN_PREFIX;
   const parsed = cliTokenPayloadSchema.safeParse(
-    verifyPrefixedToken(token, prefix),
+    verifyPrefixedToken(token, PAT_TOKEN_PREFIX),
   );
 
   if (!parsed.success) {

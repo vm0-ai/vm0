@@ -40,7 +40,13 @@ const agentWriteAuth = {
 const getAgentInstructionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroAgentInstructionsContract.get));
-  const result = await get(zeroAgentInstructions(auth.orgId, params.id));
+  const result = await get(
+    zeroAgentInstructions({
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+    }),
+  );
   if (!result) {
     return notFound(`Agent not found: ${params.id}`);
   }

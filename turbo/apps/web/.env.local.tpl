@@ -46,6 +46,12 @@ GIT_COMMIT_SHA=local-dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0/SECRETS_ENCRYPTION_KEY
 
+# Optional: AWS KMS stored-secret encryption for local/test dual-write.
+SECRETS_KMS_KEY_ID=op://Development/aws-kms/SECRETS_KMS_KEY_ID
+AWS_REGION=op://Development/aws-kms/AWS_REGION
+AWS_ACCESS_KEY_ID=op://Development/aws-kms/AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY=op://Development/aws-kms/AWS_SECRET_ACCESS_KEY
+
 # Optional: Slack Integration
 SLACK_CLIENT_ID=op://Development/slack/SLACK_CLIENT_ID
 SLACK_CLIENT_SECRET=op://Development/slack/SLACK_CLIENT_SECRET
@@ -64,6 +70,9 @@ PLAUSIBLE_SCRIPT_URL=
 
 # Required: OpenAI (voice-chat ephemeral token minting, STT, TTS)
 OPENAI_API_KEY=op://Development/openai/OPENAI_API_KEY
+
+# Required: OpenAI Webhook signing secret (for built-in generations webhook)
+OPENAI_WEBHOOK_SECRET=op://Development/openai/OPENAI_WEBHOOK_SECRET
 
 # Optional: LLM API (OpenRouter)
 OPENROUTER_API_KEY=op://Development/openrouter/OPENROUTER_API_KEY

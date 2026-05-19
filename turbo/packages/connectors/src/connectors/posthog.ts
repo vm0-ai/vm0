@@ -43,6 +43,13 @@ export const posthog = {
     oauth: {
       authorizationUrl: "https://us.posthog.com/oauth/authorize",
       tokenUrl: "https://us.posthog.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "POSTHOG_OAUTH_CLIENT_ID",
+        clientSecretEnv: "POSTHOG_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "openid",
         "profile",

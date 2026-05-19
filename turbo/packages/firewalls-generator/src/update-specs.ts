@@ -150,6 +150,9 @@ const slackUpdater: Updater = {
 
 const UPDATERS: Updater[] = [
   // Static generators
+  staticUpdater("clerk", [
+    "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml",
+  ]),
   staticUpdater("axiom", [
     "https://axiom.co/docs/restapi/versions/v2.json",
     "https://axiom.co/docs/restapi/versions/v1.json",

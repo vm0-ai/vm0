@@ -154,6 +154,42 @@ describe("PATCH /api/agent/composes/:id/metadata", () => {
     expect(row?.sound).toBe("friendly");
   });
 
+  it("creates metadata with only the provided partial fields", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        { composes: [{ withZeroAgent: false }] },
+        context.signal,
+      ),
+    );
+    const composeId = firstComposeId(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(composesMetadataContract);
+    const response = await accept(
+      client.updateMetadata({
+        params: { id: composeId },
+        body: { sound: "energetic" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(response.body).toStrictEqual({ ok: true });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        displayName: zeroAgents.displayName,
+        description: zeroAgents.description,
+        sound: zeroAgents.sound,
+      })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, composeId));
+    expect(row?.displayName).toBeNull();
+    expect(row?.description).toBeNull();
+    expect(row?.sound).toBe("energetic");
+  });
+
   it("updates existing zero_agents row and preserves omitted fields", async () => {
     const fixture = await track(
       store.set(

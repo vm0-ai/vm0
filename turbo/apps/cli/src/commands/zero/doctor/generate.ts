@@ -12,7 +12,12 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-type BuiltInGenerationType = "image" | "presentation" | "video" | "voice";
+type BuiltInGenerationType =
+  | "image"
+  | "presentation"
+  | "video"
+  | "voice"
+  | "website";
 type DoctorGenerationType = ConnectorGenerationType | BuiltInGenerationType;
 
 interface BuiltInGenerationProvider {
@@ -33,25 +38,25 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
 > = {
   image: [
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1",
       command: "zero built-in generate image --model gpt-image-1 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-2",
       command: "zero built-in generate image --model gpt-image-2 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1.5",
       command: "zero built-in generate image --model gpt-image-1.5 -h",
       reason: "available without connector setup",
     },
     {
-      label: "Built-in OpenAI",
+      label: "Built-in fal.ai",
       model: "gpt-image-1-mini",
       command: "zero built-in generate image --model gpt-image-1-mini -h",
       reason: "available without connector setup",
@@ -86,6 +91,14 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       label: "Built-in",
       model: "gpt-5.5",
       command: "zero built-in generate presentation -h",
+      reason: "available without connector setup",
+    },
+  ],
+  website: [
+    {
+      label: "Built-in",
+      model: "gpt-5.5",
+      command: "zero built-in generate website -h",
       reason: "available without connector setup",
     },
   ],
@@ -144,7 +157,7 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     label: "Built-in image generation",
     command: "zero built-in generate image -h",
     models:
-      "OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
   },
   video: {
     label: "Built-in video generation",
@@ -155,6 +168,11 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
   presentation: {
     label: "Built-in presentation generation",
     command: "zero built-in generate presentation -h",
+    models: "gpt-5.5",
+  },
+  website: {
+    label: "Built-in website generation",
+    command: "zero built-in generate website -h",
     models: "gpt-5.5",
   },
   voice: {

@@ -7,6 +7,7 @@ import type { RouteEntry } from "../route";
 import {
   bearerTokenFrom,
   isTestEndpointAllowed,
+  isPreviewTestOAuthAccessToken,
   isTestOAuthAccessToken,
   isTestOAuthAccessTokenExpired,
   testEndpointNotFoundResponse,
@@ -14,12 +15,15 @@ import {
 
 const echo$ = computed((get) => {
   const request = get(request$);
-  if (!isTestEndpointAllowed(request)) {
+  const authorization = get(authorization$) ?? "";
+  const token = bearerTokenFrom(authorization);
+  if (
+    !isTestEndpointAllowed(request) &&
+    !isPreviewTestOAuthAccessToken(token)
+  ) {
     return testEndpointNotFoundResponse();
   }
 
-  const authorization = get(authorization$) ?? "";
-  const token = bearerTokenFrom(authorization);
   if (!token || !isTestOAuthAccessToken(token)) {
     return { status: 401 as const, body: { error: "invalid_token" } };
   }

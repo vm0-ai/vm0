@@ -92,6 +92,15 @@ const _: () = assert!(MAX_POOLS * MAX_NAMESPACES * 4 <= 65536);
 // Public types
 // ---------------------------------------------------------------------------
 
+/// Parsed Firecracker network namespace name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedNetnsName {
+    /// Network namespace pool index.
+    pub pool_index: u32,
+    /// Namespace index within the pool.
+    pub namespace_index: u32,
+}
+
 /// Monotonic in-process identity for [`NetnsPool`] instances.
 static NEXT_NETNS_POOL_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -440,22 +449,35 @@ fn generate_veth_ip_pair(pool_idx: u32, ns_idx: u32) -> (String, String) {
     (host_ip, peer_ip)
 }
 
-/// Parse a namespace name into (pool_idx, ns_idx) hex strings.
+/// Parse a Firecracker network namespace name.
 ///
 /// Returns `None` if the name doesn't match the expected format
-/// `vm0-ns-{XX}-{XX}` where each index is exactly 2 hex characters.
-fn parse_ns_name(name: &str) -> Option<(&str, &str)> {
+/// `vm0-ns-{xx}-{xx}` where each index is exactly 2 lowercase hex
+/// characters, or if either index is outside the supported bounds.
+pub fn parse_netns_name(name: &str) -> Option<ParsedNetnsName> {
     let suffix = name.strip_prefix(NS_PREFIX)?;
-    let (pool_idx, ns_idx) = suffix.split_once('-')?;
-    if !is_hex2(pool_idx) || !is_hex2(ns_idx) {
+    let (pool_hex, namespace_hex) = suffix.split_once('-')?;
+    if !is_lower_hex2(pool_hex) || !is_lower_hex2(namespace_hex) {
         return None;
     }
-    Some((pool_idx, ns_idx))
+
+    let pool_index = u32::from_str_radix(pool_hex, 16).ok()?;
+    let namespace_index = u32::from_str_radix(namespace_hex, 16).ok()?;
+    if pool_index >= MAX_POOLS || namespace_index >= MAX_NAMESPACES {
+        return None;
+    }
+
+    Some(ParsedNetnsName {
+        pool_index,
+        namespace_index,
+    })
 }
 
 /// Check that a string is exactly 2 lowercase hex characters.
-fn is_hex2(s: &str) -> bool {
-    s.len() == 2 && s.bytes().all(|b| b.is_ascii_hexdigit())
+fn is_lower_hex2(s: &str) -> bool {
+    s.len() == 2
+        && s.bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 // ---------------------------------------------------------------------------
@@ -2082,8 +2104,10 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     let mut set = tokio::task::JoinSet::new();
     for ns_name in ns_names {
         set.spawn(async move {
-            if let Some((pi, ni)) = parse_ns_name(&ns_name) {
-                let host_device = make_host_device(pi, ni);
+            if let Some(parsed) = parse_netns_name(&ns_name) {
+                let pool_idx = format_hex_index(parsed.pool_index);
+                let ns_idx = format_hex_index(parsed.namespace_index);
+                let host_device = make_host_device(&pool_idx, &ns_idx);
                 delete_namespace_resources(&ns_name, &host_device).await;
             }
         });
@@ -2246,25 +2270,62 @@ mod tests {
     }
 
     #[test]
-    fn parse_ns_name_valid() {
-        assert_eq!(parse_ns_name("vm0-ns-00-0a"), Some(("00", "0a")));
-        assert_eq!(parse_ns_name("vm0-ns-3f-ff"), Some(("3f", "ff")));
+    fn parse_netns_name_valid() {
+        assert_eq!(
+            parse_netns_name("vm0-ns-00-0a"),
+            Some(ParsedNetnsName {
+                pool_index: 0,
+                namespace_index: 10,
+            })
+        );
+        assert_eq!(
+            parse_netns_name("vm0-ns-3f-ff"),
+            Some(ParsedNetnsName {
+                pool_index: 63,
+                namespace_index: 255,
+            })
+        );
+        assert_eq!(
+            parse_netns_name("vm0-ns-0a-00"),
+            Some(ParsedNetnsName {
+                pool_index: 10,
+                namespace_index: 0,
+            })
+        );
     }
 
     #[test]
-    fn parse_ns_name_wrong_prefix() {
-        assert_eq!(parse_ns_name("other-00-0a"), None);
+    fn parse_netns_name_wrong_prefix() {
+        assert_eq!(parse_netns_name("not-a-ns"), None);
+        assert_eq!(parse_netns_name("other-00-0a"), None);
     }
 
     #[test]
-    fn parse_ns_name_missing_separator() {
-        assert_eq!(parse_ns_name("vm0-ns-000a"), None);
+    fn parse_netns_name_missing_or_malformed_parts() {
+        assert_eq!(parse_netns_name("vm0-ns-"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00"), None);
+        assert_eq!(parse_netns_name("vm0-ns-000a"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-0a-extra"), None);
     }
 
     #[test]
-    fn parse_ns_name_empty_parts() {
-        assert_eq!(parse_ns_name("vm0-ns--0a"), None);
-        assert_eq!(parse_ns_name("vm0-ns-00-"), None);
+    fn parse_netns_name_empty_parts() {
+        assert_eq!(parse_netns_name("vm0-ns--0a"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-"), None);
+    }
+
+    #[test]
+    fn parse_netns_name_invalid_hex() {
+        assert_eq!(parse_netns_name("vm0-ns-zz-00"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-zz"), None);
+        assert_eq!(parse_netns_name("vm0-ns-0A-00"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-0A"), None);
+    }
+
+    #[test]
+    fn parse_netns_name_rejects_out_of_range_pool() {
+        assert_eq!(parse_netns_name("vm0-ns-40-00"), None);
+        assert_eq!(parse_netns_name("vm0-ns-ff-00"), None);
     }
 
     #[test]
@@ -2272,10 +2333,15 @@ mod tests {
         let pool_idx = format_hex_index(5);
         let ns_idx = format_hex_index(42);
         let name = make_ns_name(&pool_idx, &ns_idx);
-        let (pi, ni) = parse_ns_name(&name).expect("should parse");
-        assert_eq!(pi, "05");
-        assert_eq!(ni, "2a");
-        assert_eq!(make_host_device(pi, ni), "vm0-ve-05-2a");
+        let parsed = parse_netns_name(&name).expect("should parse");
+        assert_eq!(parsed.pool_index, 5);
+        assert_eq!(parsed.namespace_index, 42);
+        let parsed_pool_idx = format_hex_index(parsed.pool_index);
+        let parsed_ns_idx = format_hex_index(parsed.namespace_index);
+        assert_eq!(
+            make_host_device(&parsed_pool_idx, &parsed_ns_idx),
+            "vm0-ve-05-2a"
+        );
     }
 
     #[test]
@@ -2390,14 +2456,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_ns_name_extra_hyphens_rejected() {
+    fn parse_netns_name_extra_hyphens_rejected() {
         // Rejects malformed names that could produce device names exceeding IFNAMSIZ
-        assert_eq!(parse_ns_name("vm0-ns-00-0a-extra"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-0a-extra"), None);
     }
 
     #[test]
-    fn parse_ns_name_bare_prefix() {
-        assert_eq!(parse_ns_name("vm0-ns-"), None);
+    fn parse_netns_name_bare_prefix() {
+        assert_eq!(parse_netns_name("vm0-ns-"), None);
     }
 
     fn test_info(name: &str) -> NetnsInfo {

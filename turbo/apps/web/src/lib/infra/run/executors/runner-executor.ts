@@ -1,5 +1,6 @@
 import {
   DEFAULT_PROFILE,
+  elapsedSinceApiStartMs,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import type { Firewalls } from "@vm0/connectors/firewall-types";
@@ -52,16 +53,22 @@ export async function executeRunnerJob(
   // Record api_to_dispatch metric. was_queued distinguishes runs that came
   // through the org queue (apiStartTime was reset at dequeue) from direct
   // dispatch, so latency queries can slice by dispatch path.
-  recordSandboxOperation({
-    sandboxType: "runner",
-    actionType: "api_to_executor",
-    durationMs: Date.now() - context.apiStartTime,
-    success: true,
-    runId: context.runId,
-    dimensions: {
-      was_queued: context.wasQueued,
-    },
-  });
+  const apiToExecutorMs = elapsedSinceApiStartMs(
+    context.apiStartTime,
+    Date.now(),
+  );
+  if (apiToExecutorMs !== undefined) {
+    recordSandboxOperation({
+      sandboxType: "runner",
+      actionType: "api_to_executor",
+      durationMs: apiToExecutorMs,
+      success: true,
+      runId: context.runId,
+      dimensions: {
+        was_queued: context.wasQueued,
+      },
+    });
+  }
 
   const runnerGroup = context.runnerGroup;
   const profile = context.experimentalProfile ?? DEFAULT_PROFILE;

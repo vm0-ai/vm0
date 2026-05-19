@@ -1,17 +1,28 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroScheduleRunContract,
+  zeroSchedulesEnableContract,
+  zeroSchedulesMainContract,
+} from "@vm0/api-contracts/contracts/zero-schedules";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { modelProviders } from "@vm0/db/schema/model-provider";
+import { secrets } from "@vm0/db/schema/secret";
 import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { and, count, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
@@ -19,6 +30,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteOrgModelProviders$,
+  type OrgModelProviderFixture,
+} from "./helpers/zero-model-providers";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteSkillsForFixture$,
   seedAgentForInstructions$,
@@ -32,6 +48,9 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
+const GH_TOKEN_TEMPLATE = ["$", "{{ secrets.GH_TOKEN }}"].join("");
+const GITHUB_TOKEN_TEMPLATE = ["$", "{{ secrets.GITHUB_TOKEN }}"].join("");
+const ORG_SENTINEL_USER_ID = "__org__";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -39,6 +58,52 @@ function authHeaders() {
 
 function agentsClient() {
   return setupApp({ context })(zeroAgentsMainContract);
+}
+
+function agentsByIdClient() {
+  return setupApp({ context })(zeroAgentsByIdContract);
+}
+
+function schedulesClient() {
+  return setupApp({ context })(zeroSchedulesMainContract);
+}
+
+function scheduleEnableClient() {
+  return setupApp({ context })(zeroSchedulesEnableContract);
+}
+
+function scheduleRunClient() {
+  return setupApp({ context })(zeroScheduleRunContract);
+}
+
+async function seedDefaultAnthropicProvider(
+  orgId: string,
+): Promise<OrgModelProviderFixture> {
+  const db = store.set(writeDb$);
+  const [secret] = await db
+    .insert(secrets)
+    .values({
+      name: "ANTHROPIC_API_KEY",
+      encryptedValue: encryptSecretForTests("test-secret-value"),
+      type: "model-provider",
+      userId: ORG_SENTINEL_USER_ID,
+      orgId,
+    })
+    .returning({ id: secrets.id });
+
+  if (!secret) {
+    throw new Error("Expected model provider secret");
+  }
+
+  await db.insert(modelProviders).values({
+    type: "anthropic-api-key",
+    secretId: secret.id,
+    isDefault: true,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+  });
+
+  return { orgId };
 }
 
 function currentSecond(): number {
@@ -60,6 +125,11 @@ describe("POST /api/zero/agents", () => {
   const track = createFixtureTracker<SkillsFixture>((fixture) => {
     return store.set(deleteSkillsForFixture$, fixture, context.signal);
   });
+  const trackModelProvider = createFixtureTracker<OrgModelProviderFixture>(
+    (fixture) => {
+      return store.set(deleteOrgModelProviders$, fixture, context.signal);
+    },
+  );
 
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
@@ -197,6 +267,9 @@ describe("POST /api/zero/agents", () => {
     expect(storedAgent.instructions).toBe("CLAUDE.md");
     expect(environment.ZERO_AGENT_ID).toBe(ZERO_AGENT_ID_TEMPLATE);
     expect(environment.ZERO_TOKEN).toBe(ZERO_TOKEN_TEMPLATE);
+    expect(environment.GH_TOKEN).toBe(GH_TOKEN_TEMPLATE);
+    expect(environment.GITHUB_TOKEN).toBe(GITHUB_TOKEN_TEMPLATE);
+    expect(content.volumes).toBeUndefined();
 
     const [instructionsStorage] = await db
       .select({ headVersionId: storages.headVersionId })
@@ -305,5 +378,148 @@ describe("POST /api/zero/agents", () => {
     expect(composeCount?.value).toBe(7);
     expect(zeroAgentCount?.value).toBe(7);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
+  });
+
+  it("excludes private agents from the public agent create limit", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    for (let index = 0; index < 7; index += 1) {
+      const response = await accept(
+        agentsClient().create({
+          headers: authHeaders(),
+          body: { displayName: `Public ${index + 1}` },
+        }),
+        [201],
+      );
+      expect(response.body.visibility).toBe("public");
+    }
+
+    const privateResponse = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Private", visibility: "private" },
+      }),
+      [201],
+    );
+    expect(privateResponse.body.visibility).toBe("private");
+
+    const publicResponse = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Public Over Limit" },
+      }),
+      [409],
+    );
+    expect(publicResponse.body.error.code).toBe("CONFLICT");
+  });
+
+  it("allows creating another public agent after one is deleted", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+    const createdAgentIds: string[] = [];
+
+    for (let index = 0; index < 7; index += 1) {
+      const response = await accept(
+        agentsClient().create({
+          headers: authHeaders(),
+          body: { displayName: `Agent ${index + 1}` },
+        }),
+        [201],
+      );
+      createdAgentIds.push(response.body.agentId);
+    }
+
+    const blocked = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Blocked" },
+      }),
+      [409],
+    );
+    expect(blocked.body.error.code).toBe("CONFLICT");
+
+    const deletedAgentId = createdAgentIds[0];
+    if (!deletedAgentId) {
+      throw new Error("Expected a created agent");
+    }
+    const deleteResponse = await accept(
+      agentsByIdClient().delete({
+        params: { id: deletedAgentId },
+        headers: authHeaders(),
+      }),
+      [204],
+    );
+    expect(deleteResponse.body).toBeUndefined();
+
+    const response = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "After Delete" },
+      }),
+      [201],
+    );
+    expect(response.body.displayName).toBe("After Delete");
+  });
+
+  it("executes a schedule for an agent created via POST /api/zero/agents", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    await trackModelProvider(seedDefaultAnthropicProvider(fixture.orgId));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      agentsClient().create({
+        headers: authHeaders(),
+        body: { displayName: "Schedule Bug Agent" },
+      }),
+      [201],
+    );
+
+    const deployed = await accept(
+      schedulesClient().deploy({
+        headers: authHeaders(),
+        body: {
+          agentId: created.body.agentId,
+          name: "zero-api-run",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Scheduled run",
+        },
+      }),
+      [201],
+    );
+
+    const enabled = await accept(
+      scheduleEnableClient().enable({
+        params: { name: "zero-api-run" },
+        headers: authHeaders(),
+        body: { agentId: created.body.agentId },
+      }),
+      [200],
+    );
+    expect(enabled.body.enabled).toBeTruthy();
+
+    const run = await accept(
+      scheduleRunClient().run({
+        headers: authHeaders(),
+        body: { scheduleId: deployed.body.schedule.id },
+      }),
+      [201],
+    );
+    expect(run.body.runId).toStrictEqual(expect.any(String));
   });
 });

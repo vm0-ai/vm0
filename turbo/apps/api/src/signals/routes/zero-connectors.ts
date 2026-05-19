@@ -15,9 +15,9 @@ import {
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  getConnectorAuthMethods,
+  getConnectorAuthMethod,
+  getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
-  getConnectorOAuthEnvKeys,
   isGoogleOAuthConnector,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -25,6 +25,11 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  buildProviderAuthUrl,
+  PROVIDER_HANDLERS,
+  type AuthUrlResult,
+} from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
@@ -59,6 +64,7 @@ import type { RouteEntry } from "../route";
 const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
+const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const COOKIE_MAX_AGE = 15 * 60;
 const REDIRECT_STATUS = 307;
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
@@ -128,17 +134,13 @@ function generateConnectorSessionCode(
   return code;
 }
 
-function isRefreshOnlyConnectorType(type: ConnectorType): boolean {
-  return type === "codex-oauth";
-}
-
 function buildCookieHeader(
   name: string,
   value: string,
   maxAge: number,
 ): string {
   const parts = [
-    `${name}=${value}`,
+    `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${maxAge}`,
     "Path=/",
     "HttpOnly",
@@ -221,7 +223,7 @@ async function buildAuthorizeUrl(args: {
   readonly clientId: string;
   readonly redirectUri: string;
   readonly state: string;
-}): Promise<{ readonly url: string; readonly codeVerifier?: string } | null> {
+}): Promise<AuthUrlResult | null> {
   const oauthConfig = getConnectorOAuthConfig(args.type);
   if (!oauthConfig?.authorizationUrl) {
     return null;
@@ -312,6 +314,25 @@ async function buildAuthorizeUrl(args: {
   }
 
   return { url: `${oauthConfig.authorizationUrl}?${params.toString()}` };
+}
+
+function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
+  return typeof result === "string" ? { url: result } : result;
+}
+
+async function buildProviderAuthorizeUrl(args: {
+  readonly type: Exclude<ConnectorType, "computer">;
+  readonly clientId?: string;
+  readonly redirectUri: string;
+  readonly state: string;
+}): Promise<AuthUrlResult> {
+  return normalizeAuthUrlResult(
+    await buildProviderAuthUrl(PROVIDER_HANDLERS[args.type], {
+      clientId: args.clientId,
+      redirectUri: args.redirectUri,
+      state: args.state,
+    }),
+  );
 }
 
 const getConnectorListInner$ = computed(async (get) => {
@@ -546,16 +567,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    if (isRefreshOnlyConnectorType(type)) {
-      return jsonResponse(
-        {
-          error:
-            "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-        },
-        400,
-      );
-    }
-    if (!("oauth" in getConnectorAuthMethods(type))) {
+    if (!getConnectorAuthMethod(type, "oauth")) {
       return jsonResponse(
         { error: `${type} connector does not use OAuth` },
         400,
@@ -577,18 +589,23 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const state = generateState();
     const redirectUri = `${origin}/api/connectors/${type}/callback`;
-    const envKeys = getConnectorOAuthEnvKeys(type);
-    const clientId = envKeys ? optionalEnv(envKeys.clientId) : undefined;
-    if (!clientId) {
+    const credentials = getConnectorOAuthCredentials(type, optionalEnv);
+    if (!credentials?.configured) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
 
-    const authResult = await buildAuthorizeUrl({
-      type,
-      clientId,
-      redirectUri,
-      state,
-    });
+    const authResult = credentials.clientId
+      ? await buildAuthorizeUrl({
+          type,
+          clientId: credentials.clientId,
+          redirectUri,
+          state,
+        })
+      : await buildProviderAuthorizeUrl({
+          type,
+          redirectUri,
+          state,
+        });
     signal.throwIfAborted();
     if (!authResult) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
@@ -612,6 +629,16 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         buildCookieHeader(
           PKCE_COOKIE_NAME,
           authResult.codeVerifier,
+          COOKIE_MAX_AGE,
+        ),
+      );
+    }
+    if (authResult.oauthContext) {
+      response.headers.append(
+        "Set-Cookie",
+        buildCookieHeader(
+          OAUTH_CONTEXT_COOKIE_NAME,
+          authResult.oauthContext,
           COOKIE_MAX_AGE,
         ),
       );

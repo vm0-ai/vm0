@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.102.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.3...runner-rs-v0.102.4) (2026-05-19)
+
+
+### Bug Fixes
+
+* enforce api start time milliseconds ([#13963](https://github.com/vm0-ai/vm0/issues/13963)) ([847d7a2](https://github.com/vm0-ai/vm0/commit/847d7a2054778457d0c65da5e75439b71b78d965))
+* reject malformed firecracker netns names ([#13964](https://github.com/vm0-ai/vm0/issues/13964)) ([637aa3f](https://github.com/vm0-ai/vm0/commit/637aa3ff0b2f6e059d26445c6a6eec4e3858d695))
+
+## [0.102.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.2...runner-rs-v0.102.3) (2026-05-19)
+
+## [0.102.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.1...runner-rs-v0.102.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* add runner failure diagnostics ([#13880](https://github.com/vm0-ai/vm0/issues/13880)) ([3fc6515](https://github.com/vm0-ai/vm0/commit/3fc6515e53564de4668ae551ce4caaebcb943d74))
+
+## [0.102.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.0...runner-rs-v0.102.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* manage runner memory prefetch lifecycle ([#13719](https://github.com/vm0-ai/vm0/issues/13719)) ([462dda5](https://github.com/vm0-ai/vm0/commit/462dda5e4af14a62569a2b84add4e899aa879c94))
+* preserve codex jsonl failure diagnostics ([#13713](https://github.com/vm0-ai/vm0/issues/13713)) ([7fe2ece](https://github.com/vm0-ai/vm0/commit/7fe2ece7cb75ee6606e4cfb522cc28a19117acf3))
+
 ## [0.102.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.101.6...runner-rs-v0.102.0) (2026-05-17)
 
 

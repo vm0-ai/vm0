@@ -1,5 +1,117 @@
 # Changelog
 
+## [9.157.1](https://github.com/vm0-ai/vm0/compare/cli-v9.157.0...cli-v9.157.1) (2026-05-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+    * @vm0/core bumped to 8.283.0
+
+## [9.157.0](https://github.com/vm0-ai/vm0/compare/cli-v9.156.9...cli-v9.157.0) (2026-05-19)
+
+
+### Features
+
+* add built-in website generation ([#13655](https://github.com/vm0-ai/vm0/issues/13655)) ([f88868e](https://github.com/vm0-ai/vm0/commit/f88868ef7362503752aaa7dbb5465d2fa0770ed6))
+* add fal image-to-image generation ([#13890](https://github.com/vm0-ai/vm0/issues/13890)) ([98a1a94](https://github.com/vm0-ai/vm0/commit/98a1a94647d08b31070ff9385982c768aa0de19d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+
+## [9.156.9](https://github.com/vm0-ai/vm0/compare/cli-v9.156.8...cli-v9.156.9) (2026-05-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.9
+    * @vm0/connectors bumped to 1.19.1
+    * @vm0/core bumped to 8.281.7
+
+## [9.156.8](https://github.com/vm0-ai/vm0/compare/cli-v9.156.7...cli-v9.156.8) (2026-05-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+    * @vm0/core bumped to 8.281.6
+
+## [9.156.7](https://github.com/vm0-ai/vm0/compare/cli-v9.156.6...cli-v9.156.7) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+    * @vm0/core bumped to 8.281.5
+
+## [9.156.6](https://github.com/vm0-ai/vm0/compare/cli-v9.156.5...cli-v9.156.6) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+    * @vm0/core bumped to 8.281.4
+
+## [9.156.5](https://github.com/vm0-ai/vm0/compare/cli-v9.156.4...cli-v9.156.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* close local-agent host on shutdown ([#13653](https://github.com/vm0-ai/vm0/issues/13653)) ([25c506c](https://github.com/vm0-ai/vm0/commit/25c506ca0269195af577f7d7ed889071fffc7230))
+* move built-in generation to provider callbacks ([#13475](https://github.com/vm0-ai/vm0/issues/13475)) ([3476a88](https://github.com/vm0-ai/vm0/commit/3476a885bd0691af362fca7c94727d581d5b2c81))
+* remove legacy sandbox cli auth ([#13657](https://github.com/vm0-ai/vm0/issues/13657)) ([f63a1f3](https://github.com/vm0-ai/vm0/commit/f63a1f3e2bd48c3013fa5c0621253d160f788cb2))
+* require local-agent realtime notifications ([#13661](https://github.com/vm0-ai/vm0/issues/13661)) ([5455eca](https://github.com/vm0-ai/vm0/commit/5455ecab8d69c0cd60ce70ccee5d6166281e9502))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.5
+    * @vm0/core bumped to 8.281.3
+
+## [9.156.4](https://github.com/vm0-ai/vm0/compare/cli-v9.156.3...cli-v9.156.4) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.4
+    * @vm0/connectors bumped to 1.17.0
+    * @vm0/core bumped to 8.281.2
+
+## [9.156.3](https://github.com/vm0-ai/vm0/compare/cli-v9.156.2...cli-v9.156.3) (2026-05-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.30.3
+    * @vm0/connectors bumped to 1.16.0
+    * @vm0/core bumped to 8.281.1
+
 ## [9.156.2](https://github.com/vm0-ai/vm0/compare/cli-v9.156.1...cli-v9.156.2) (2026-05-17)
 
 

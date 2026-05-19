@@ -207,11 +207,102 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(
       response.headers.get("x-middleware-request-x-vercel-protection-bypass"),
     ).toBe("preview-secret");
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "pr-13380-www.vm6.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(
+      response.headers.get("x-middleware-request-x-vm0-test-endpoint-bypass"),
+    ).toBeNull();
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://pr-13380-app.vm6.ai",
     );
     expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
       "true",
+    );
+  });
+
+  it("should add the internal test bypass header to API backend test routes", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    reloadEnv();
+
+    const request = new NextRequest(
+      "https://pr-13936-www.vm6.ai/api/test/oauth-provider/echo",
+      {
+        headers: {
+          origin: "https://pr-13936-app.vm6.ai",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(
+      response.headers.get("x-middleware-request-x-vercel-protection-bypass"),
+    ).toBe("preview-secret");
+    expect(
+      response.headers.get("x-middleware-request-x-vm0-test-endpoint-bypass"),
+    ).toBe("preview-secret");
+  });
+
+  it("should preserve web origin headers for API backend OAuth authorize routes", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/zero/connectors/google-calendar/authorize",
+      {
+        headers: {
+          cookie: "__session=opaque",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(
+      "__session=opaque",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+  });
+
+  it("should preserve web origin headers for API backend OAuth callback routes", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/connectors/google-calendar/callback?code=code-123&state=state-123",
+      {
+        headers: {
+          cookie: "__session=opaque; connector_oauth_state=state-123",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(
+      "__session=opaque; connector_oauth_state=state-123",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
     );
   });
 });

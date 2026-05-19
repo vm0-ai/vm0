@@ -20,6 +20,15 @@ function buildFakeCliJwt(payload: Record<string, unknown>): string {
   ).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = Buffer.from("fake-signature").toString("base64url");
+  return `vm0_pat_${header}.${body}.${sig}`;
+}
+
+function buildFakeZeroJwt(payload: Record<string, unknown>): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = Buffer.from("fake-signature").toString("base64url");
   return `vm0_sandbox_${header}.${body}.${sig}`;
 }
 
@@ -76,7 +85,7 @@ describe("whoami command", () => {
       vi.stubEnv("CLI_AGENT_TYPE", "claude");
       vi.stubEnv(
         "ZERO_TOKEN",
-        buildFakeCliJwt({
+        buildFakeZeroJwt({
           scope: "zero",
           orgId: "active-org",
           capabilities: [],

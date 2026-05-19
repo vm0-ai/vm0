@@ -117,9 +117,45 @@ describe("/api/test/oauth-provider/*", () => {
     const allowed = await requestApp(validAuthorizePath(), {
       headers: { "x-vercel-protection-bypass": "preview-secret" },
     });
+    const allowedViaInternalProxyHeader = await requestApp(
+      validAuthorizePath(),
+      {
+        headers: { "x-vm0-test-endpoint-bypass": "preview-secret" },
+      },
+    );
 
     expect(denied.status).toBe(404);
     expect(allowed.status).toBe(302);
+    expect(allowedViaInternalProxyHeader.status).toBe(302);
+  });
+
+  it("requires the preview bypass secret for userinfo when ENV is preview", async () => {
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    mockNow(new Date("2026-05-12T00:00:00.000Z"));
+    const token = mintAccessToken(3600);
+
+    const denied = await requestApp(USERINFO_ROUTE, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-vercel-protection-bypass": "wrong-secret",
+      },
+    });
+    const allowed = await requestApp(USERINFO_ROUTE, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-vm0-test-endpoint-bypass": "preview-secret",
+      },
+    });
+
+    expect(denied.status).toBe(404);
+    await expect(denied.text()).resolves.toBe("Not found");
+    expect(allowed.status).toBe(200);
+    await expect(readJson<UserinfoBody>(allowed)).resolves.toStrictEqual({
+      id: "testoauth-user-1",
+      username: "testoauth",
+      email: "testoauth@example.com",
+    });
   });
 
   describe("authorize", () => {
@@ -370,6 +406,44 @@ describe("/api/test/oauth-provider/*", () => {
       expect(refreshed.access_token).not.toBe(first.access_token);
     });
 
+    it("allows synthetic preview refresh grants without a bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "refresh_token",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          refresh_token: "testoauth_rt_success_valid",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = await readJson<TokenBody>(response);
+      expect(body.access_token).toMatch(/^testoauth_at_/);
+      expect(body.refresh_token).toMatch(/^testoauth_rt_success_/);
+    });
+
+    it("hides non-refresh preview token grants without a bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const response = await requestApp(
+        TOKEN_ROUTE,
+        tokenRequest({
+          grant_type: "authorization_code",
+          client_id: "test-oauth-client",
+          client_secret: "test-oauth-secret",
+          code: "testoauth_code_success_abc",
+        }),
+      );
+
+      expect(response.status).toBe(404);
+      await expect(response.text()).resolves.toBe("Not found");
+    });
+
     it("rejects an invalid-refresh scenario token", async () => {
       mockEnv("ENV", "development");
 
@@ -506,6 +580,38 @@ describe("/api/test/oauth-provider/*", () => {
   });
 
   describe("echo", () => {
+    it("allows preview echo when the firewall injects a test-oauth Bearer token", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      mockNow(new Date("2026-05-12T00:00:00.000Z"));
+      const token = mintAccessToken(3600);
+
+      const response = await requestApp(ECHO_ROUTE, {
+        headers: bearerHeaders(token),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson<EchoBody>(response)).resolves.toStrictEqual({
+        authorization: `Bearer ${token}`,
+        receivedAt: "2026-05-12T00:00:00.000Z",
+      });
+    });
+
+    it("hides preview echo without bypass or a test-oauth Bearer token", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const missingToken = await requestApp(ECHO_ROUTE);
+      const invalidToken = await requestApp(ECHO_ROUTE, {
+        headers: bearerHeaders("not-a-testoauth-token"),
+      });
+
+      expect(missingToken.status).toBe(404);
+      await expect(missingToken.text()).resolves.toBe("Not found");
+      expect(invalidToken.status).toBe(404);
+      await expect(invalidToken.text()).resolves.toBe("Not found");
+    });
+
     it("echoes a valid Bearer token with deterministic receivedAt", async () => {
       mockEnv("ENV", "development");
       mockNow(new Date("2026-05-12T00:00:00.000Z"));

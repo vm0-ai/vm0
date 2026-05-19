@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  MODEL_PROVIDER_OAUTH_HANDLERS,
+  getModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   HANDLER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_HANDLER_KEY,
@@ -38,17 +41,23 @@ describe("handler-key bridge tables stay in sync", () => {
 
   it("every bridged handler key resolves to a registered ProviderHandler with refreshToken", () => {
     for (const handlerKey of Object.values(MODEL_PROVIDER_HANDLER_KEY)) {
-      const handler =
-        PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+      const handler = getModelProviderOAuthHandler(handlerKey!);
       expect(handler).toBeDefined();
-      expect(handler.refreshToken).toBeDefined();
+      expect(handler?.refreshToken).toBeDefined();
+    }
+  });
+
+  it("every registered model-provider OAuth handler is bridged", () => {
+    for (const handlerKey of Object.keys(MODEL_PROVIDER_OAUTH_HANDLERS)) {
+      expect(HANDLER_KEY_SOURCE_TYPE[handlerKey]).toBe("model-provider");
+      expect(SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey]).toBeDefined();
     }
   });
 });
 
 describe("getRefreshSourceType", () => {
   it("returns 'model-provider' for bridged handler keys", () => {
-    expect(getRefreshSourceType("codex-oauth")).toBe("model-provider");
+    expect(getRefreshSourceType("codex-oauth-token")).toBe("model-provider");
   });
 
   it("returns 'connector' for unbridged handler keys (default)", () => {

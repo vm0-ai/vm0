@@ -269,6 +269,54 @@ async fn shutdown_completes_without_deadlock() {
     }
 }
 
+#[tokio::test]
+async fn shutdown_drains_memory_prefetch_before_stopped() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let status_path = env._temp_dir.path().join("status.json");
+    let prefetch_cancel = tokio_util::sync::CancellationToken::new();
+    let task_cancel = prefetch_cancel.clone();
+    let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        task_cancel.cancelled().await;
+        let _ = cancelled_tx.send(());
+        let _ = release_rx.await;
+    });
+    config.memory_prefetch =
+        crate::prefetch::MemoryPrefetchTasks::from_test_handle(prefetch_cancel, handle);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    env.drain();
+    env.cancel.cancel();
+    tokio::time::timeout(Duration::from_secs(5), cancelled_rx)
+        .await
+        .expect("memory prefetch should be cancelled during teardown")
+        .expect("memory prefetch task should report cancellation");
+
+    assert!(
+        !run_handle.is_finished(),
+        "runner shutdown should wait for memory prefetch drain before returning",
+    );
+    let raw_status = tokio::fs::read_to_string(&status_path).await.unwrap();
+    let status: serde_json::Value = serde_json::from_str(&raw_status).unwrap();
+    assert_ne!(
+        status.get("mode").and_then(serde_json::Value::as_str),
+        Some("stopped"),
+        "runner must not write stopped status before memory prefetch drain finishes",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for prefetch release");
+    let result = tokio::time::timeout(Duration::from_secs(5), run_handle)
+        .await
+        .expect("run should finish after memory prefetch drains")
+        .expect("task should not panic");
+    assert!(result.is_ok());
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
 // -----------------------------------------------------------------------
 // Draining / resume / hard-shutdown state machine
 // -----------------------------------------------------------------------

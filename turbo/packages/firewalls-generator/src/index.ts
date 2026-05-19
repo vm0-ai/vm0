@@ -17,22 +17,29 @@ import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
+import { generate as generateAtlascloud } from "./atlascloud";
+import { generate as generateAviationstack } from "./aviationstack";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBentoml } from "./bentoml";
 import { generate as generateBitrix } from "./bitrix";
 import { generate as generateBraveSearch } from "./brave-search";
+import { generate as generateBrex } from "./brex";
 import { generate as generateBrevo } from "./brevo";
 import { generate as generateBrightData } from "./bright-data";
 import { generate as generateBrowserbase } from "./browserbase";
 import { generate as generateBrowserUse } from "./browser-use";
 import { generate as generateBrowserless } from "./browserless";
 import { generate as generateBuffer } from "./buffer";
+import { generate as generateBuiltwith } from "./builtwith";
 import { generate as generateCalCom } from "./cal-com";
 import { generate as generateCalendly } from "./calendly";
 import { generate as generateCanva } from "./canva";
 import { generate as generateChatwoot } from "./chatwoot";
+import { generate as generateCheckr } from "./checkr";
+import { generate as generateClado } from "./clado";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
+import { generate as generateClerk } from "./clerk";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateCoda } from "./coda";
 import { generate as generateCronlytic } from "./cronlytic";
@@ -41,6 +48,7 @@ import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDoubao } from "./doubao";
 import { generate as generateDeel } from "./deel";
 import { generate as generateDevto } from "./devto";
+import { generate as generateDiffbot } from "./diffbot";
 import { generate as generateDify } from "./dify";
 import { generate as generateDoppler } from "./doppler";
 import { generate as generateDiscord } from "./discord";
@@ -56,6 +64,7 @@ import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateEtsy } from "./etsy";
 import { generate as generateExa } from "./exa";
 import { generate as generateExplorium } from "./explorium";
+import { generate as generateFaire } from "./faire";
 import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
@@ -63,6 +72,7 @@ import { generate as generateFireflies } from "./fireflies";
 import { generate as generateFreshdesk } from "./freshdesk";
 import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
+import { generate as generateGemini } from "./gemini";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
@@ -75,6 +85,7 @@ import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
 import { generate as generateHume } from "./hume";
+import { generate as generateHunter } from "./hunter";
 import { generate as generateImgur } from "./imgur";
 import { generate as generateInfisical } from "./infisical";
 import { generate as generateInstagram } from "./instagram";
@@ -98,6 +109,8 @@ import { generate as generateMailchimp } from "./mailchimp";
 import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateManus } from "./manus";
+import { generate as generateMapbox } from "./mapbox";
+import { generate as generateMathpix } from "./mathpix";
 import { generate as generateMem0 } from "./mem0";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMetabase } from "./metabase";
@@ -106,12 +119,16 @@ import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
+import { generate as generateMoss } from "./moss";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
+import { generate as generateNyne } from "./nyne";
 import { generate as generateOnyx } from "./onyx";
 import { generate as generateOpenai } from "./openai";
+import { generate as generateOpenrouter } from "./openrouter";
+import { generate as generateOpenweather } from "./openweather";
 import { generate as generateOutlookCalendar } from "./outlook-calendar";
 import { generate as generateOutlookMail } from "./outlook-mail";
 import { generate as generatePandadoc } from "./pandadoc";
@@ -135,6 +152,7 @@ import { generate as generateRailway } from "./railway";
 import { generate as generateRailwayProject } from "./railway-project";
 import { generate as generateReddit } from "./reddit";
 import { generate as generateReap } from "./reap";
+import { generate as generateReducto } from "./reducto";
 import { generate as generateReportei } from "./reportei";
 import { generate as generateReplicate } from "./replicate";
 import { generate as generateResend } from "./resend";
@@ -142,6 +160,7 @@ import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
 import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSalesforce } from "./salesforce";
+import { generate as generateSegment } from "./segment";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShopify } from "./shopify";
@@ -150,6 +169,8 @@ import { generate as generateStabilityAi } from "./stability-ai";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateSlackWebhook } from "./slack-webhook";
+import { generate as generateSponge } from "./sponge";
+import { generate as generateSproutGigs } from "./sproutgigs";
 import { generate as generateSpotify } from "./spotify";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
@@ -157,6 +178,7 @@ import { generate as generateStrapi } from "./strapi";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
+import { generate as generateSupermemory } from "./supermemory";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTestOauth } from "./test-oauth";
 import { generate as generateTldv } from "./tldv";
@@ -180,6 +202,7 @@ import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
+import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateAltium365 } from "./altium-365";
 import { generate as generateBrowserstack } from "./browserstack";
 import { generate as generateSendgrid } from "./sendgrid";
@@ -204,10 +227,12 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   attio: generateAttio,
   atlassian: generateAtlassian,
+  atlascloud: generateAtlascloud,
   axiom: generateAxiom,
   bentoml: generateBentoml,
   bitrix: generateBitrix,
   "brave-search": generateBraveSearch,
+  brex: generateBrex,
   brevo: generateBrevo,
   "bright-data": generateBrightData,
   browserbase: generateBrowserbase,
@@ -218,6 +243,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   calendly: generateCalendly,
   canva: generateCanva,
   chatwoot: generateChatwoot,
+  checkr: generateCheckr,
+  clerk: generateClerk,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
@@ -243,6 +270,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   etsy: generateEtsy,
   exa: generateExa,
   explorium: generateExplorium,
+  faire: generateFaire,
   fal: generateFal,
   figma: generateFigma,
   firecrawl: generateFirecrawl,
@@ -250,6 +278,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   freshdesk: generateFreshdesk,
   gamma: generateGamma,
   "garmin-connect": generateGarminConnect,
+  gemini: generateGemini,
   github: generateGitHub,
   gitlab: generateGitlab,
   "google-ads": generateGoogleAds,
@@ -294,6 +323,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   miro: generateMiro,
   mixpanel: generateMixpanel,
   monday: generateMonday,
+  moss: generateMoss,
   msg9: generateMsg9,
   n8n: generateN8n,
   neon: generateNeon,
@@ -330,6 +360,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   runway: generateRunway,
   salesforce: generateSalesforce,
   scrapeninja: generateScrapeninja,
+  segment: generateSegment,
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shopify: generateShopify,
@@ -338,6 +369,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   similarweb: generateSimilarweb,
   slack: generateSlack,
   "slack-webhook": generateSlackWebhook,
+  sponge: generateSponge,
+  sproutgigs: generateSproutGigs,
   spotify: generateSpotify,
   strava: generateStrava,
   strapi: generateStrapi,
@@ -345,6 +378,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   stripe: generateStripe,
   supabase: generateSupabase,
   supadata: generateSupadata,
+  supermemory: generateSupermemory,
   tavily: generateTavily,
   "test-oauth": generateTestOauth,
   tldv: generateTldv,
@@ -377,6 +411,18 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   gong: generateGong,
   ironclad: generateIronclad,
   snowflake: generateSnowflake,
+  aviationstack: generateAviationstack,
+  builtwith: generateBuiltwith,
+  clado: generateClado,
+  diffbot: generateDiffbot,
+  "google-maps": generateGoogleMaps,
+  hunter: generateHunter,
+  mapbox: generateMapbox,
+  mathpix: generateMathpix,
+  nyne: generateNyne,
+  openrouter: generateOpenrouter,
+  openweather: generateOpenweather,
+  reducto: generateReducto,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

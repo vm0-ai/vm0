@@ -3,7 +3,10 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorAuthMethod,
+  isGoogleOAuthConnector,
+} from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -106,7 +109,7 @@ function ApiTokenForm({
   type: ConnectorType;
   onSuccess: () => void;
 }) {
-  const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
+  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   const submit = useSet(submitApiToken$);
   const setFormValue = useSet(setTokenFormValue$);
   const clearForm = useSet(clearTokenForm$);

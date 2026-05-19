@@ -1,0 +1,303 @@
+use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use vsock_proto::{Decoder, MSG_ERROR, MSG_EXEC_START, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT};
+
+use super::super::support::{
+    assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
+    normal_operation_readiness, pending_request_count, setup_host_and_guest,
+};
+use super::support::{
+    expect_write_file, send_write_file_failure, send_write_file_success, spawn_write_file,
+};
+use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
+
+#[tokio::test]
+async fn test_write_file() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
+
+        let (path, content, sudo, append) =
+            vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
+        assert_eq!(path, "/tmp/test.txt");
+        assert_eq!(content, b"hello");
+        assert!(!sudo);
+        assert!(!append);
+
+        let payload = vsock_proto::encode_write_file_result(true, "");
+        let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    host.write_file("/tmp/test.txt", b"hello", false)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn write_file_tracks_until_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_file(
+        Arc::clone(&host),
+        "/tmp/tracked.txt",
+        b"hello".to_vec(),
+        false,
+    );
+
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(write.path, "/tmp/tracked.txt");
+    assert_eq!(write.content, b"hello");
+    assert!(!write.sudo);
+    assert!(!write.append);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_file_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_guest_failure_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_file_failure(&mut guest, write.seq(), "permission denied").await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("permission denied"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_error_response_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let payload = vsock_proto::encode_error("guest write failed");
+    let resp = vsock_proto::encode(MSG_ERROR, write.seq(), &payload).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest write failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_file_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/tracked.txt", b"bad", false).await })
+    };
+
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let resp = vsock_proto::encode(MSG_EXEC_START, write.seq(), &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn dropping_write_file_after_request_marks_tracker_not_parkable() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
+    };
+
+    let _write = expect_write_file(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    write_task.abort();
+    let _ = write_task.await;
+
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+    let err = host
+        .exec("blocked-after-write-drop", 5000, &[], false)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+}
+
+#[tokio::test]
+async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let write_task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.write_file_with_write_observer(
+                "/tmp/blocked.txt",
+                b"hello",
+                false,
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    write_task.abort();
+    let _ = write_task.await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_file_observer_error_cleans_pending_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .write_file_with_write_observer(
+            "/tmp/observer-error.txt",
+            b"hello",
+            false,
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn write_file_connection_close_after_request_marks_tracker_not_parkable() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.write_file("/tmp/pending.txt", b"hello", false).await })
+    };
+
+    let _write = expect_write_file(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    drop(guest);
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::ConnectionReset);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn test_write_file_failure() {
+    let (host_stream, mut guest) = make_pair();
+
+    tokio::spawn(async move {
+        let mut decoder = Decoder::new();
+        mock_handshake(&mut guest, &mut decoder).await;
+
+        let mut buf = [0u8; 4096];
+        let n = guest.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+
+        let payload = vsock_proto::encode_write_file_result(false, "permission denied");
+        let resp = vsock_proto::encode(MSG_WRITE_FILE_RESULT, msgs[0].seq, &payload).unwrap();
+        guest.write_all(&resp).await.unwrap();
+    });
+
+    let host = host_from_stream(host_stream).await.unwrap();
+    let err = host
+        .write_file("/etc/shadow", b"bad", false)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("permission denied"));
+}

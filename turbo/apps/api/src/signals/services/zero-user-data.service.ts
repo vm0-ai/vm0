@@ -32,8 +32,9 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptStoredSecretValue } from "./crypto.utils";
 import { invalidateActiveCliAuthSessionsForSecretName } from "./cli-auth-invalidation.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import { isValidTimeZone } from "../utils";
 
 const API_KEY_PREFIX_LENGTH = 12;
@@ -432,7 +433,7 @@ export function userSecrets({
 
 export const setUserSecret$ = command(
   async (
-    { set },
+    { get, set },
     args: SetUserSecretArgs,
     signal: AbortSignal,
   ): Promise<SecretResponse> => {
@@ -446,7 +447,16 @@ export const setUserSecret$ = command(
     });
     signal.throwIfAborted();
 
-    const encryptedValue = encryptSecretValue(args.secret.value);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    const encryptedValue = await encryptStoredSecretValue(
+      args.secret.value,
+      featureSwitchContext,
+    );
+    signal.throwIfAborted();
     const updatedAt = nowDate();
     const [row] = await writeDb
       .insert(secrets)

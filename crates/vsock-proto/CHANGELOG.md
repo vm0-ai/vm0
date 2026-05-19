@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.2...vsock-proto-v0.18.3) (2026-05-19)
+
+
+### Refactoring
+
+* upgrade exec start protocol schema ([#13841](https://github.com/vm0-ai/vm0/issues/13841)) ([6790751](https://github.com/vm0-ai/vm0/commit/67907514ba9f7372a4de7e0351cf5c724b997087))
+
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.1...vsock-proto-v0.18.2) (2026-05-19)
+
+
+### Documentation
+
+* document vsock protocol wire constants ([#13926](https://github.com/vm0-ai/vm0/issues/13926)) ([d232c21](https://github.com/vm0-ai/vm0/commit/d232c212ceb1e897dc44db641f69b75d775e6ea3))
+
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.0...vsock-proto-v0.18.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* preserve utf-8 boundaries in vsock error payloads ([#13687](https://github.com/vm0-ai/vm0/issues/13687)) ([3af6a5d](https://github.com/vm0-ai/vm0/commit/3af6a5d481b411688fbc208adea1621517f3a8f7))
+
+
+### Refactoring
+
+* align process control timeout semantics ([#13598](https://github.com/vm0-ai/vm0/issues/13598)) ([9f56eae](https://github.com/vm0-ai/vm0/commit/9f56eae01348c91ec3df805d0a3c0566aacc9dbf))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.17.0...vsock-proto-v0.18.0) (2026-05-17)
 
 

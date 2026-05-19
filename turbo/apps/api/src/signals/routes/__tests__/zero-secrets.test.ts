@@ -1,12 +1,28 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { secrets } from "@vm0/db/schema/secret";
+import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
+import {
+  resetSecretKmsClientForTests,
+  setSecretKmsClientForTests,
+  STORED_SECRET_ENVELOPE_PREFIX,
+  type SecretKmsClient,
+} from "../../services/crypto.utils";
+import { updateUserFeatureSwitches$ } from "../../services/feature-switches.service";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -21,6 +37,68 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const dataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+
+type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
+type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
+
+function fakeKmsClient(): {
+  readonly calls: readonly MockKmsCommand[];
+  readonly client: SecretKmsClient;
+} {
+  const calls: MockKmsCommand[] = [];
+
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  function send(command: MockKmsCommand): Promise<MockKmsResponse> {
+    calls.push(command);
+
+    if (command instanceof GenerateDataKeyCommand) {
+      return Promise.resolve({
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: dataKey,
+      });
+    }
+
+    return Promise.resolve({ $metadata: {}, Plaintext: dataKey });
+  }
+
+  return { calls, client: { send } };
+}
+
+function storedSecretEnvelope(encryptedValue: string): {
+  readonly legacy?: string;
+  readonly kms?: {
+    readonly encryptedDataKey?: string;
+    readonly ciphertext?: string;
+  };
+} {
+  expect(encryptedValue.startsWith(STORED_SECRET_ENVELOPE_PREFIX)).toBeTruthy();
+  return JSON.parse(
+    Buffer.from(
+      encryptedValue.slice(STORED_SECRET_ENVELOPE_PREFIX.length),
+      "base64url",
+    ).toString("utf8"),
+  ) as {
+    readonly legacy?: string;
+    readonly kms?: {
+      readonly encryptedDataKey?: string;
+      readonly ciphertext?: string;
+    };
+  };
+}
+
+afterEach(() => {
+  clearMockedEnv();
+  resetSecretKmsClientForTests();
+});
 
 describe("GET /api/zero/secrets", () => {
   const track = createFixtureTracker<UserDataFixture>((fixture) => {
@@ -229,6 +307,59 @@ describe("POST /api/zero/secrets", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe("user");
     expect(rows[0]?.encryptedValue).not.toBe("secret-value");
+  });
+
+  it("uses KMS data-key envelope encryption when the write switch is enabled", async () => {
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+    const fixture = await track(store.set(seedSecrets$, [], context.signal));
+    await store.set(
+      updateUserFeatureSwitches$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        switches: { [FeatureSwitchKey.StoredSecretKmsWrite]: true },
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroSecretsContract);
+
+    await accept(
+      client.set({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          name: "MY_SECRET",
+          value: "secret-value",
+        },
+      }),
+      [200],
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ encryptedValue: secrets.encryptedValue })
+      .from(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "MY_SECRET"),
+          eq(secrets.type, "user"),
+        ),
+      )
+      .limit(1);
+
+    expect(kms.calls).toHaveLength(1);
+    expect(kms.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
+    if (!row) {
+      throw new Error("Expected secret row to be written");
+    }
+    const envelope = storedSecretEnvelope(row.encryptedValue);
+    expect(envelope.legacy).toBeTruthy();
+    expect(envelope.kms?.encryptedDataKey).toBeTruthy();
   });
 
   it("updates an existing user secret without creating a duplicate", async () => {

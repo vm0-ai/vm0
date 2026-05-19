@@ -223,11 +223,27 @@ const switchOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+const switchOrgWithPatAuth$ = authRoute({ accept: ["pat"] }, switchOrgInner$);
+
+const switchOrgRoute$ = command(async ({ set }, signal: AbortSignal) => {
+  const result = await set(switchOrgWithPatAuth$, signal);
+  if ("status" in result && result.status === 401) {
+    return {
+      status: 401 as const,
+      body: {
+        error: { message: "Authentication required", code: "unauthorized" },
+      },
+    };
+  }
+
+  return result;
+});
+
 export const cliAuthRoutes: readonly RouteEntry[] = [
   { route: cliAuthDeviceContract.create, handler: createDeviceInner$ },
   { route: cliAuthTokenContract.exchange, handler: exchangeTokenInner$ },
   {
     route: cliAuthOrgContract.switchOrg,
-    handler: authRoute({ accept: ["pat"] }, switchOrgInner$),
+    handler: switchOrgRoute$,
   },
 ];

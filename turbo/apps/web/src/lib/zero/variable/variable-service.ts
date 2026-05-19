@@ -137,7 +137,7 @@ export async function setVariable(
 /**
  * Delete a variable by name
  */
-export async function deleteVariable(
+async function deleteVariable(
   orgId: string,
   userId: string,
   name: string,

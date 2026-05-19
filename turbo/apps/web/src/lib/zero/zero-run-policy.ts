@@ -53,7 +53,7 @@ function getConcurrencyLimitForTier(tier: OrgTier): number {
  * Tier-based limit is the baseline; env var acts as a global cap.
  * Returns 0 for unlimited.
  */
-export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
+function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
   const tierLimit = getConcurrencyLimitForTier(orgTier);
   const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
   if (envCap === 0) return 0;

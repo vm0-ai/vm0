@@ -1272,7 +1272,7 @@
           },
           {
             "name": "Zero",
-            "text": "Scheduled. Running weekdays at 08:30.\n\nRun from this morning:\n*GitHub* - 96 PRs merged today vs 14.3 avg 🔴 572% spike (coordinated test refactor). Issues closed: 71 vs 28.6 avg 🟢.\n*Linear* - 0 issues created this week, 3 in backlog.\n*Sentry* - connector not configured.\n*Plausible* - connector not configured."
+            "text": "スケジュール済み。平日08:30に実行。\n\n今朝の実行結果:\n*GitHub* — 本日マージ済みPR 96件、平均14.3に対し 🔴 572%スパイク(テストリファクタの一斉投入)。クローズ済みイシュー: 71件、平均28.6 🟢。\n*Linear* — 今週作成された新規イシュー 0件、バックログに3件。\n*Sentry* — コネクター未設定。\n*Plausible* — コネクター未設定。"
           }
         ],
         "steps": [
@@ -1363,7 +1363,7 @@
           },
           {
             "name": "Zero",
-            "text": "Customer 360 - Acme Corp\n\nOverview: Enterprise, 6 months in, primary contact: James Chen (CTO)\nRecent Activity: 3 email threads Apr 1–10, last meeting Apr 8, 2 open Linear issues\nOpen Items: Unanswered email Apr 9 re: API limits, feature request #812 unassigned\n\nSummary:\n• Health: Engaged but technical blockers slowing adoption\n• Risk: No response to Apr 9 email for 5 days\n• Next: Follow up on API limits today, share #812 resolution timeline"
+            "text": "Customer 360 — Acme Corp\n\n概要: エンタープライズ、契約から6か月、主要連絡先: James Chen(CTO)\n直近の動き: 4月1〜10日にメールスレッド3件、最後のミーティングは4月8日、Linearのオープンイシュー2件\n未対応: API上限についての4月9日のメールが未返信、機能リクエスト#812が未アサイン\n\nまとめ:\n• ヘルス: 関与は高いが、技術的なブロッカーが導入を遅らせている\n• リスク: 4月9日のメールへの返信が5日間ない\n• 次の一手: 本日中にAPI上限の件をフォロー、#812の解決スケジュールを共有"
           }
         ],
         "steps": [
@@ -1450,7 +1450,7 @@
           },
           {
             "name": "Zero",
-            "text": "No digest sent Apr 13 - no topics met the 2-source threshold."
+            "text": "4月13日はダイジェスト未送信 — 2情報源以上を満たすトピックがありませんでした。"
           }
         ],
         "steps": [
@@ -1504,19 +1504,19 @@
       "pr-review": {
         "title": "AI搭載プルリクエストコードレビュー",
         "description": "ZeroがPRのdiffを読み、重大な問題をP0として検出、改善提案を優先順位付けしてSlackに報告。マージ前にチームが対応できます。",
-        "timeSaved": "~30 min saved per PR",
-        "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review - critical issues that must be fixed before merge, plus lower-priority suggestions - posted directly in Slack.",
+        "timeSaved": "PRあたり約30分の短縮",
+        "scenario": "PRが溜まる。レビュアーは忙しい。誰かがキューを空にするために「承認」を押し、微妙なバグが本番に出荷される。Zeroはキューに関係なく、すべてのPRを丁寧に読み込みます。任意のPR番号を指定すれば、構造化されたレビューを返します——マージ前に必ず修正すべき重大な問題と、優先度の低い改善提案を、Slackに直接投稿します。",
         "promptVariants": [
           {
-            "label": "Standard review",
+            "label": "標準レビュー",
             "prompt": "@Zero review vm0-ai/vm0#8886"
           },
           {
-            "label": "Focused review",
+            "label": "重点レビュー",
             "prompt": "@Zero review vm0-ai/vm0#9215 - focus on the auth middleware changes and any potential security issues."
           },
           {
-            "label": "Re-review after fixes",
+            "label": "修正後の再レビュー",
             "prompt": "@Zero re-review vm0-ai/vm0#8886 - I pushed a second commit addressing your P0 feedback."
           }
         ],
@@ -1527,70 +1527,70 @@
           },
           {
             "name": "Zero",
-            "text": "Review for vm0-ai/vm0#8886 - 1 commit reviewed.\n\nP0 (must fix before merge):\n• createPlainSupportThread has 5 paths that return false instead of throwing - silent failures in prod.\n\nP1 (improvement):\n• Error messages don't include the SDK error code - harder to debug from logs."
+            "text": "vm0-ai/vm0#8886のレビュー — 1コミットを確認。\n\nP0(マージ前に要修正):\n• createPlainSupportThreadには、例外を投げる代わりにfalseを返す経路が5つあります — 本番でのサイレントな失敗。\n\nP1(改善):\n• エラーメッセージにSDKエラーコードが含まれていません — ログからのデバッグが難しくなります。"
           }
         ],
         "steps": [
           {
-            "title": "Zero reads the full diff",
-            "description": "Zero fetches the PR via GitHub, reads every changed file, and understands the intent of the change from the PR title, description, and commit messages."
+            "title": "Zeroが差分全体を読み込む",
+            "description": "ZeroはGitHub経由でPRを取得し、変更されたすべてのファイルを読み、PRタイトル・説明・コミットメッセージから変更の意図を理解します。"
           },
           {
-            "title": "Zero ranks issues by severity",
-            "description": "Findings are classified as P0 (must fix before merge - bugs, security issues, silent failures) or P1 (improvements - better error handling, test coverage, naming)."
+            "title": "Zeroが重要度で問題を分類する",
+            "description": "検出事項はP0(マージ前に要修正 — バグ、セキュリティ問題、サイレントな失敗)またはP1(改善 — より良いエラー処理、テストカバレッジ、命名)に分類されます。"
           },
           {
-            "title": "Review posted to Slack",
-            "description": "Zero posts the full review in the Slack thread where it was requested, with specific file references and line numbers so the author knows exactly what to fix."
+            "title": "レビューをSlackに投稿",
+            "description": "Zeroは依頼されたSlackスレッドにレビュー全文を投稿し、具体的なファイルや行番号も併記するため、作成者は何を修正すべきかを正確に把握できます。"
           }
         ],
         "nextActions": [
           {
-            "title": "Create a GitHub issue from a finding",
-            "description": "Log a P0 as a tracked issue if it can't be fixed immediately",
+            "title": "検出事項からGitHubイシューを作成",
+            "description": "すぐに修正できないP0は追跡可能なイシューとして記録します",
             "examplePrompt": "@Zero create a GitHub issue for the P0 in that review. Assign to Ethan and label as bug, priority-high."
           },
           {
-            "title": "Re-review after changes",
-            "description": "Verify that P0 feedback was addressed",
+            "title": "変更後の再レビュー",
+            "description": "P0フィードバックが対応されたかを確認します",
             "examplePrompt": "@Zero re-review #8886, second commit - confirm the P0 is resolved."
           },
           {
-            "title": "Check CI status",
-            "description": "See if all checks pass before merging",
+            "title": "CIステータスを確認",
+            "description": "マージ前にすべてのチェックが通っているかを確認します",
             "examplePrompt": "@Zero what's the CI status on vm0-ai/vm0#8886? Is it safe to merge?"
           }
         ],
         "integrations": [
           {
-            "description": "GitHub is required. Zero needs read access to pull requests and the full diff."
+            "description": "GitHubは必須です。ZeroはPRと差分全体への読み取りアクセスを必要とします。"
           },
           {
-            "description": "Slack is where the review request is made and where findings are delivered."
+            "description": "Slackはレビュー依頼を行い、検出事項を受け取る場所です。"
           }
         ],
         "tips": [
-          "Include the specific concern in your prompt - 'focus on auth changes' or 'check for race conditions' - to get a more targeted review than a general diff scan.",
-          "Use re-review for iterative PRs. After the author pushes fixes, ask Zero to re-check only the P0 items to confirm they're resolved.",
-          "Set a team norm: Zero review before any merge to main. It catches the class of issues that slip through async human review."
+          "プロンプトに具体的な関心事を含めてください — 「認証関連の変更に注目」や「レースコンディションを確認」と書けば、一般的な差分スキャンよりも的を絞ったレビューが得られます。",
+          "反復的なPRには再レビューを使ってください。作成者が修正をプッシュした後、P0項目のみを再確認するようZeroに依頼すれば、解消されたか確認できます。",
+          "チームのルールとして、mainへのマージ前に必ずZeroレビューを行いましょう。非同期な人間のレビューをすり抜けるタイプの問題を捕捉します。"
         ]
       },
       "api-performance": {
         "title": "APIパフォーマンスボトルネックの調査",
         "description": "ZeroがAxiomからTP95データを取得し、最も遅いエンドポイントを特定、パターンを分析してGitHub Issueを作成します。",
-        "timeSaved": "~45 min saved",
-        "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand - pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
+        "timeSaved": "約45分の短縮",
+        "scenario": "TP95のスパイクは常にページャーを鳴らすわけではありません。チームが出荷に集中している間、メトリクスダッシュボードに居座って静かにユーザー体験を悪化させます。Zeroを使えば、任意のエンドポイントのパフォーマンスをオンデマンドで確認できます——直近7日間のTP95データを引き出し、どのリクエストが遅いかを見て、GitHubイシューを自動作成して取りこぼしを防ぎます。",
         "promptVariants": [
           {
-            "label": "TP95 check",
+            "label": "TP95チェック",
             "prompt": "@Zero check Axiom for the POST /api/zero/runs endpoint - show me the TP95 for the last 7 days and flag any events over 5s."
           },
           {
-            "label": "File an issue",
+            "label": "イシューを起票",
             "prompt": "@Zero pull Axiom TP95 for /api/zero/runs over the last 7 days and create a GitHub issue with the findings, assigned to Lancy."
           },
           {
-            "label": "Compare endpoints",
+            "label": "エンドポイント比較",
             "prompt": "@Zero compare the last 7 days of TP95 for /api/zero/runs vs /api/chat/send on Axiom. Which is slower and what's the pattern?"
           }
         ],
@@ -1601,70 +1601,70 @@
           },
           {
             "name": "Zero",
-            "text": "POST /api/zero/runs - 7-day TP95 summary:\n\nWorst: 6,857ms on Apr 12\nSlow events (>5s): 14 total\nRoot cause: sync dispatch pipeline blocks the response - it waits for sandbox allocation before returning.\n\nGitHub issue filed: vm0-ai/vm0#9682, assigned to Lancy."
+            "text": "POST /api/zero/runs — 直近7日間のTP95サマリ:\n\n最悪値: 4月12日に6,857ms\n遅いイベント(>5秒): 計14件\n根本原因: 同期ディスパッチパイプラインがレスポンスをブロック — サンドボックスの割り当てを待ってから返しています。\n\nGitHubイシュー作成: vm0-ai/vm0#9682、Lancyに割り当て。"
           }
         ],
         "steps": [
           {
-            "title": "Zero queries Axiom for the endpoint",
-            "description": "Zero pulls all request events for the specified endpoint over the time window, computing TP50, TP95, and TP99 per day."
+            "title": "ZeroがAxiomでエンドポイントをクエリ",
+            "description": "Zeroは指定された期間における該当エンドポイントのリクエストイベントをすべて取得し、日次でTP50・TP95・TP99を算出します。"
           },
           {
-            "title": "Zero surfaces slow events",
-            "description": "Zero filters for events above the threshold (default: 5 seconds), groups them by time of day and error pattern, and identifies the likely root cause."
+            "title": "Zeroが遅いイベントを抽出",
+            "description": "Zeroは閾値(デフォルト: 5秒)を超えるイベントを抽出し、時間帯やエラーパターンでグループ化し、想定される根本原因を特定します。"
           },
           {
-            "title": "GitHub issue created with findings",
-            "description": "Zero files a structured GitHub issue with the metric table, slow event list, and root cause analysis - ready for the engineering team to act on."
+            "title": "検出事項を含むGitHubイシューを作成",
+            "description": "Zeroはメトリクス表・遅いイベント一覧・根本原因分析を含む構造化されたGitHubイシューを起票し、エンジニアリングチームがすぐに対応できる状態にします。"
           }
         ],
         "nextActions": [
           {
-            "title": "Assign and prioritize",
-            "description": "Route the issue to the right engineer",
+            "title": "担当者割り当てと優先度設定",
+            "description": "適切なエンジニアにイシューを振り分けます",
             "examplePrompt": "@Zero assign the Axiom issue to Ethan and add the label performance, priority-high."
           },
           {
-            "title": "Schedule regular monitoring",
-            "description": "Set up a weekly TP95 check for key endpoints",
+            "title": "定期的なモニタリングをスケジュール",
+            "description": "主要エンドポイントの週次TP95チェックを設定します",
             "examplePrompt": "@Zero every Monday at 9am, pull the last 7 days of TP95 for /api/zero/runs and post to #dev. File a GitHub issue only if TP95 exceeds 3s."
           },
           {
-            "title": "Investigate a specific slow event",
-            "description": "Dig into a single outlier event",
+            "title": "特定の遅いイベントを調査",
+            "description": "単一の外れ値イベントを深掘りします",
             "examplePrompt": "@Zero pull the full trace for the 6,857ms event on Apr 12 from Axiom and tell me where the time is spent."
           }
         ],
         "integrations": [
           {
-            "description": "Axiom is required. Zero queries your Axiom dataset for request events filtered by endpoint path and time window."
+            "description": "Axiomは必須です。Zeroはエンドポイントパスと時間ウィンドウでフィルタしたリクエストイベントについて、Axiomデータセットをクエリします。"
           },
           {
-            "description": "GitHub is optional. Zero creates issues from findings when asked, with the metric table embedded in the body."
+            "description": "GitHubは任意です。依頼に応じて、Zeroは検出事項からイシューを作成し、本文にメトリクス表を埋め込みます。"
           }
         ],
         "tips": [
-          "Specify a threshold in your prompt - 'flag events over 3 seconds' - so Zero's findings match your SLO, not a generic cutoff.",
-          "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
-          "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
+          "プロンプトで閾値を指定してください — 「3秒を超えるイベントをフラグ」と書けば、汎用的なカットオフではなく自社のSLOに沿った検出になります。",
+          "デプロイ直後にエンドポイントを確認するようZeroに依頼し、ユーザーに大規模に影響する前にリグレッションを捉えましょう。",
+          "Daily Error Triageと組み合わせれば、SentryのエラーとAxiomのパフォーマンスが一つのブリーフにまとまり、朝のヘルスチェックが完結します。"
         ]
       },
       "production-db-query": {
         "title": "自然言語で本番データをクエリ",
         "description": "本番データについてZeroに質問するだけ。SQLを生成し、読み取り専用でライブデータベースに対して実行、結果をSlackで回答します。",
-        "timeSaved": "~20 min saved",
-        "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain - just ask the question in Slack.",
+        "timeSaved": "約20分の短縮",
+        "scenario": "ステークホルダーが「直近30日でオンボーディングを完了したユーザーは何人?」と聞いてきます。簡単な質問ですが、答えるにはDBクライアントを開き、正しいテーブルを探し、クエリを書き、リードオンリーの認証情報を使っているか確認し、実行し、結果を整形する必要があります。Zeroはこの一連の流れをすべて処理します — Slackで質問するだけです。",
         "promptVariants": [
           {
-            "label": "Count query",
+            "label": "カウントクエリ",
             "prompt": "@Zero how many users signed up in the last 30 days? Query the production database."
           },
           {
-            "label": "Trend query",
+            "label": "トレンドクエリ",
             "prompt": "@Zero query production - show me daily active user counts for the last 14 days, broken down by plan tier."
           },
           {
-            "label": "Anomaly check",
+            "label": "異常値チェック",
             "prompt": "@Zero check production DB - are there any users with a free credit balance above 1000? List the top 10."
           }
         ],
@@ -1675,70 +1675,70 @@
           },
           {
             "name": "Zero",
-            "text": "Production DB query result (read-only):\n\nzero_runs created in last 7 days: 4,218\nBreakdown: Mon 523, Tue 641, Wed 688, Thu 712, Fri 654\nWeekend: 0 (expected - team usage pattern)\n\nQuery ran in 42ms."
+            "text": "本番DBクエリ結果(リードオンリー):\n\n直近7日間に作成されたzero_runs: 4,218\n内訳: 月 523、火 641、水 688、木 712、金 654\n週末: 0(想定どおり — チームの利用パターン)\n\nクエリ実行時間: 42ms。"
           }
         ],
         "steps": [
           {
-            "title": "Zero interprets your question",
-            "description": "Zero maps your plain-language question to the relevant tables and columns in your production schema."
+            "title": "Zeroが質問を解釈",
+            "description": "Zeroは自然言語の質問を、本番スキーマの該当テーブルとカラムにマッピングします。"
           },
           {
-            "title": "Zero runs a read-only query",
-            "description": "Zero executes only SELECT statements against production. No writes, no mutations. Credentials are retrieved securely via Doppler - they never appear in the conversation."
+            "title": "Zeroがリードオンリークエリを実行",
+            "description": "Zeroは本番に対してSELECT文のみを実行します。書き込みも変更もありません。認証情報はDoppler経由で安全に取得され、会話には一切現れません。"
           },
           {
-            "title": "Results returned in Slack",
-            "description": "Zero posts the query result in the thread, formatted as a readable summary. For large result sets, it returns the key numbers and offers to export the full table."
+            "title": "結果をSlackに返却",
+            "description": "Zeroはクエリ結果を読みやすいサマリとしてスレッドに投稿します。大きな結果セットの場合は主要な数値を返し、完全なテーブルのエクスポートも提案します。"
           }
         ],
         "nextActions": [
           {
-            "title": "Export to a spreadsheet",
-            "description": "Get the full result set in a usable format",
+            "title": "スプレッドシートにエクスポート",
+            "description": "完全な結果セットを使える形式で取得します",
             "examplePrompt": "@Zero re-run that query and export the results to a Google Sheet named 'DAU by Plan - April 2026'."
           },
           {
-            "title": "Schedule a recurring count",
-            "description": "Track a metric automatically",
+            "title": "定期的なカウントをスケジュール",
+            "description": "メトリクスを自動で追跡します",
             "examplePrompt": "@Zero every Monday morning, query production for last week's new user count and post to #metrics."
           },
           {
-            "title": "File an issue from a finding",
-            "description": "Escalate an anomaly you discovered",
+            "title": "検出事項からイシューを起票",
+            "description": "発見した異常をエスカレーションします",
             "examplePrompt": "@Zero create a GitHub issue for the users with credit balance above 1000 - title 'Credit balance anomaly', assign to Ethan."
           }
         ],
         "integrations": [
           {
-            "description": "vm0's production database skill is required. It provides a read-only connection to your Postgres instance via securely managed credentials - no manual setup needed."
+            "description": "vm0の本番データベーススキルが必須です。安全に管理された認証情報経由でPostgresインスタンスへのリードオンリー接続を提供します — 手動セットアップは不要です。"
           },
           {
-            "description": "Slack is where you ask the question and receive the result."
+            "description": "Slackは質問を投げ、結果を受け取る場所です。"
           }
         ],
         "tips": [
-          "Always specify 'production database' or 'prod DB' in your prompt so Zero knows which connection to use if you have multiple environments.",
-          "Zero runs only SELECT queries. If you need to modify data, Zero will flag it and ask you to handle it through the appropriate workflow instead.",
-          "For sensitive queries, prefix with 'do not log the results' - Zero will deliver the answer in an ephemeral message visible only to you."
+          "プロンプトには必ず「本番データベース」または「prod DB」と明記してください。複数環境がある場合、Zeroがどの接続を使うべきか判断できます。",
+          "ZeroはSELECTクエリのみを実行します。データを変更する必要がある場合、Zeroはそれを指摘し、適切なワークフローで対応するよう求めます。",
+          "機微なクエリでは「結果をログに残さない」と先に伝えてください — Zeroはあなたにのみ見えるエフェメラルメッセージで回答します。"
         ]
       },
       "security-compliance": {
         "title": "インフラコンプライアンス監査の自動化",
         "description": "ZeroがGitHub、クラウドプロバイダー、ドキュメントを横断してインフラをコンプライアンス要件と照合し、構造化された調査結果を投稿します。",
-        "timeSaved": "~2 hrs saved",
-        "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message - checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
+        "timeSaved": "約2時間の短縮",
+        "scenario": "コンプライアンスチームから「顧客データはどこに保存され、地域要件を満たしているか?」という質問が来ます。回答するにはクラウドプロバイダの設定を確認し、デプロイ設定を読み、ドキュメントと突き合わせてサマリを書く必要があります。Zeroはこれをすべて1つのSlackメッセージで実行 — VercelのリージョンとCloudflare R2の設定、インフラファイルをチェックし、構造化されたブリーフを投稿します。",
         "promptVariants": [
           {
-            "label": "Region audit",
+            "label": "リージョン監査",
             "prompt": "@Zero check our infrastructure for data residency - where are our Cloudflare R2 buckets located, what region does Vercel deploy to, and is there any cross-region replication configured?"
           },
           {
-            "label": "Security review",
+            "label": "セキュリティレビュー",
             "prompt": "@Zero audit our GitHub repo for any hardcoded secrets or API keys accidentally committed in the last 90 days."
           },
           {
-            "label": "Compliance brief",
+            "label": "コンプライアンスブリーフ",
             "prompt": "@Zero research our infrastructure setup and write a brief on whether we meet SOC 2 Type I requirements for data storage and access controls. Save it to Notion under 'Compliance > SOC 2 Prep'."
           }
         ],
@@ -1749,74 +1749,74 @@
           },
           {
             "name": "Zero",
-            "text": "Cloudflare R2: Region set to auto (Cloudflare selects nearest region). No cross-region replication configured.\n\nVercel: Defaults to iad1 (US East, Washington DC) for serverless functions. Static assets served from CDN edge globally.\n\nSummary: Data is US-based by default. If EU residency is required, both R2 and Vercel need explicit region configuration."
+            "text": "Cloudflare R2: リージョンはauto設定(Cloudflareが最寄りのリージョンを選択)。クロスリージョンレプリケーションは未設定。\n\nVercel: サーバーレス関数はデフォルトでiad1(米国東部、ワシントンDC)。静的アセットはCDNエッジ経由でグローバル配信。\n\nまとめ: データはデフォルトで米国内に置かれます。EU内のデータ所在が必要な場合は、R2とVercelの両方で明示的なリージョン設定が必要です。"
           }
         ],
         "steps": [
           {
-            "title": "Zero gathers config from your infrastructure",
-            "description": "Zero reads your repository configuration files, deployment configs, and checks connected cloud services for the relevant settings."
+            "title": "Zeroがインフラから設定を収集",
+            "description": "Zeroはリポジトリの設定ファイルとデプロイ設定を読み、接続済みクラウドサービスから関連する設定を確認します。"
           },
           {
-            "title": "Zero cross-references against the compliance requirement",
-            "description": "Zero maps each finding against the specific requirement - data residency, access control, encryption - and flags any gaps."
+            "title": "Zeroがコンプライアンス要件と突き合わせ",
+            "description": "Zeroは各検出事項を具体的な要件 — データ所在、アクセス制御、暗号化 — と照合し、ギャップをフラグします。"
           },
           {
-            "title": "Findings brief posted and optionally saved",
-            "description": "Zero posts a structured brief in Slack with findings per service and a summary recommendation. On request, it saves the full report to Notion."
+            "title": "ブリーフを投稿、必要に応じて保存",
+            "description": "Zeroはサービスごとの検出事項とサマリの推奨事項を含む構造化ブリーフをSlackに投稿します。依頼に応じて、完全なレポートをNotionに保存します。"
           }
         ],
         "nextActions": [
           {
-            "title": "Save to Notion for the audit",
-            "description": "Archive the findings for your compliance record",
+            "title": "監査のためにNotionに保存",
+            "description": "コンプライアンス記録のために検出事項をアーカイブします",
             "examplePrompt": "@Zero save the compliance brief to Notion under 'Compliance > Infrastructure Audit > April 2026'."
           },
           {
-            "title": "Create remediation issues",
-            "description": "Turn gaps into tracked engineering work",
+            "title": "改善イシューを作成",
+            "description": "ギャップを追跡可能なエンジニアリング作業に変換します",
             "examplePrompt": "@Zero create GitHub issues for each gap in the compliance brief. Label them compliance and assign to Ethan."
           },
           {
-            "title": "Schedule a quarterly audit",
-            "description": "Make compliance checks a recurring practice",
+            "title": "四半期監査をスケジュール",
+            "description": "コンプライアンスチェックを定例化します",
             "examplePrompt": "@Zero every quarter, run this infrastructure compliance check and post findings to #compliance."
           }
         ],
         "integrations": [
           {
-            "description": "GitHub is required. Zero reads your infrastructure and deployment config files from the repository."
+            "description": "GitHubは必須です。Zeroはリポジトリからインフラ・デプロイ設定ファイルを読みます。"
           },
           {
-            "description": "Notion is optional. Zero saves compliance briefs and findings for audit trail documentation."
+            "description": "Notionは任意です。Zeroは監査トレイル文書のためにコンプライアンスブリーフと検出事項を保存します。"
           }
         ],
         "tips": [
-          "Be specific about the compliance framework or requirement - 'SOC 2 data residency' produces a more useful brief than 'check if we're compliant.'",
-          "Ask Zero to DM you the sensitive findings rather than posting to a channel - some compliance gaps shouldn't be broadcast publicly.",
-          "Archive findings to Notion immediately. Compliance auditors want documentation of the process, not just the conclusion."
+          "コンプライアンスフレームワークや要件を具体的に書いてください — 「SOC 2のデータ所在」のほうが「コンプライアンスに沿っているか確認して」よりも有用なブリーフになります。",
+          "機微な検出事項はチャンネル投稿ではなくDMで送るようZeroに依頼してください — 公にすべきでないコンプライアンスギャップもあります。",
+          "検出事項はすぐにNotionにアーカイブしましょう。コンプライアンス監査人は結論だけでなく、プロセスの記録も求めます。"
         ]
       },
       "cross-tool-context": {
         "title": "複数ツールからの統合プロジェクトステータス",
         "description": "Zeroにプロジェクトについて質問するだけ。ツールを並行検索し、状態、担当者、ブロッカー、最終更新をまとめたブリーフを作成します。",
-        "timeSaved": "~25 min saved",
-        "scenario": "Someone asks about the status of the Stripe integration. The last Slack thread is from two weeks ago. There's a Linear ticket but the status says 'In Progress' with no update. The Notion doc has a decision log from last month. GitHub has three open PRs. None of these sources tell the full story alone. Zero searches all four in parallel and gives you one answer.",
+        "timeSaved": "約25分の短縮",
+        "scenario": "誰かがStripe連携の状況を尋ねます。最後のSlackスレッドは2週間前。Linearチケットはありますが、ステータスは「進行中」のまま更新なし。Notionドキュメントには先月の意思決定ログ。GitHubにはオープンなPRが3件。どの情報源も単独では全体像を語りません。Zeroは4つすべてを並行検索し、1つの回答にまとめます。",
         "promptVariants": [
           {
-            "label": "Basic",
+            "label": "ベーシック",
             "prompt": "@Zero what's the current status of the Stripe integration? Search Slack (last 14 days), Notion, Linear, and GitHub. Return: current state, owner, blockers, and last meaningful update with source."
           },
           {
-            "label": "Deep dive",
+            "label": "深掘り",
             "prompt": "@Zero pull everything on the auth refactor from the last 30 days across Slack, Notion, Linear, and GitHub. Write a full status doc with owner, decision history, and what's next."
           },
           {
-            "label": "Scheduled",
+            "label": "スケジュール実行",
             "prompt": "@Zero every Monday morning, DM me a status brief on the mobile SDK project - current state, owner, blockers, last update."
           },
           {
-            "label": "Conflict-aware",
+            "label": "コンフリクト検知",
             "prompt": "@Zero check Slack and Linear for the latest on the onboarding redesign and flag if the two sources disagree on status or ownership."
           }
         ],
@@ -1827,58 +1827,58 @@
           },
           {
             "name": "Zero",
-            "text": "Connector Architecture Refactor - Status Brief\n\nState: In progress - environment variables migrated from skill frontmatter to connector definitions. Core refactor merged.\nOwner: Lancy\nBlockers: None active.\nLast update: Apr 14 (GitHub) - PR #9312 merged.\n\nSources agree."
+            "text": "コネクターアーキテクチャリファクタ — ステータスブリーフ\n\n状態: 進行中 — 環境変数をスキルのフロントマターからコネクター定義へ移行。コアリファクタはマージ済み。\n責任者: Lancy\nブロッカー: 現在なし。\n最終更新: 4月14日(GitHub) — PR #9312マージ。\n\n各情報源は一致しています。"
           }
         ],
         "steps": [
           {
-            "title": "Zero searches all sources in parallel",
-            "description": "Zero queries Slack, Notion, Linear, and GitHub simultaneously for the topic within the specified time window - returning raw findings from each source."
+            "title": "Zeroがすべての情報源を並行検索",
+            "description": "ZeroはSlack、Notion、Linear、GitHubに対し、指定された期間内で同時にトピックを検索し、各情報源から生の検出結果を返します。"
           },
           {
-            "title": "Zero synthesizes and flags conflicts",
-            "description": "Zero extracts state, owner, blockers, and last update per source. If sources disagree - e.g., Linear says 'Done' but Slack has an open question from yesterday - Zero flags the conflict explicitly."
+            "title": "Zeroが統合し、矛盾をフラグ",
+            "description": "Zeroは情報源ごとに状態・責任者・ブロッカー・最終更新を抽出します。情報源同士が食い違う場合 — 例: Linearは「完了」だがSlackには昨日のオープンな質問がある — Zeroは明示的にコンフリクトをフラグします。"
           },
           {
-            "title": "4-part brief delivered in Slack",
-            "description": "Zero returns: current state in one sentence, owner/DRI, active blockers, and the most recent meaningful update with its source citation."
+            "title": "Slackに4部構成のブリーフを配信",
+            "description": "Zeroは次を返します: 一文での現在の状態、責任者/DRI、アクティブなブロッカー、出典付きの最新の重要更新。"
           }
         ],
         "nextActions": [
           {
-            "title": "Log the brief to Notion",
-            "description": "Create a searchable record of the status snapshot",
+            "title": "ブリーフをNotionに記録",
+            "description": "ステータススナップショットを検索可能な記録として残します",
             "examplePrompt": "@Zero save this status brief to Notion under 'Project Status > Stripe Integration > April 2026'."
           },
           {
-            "title": "Schedule weekly updates",
-            "description": "Get a status DM every Monday without asking",
+            "title": "週次更新をスケジュール",
+            "description": "依頼なしで毎週月曜にステータスDMを受け取ります",
             "examplePrompt": "@Zero every Monday at 9am, DM me the status of the mobile SDK across Slack, Linear, and GitHub."
           },
           {
-            "title": "Escalate a blocker",
-            "description": "Turn a found blocker into a tracked issue",
+            "title": "ブロッカーをエスカレーション",
+            "description": "見つかったブロッカーを追跡可能なイシューに変換します",
             "examplePrompt": "@Zero the blocker you found - create a GitHub issue for it and assign to the owner."
           }
         ],
         "integrations": [
           {
-            "description": "Slack is required. It's the primary source of async discussion and where the brief is delivered."
+            "description": "Slackは必須です。非同期な議論の主要な情報源であり、ブリーフが配信される場所です。"
           },
           {
-            "description": "Linear is required. It's the source of truth for task ownership and current status."
+            "description": "Linearは必須です。タスクのオーナーシップと現在のステータスの真実の情報源です。"
           },
           {
-            "description": "Notion is optional. Zero searches long-form decisions and context when included."
+            "description": "Notionは任意です。指定された場合、Zeroは長文の意思決定やコンテキストを検索します。"
           },
           {
-            "description": "GitHub is optional. Zero includes PR and commit activity for technical topics."
+            "description": "GitHubは任意です。技術的なトピックではPRやコミットの活動も含めます。"
           }
         ],
         "tips": [
-          "Be specific - 'the Stripe integration' works better than 'the payment feature.' Specific terms match across tools; vague ones don't.",
-          "Add a time window for long-running projects: 'focus on the last 14 days' prevents Zero from surfacing stale context as if it's current.",
-          "Pair with Document Decisions to auto-log the brief to Notion - useful for recurring reviews where you want a historical snapshot per week."
+          "具体的にしてください — 「Stripe連携」のほうが「決済機能」よりもうまく機能します。具体的な用語はツールをまたいでマッチしますが、曖昧な用語は一致しません。",
+          "長期プロジェクトには期間ウィンドウを追加してください: 「直近14日に絞って」と書けば、古いコンテキストを最新であるかのようにZeroが提示するのを防げます。",
+          "Document Decisionsと組み合わせて、ブリーフを自動的にNotionに記録しましょう — 週ごとの履歴スナップショットを残したい定例レビューに有用です。"
         ]
       },
       "daily-email-triage": {
@@ -3680,7 +3680,7 @@
     "filter": {
       "all": "すべて",
       "everyone": "横断的",
-      "engineering": "Engineering",
+      "engineering": "エンジニアリング",
       "product": "プロダクト",
       "marketing": "マーケティング",
       "sales": "セールス",

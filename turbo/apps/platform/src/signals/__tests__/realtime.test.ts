@@ -16,7 +16,11 @@ import {
 import { server } from "../../mocks/server.ts";
 import { apiRealtimeHandlers } from "../../mocks/handlers/api-realtime.ts";
 import { mockApi } from "../../mocks/msw-contract.ts";
-import { mockUser, clearMockedAuth } from "../../__tests__/mock-auth.ts";
+import {
+  mockUser,
+  clearMockedAuth,
+  mockedClerk,
+} from "../../__tests__/mock-auth.ts";
 
 // ---------------------------------------------------------------------------
 // setAblyLoop$ with mock Ably channel
@@ -45,6 +49,19 @@ afterEach(() => {
 });
 
 describe("setAblyLoop$ with mock Ably", () => {
+  it("does not start realtime while signed out", async () => {
+    const store = createStore();
+    const controller = new AbortController();
+
+    clearMockedAuth();
+    mockedClerk.redirectToSignIn.mockClear();
+
+    await store.set(setupRealtime$, controller.signal);
+
+    expect(getAuthTokenHistory()).toStrictEqual([]);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
   it("queues subscriptions started before realtime connects", async () => {
     const { store, controller } = setupTestStore();
 

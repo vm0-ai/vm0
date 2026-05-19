@@ -5,6 +5,9 @@
     "https://axiom.co/docs/restapi/versions/v1.json": "f500e8c9cd83fe22aebd289d90c81a290712c3f2355f363a18a2090491b19499",
     "https://axiom.co/docs/restapi/versions/v2.json": "eb322168e3592b1bdc56ebd9f6b5357a0e80dc293c42cced2e2a95cf2b972ca4"
   },
+  "clerk": {
+    "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2025-11-10.yml": "0df70f63b6ecbaf8498d9c0a1546b5abf8abf79c3a4f72ad7395403cfed06b1d"
+  },
   "deel": {
     "https://developer.deel.com/openapi.json?api=11887c88-0ae7-4136-a89a-c7ec2a37111c": "2bacf3ebaf3cc6d13acb5a1c2c78b5fa638c66826bf4d0d808b24ef28729dc16",
     "https://developer.deel.com/openapi.json?api=1b19aad5-5d4e-451f-a856-70d017cc05ef": "589d38656bd24a9c1b17e518097157c0248d342cd0ae0e1c962ebfa042200dc4",

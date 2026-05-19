@@ -141,6 +141,46 @@ describe("GET /api/zero/runs/:id/network", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("returns 404 when run belongs to a different user (no existence leak)", async () => {
+    const ownerFixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: ownerFixture.orgId, userId: ownerFixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: ownerFixture.orgId,
+        userId: ownerFixture.userId,
+        composeId: compose.composeId,
+        status: "completed",
+      },
+      context.signal,
+    );
+
+    const otherFixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(otherFixture.userId, otherFixture.orgId);
+
+    const client = setupApp({ context })(zeroRunNetworkLogsContract);
+
+    const response = await accept(
+      client.getNetworkLogs({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
   it("returns network logs for a run", async () => {
     const fixture = await track(
       store.set(seedUsageInsightFixture$, undefined, context.signal),

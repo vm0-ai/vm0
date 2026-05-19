@@ -16,6 +16,10 @@ interface ImageOptions {
   seed?: number;
   safetyTolerance: string;
   enhancePrompt?: boolean;
+  imageUrl: string[];
+  maskImageUrl?: string;
+  inputFidelity?: string;
+  imagePromptStrength?: string;
   json?: boolean;
 }
 
@@ -63,6 +67,33 @@ function parseSeed(value: string): number {
   return seed;
 }
 
+function collectString(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function parseInputFidelity(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value !== "low" && value !== "high") {
+    throw new Error("--input-fidelity must be low or high");
+  }
+  return value;
+}
+
+function parseImagePromptStrength(
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const strength = Number(value);
+  if (!Number.isFinite(strength) || strength < 0 || strength > 1) {
+    throw new Error("--image-prompt-strength must be a number from 0 to 1");
+  }
+  return strength;
+}
+
 export function createImageGenerateCommand(
   config: ImageGenerateCommandConfig,
 ): Command {
@@ -100,6 +131,24 @@ export function createImageGenerateCommand(
     .option("--seed <integer>", "Deterministic seed for fal models", parseSeed)
     .option("--safety-tolerance <level>", "fal safety tolerance: 1-6", "4")
     .option("--enhance-prompt", "Enable fal prompt enhancement when supported")
+    .option(
+      "--image-url <url>",
+      "Source/mockup image URL for image-to-image; repeat for multi-image edit models",
+      collectString,
+      [],
+    )
+    .option(
+      "--mask-image-url <url>",
+      "Mask image URL for supported edit models",
+    )
+    .option(
+      "--input-fidelity <low|high>",
+      "Source-image fidelity for GPT edit models",
+    )
+    .option(
+      "--image-prompt-strength <0-1>",
+      "Reference strength override for Flux Redux",
+    )
     .option("--json", "Print metadata as JSON")
     .addHelpText(
       "after",
@@ -113,15 +162,15 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
-  - Uses OpenAI for GPT Image models and fal.ai for non-OpenAI models
+  - Uses fal.ai for all image model execution
 
 Models:
-  - OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
-    gpt-image-1-mini. OpenAI generations bill returned text/image/output
-    token usage.
-  - fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4.
-    fal generations bill by output image or rounded-up output megapixel,
-    depending on the model.
+  - fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5,
+    gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image,
+    seedream4.
+    GPT Image models bill by fal output image quality and size.
+    Other fal generations bill by output image or rounded-up output
+    megapixel, depending on the model.
 
 Options:
   - Prompt: required, up to 32,000 characters; stdin is supported.
@@ -133,26 +182,35 @@ Options:
     between 655,360 and 8,294,400. gpt-image-1.5, gpt-image-1, and
     gpt-image-1-mini use auto, 1024x1024, 1536x1024, or 1024x1536.
   - Quality: low, medium, high, or auto. Low is fastest for drafts.
-  - Background: auto, opaque, or transparent. gpt-image-2 and fal models do
-    not support transparent backgrounds.
-  - Format: png, jpeg, or webp for OpenAI; png or jpeg for fal. Use
-    --compression 0-100 only with OpenAI jpeg or webp outputs.
-  - Moderation: auto or low for OpenAI models.
+  - Background: auto, opaque, or transparent when supported. gpt-image-2,
+    Flux, Qwen, and Seedream do not support transparent backgrounds.
+  - Format: png, jpeg, or webp for GPT Image models; png or jpeg for the
+    other fal models.
   - fal-only controls: --seed, --safety-tolerance for Flux, and
-    --enhance-prompt for flux-pro-1.1.
-  - This command generates one text-to-image result. GPT Image also
-    supports image edits, reference images, masks, partial-image streaming,
-    and multiple images per request, but those are not exposed by this
-    built-in Zero command yet.`,
+    --enhance-prompt for flux-pro-1.1. --compression and --moderation low are
+    not supported on the fal-backed image path.
+  - Image-to-image: pass --image-url to use the model's fal edit/redux endpoint.
+    Flux Redux accepts --image-prompt-strength to override the provider
+    default; GPT edit models accept --input-fidelity and supported models
+    accept --mask-image-url.`,
     )
     .action(
-      withErrorHandler(async (options: ImageOptions) => {
+      withErrorHandler(async (options: ImageOptions, command: Command) => {
         const prompt = readPrompt(options, config.usageCommand);
         const compression = parseCompression(options.compression);
+        const inputFidelity = parseInputFidelity(options.inputFidelity);
+        const imagePromptStrength = parseImagePromptStrength(
+          options.imagePromptStrength,
+        );
+        const hasSourceImage = options.imageUrl.length > 0;
+        const size =
+          hasSourceImage && command.getOptionValueSource("size") === "default"
+            ? "auto"
+            : options.size;
         const result = await generateWebImage({
           prompt,
           model: options.model,
-          size: options.size,
+          size,
           quality: options.quality,
           background: options.background,
           outputFormat: options.format,
@@ -161,6 +219,10 @@ Options:
           seed: options.seed,
           safetyTolerance: options.safetyTolerance,
           enhancePrompt: options.enhancePrompt,
+          imageUrls: options.imageUrl,
+          maskImageUrl: options.maskImageUrl,
+          inputFidelity,
+          imagePromptStrength,
         });
 
         if (options.json) {

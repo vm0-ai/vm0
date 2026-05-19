@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { zeroOrgMembershipRequestsContract } from "@vm0/api-contracts/contracts/zero-org-members";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -116,6 +117,34 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     expect(clerk.callCount()).toBe(0);
   });
 
+  it("rejects invalid bodies before calling Clerk", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    const clerk = mockClerkMembershipAction(
+      "accept",
+      orgId,
+      "req_test123",
+      200,
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/org/membership-requests", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(clerk.callCount()).toBe(0);
+  });
+
   it("returns 401 when not authenticated", async () => {
     const response = await accept(
       apiClient().accept({
@@ -214,6 +243,34 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Access denied", code: "FORBIDDEN" },
+    });
+    expect(clerk.callCount()).toBe(0);
+  });
+
+  it("rejects invalid bodies before calling Clerk", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    const clerk = mockClerkMembershipAction(
+      "reject",
+      orgId,
+      "req_test456",
+      200,
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/org/membership-requests", {
+      method: "DELETE",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
     });
     expect(clerk.callCount()).toBe(0);
   });

@@ -1,34 +1,20 @@
-import {
-  eq,
-  lt,
-  and,
-  count,
-  gt,
-  or,
-  sql,
-  asc,
-  desc,
-  isNotNull,
-  avg,
-  inArray,
-} from "drizzle-orm";
+import { eq, lt, and, count, gt, or, sql, inArray } from "drizzle-orm";
 import type { SupportedFramework } from "@vm0/core/frameworks";
+import {
+  storedExecutionContextSchema,
+  type StoredExecutionContext,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { z } from "zod";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { env } from "../../env";
-import { getCachedUser } from "../auth/user-cache-service";
 import { transitionRunStatus } from "../infra/run/run-status";
 import {
   PENDING_RUN_TTL_MS,
-  getEffectiveConcurrencyLimit,
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
@@ -62,15 +48,28 @@ import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
 import { publishRunChangedForUserSafely } from "../infra/run/run-realtime";
-import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { findBestRunner } from "../infra/run/scheduling";
+import { publishJobNotification } from "../infra/realtime/client";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import type { QueueResponse } from "@vm0/api-contracts/contracts/runs";
 import { recordSandboxOperation } from "../infra/metrics";
 
 const log = logger("zero:run-queue-service");
 
 // Queue entry TTL: 2 hours (same as runner_job_queue)
 const QUEUE_TTL_MS = 2 * 60 * 60 * 1000;
+const API_QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
+
+const apiQueuedRunnerJobPayloadSchema = z.object({
+  version: z.literal(1),
+  runnerGroup: z.string(),
+  profile: z.string(),
+  sessionId: z.string().nullable(),
+  executionContext: storedExecutionContextSchema,
+});
+
+type ApiQueuedRunnerJobPayload = z.infer<
+  typeof apiQueuedRunnerJobPayloadSchema
+>;
 
 /**
  * Dispatcher function type for queued runs.
@@ -284,6 +283,23 @@ export async function drainOrgQueue(
         dequeued.encryptedParams,
         encryptionKey,
       );
+      try {
+        const apiPayload = parseApiQueuedRunnerJobPayload(decryptedMap);
+        if (apiPayload) {
+          await promoteApiQueuedRunnerJob(dequeued.runId, apiPayload);
+          log.debug(`Queued API run ${dequeued.runId} promoted to runner job`);
+          return; // Successfully promoted — done
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        log.error(
+          `Failed to promote queued API run ${dequeued.runId}: ${errorMessage}`,
+        );
+        await markQueuedRunFailed(dequeued.runId, errorMessage);
+        continue; // Try next entry
+      }
+
       if (!decryptedMap?.__params) {
         log.error(`Failed to decrypt params for queued run ${dequeued.runId}`);
         await markQueuedRunFailed(
@@ -320,6 +336,74 @@ export async function drainOrgQueue(
       log.error("Failed to publish queue:changed after drain", { err });
     });
   }
+}
+
+function parseApiQueuedRunnerJobPayload(
+  decryptedMap: Record<string, string> | null,
+): ApiQueuedRunnerJobPayload | null {
+  const rawPayload = decryptedMap?.[API_QUEUED_RUNNER_JOB_PAYLOAD_KEY];
+  if (!rawPayload) {
+    return null;
+  }
+
+  const parsedPayload: unknown = JSON.parse(rawPayload);
+  return apiQueuedRunnerJobPayloadSchema.parse(parsedPayload);
+}
+
+async function promoteApiQueuedRunnerJob(
+  runId: string,
+  payload: {
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly sessionId: string | null;
+    readonly executionContext: StoredExecutionContext;
+  },
+): Promise<void> {
+  await globalThis.services.db.transaction(async (tx) => {
+    await tx.insert(runnerJobQueue).values({
+      runId,
+      runnerGroup: payload.runnerGroup,
+      profile: payload.profile,
+      sessionId: payload.sessionId,
+      executionContext: payload.executionContext,
+      expiresAt: new Date(Date.now() + QUEUE_TTL_MS),
+    });
+
+    await tx
+      .update(agentRuns)
+      .set({ runnerGroup: payload.runnerGroup })
+      .where(eq(agentRuns.id, runId));
+  });
+
+  await notifyApiQueuedRunnerJob(runId, payload);
+}
+
+async function notifyApiQueuedRunnerJob(
+  runId: string,
+  payload: {
+    readonly runnerGroup: string;
+    readonly profile: string;
+    readonly sessionId: string | null;
+  },
+): Promise<void> {
+  let targetRunnerId: string | null = null;
+  try {
+    const target = await findBestRunner(
+      payload.runnerGroup,
+      payload.profile,
+      payload.sessionId,
+    );
+    targetRunnerId = target?.runnerId ?? null;
+  } catch (error) {
+    log.warn(`findBestRunner failed for run ${runId}, using broadcast`, error);
+  }
+
+  await publishJobNotification(
+    payload.runnerGroup,
+    runId,
+    payload.profile,
+    targetRunnerId,
+  );
 }
 
 interface DequeuedEntry {
@@ -674,193 +758,4 @@ export async function dispatchQueuedZeroRun(
       diagnosticSpans: contextResult.timings.diagnosticSpans,
     },
   });
-}
-
-// ─── Queue Status (Zero layer) ─────────────────────────────────────────────
-
-const RECENT_RUNS_FOR_ETA = 20;
-const PROMPT_TRUNCATE_LENGTH = 200;
-
-/**
- * Get run queue status for an org, including concurrency info,
- * queued/running entries, and estimated time per run.
- *
- * Privacy filtering: non-owners see nullified personal fields.
- *
- * This is a Zero-layer concern because it joins zero_runs and zero_agents
- * to enrich queue entries with triggerSource and agent display names.
- */
-export async function getRunQueueStatus(
-  userId: string,
-  orgId: string,
-  orgTier: OrgTier,
-): Promise<QueueResponse> {
-  const db = globalThis.services.db;
-  const limit = getEffectiveConcurrencyLimit(orgTier);
-
-  // Count active runs (same logic as checkRunConcurrencyLimit)
-  const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
-  const [activeResult] = await db
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
-          ),
-        ),
-      ),
-    );
-  const active = Number(activeResult?.count ?? 0);
-
-  // Fetch queued runs in FIFO order (with extra fields for owner details)
-  const queuedRuns = await db
-    .select({
-      id: agentRuns.id,
-      runUserId: agentRuns.userId,
-      createdAt: agentRuns.createdAt,
-      agentName: agentComposes.name,
-      agentDisplayName: zeroAgents.displayName,
-      prompt: agentRuns.prompt,
-      triggerSource: zeroRuns.triggerSource,
-      continuedFromSessionId: agentRuns.continuedFromSessionId,
-    })
-    .from(agentRuns)
-    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "queued")))
-    .orderBy(asc(agentRuns.createdAt));
-
-  // Fetch running tasks
-  const runningRuns = await db
-    .select({
-      id: agentRuns.id,
-      runUserId: agentRuns.userId,
-      startedAt: agentRuns.startedAt,
-      agentName: agentComposes.name,
-      agentDisplayName: zeroAgents.displayName,
-    })
-    .from(agentRuns)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "running")))
-    .orderBy(asc(agentRuns.startedAt));
-
-  // Calculate estimated time per run from recent completed runs
-  const recentRuns = db
-    .select({
-      durationMs:
-        sql<number>`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`.as(
-          "duration_ms",
-        ),
-    })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        eq(agentRuns.status, "completed"),
-        isNotNull(agentRuns.completedAt),
-        isNotNull(agentRuns.startedAt),
-      ),
-    )
-    .orderBy(desc(agentRuns.completedAt))
-    .limit(RECENT_RUNS_FOR_ETA)
-    .as("recent_runs");
-  const [etaResult] = await db
-    .select({
-      avgMs: avg(recentRuns.durationMs),
-    })
-    .from(recentRuns);
-  const estimatedTimePerRun = etaResult?.avgMs
-    ? Math.round(Number(etaResult.avgMs))
-    : null;
-
-  // Resolve user emails in parallel (for both queued and running)
-  const allUserIds = [
-    ...new Set([
-      ...queuedRuns.map((r) => {
-        return r.runUserId;
-      }),
-      ...runningRuns.map((r) => {
-        return r.runUserId;
-      }),
-    ]),
-  ];
-  const userMap = new Map<string, string>();
-  await Promise.all(
-    allUserIds.map(async (uid) => {
-      const user = await getCachedUser(uid);
-      userMap.set(uid, user.email);
-    }),
-  );
-
-  // Build queue response with privacy filtering
-  const queue = queuedRuns.map((run, index) => {
-    const isOwner = run.runUserId === userId;
-    return {
-      position: index + 1,
-      agentName: isOwner ? (run.agentName ?? "unknown") : null,
-      agentDisplayName: isOwner ? (run.agentDisplayName ?? null) : null,
-      userEmail: isOwner ? (userMap.get(run.runUserId) ?? "unknown") : null,
-      createdAt: run.createdAt.toISOString(),
-      isOwner,
-      runId: isOwner ? run.id : null,
-      prompt: isOwner
-        ? run.prompt.length > PROMPT_TRUNCATE_LENGTH
-          ? run.prompt.slice(0, PROMPT_TRUNCATE_LENGTH) + "..."
-          : run.prompt
-        : null,
-      triggerSource: isOwner
-        ? ((run.triggerSource ?? "cli") as TriggerSource)
-        : null,
-      sessionLink:
-        isOwner && run.continuedFromSessionId
-          ? `/chat/${run.continuedFromSessionId}`
-          : null,
-    };
-  });
-
-  // Build running tasks response with privacy filtering
-  const runningTasks = runningRuns.map((run) => {
-    const isOwner = run.runUserId === userId;
-    return {
-      runId: isOwner ? run.id : null,
-      agentName: run.agentName ?? "unknown",
-      agentDisplayName: run.agentDisplayName ?? null,
-      userEmail: userMap.get(run.runUserId) ?? "unknown",
-      startedAt: run.startedAt?.toISOString() ?? null,
-      isOwner,
-    };
-  });
-
-  return {
-    concurrency: {
-      tier: orgTier,
-      limit,
-      active,
-      available: limit === 0 ? -1 : Math.max(0, limit - active),
-    },
-    queue,
-    runningTasks,
-    estimatedTimePerRun,
-  };
 }

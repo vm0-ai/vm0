@@ -1,11 +1,20 @@
 import { Buffer } from "node:buffer";
 
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   PROVIDER_HANDLERS,
+  refreshProviderToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
+import {
+  getModelProviderOAuthHandler,
+  isModelProviderOAuthHandlerKey,
+  type ModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
@@ -21,16 +30,18 @@ import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 import {
-  decryptSecretValue,
   decryptSecretsMap,
-  encryptSecretValue,
+  decryptStoredSecretValue,
+  encryptStoredSecretValue,
 } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
 type ProviderHandler =
-  (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS];
+  | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
+  | ModelProviderOAuthHandler;
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
@@ -123,6 +134,7 @@ interface SecretTokenLookupArgs {
   readonly userId: string;
   readonly sourceType: OAuthSecretSource;
   readonly sourceUserId?: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
@@ -133,14 +145,13 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
 interface RefreshTokenContext {
   readonly refreshTokenSecret: string;
   readonly currentRefreshToken: string;
-  readonly clientId: string;
+  readonly clientId: string | undefined;
   readonly clientSecret: string | undefined;
   readonly accessTokenSecret: string;
   readonly secretUserId: string;
 }
 
 type RefreshableProviderHandler = ProviderHandler & {
-  readonly refreshToken: NonNullable<ProviderHandler["refreshToken"]>;
   readonly getRefreshSecretName: NonNullable<
     ProviderHandler["getRefreshSecretName"]
   >;
@@ -153,6 +164,7 @@ interface SyncRefreshTokensArgs {
   readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshExpiredTokensArgs {
@@ -175,6 +187,7 @@ interface RefreshBatchContext {
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
   readonly envVarsByConnector: Map<string, readonly string[]>;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface BasicArgContext {
@@ -193,11 +206,13 @@ const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function getRefreshSourceType(handlerKey: string): OAuthSecretSource {
-  return handlerKey === "codex-oauth" ? "model-provider" : "connector";
+  return isModelProviderOAuthHandlerKey(handlerKey)
+    ? "model-provider"
+    : "connector";
 }
 
 function sourceHandlerToProviderType(handlerKey: string): string | undefined {
-  return handlerKey === "codex-oauth" ? "codex-oauth-token" : undefined;
+  return isModelProviderOAuthHandlerKey(handlerKey) ? handlerKey : undefined;
 }
 
 function resolveSecretUserId(
@@ -228,6 +243,10 @@ function resolveRefreshMetadata(
 }
 
 function providerHandler(connectorType: string) {
+  const modelProviderHandler = getModelProviderOAuthHandler(connectorType);
+  if (modelProviderHandler) {
+    return modelProviderHandler;
+  }
   if (!Object.hasOwn(PROVIDER_HANDLERS, connectorType)) {
     return null;
   }
@@ -245,26 +264,32 @@ function currentProviderEnv(): ProviderEnv {
   ) as ProviderEnv;
 }
 
-async function getSecretValue(
-  db: Db,
-  orgId: string,
-  userId: string,
-  name: string,
-  type: SecretType,
-): Promise<string | null> {
-  const [row] = await db
+async function getSecretValue(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly type: SecretType;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<string | null> {
+  const [row] = await args.db
     .select({ encryptedValue: secretsTable.encryptedValue })
     .from(secretsTable)
     .where(
       and(
-        eq(secretsTable.orgId, orgId),
-        eq(secretsTable.userId, userId),
-        eq(secretsTable.name, name),
-        eq(secretsTable.type, type),
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.name, args.name),
+        eq(secretsTable.type, args.type),
       ),
     )
     .limit(1);
-  return row ? decryptSecretValue(row.encryptedValue) : null;
+  return row
+    ? await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      )
+    : null;
 }
 
 async function upsertSecretValue(
@@ -275,9 +300,13 @@ async function upsertSecretValue(
     readonly name: string;
     readonly value: string;
     readonly type: SecretType;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(
+    args.value,
+    args.featureSwitchContext,
+  );
   await db
     .insert(secretsTable)
     .values({
@@ -314,13 +343,18 @@ async function getConnectorRefreshToken(
   }
 
   const secretName = handler.getRefreshSecretName();
-  const token = await getSecretValue(
-    args.db,
-    args.orgId,
-    resolveSecretUserId(args.sourceType, args.userId, args.sourceUserId),
-    secretName,
-    args.sourceType,
-  );
+  const token = await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+    name: secretName,
+    type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
   return token ? { secretName, token } : null;
 }
 
@@ -332,13 +366,18 @@ async function getConnectorAccessToken(
     return null;
   }
 
-  return await getSecretValue(
-    args.db,
-    args.orgId,
-    resolveSecretUserId(args.sourceType, args.userId, args.sourceUserId),
-    handler.getSecretName(),
-    args.sourceType,
-  );
+  return await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+    name: handler.getSecretName(),
+    type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
 }
 
 async function syncRefreshTokensFromDb(
@@ -357,6 +396,7 @@ async function syncRefreshTokensFromDb(
         userId: args.userId,
         sourceType: metadata.sourceType,
         sourceUserId: metadata.sourceUserId,
+        featureSwitchContext: args.featureSwitchContext,
       });
     }),
   );
@@ -494,12 +534,14 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
   readonly context: RefreshTokenContext;
 } | null {
   const handler = providerHandler(args.connectorType);
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
+  if (
+    !handler?.getRefreshSecretName ||
+    (!handler.refreshToken && !handler.refreshTokenWithArgs)
+  ) {
     return null;
   }
   const refreshableHandler: RefreshableProviderHandler = {
     ...handler,
-    refreshToken: handler.refreshToken,
     getRefreshSecretName: handler.getRefreshSecretName,
   };
   if (args.sourceType === "model-provider" && !args.metadataKey) {
@@ -515,13 +557,38 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
     return null;
   }
 
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
   const env = currentProviderEnv();
-  const clientId = handler.getClientId(env);
-  if (!clientId) {
-    L.debug(
-      `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
+  if (args.sourceType === "connector") {
+    const typeResult = connectorTypeSchema.safeParse(args.connectorType);
+    if (!typeResult.success) {
+      L.debug(`${args.connectorType} is not a connector type, skipping`);
+      return null;
+    }
+    const credentials = getConnectorOAuthCredentials(
+      typeResult.data,
+      (name) => {
+        return optionalEnv(name);
+      },
     );
-    return null;
+    if (!credentials?.configured) {
+      L.debug(
+        `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
+      );
+      return null;
+    }
+    clientId = credentials.clientId;
+    clientSecret = credentials.clientSecret;
+  } else {
+    clientId = handler.getClientId(env);
+    if (!clientId) {
+      L.debug(
+        `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
+      );
+      return null;
+    }
+    clientSecret = refreshableHandler.getClientSecret(env);
   }
 
   return {
@@ -530,7 +597,7 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
       refreshTokenSecret,
       currentRefreshToken,
       clientId,
-      clientSecret: refreshableHandler.getClientSecret(env),
+      clientSecret,
       accessTokenSecret: refreshableHandler.getSecretName(),
       secretUserId: resolveSecretUserId(
         args.sourceType,
@@ -556,6 +623,7 @@ async function markRefreshSuccess(
     name: context.accessTokenSecret,
     value: result.accessToken,
     type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
   });
   if (result.refreshToken) {
     await upsertSecretValue(args.db, {
@@ -564,6 +632,7 @@ async function markRefreshSuccess(
       name: context.refreshTokenSecret,
       value: result.refreshToken,
       type: args.sourceType,
+      featureSwitchContext: args.featureSwitchContext,
     });
   }
 
@@ -651,13 +720,19 @@ async function refreshConnectorAccessToken(
     return null;
   }
 
-  const refreshResult = await settle(
-    prepared.handler.refreshToken(
-      prepared.context.clientId,
-      prepared.context.clientSecret ?? "",
-      prepared.context.currentRefreshToken,
-    ),
-  );
+  const refreshPromise =
+    args.sourceType === "model-provider" && prepared.handler.refreshToken
+      ? prepared.handler.refreshToken(
+          prepared.context.clientId ?? "",
+          prepared.context.clientSecret ?? "",
+          prepared.context.currentRefreshToken,
+        )
+      : refreshProviderToken(prepared.handler, {
+          clientId: prepared.context.clientId,
+          clientSecret: prepared.context.clientSecret,
+          refreshToken: prepared.context.currentRefreshToken,
+        });
+  const refreshResult = await settle(refreshPromise);
 
   if (!refreshResult.ok) {
     const error = refreshResult.error;
@@ -821,6 +896,7 @@ async function refreshSelectedTokens(
         sourceUserId: metadata.sourceUserId,
         metadataKey: metadata.metadataKey,
         connectorSecrets: context.secrets,
+        featureSwitchContext: context.featureSwitchContext,
       });
       if (!freshToken) {
         L.warn(
@@ -862,6 +938,7 @@ async function syncSkippedTokens(
           userId: context.userId,
           sourceType: metadata.sourceType,
           sourceUserId: metadata.sourceUserId,
+          featureSwitchContext: context.featureSwitchContext,
         }),
       };
     }),
@@ -941,6 +1018,12 @@ async function refreshExpiredTokens(
     return emptyRefreshResult;
   }
 
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    orgId,
+    args.auth.userId,
+  );
+
   const connectorTypes = [...new Set(refreshable.values())];
   const metadataByConnector = buildMetadataByConnector(
     refreshable,
@@ -967,6 +1050,7 @@ async function refreshExpiredTokens(
     userId: args.auth.userId,
     secrets: args.secrets,
     metadataByConnector,
+    featureSwitchContext,
   });
 
   const context = {
@@ -977,6 +1061,7 @@ async function refreshExpiredTokens(
     secrets: args.secrets,
     metadataByConnector,
     envVarsByConnector,
+    featureSwitchContext,
   } satisfies RefreshBatchContext;
   const refreshResults = await refreshSelectedTokens(context, toRefresh);
   const skippedTypes = connectorTypes.filter((connectorType) => {

@@ -2,15 +2,14 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
+  getConnectorOAuthCredentials,
+  getConnectorSecretNames,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthMethodType,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  CONNECTOR_TYPES,
-  connectorTypeSchema,
-} from "@vm0/connectors/connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -22,7 +21,12 @@ import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
   PROVIDER_HANDLERS,
   providerEnvFromObject,
+  refreshProviderToken,
 } from "@vm0/connectors/oauth-providers";
+import {
+  getModelProviderOAuthHandler,
+  type ModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
@@ -33,6 +37,105 @@ import { publishUserSignal } from "../../infra/realtime/client";
  * `model_providers` and `secrets WHERE type='model-provider'`.
  */
 export type OAuthSecretSource = "connector" | "model-provider";
+
+type OAuthHandler =
+  | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
+  | ModelProviderOAuthHandler;
+
+function getOAuthHandler(
+  handlerKey: string,
+  sourceType: OAuthSecretSource,
+): OAuthHandler | undefined {
+  if (sourceType === "model-provider") {
+    return getModelProviderOAuthHandler(handlerKey);
+  }
+  return PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+}
+
+interface OAuthClientCredentials {
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+}
+
+function resolveConnectorRefreshCredentials(
+  connectorType: string,
+): OAuthClientCredentials | null {
+  const typeResult = connectorTypeSchema.safeParse(connectorType);
+  if (!typeResult.success) {
+    log.debug(`${connectorType} is not a connector type, skipping`);
+    return null;
+  }
+
+  const env = providerEnvFromObject(globalThis.services.env);
+  const credentials = getConnectorOAuthCredentials(typeResult.data, (name) => {
+    return env[name];
+  });
+  if (!credentials?.configured) {
+    log.debug(
+      `${connectorType} OAuth credentials not configured, skipping token refresh`,
+    );
+    return null;
+  }
+
+  return {
+    clientId: credentials.clientId,
+    clientSecret: credentials.clientSecret,
+  };
+}
+
+function resolveModelProviderRefreshCredentials(
+  connectorType: string,
+  handler: OAuthHandler,
+): OAuthClientCredentials | null {
+  const env = providerEnvFromObject(globalThis.services.env);
+  const clientId = handler.getClientId(env);
+  if (!clientId) {
+    log.debug(
+      `${connectorType} OAuth client ID not configured, skipping token refresh`,
+    );
+    return null;
+  }
+
+  return {
+    clientId,
+    clientSecret: handler.getClientSecret(env),
+  };
+}
+
+function resolveRefreshOAuthCredentials(args: {
+  readonly connectorType: string;
+  readonly sourceType: OAuthSecretSource;
+  readonly handler: OAuthHandler;
+}): OAuthClientCredentials | null {
+  if (args.sourceType === "connector") {
+    return resolveConnectorRefreshCredentials(args.connectorType);
+  }
+  return resolveModelProviderRefreshCredentials(
+    args.connectorType,
+    args.handler,
+  );
+}
+
+async function refreshOAuthToken(args: {
+  readonly sourceType: OAuthSecretSource;
+  readonly handler: OAuthHandler;
+  readonly credentials: OAuthClientCredentials;
+  readonly refreshToken: string;
+}) {
+  if (args.sourceType === "model-provider" && args.handler.refreshToken) {
+    return await args.handler.refreshToken(
+      args.credentials.clientId ?? "",
+      args.credentials.clientSecret ?? "",
+      args.refreshToken,
+    );
+  }
+
+  return await refreshProviderToken(args.handler, {
+    clientId: args.credentials.clientId,
+    clientSecret: args.credentials.clientSecret,
+    refreshToken: args.refreshToken,
+  });
+}
 
 /**
  * Resolve the storage userId for a given OAuth secret source.
@@ -70,14 +173,6 @@ function parseConnectorType(type: string): ConnectorType {
     throw badRequest(`Invalid connector type: ${type}`);
   }
   return result.data;
-}
-
-/**
- * Get secret name for a connector type
- */
-function getSecretNameForConnector(type: ConnectorType): string {
-  if (type === "computer") return "COMPUTER_CONNECTOR_AUTHTOKEN";
-  return PROVIDER_HANDLERS[type].getSecretName();
 }
 
 /**
@@ -313,129 +408,6 @@ export async function getConnector(
   };
 }
 
-interface ExternalUserInfo {
-  id: string;
-  username: string;
-  email: string | null;
-}
-
-/**
- * Create or update a connector with OAuth token
- * Also stores the associated secret with type="connector"
- */
-export async function upsertOAuthConnector(
-  orgId: string,
-  userId: string,
-  type: ConnectorType,
-  accessToken: string,
-  userInfo: ExternalUserInfo,
-  oauthScopes: string[],
-  options?: {
-    refreshToken?: string | null;
-    refreshSecretName?: string;
-    expiresIn?: number;
-  },
-): Promise<{ connector: ConnectorResponse; created: boolean }> {
-  const secretName = getSecretNameForConnector(type);
-  const db = globalThis.services.db;
-  // Some providers issue non-expiring access tokens (e.g., classic GitHub
-  // OAuth apps, legacy Notion) — those handlers omit `refreshToken`, so we
-  // keep `tokenExpiresAt` null and the firewall refresh path naturally
-  // skips them. For refreshable providers, fall back to 1 h when the
-  // exchange response lacks `expires_in` so firewall auth can always judge
-  // freshness and never hit the null-skip bug from #9836.
-  const isRefreshable =
-    type !== "computer" && !!PROVIDER_HANDLERS[type].refreshToken;
-  const fallbackSecs = isRefreshable
-    ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
-    : null;
-  const expiresInSecs = options?.expiresIn ?? fallbackSecs;
-  const tokenExpiresAt =
-    expiresInSecs != null ? new Date(Date.now() + expiresInSecs * 1000) : null;
-
-  // Upsert access token secret
-  await upsertSecretByOrg(
-    orgId,
-    userId,
-    secretName,
-    accessToken,
-    "connector",
-    `OAuth token for ${type} connector`,
-  );
-
-  // Upsert refresh token secret if provided
-  if (options?.refreshToken && options.refreshSecretName) {
-    await upsertSecretByOrg(
-      orgId,
-      userId,
-      options.refreshSecretName,
-      options.refreshToken,
-      "connector",
-      `OAuth refresh token for ${type} connector`,
-    );
-  }
-
-  // Upsert connector
-  const [connectorRow] = await db
-    .insert(connectors)
-    .values({
-      userId,
-      type,
-      authMethod: "oauth",
-      externalId: userInfo.id,
-      externalUsername: userInfo.username,
-      externalEmail: userInfo.email,
-      oauthScopes: JSON.stringify(oauthScopes),
-      tokenExpiresAt,
-      needsReconnect: false,
-      orgId,
-    })
-    .onConflictDoUpdate({
-      target: [connectors.orgId, connectors.userId, connectors.type],
-      set: {
-        authMethod: "oauth",
-        externalId: userInfo.id,
-        externalUsername: userInfo.username,
-        externalEmail: userInfo.email,
-        oauthScopes: JSON.stringify(oauthScopes),
-        tokenExpiresAt,
-        needsReconnect: false,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-
-  if (!connectorRow) {
-    throw new Error("Failed to upsert connector");
-  }
-  log.debug("connector upserted", { connectorId: connectorRow.id, type });
-
-  // Notify the operating user's open tabs (e.g. the connector settings page
-  // waiting for the OAuth popup callback) that connector state changed.
-  await publishUserSignal([userId], "connector:changed");
-
-  return {
-    connector: {
-      id: connectorRow.id,
-      type: parseConnectorType(connectorRow.type),
-      authMethod: connectorRow.authMethod,
-      externalId: connectorRow.externalId,
-      externalUsername: connectorRow.externalUsername,
-      externalEmail: connectorRow.externalEmail,
-      oauthScopes: connectorRow.oauthScopes
-        ? JSON.parse(connectorRow.oauthScopes)
-        : null,
-      needsReconnect: connectorRow.needsReconnect,
-      createdAt: connectorRow.createdAt.toISOString(),
-      updatedAt: connectorRow.updatedAt.toISOString(),
-    },
-    // New insert: both timestamps use DB DEFAULT NOW() (same value).
-    // Conflict update: updatedAt is set to new Date() in the set clause, so they differ.
-    created:
-      connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
-  };
-}
-
 /**
  * Best-effort revocation of an OAuth provider's remote token/grant.
  * Looks up the connector's handler, reads the access token from DB,
@@ -520,13 +492,10 @@ export async function deleteConnector(
     // OAuth connector: delete DB record + connector-type secrets
     await db.delete(connectors).where(eq(connectors.id, existing.id));
 
-    const secretNames: string[] = [];
-    const config = CONNECTOR_TYPES[type];
-    const authMethodConfig =
-      config.authMethods[existing.authMethod as ConnectorAuthMethodType];
-    if (authMethodConfig) {
-      secretNames.push(...Object.keys(authMethodConfig.secrets));
-    }
+    const secretNames = getConnectorSecretNames(
+      type,
+      existing.authMethod as ConnectorAuthMethodType,
+    );
 
     if (existing.authMethod === "oauth" && type !== "computer") {
       const handler =
@@ -623,9 +592,11 @@ export async function refreshConnectorAccessToken(
   } = {},
 ): Promise<string | null> {
   const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
-  const handler =
-    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
+  const handler = getOAuthHandler(connectorType, sourceType);
+  if (
+    !handler?.getRefreshSecretName ||
+    (!handler.refreshToken && !handler.refreshTokenWithArgs)
+  ) {
     return null;
   }
   if (sourceType === "model-provider" && !options.metadataKey) {
@@ -641,19 +612,14 @@ export async function refreshConnectorAccessToken(
     return null;
   }
 
-  const env = providerEnvFromObject(globalThis.services.env);
-  const clientId = handler.getClientId(env);
-  if (!clientId) {
-    log.debug(
-      `${connectorType} OAuth client ID not configured, skipping token refresh`,
-    );
+  const credentials = resolveRefreshOAuthCredentials({
+    connectorType,
+    sourceType,
+    handler,
+  });
+  if (!credentials) {
     return null;
   }
-  // clientSecret may legitimately be undefined for PKCE-only handlers
-  // (e.g. codex-oauth). The handler's refreshToken is the source of truth
-  // for credential needs — if a non-PKCE handler is misconfigured the
-  // upstream call will fail and the catch below records the error.
-  const clientSecret = handler.getClientSecret(env);
 
   const accessTokenSecret = handler.getSecretName();
 
@@ -664,11 +630,12 @@ export async function refreshConnectorAccessToken(
   );
 
   try {
-    const result = await handler.refreshToken(
-      clientId,
-      clientSecret ?? "",
-      currentRefreshToken,
-    );
+    const result = await refreshOAuthToken({
+      sourceType,
+      handler,
+      credentials,
+      refreshToken: currentRefreshToken,
+    });
 
     // Persist new tokens to database
     await upsertConnectorSecret(
@@ -826,8 +793,7 @@ export async function getConnectorAccessToken(
   sourceType: OAuthSecretSource = "connector",
   options: { sourceUserId?: string } = {},
 ): Promise<string | null> {
-  const handler =
-    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  const handler = getOAuthHandler(connectorType, sourceType);
   if (!handler) return null;
   return getSecretValue(
     orgId,
@@ -849,8 +815,7 @@ export async function getConnectorRefreshToken(
   sourceType: OAuthSecretSource = "connector",
   options: { sourceUserId?: string } = {},
 ): Promise<{ secretName: string; token: string } | null> {
-  const handler =
-    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  const handler = getOAuthHandler(connectorType, sourceType);
   if (!handler?.getRefreshSecretName) return null;
   const secretName = handler.getRefreshSecretName();
   const token = await getSecretValue(

@@ -25,6 +25,13 @@ export const todoist = {
     oauth: {
       authorizationUrl: "https://todoist.com/oauth/authorize",
       tokenUrl: "https://todoist.com/oauth/access_token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "TODOIST_OAUTH_CLIENT_ID",
+        clientSecretEnv: "TODOIST_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["data:read_write", "data:delete", "project:delete"],
     },
   },

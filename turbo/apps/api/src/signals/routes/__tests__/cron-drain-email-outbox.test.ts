@@ -128,7 +128,9 @@ describe("GET /api/cron/drain-email-outbox", () => {
   it("rejects requests with no authorization header", async () => {
     const response = await accept(apiClient().drain({ headers: {} }), [401]);
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
   });
 
   it("accepts requests with the valid cron secret", async () => {

@@ -1,24 +1,29 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { cliTokens } from "@vm0/db/schema/cli-tokens";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { storages } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { generateCliToken, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { seedInstructionsStorage$ } from "./helpers/zero-skills";
 import {
   deleteTeamCompose$,
   seedTeamCompose$,
@@ -31,6 +36,40 @@ const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+async function cliAuthHeaders(
+  fixture: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  role: "admin" | "member" = "admin",
+): Promise<{ readonly authorization: string }> {
+  const tokenId = randomUUID();
+  const token = generateCliToken(fixture.userId, fixture.orgId, tokenId);
+  const writeDb = store.set(writeDb$);
+
+  await writeDb.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: fixture.userId,
+    name: "test token",
+    expiresAt: new Date(now() + 60 * 60 * 1000),
+  });
+  await writeDb
+    .insert(orgMembersCache)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role,
+      cachedAt: new Date(now()),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role, cachedAt: new Date(now()) },
+    });
+
+  return { authorization: `Bearer ${token}` };
 }
 
 describe("GET /api/zero/agents/:id", () => {
@@ -65,6 +104,19 @@ describe("GET /api/zero/agents/:id", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
+  });
+
+  it("returns 400 for invalid path params", async () => {
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await accept(
+      client.get({
+        params: { id: "not-a-uuid" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns the agent when found in the active org", async () => {
@@ -108,6 +160,81 @@ describe("GET /api/zero/agents/:id", () => {
       selectedModel: null,
       preferPersonalProvider: false,
       visibility: "public",
+    });
+  });
+
+  it("accepts an owner CLI token for a private agent", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            {
+              displayName: "CLI Private Agent",
+              visibility: "private",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    const agentId = fixture.composeIds[0]!;
+
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: await cliAuthHeaders(fixture, "member"),
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId,
+      ownerId: fixture.userId,
+      displayName: "CLI Private Agent",
+      visibility: "private",
+    });
+  });
+
+  it("hides private agents from same-org non-owners", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            {
+              displayName: "Owner Only",
+              visibility: "private",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    const agentId = fixture.composeIds[0]!;
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const ownerResponse = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(ownerResponse.body.visibility).toBe("private");
+
+    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+    const otherResponse = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(otherResponse.body).toStrictEqual({
+      error: { message: `Agent not found: ${agentId}`, code: "NOT_FOUND" },
     });
   });
 
@@ -192,6 +319,60 @@ describe("GET /api/zero/agents/:id", () => {
       },
     });
   });
+
+  it("returns the agent for a zero token with agent:read capability", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            {
+              displayName: "Zero Token Agent",
+              description: "Read by zero token",
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    const agentId = fixture.composeIds[0]!;
+    const runId = `run_${randomUUID()}`;
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId,
+      capabilities: ["agent:read"],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+    await store
+      .set(writeDb$)
+      .insert(orgMembersCache)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        role: "admin",
+        cachedAt: new Date(now()),
+      });
+
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await accept(
+      client.get({
+        params: { id: agentId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      agentId,
+      ownerId: fixture.userId,
+      displayName: "Zero Token Agent",
+      description: "Read by zero token",
+    });
+  });
 });
 
 describe("DELETE /api/zero/agents/:id", () => {
@@ -240,6 +421,19 @@ describe("DELETE /api/zero/agents/:id", () => {
         code: "FORBIDDEN",
       },
     });
+  });
+
+  it("returns 400 for invalid path params", async () => {
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await accept(
+      client.delete({
+        params: { id: "not-a-uuid" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("returns 404 for an unknown agent id", async () => {
@@ -360,6 +554,71 @@ describe("DELETE /api/zero/agents/:id", () => {
         .select({ id: agentComposes.id })
         .from(agentComposes)
         .where(eq(agentComposes.id, agentId)),
+    ).resolves.toStrictEqual([]);
+  });
+
+  it("allows an owner CLI token to delete and cleans instructions storage", async () => {
+    const fixture = await track(
+      store.set(seedTeamCompose$, { composes: [{}] }, context.signal),
+    );
+    const agentId = fixture.composeIds[0];
+    if (!agentId) {
+      throw new Error("Expected seeded agent");
+    }
+    const agentName = `agent-${agentId.slice(0, 8)}`;
+    const storageName = getInstructionsStorageName(agentName);
+    const s3Prefix = `orgs/${fixture.orgId}/${storageName}`;
+    await store.set(
+      seedInstructionsStorage$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentName,
+        s3Key: `${s3Prefix}/v1`,
+      },
+      context.signal,
+    );
+    mocks.s3.listObjects([
+      {
+        bucket: "test-user-storages",
+        key: `${s3Prefix}/v1/archive.tar.gz`,
+        size: 1024,
+      },
+    ]);
+
+    const writeDb = store.set(writeDb$);
+    await expect(
+      writeDb
+        .select({ id: storages.id })
+        .from(storages)
+        .where(
+          and(
+            eq(storages.orgId, fixture.orgId),
+            eq(storages.name, storageName),
+          ),
+        ),
+    ).resolves.toHaveLength(1);
+
+    const client = setupApp({ context })(zeroAgentsByIdContract);
+    const response = await accept(
+      client.delete({
+        params: { id: agentId },
+        headers: await cliAuthHeaders(fixture, "member"),
+      }),
+      [204],
+    );
+    expect(response.body).toBeUndefined();
+
+    await expect(
+      writeDb
+        .select({ id: storages.id })
+        .from(storages)
+        .where(
+          and(
+            eq(storages.orgId, fixture.orgId),
+            eq(storages.name, storageName),
+          ),
+        ),
     ).resolves.toStrictEqual([]);
   });
 

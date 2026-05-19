@@ -10,7 +10,10 @@ import {
   type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import {
+  formatChatgptCodexUsageLimitError,
+  RUN_ERROR_GUIDANCE,
+} from "@vm0/api-contracts/contracts/errors";
 import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -417,6 +420,11 @@ export function formatChatRunErrorMessage(params: {
 }): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const errorMessage = params.errorMessage.trim() || "Run failed";
+    const chatgptCodexUsageLimitMessage =
+      formatChatgptCodexUsageLimitError(errorMessage);
+    if (chatgptCodexUsageLimitMessage) {
+      return chatgptCodexUsageLimitMessage;
+    }
 
     if (isActionableRunError(errorMessage)) {
       return errorMessage;

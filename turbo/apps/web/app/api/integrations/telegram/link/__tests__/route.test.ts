@@ -12,12 +12,14 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import {
+  createTestCompose,
   createTestTelegramInstallation,
   findTestOfficialTelegramUserLink,
   findTestOfficialTelegramUserLinksByVm0UserId,
   findTestTelegramUserLinksByVm0UserId,
   insertTestOfficialTelegramUserLink,
   insertTestTelegramUserLink,
+  setDefaultAgentByComposeId,
   signTestConnectParams,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
@@ -102,6 +104,11 @@ function setupOfficialTelegramEnv() {
   vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", OFFICIAL_BOT_USERNAME);
   vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", "official-webhook-secret");
   reloadEnv();
+}
+
+async function createDefaultAgentForOrg(orgId: string): Promise<void> {
+  const compose = await createTestCompose(uniqueId("agent"));
+  await setDefaultAgentByComposeId(orgId, compose.composeId);
 }
 
 describe("/api/integrations/telegram/link", () => {
@@ -450,9 +457,42 @@ describe("/api/integrations/telegram/link", () => {
       expect(userLinks[0]?.telegramDisplayName).toBe("Test");
     });
 
+    it("returns 409 when connecting the official bot before onboarding creates a default agent", async () => {
+      setupOfficialTelegramEnv();
+      await context.setupUser();
+      const telegramUserId = Number(uniqueNumericId());
+      const telegramAuth = makeTelegramAuth(
+        telegramUserId,
+        "official_tg",
+        OFFICIAL_BOT_TOKEN,
+      );
+
+      const response = await POST(
+        linkRequest("POST", {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth,
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(data.error).toEqual({
+        message:
+          "Finish onboarding before connecting Telegram. Telegram needs a default agent for this workspace.",
+        code: "CONFLICT",
+      });
+
+      const statusResponse = await GET(
+        linkRequest("GET", undefined, { botId: OFFICIAL_TELEGRAM_BOT_ID }),
+      );
+      const statusData = await statusResponse.json();
+      expect(statusData.linked).toBe(false);
+    });
+
     it("links the official bot account via telegramAuth", async () => {
       setupOfficialTelegramEnv();
       const user = await context.setupUser();
+      await createDefaultAgentForOrg(user.orgId);
       const telegramUserId = Number(uniqueNumericId());
       const telegramAuth = makeTelegramAuth(
         telegramUserId,
@@ -486,7 +526,8 @@ describe("/api/integrations/telegram/link", () => {
 
     it("requires disconnect before moving an official Telegram user to another org", async () => {
       setupOfficialTelegramEnv();
-      await context.setupUser();
+      const user = await context.setupUser();
+      await createDefaultAgentForOrg(user.orgId);
       const otherOrgId = uniqueId("org");
       const telegramUserId = Number(uniqueNumericId());
       await insertTestOfficialTelegramUserLink({

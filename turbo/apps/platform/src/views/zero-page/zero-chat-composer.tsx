@@ -397,9 +397,9 @@ function SendOrGoalButton({
 }
 
 // ---------------------------------------------------------------------------
-// Queued messages strip — compact list of pending sends shown above the
-// textarea while a run is active. Visually low-key so it doesn't compete
-// with the input itself.
+// Queued messages strip — separate card stacked behind the composer with a
+// vertical-only stagger. The composer card sits on top (z-10) and covers the
+// strip's bottom edge so it reads as one tucked-behind queue layer.
 // ---------------------------------------------------------------------------
 
 function QueuedMessagesStrip({
@@ -412,34 +412,37 @@ function QueuedMessagesStrip({
   if (!items || items.length === 0) {
     return null;
   }
+  const count = items.length;
+  const label = `${count} ${count === 1 ? "message" : "messages"} waiting to send`;
   return (
-    <div className="border-b border-border/60 px-4 py-2">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground/75">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-        <span>Queued</span>
+    <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50">
+      <div className="flex items-center gap-2 px-5 pt-3 pb-2">
+        <span className="inline-flex items-center gap-[2px]" aria-hidden="true">
+          <span className="h-2 w-[3px] rounded-sm bg-emerald-800" />
+          <span className="h-2 w-[3px] rounded-sm bg-emerald-800/60" />
+          <span className="h-2 w-[3px] rounded-sm bg-emerald-800/30" />
+        </span>
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
-      <div
-        className="mt-1 max-h-24 divide-y divide-border/40 overflow-y-auto"
-        role="list"
-      >
+      <div className="max-h-[200px] overflow-y-auto px-2 pt-1 pb-7" role="list">
         {items.map((item) => {
           return (
             <div
               key={item.id}
               role="listitem"
               aria-label="Queued message"
-              className="flex min-h-7 items-center gap-2 py-1 text-sm text-muted-foreground"
+              className="group flex items-center gap-2 rounded-md pl-3 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
             >
               <span className="min-w-0 flex-1 truncate">{item.text}</span>
               <button
                 type="button"
-                className="shrink-0 rounded p-1 text-muted-foreground/45 transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   onRemove?.(item.id);
                 }}
                 aria-label="Remove queued message"
               >
-                <IconX size={14} stroke={1.5} />
+                <IconX size={16} stroke={1.5} />
               </button>
             </div>
           );
@@ -1435,131 +1438,132 @@ export function ZeroChatComposer({
         multiple
         onChange={handleFileChange}
       />
-      <Card
-        className={cn(
-          "zero-composer overflow-hidden",
-          className,
-          dragOver && "outline outline-2 outline-blue-400/60",
-        )}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-      >
-        <CardContent className="p-0">
-          <div className="flex flex-col">
-            {visibleAttachments.length > 0 && (
-              <AttachmentChips
-                attachments={visibleAttachments}
-                onRemove={(attachment) => {
-                  removeAttachment(attachment);
-                  onDraftChange?.();
-                }}
-              />
-            )}
-            <QueuedMessagesStrip
-              items={queuedItems}
-              onRemove={onRemoveQueuedItem}
-            />
-            <textarea
-              ref={(el) => {
-                if (el && autoFocus && !isIOSDevice()) {
-                  el.focus();
-                }
-                setInputRef?.(el);
-              }}
-              className={cn(
-                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
-              )}
-              rows={3}
-              placeholder={
-                sending
-                  ? "Type your next message\u2026"
-                  : "Ask me to automate workflows, manage tasks..."
-              }
-              value={input}
-              onChange={(e) => {
-                return onInputChange(e.target.value);
-              }}
-              enterKeyHint="enter"
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-            />
-            <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
-              <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
-                        aria-label="Attach"
-                        onClick={handleFileSelect}
-                      >
-                        <IconPaperclip size={18} stroke={1.5} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">
-                      Attach
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <ConnectorsPopoverButton
-                  agentConnectors={agentConnectors}
-                  connectorsLoading={connectorsLoading}
-                  savingType={savingType}
-                  onOpenAddDialog={() => {
-                    return setShowAddDialog(true);
+      <div className={cn("relative flex flex-col", className)}>
+        <QueuedMessagesStrip
+          items={queuedItems}
+          onRemove={onRemoveQueuedItem}
+        />
+        <Card
+          className={cn(
+            "zero-composer relative z-10 overflow-hidden",
+            dragOver && "outline outline-2 outline-blue-400/60",
+          )}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          <CardContent className="p-0">
+            <div className="flex flex-col">
+              {visibleAttachments.length > 0 && (
+                <AttachmentChips
+                  attachments={visibleAttachments}
+                  onRemove={(attachment) => {
+                    removeAttachment(attachment);
+                    onDraftChange?.();
                   }}
-                  onToggle={handleToggle}
                 />
-              </div>
-              <div className="flex items-center gap-1 sm:gap-2">
-                <ComposerModelPickerSlot
-                  actionsLoading={actionsLoading}
-                  modelPicker={modelPicker}
-                  modelPickerLoading={modelPickerLoading}
-                  submitBlocker={submitBlocker}
-                  modelPickerOpen={modelPickerOpen}
-                  onModelPickerChange={handleModelPickerChange}
-                  onModelPickerOpenChange={setModelPickerOpen}
-                />
-                {actionsLoading ? null : (
-                  <>
-                    <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
-                    <MicButton
-                      onTranscribed={(text) => {
-                        const base = input;
-                        const separator =
-                          base.length > 0 && !base.endsWith(" ") ? " " : "";
-                        onInputChange(base + separator + text);
-                        onDraftChange?.();
-                      }}
-                    />
-                    {showStopButton ? (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={onCancel}
-                        aria-label="Stop"
-                      >
-                        <IconPlayerStop size={16} />
-                      </Button>
-                    ) : (
-                      <SendOrGoalButton
-                        goalEnabled={goalFeatureEnabled}
-                        disabled={sendAction === "none"}
-                        onSend={handleButtonSend}
-                        onSendAsGoal={handleSendAsGoal}
-                      />
-                    )}
-                  </>
+              )}
+              <textarea
+                ref={(el) => {
+                  if (el && autoFocus && !isIOSDevice()) {
+                    el.focus();
+                  }
+                  setInputRef?.(el);
+                }}
+                className={cn(
+                  "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
                 )}
+                rows={3}
+                placeholder={
+                  sending
+                    ? "Type your next message\u2026"
+                    : "Ask me to automate workflows, manage tasks..."
+                }
+                value={input}
+                onChange={(e) => {
+                  return onInputChange(e.target.value);
+                }}
+                enterKeyHint="enter"
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+              />
+              <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
+                <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+                          aria-label="Attach"
+                          onClick={handleFileSelect}
+                        >
+                          <IconPaperclip size={18} stroke={1.5} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Attach
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <ConnectorsPopoverButton
+                    agentConnectors={agentConnectors}
+                    connectorsLoading={connectorsLoading}
+                    savingType={savingType}
+                    onOpenAddDialog={() => {
+                      return setShowAddDialog(true);
+                    }}
+                    onToggle={handleToggle}
+                  />
+                </div>
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <ComposerModelPickerSlot
+                    actionsLoading={actionsLoading}
+                    modelPicker={modelPicker}
+                    modelPickerLoading={modelPickerLoading}
+                    submitBlocker={submitBlocker}
+                    modelPickerOpen={modelPickerOpen}
+                    onModelPickerChange={handleModelPickerChange}
+                    onModelPickerOpenChange={setModelPickerOpen}
+                  />
+                  {actionsLoading ? null : (
+                    <>
+                      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+                      <MicButton
+                        onTranscribed={(text) => {
+                          const base = input;
+                          const separator =
+                            base.length > 0 && !base.endsWith(" ") ? " " : "";
+                          onInputChange(base + separator + text);
+                          onDraftChange?.();
+                        }}
+                      />
+                      {showStopButton ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="rounded-lg h-9 w-9 p-0 shrink-0"
+                          onClick={onCancel}
+                          aria-label="Stop"
+                        >
+                          <IconPlayerStop size={16} />
+                        </Button>
+                      ) : (
+                        <SendOrGoalButton
+                          goalEnabled={goalFeatureEnabled}
+                          disabled={sendAction === "none"}
+                          onSend={handleButtonSend}
+                          onSendAsGoal={handleSendAsGoal}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
       {selectedConnType && (
         <ConnectModal
           onClose={() => {

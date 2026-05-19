@@ -10,9 +10,9 @@ import {
 /**
  * Per-user secret for an org custom connector.
  *
- * Encrypted with AES-256-GCM using SECRETS_ENCRYPTION_KEY. The row is keyed
- * by `(connectorId, userId)`: each user supplies their own secret; a missing
- * row means the user hasn't configured the connector yet.
+ * Encrypted with the API stored-secret encryption envelope. The row is keyed by
+ * `(connectorId, userId)`: each user supplies their own secret; a missing row
+ * means the user hasn't configured the connector yet.
  */
 export const orgCustomConnectorSecrets = pgTable(
   "org_custom_connector_secrets",

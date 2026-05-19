@@ -31,6 +31,13 @@ export const garminConnect = {
     oauth: {
       authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
       tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
+        clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
+      },
       scopes: [],
     },
   },

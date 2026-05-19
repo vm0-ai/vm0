@@ -27,7 +27,7 @@ import {
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
@@ -233,8 +233,8 @@ interface ModelProviderSecretResult {
   credentialScope?: ModelProviderCredentialScope;
   /** Org-scoped model provider row used by model-first API-key routes. */
   modelProviderId?: string | null;
-  /** Maps secret/env-var names → connector handler key for refresh-capable
-   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth").
+  /** Maps secret/env-var names → model-provider handler key for refresh-capable
+   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth-token").
    *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
    *  runs — the filter would otherwise drop these because they also appear in
    *  `secrets`, but model-provider entries ARE the source, not an override target. */
@@ -269,8 +269,7 @@ function buildModelProviderRefreshMaps(
   const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
   if (!handlerKey) return undefined;
 
-  const handler =
-    PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+  const handler = getModelProviderOAuthHandler(handlerKey);
   if (!handler?.refreshToken) return undefined;
 
   const accessSecretName = handler.getSecretName();

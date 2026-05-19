@@ -4,13 +4,20 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, oneshot};
 use vsock_proto::{
     MSG_ERROR, MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_SPAWN_PROCESS,
     MSG_SPAWN_PROCESS_RESULT, ProcessControlNonce, ProcessControlStatus, RawMessage,
 };
 
-use crate::{ConnectionState, Shared, request_on_shared, request_raw_on_shared};
+use crate::{
+    ConnectionState, FrameWriteObserver, PendingRequestGuard, PendingResponse, Shared,
+    normal_request_on_shared_with_pre_write_observer, operation_tracker::NormalOperationToken,
+};
+
+const SPAWN_PROCESS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const PROCESS_CONTROL_TERMINAL_MSG_TYPES: &[u8] = &[MSG_PROCESS_CONTROL_RESULT, MSG_ERROR];
 
 /// Event emitted when a spawned process exits.
 #[derive(Debug, Clone)]
@@ -28,11 +35,50 @@ pub struct ProcessControlAck {
     pub message_id: String,
 }
 
+/// Guest-side terminal status for a process-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessControlGuestStatus {
+    /// Status returned by the guest process-control sink.
+    pub status: ProcessControlStatus,
+    /// Optional diagnostic supplied by the guest.
+    pub diagnostic: String,
+}
+
+/// Terminal guest response for a process-control request.
+///
+/// Transport errors and host-side timeouts are still returned as
+/// [`io::Error`]. This type only represents responses that came back from the
+/// guest and therefore prove the request reached a terminal guest-side state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProcessControlOutcome {
+    /// The control payload was delivered to the guest process sink.
+    Delivered(ProcessControlAck),
+    /// The guest returned a non-delivered process-control status.
+    GuestStatus(ProcessControlGuestStatus),
+    /// The guest returned a protocol-level error frame for this request.
+    GuestError(String),
+}
+
+impl ProcessControlOutcome {
+    /// Convert the typed guest response into the legacy acknowledgement API.
+    pub fn into_ack(self) -> io::Result<ProcessControlAck> {
+        match self {
+            Self::Delivered(ack) => Ok(ack),
+            Self::GuestStatus(status) => Err(process_control_status_error(
+                status.status,
+                &status.diagnostic,
+            )),
+            Self::GuestError(message) => Err(io::Error::other(message)),
+        }
+    }
+}
+
 struct ProcessOperation {
     pid: Option<u32>,
     streams_stdout: bool,
     stdout_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
     exit_tx: oneshot::Sender<ProcessExitEvent>,
+    normal_operation: NormalOperationToken,
 }
 
 pub(crate) struct SpawnProcessOnSharedRequest<'a> {
@@ -43,6 +89,7 @@ pub(crate) struct SpawnProcessOnSharedRequest<'a> {
     pub(crate) stream_stdout: bool,
     pub(crate) stdout_log_path: Option<&'a str>,
     pub(crate) control_sink: bool,
+    pub(crate) write_observer: FrameWriteObserver,
 }
 
 /// Process lifecycle state while the vsock connection is open.
@@ -77,6 +124,10 @@ impl ConnectedProcessState {
 
     fn operation_mut(&mut self, seq: u32) -> Option<&mut ProcessOperation> {
         self.operations.get_mut(&seq)
+    }
+
+    fn contains_operation(&self, seq: u32) -> bool {
+        self.operations.contains_key(&seq)
     }
 
     fn take_operation(&mut self, seq: u32) -> Option<ProcessOperation> {
@@ -143,7 +194,14 @@ pub(crate) struct ProcessOperationMap {
 struct ProcessOperationRegistrationGuard {
     shared: Arc<Shared>,
     seq: u32,
-    disarmed: bool,
+    state: ProcessOperationRegistrationState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProcessOperationRegistrationState {
+    RemoveOnDrop,
+    KeepOnDrop,
+    Disarmed,
 }
 
 impl ProcessOperationRegistrationGuard {
@@ -151,36 +209,80 @@ impl ProcessOperationRegistrationGuard {
         Self {
             shared,
             seq,
-            disarmed: false,
+            state: ProcessOperationRegistrationState::RemoveOnDrop,
         }
     }
 
+    fn keep_on_drop(&mut self) {
+        self.state = ProcessOperationRegistrationState::KeepOnDrop;
+    }
+
+    fn remove_on_drop(&mut self) {
+        self.state = ProcessOperationRegistrationState::RemoveOnDrop;
+    }
+
     fn disarm(&mut self) {
-        self.disarmed = true;
+        self.state = ProcessOperationRegistrationState::Disarmed;
     }
 }
 
 impl Drop for ProcessOperationRegistrationGuard {
     fn drop(&mut self) {
-        if !self.disarmed {
-            remove_process_operation(&self.shared, self.seq);
+        match self.state {
+            ProcessOperationRegistrationState::RemoveOnDrop => {
+                remove_process_operation(&self.shared, self.seq);
+            }
+            ProcessOperationRegistrationState::KeepOnDrop => {
+                clear_process_stdout_sender(&self.shared, self.seq);
+            }
+            ProcessOperationRegistrationState::Disarmed => {}
+        }
+    }
+}
+
+struct ProcessOperationFrameWriteGuard {
+    shared: Arc<Shared>,
+    write_started: bool,
+    write_returned: bool,
+}
+
+impl ProcessOperationFrameWriteGuard {
+    fn new(shared: Arc<Shared>) -> Self {
+        Self {
+            shared,
+            write_started: false,
+            write_returned: false,
+        }
+    }
+
+    fn mark_started(&mut self) {
+        self.write_started = true;
+    }
+
+    fn mark_returned(&mut self) {
+        self.write_returned = true;
+    }
+}
+
+impl Drop for ProcessOperationFrameWriteGuard {
+    fn drop(&mut self) {
+        if self.write_started && !self.write_returned {
+            self.shared.poison_connection();
         }
     }
 }
 
 /// Handle for a spawn_process operation.
 ///
-/// Dropping the handle removes the host-side operation registration. It does
-/// not send a guest-side cancellation request; this matches the previous
-/// host-side wait timeout/drop behavior.
+/// Dropping the handle does not remove host-side process tracking or send a
+/// guest-side cancellation request. The connection remains busy until the guest
+/// reports a terminal process_exit frame or the connection closes.
 ///
 /// If stdout streaming is enabled, call [`take_stdout_receiver`](Self::take_stdout_receiver)
 /// before [`wait`](Self::wait). Waiting consumes the handle and drops any
 /// unclaimed stdout receiver so streamed output is not buffered without a
 /// reader.
 pub struct GuestProcessHandle {
-    shared: Arc<Shared>,
-    seq: Option<u32>,
     pid: u32,
     control: GuestProcessControlHandle,
     stdout_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
@@ -198,7 +300,7 @@ pub struct GuestProcessControlHandle {
 impl fmt::Debug for GuestProcessHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GuestProcessHandle")
-            .field("seq", &self.seq)
+            .field("seq", &self.control.target_seq)
             .field("pid", &self.pid)
             .field("has_stdout_receiver", &self.stdout_rx.is_some())
             .field("has_exit_receiver", &self.exit_rx.is_some())
@@ -237,15 +339,25 @@ impl GuestProcessHandle {
         })?;
 
         // `wait` consumes the handle, so an unclaimed stdout receiver can no
-        // longer be observed by the caller. Drop it before waiting to avoid
-        // buffering streamed stdout in an unbounded channel with no reader.
-        drop(self.stdout_rx.take());
+        // longer be observed by the caller. Drop it before waiting and clear
+        // the sender to avoid retaining an unused channel for long-lived
+        // processes that never emit another stdout chunk.
+        if self.stdout_rx.take().is_some() {
+            clear_process_stdout_sender(&self.control.shared, self.control.target_seq);
+        }
 
         let event = rx
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::ConnectionReset, "connection closed"))?;
-        self.seq = None;
         Ok(event)
+    }
+}
+
+impl Drop for GuestProcessHandle {
+    fn drop(&mut self) {
+        if self.stdout_rx.is_some() {
+            clear_process_stdout_sender(&self.control.shared, self.control.target_seq);
+        }
     }
 }
 
@@ -269,27 +381,62 @@ impl GuestProcessControlHandle {
         payload: &[u8],
         timeout: Duration,
     ) -> io::Result<ProcessControlAck> {
+        self.control_with_write_observer(
+            message_id,
+            payload,
+            timeout,
+            FrameWriteObserver::default(),
+        )
+        .await?
+        .into_ack()
+    }
+
+    /// Send a control payload and report the exact guest terminal outcome.
+    ///
+    /// The `write_observer` fires immediately before the request frame is
+    /// written. Tests and diagnostics can use this boundary to distinguish
+    /// pre-write validation failures from post-write uncertainty.
+    pub async fn control_with_write_observer(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ProcessControlOutcome> {
+        let request_timeout_ms = duration_to_request_timeout_ms(timeout);
         let request = vsock_proto::encode_process_control(
             self.target_seq,
             self.control_nonce,
             message_id,
             payload,
+            request_timeout_ms,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        let response =
-            request_on_shared(&self.shared, MSG_PROCESS_CONTROL, &request, timeout).await?;
-        self.decode_control_response(message_id, response)
+        let response = normal_request_on_shared_with_pre_write_observer(
+            &self.shared,
+            MSG_PROCESS_CONTROL,
+            &request,
+            PROCESS_CONTROL_TERMINAL_MSG_TYPES,
+            timeout,
+            {
+                let target_seq = self.target_seq;
+                move |state| ensure_process_control_target_active(state, target_seq)
+            },
+            write_observer,
+        )
+        .await?;
+        self.decode_control_outcome(message_id, response)
     }
 
-    fn decode_control_response(
+    fn decode_control_outcome(
         &self,
         message_id: &str,
         response: RawMessage,
-    ) -> io::Result<ProcessControlAck> {
+    ) -> io::Result<ProcessControlOutcome> {
         if response.msg_type == MSG_ERROR {
             let msg =
                 vsock_proto::decode_error(&response.payload).map_err(|e| self.protocol_error(e))?;
-            return Err(io::Error::other(msg.to_owned()));
+            return Ok(ProcessControlOutcome::GuestError(msg.to_owned()));
         }
         if response.msg_type != MSG_PROCESS_CONTROL_RESULT {
             return Err(self.protocol_error(format!(
@@ -315,83 +462,85 @@ impl GuestProcessControlHandle {
             )));
         }
         match result.status {
-            ProcessControlStatus::Delivered => Ok(ProcessControlAck {
-                target_seq: result.target_seq,
-                message_id: result.message_id.to_owned(),
-            }),
-            ProcessControlStatus::Inactive => Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                if result.diagnostic.is_empty() {
-                    "process operation is not active".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::NonceMismatch => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                if result.diagnostic.is_empty() {
-                    "process operation nonce mismatch".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::Unsupported => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                if result.diagnostic.is_empty() {
-                    "process control is not supported by this operation".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::Rejected => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                if result.diagnostic.is_empty() {
-                    "process control request rejected".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkUnavailable => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                if result.diagnostic.is_empty() {
-                    "process control sink is not connected".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkTimeout => Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                if result.diagnostic.is_empty() {
-                    "process control sink timed out".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::QueueFull => Err(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                if result.diagnostic.is_empty() {
-                    "process control queue is full".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkError => Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                if result.diagnostic.is_empty() {
-                    "process control sink error".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
+            ProcessControlStatus::Delivered => {
+                Ok(ProcessControlOutcome::Delivered(ProcessControlAck {
+                    target_seq: result.target_seq,
+                    message_id: result.message_id.to_owned(),
+                }))
+            }
+            status => Ok(ProcessControlOutcome::GuestStatus(
+                ProcessControlGuestStatus {
+                    status,
+                    diagnostic: result.diagnostic.to_owned(),
                 },
             )),
         }
     }
 }
 
-impl Drop for GuestProcessHandle {
-    fn drop(&mut self) {
-        if let Some(seq) = self.seq.take() {
-            remove_process_operation(&self.shared, seq);
+fn process_control_status_error(status: ProcessControlStatus, diagnostic: &str) -> io::Error {
+    let message = if diagnostic.is_empty() {
+        default_process_control_status_message(status).to_owned()
+    } else {
+        diagnostic.to_owned()
+    };
+    io::Error::new(process_control_status_error_kind(status), message)
+}
+
+fn process_control_status_error_kind(status: ProcessControlStatus) -> io::ErrorKind {
+    match status {
+        ProcessControlStatus::Delivered => io::ErrorKind::Other,
+        ProcessControlStatus::Inactive => io::ErrorKind::NotFound,
+        ProcessControlStatus::NonceMismatch => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::Unsupported => io::ErrorKind::Unsupported,
+        ProcessControlStatus::Rejected => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::SinkUnavailable => io::ErrorKind::NotConnected,
+        ProcessControlStatus::SinkTimeout => io::ErrorKind::TimedOut,
+        ProcessControlStatus::QueueFull => io::ErrorKind::WouldBlock,
+        ProcessControlStatus::SinkError => io::ErrorKind::BrokenPipe,
+    }
+}
+
+fn default_process_control_status_message(status: ProcessControlStatus) -> &'static str {
+    match status {
+        ProcessControlStatus::Delivered => "process control request delivered",
+        ProcessControlStatus::Inactive => "process operation is not active",
+        ProcessControlStatus::NonceMismatch => "process operation nonce mismatch",
+        ProcessControlStatus::Unsupported => "process control is not supported by this operation",
+        ProcessControlStatus::Rejected => "process control request rejected",
+        ProcessControlStatus::SinkUnavailable => "process control sink is not connected",
+        ProcessControlStatus::SinkTimeout => "process control sink timed out",
+        ProcessControlStatus::QueueFull => "process control queue is full",
+        ProcessControlStatus::SinkError => "process control sink error",
+    }
+}
+
+fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
+    if timeout.is_zero() {
+        return 0;
+    }
+
+    u32::try_from(timeout.as_millis())
+        .unwrap_or(u32::MAX)
+        .max(1)
+}
+
+fn ensure_process_control_target_active(
+    state: &ConnectionState,
+    target_seq: u32,
+) -> io::Result<()> {
+    match state {
+        ConnectionState::Connected { process, .. } if process.contains_operation(target_seq) => {
+            Ok(())
         }
+        ConnectionState::Connected { .. } => Err(process_control_status_error(
+            ProcessControlStatus::Inactive,
+            "process operation is not active",
+        )),
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
     }
 }
 
@@ -400,6 +549,63 @@ fn remove_process_operation(shared: &Arc<Shared>, seq: u32) {
     if let ConnectionState::Connected { process, .. } = &mut *guard {
         process.remove_operation(seq);
     }
+}
+
+fn clear_process_stdout_sender(shared: &Arc<Shared>, seq: u32) {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { process, .. } = &mut *guard
+        && let Some(operation) = process.operation_mut(seq)
+    {
+        operation.stdout_tx = None;
+    }
+}
+
+fn mark_process_operation_possible_guest_write(shared: &Arc<Shared>, seq: u32) -> io::Result<()> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &mut *guard {
+        ConnectionState::Connected { process, .. } => {
+            let Some(operation) = process.operation_mut(seq) else {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "spawn_process operation closed before frame write",
+                ));
+            };
+            operation
+                .normal_operation
+                .mark_possible_guest_write_started()
+                .map_err(crate::normal_operation_transition_error)
+        }
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
+}
+
+pub(crate) fn record_spawn_process_error(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    let ConnectionState::Connected { process, .. } = &mut *guard else {
+        return Ok(());
+    };
+    let Some(operation) = process.operation_mut(msg.seq) else {
+        return Ok(());
+    };
+    if operation.pid.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "error response arrived after spawn_process_result",
+        ));
+    }
+    vsock_proto::decode_error(&msg.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let Some(operation) = process.take_operation(msg.seq) else {
+        return Ok(());
+    };
+    operation
+        .normal_operation
+        .complete()
+        .map_err(crate::normal_operation_transition_error)?;
+    Ok(())
 }
 
 pub(crate) fn record_spawn_process_result(
@@ -420,13 +626,27 @@ pub(crate) fn record_spawn_process_result(
             ));
         }
 
-        let pid = match vsock_proto::decode_spawn_process_result(&msg.payload) {
-            Ok(pid) => pid,
-            // Initial malformed responses are still delivered to the pending
-            // request path, which returns InvalidData and drops the operation.
-            Err(_) => return Ok(()),
-        };
+        let pid = vsock_proto::decode_spawn_process_result(&msg.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         operation.pid = Some(pid);
+    }
+    Ok(())
+}
+
+pub(crate) fn reject_unexpected_process_response(
+    shared: &Arc<Shared>,
+    seq: u32,
+    msg_type: u8,
+) -> io::Result<()> {
+    let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    let ConnectionState::Connected { process, .. } = &*guard else {
+        return Ok(());
+    };
+    if process.contains_operation(seq) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unexpected response type for spawn_process: 0x{msg_type:02X}"),
+        ));
     }
     Ok(())
 }
@@ -467,7 +687,7 @@ pub(crate) fn dispatch_stdout_chunk(shared: &Arc<Shared>, msg: &RawMessage) -> i
 }
 
 pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<()> {
-    let (operation, pid, exit_code, stdout, stderr) = {
+    let (exit_tx, pid, exit_code, stdout, stderr) = {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         let ConnectionState::Connected { process, .. } = &mut *guard else {
             return Ok(());
@@ -482,7 +702,15 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
         let Some(operation) = process.take_operation(msg.seq) else {
             return Ok(());
         };
-        (operation, pid, exit_code, stdout, stderr)
+        let ProcessOperation {
+            exit_tx,
+            normal_operation,
+            ..
+        } = operation;
+        normal_operation
+            .complete()
+            .map_err(crate::normal_operation_transition_error)?;
+        (exit_tx, pid, exit_code, stdout, stderr)
     };
 
     let event = ProcessExitEvent {
@@ -492,7 +720,7 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
         stderr: stderr.to_vec(),
     };
 
-    let _ = operation.exit_tx.send(event);
+    let _ = exit_tx.send(event);
 
     Ok(())
 }
@@ -500,6 +728,15 @@ pub(crate) fn dispatch_process_exit(shared: &Arc<Shared>, msg: &RawMessage) -> i
 pub(crate) async fn spawn_process_on_shared(
     shared: &Arc<Shared>,
     request: SpawnProcessOnSharedRequest<'_>,
+) -> io::Result<GuestProcessHandle> {
+    spawn_process_on_shared_with_response_timeout(shared, request, SPAWN_PROCESS_RESPONSE_TIMEOUT)
+        .await
+}
+
+async fn spawn_process_on_shared_with_response_timeout(
+    shared: &Arc<Shared>,
+    request: SpawnProcessOnSharedRequest<'_>,
+    response_timeout: Duration,
 ) -> io::Result<GuestProcessHandle> {
     let SpawnProcessOnSharedRequest {
         command,
@@ -509,6 +746,7 @@ pub(crate) async fn spawn_process_on_shared(
         stream_stdout,
         stdout_log_path,
         control_sink,
+        write_observer,
     } = request;
     let control_nonce = *uuid::Uuid::new_v4().as_bytes();
     let payload = if control_sink {
@@ -542,6 +780,10 @@ pub(crate) async fn spawn_process_on_shared(
     };
     let (exit_tx, exit_rx) = oneshot::channel();
     let seq = shared.next_seq();
+    let normal_operation = shared.reserve_normal_operation()?;
+    let (tx, rx) = oneshot::channel();
+    let data = vsock_proto::encode(MSG_SPAWN_PROCESS, seq, &payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
@@ -551,7 +793,9 @@ pub(crate) async fn spawn_process_on_shared(
                     "connection closed",
                 ));
             }
-            ConnectionState::Connected { process, .. } => {
+            ConnectionState::Connected {
+                pending, process, ..
+            } => {
                 process.insert_operation(
                     seq,
                     ProcessOperation {
@@ -559,43 +803,78 @@ pub(crate) async fn spawn_process_on_shared(
                         streams_stdout: stream_stdout,
                         stdout_tx,
                         exit_tx,
+                        normal_operation,
+                    },
+                );
+                pending.insert(
+                    seq,
+                    PendingResponse {
+                        response_tx: tx,
+                        normal_operation: None,
+                        normal_terminal_msg_types: &[],
                     },
                 );
             }
         }
     }
     let mut registration_guard = ProcessOperationRegistrationGuard::new(Arc::clone(shared), seq);
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
-    let resp = request_raw_on_shared(
-        shared,
-        MSG_SPAWN_PROCESS,
-        seq,
-        &payload,
-        Duration::from_secs(30),
-    )
-    .await?;
+    let resp = {
+        let mut write_guard = ProcessOperationFrameWriteGuard::new(Arc::clone(shared));
+        let mut writer = shared.writer.lock().await;
+        mark_process_operation_possible_guest_write(shared, seq)?;
+        write_observer.record_write_start()?;
+        write_guard.mark_started();
+        registration_guard.keep_on_drop();
+        if let Err(error) = writer.write_all(&data).await {
+            write_guard.mark_returned();
+            shared.poison_connection();
+            return Err(error);
+        }
+        write_guard.mark_returned();
+        drop(writer);
+        drop(write_guard);
+
+        tokio::select! {
+            biased;
+            result = rx => {
+                result.map_err(|_| io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))?
+            }
+            _ = tokio::time::sleep(response_timeout) => {
+                registration_guard.remove_on_drop();
+                return Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"));
+            }
+        }
+    };
 
     if resp.msg_type == MSG_ERROR {
-        let msg = vsock_proto::decode_error(&resp.payload)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let msg = vsock_proto::decode_error(&resp.payload).map_err(|e| {
+            shared.poison_connection();
+            io::Error::new(io::ErrorKind::InvalidData, e.to_string())
+        })?;
         return Err(io::Error::other(msg));
     }
 
     if resp.msg_type != MSG_SPAWN_PROCESS_RESULT {
+        shared.poison_connection();
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unexpected response type: 0x{:02X}", resp.msg_type),
         ));
     }
 
-    let pid = vsock_proto::decode_spawn_process_result(&resp.payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+    let pid = vsock_proto::decode_spawn_process_result(&resp.payload).map_err(|e| {
+        shared.poison_connection();
+        io::Error::new(io::ErrorKind::InvalidData, e.to_string())
+    })?;
 
     registration_guard.disarm();
 
     Ok(GuestProcessHandle {
-        shared: Arc::clone(shared),
-        seq: Some(seq),
         pid,
         control: GuestProcessControlHandle {
             shared: Arc::clone(shared),
@@ -605,4 +884,38 @@ pub(crate) async fn spawn_process_on_shared(
         stdout_rx,
         exit_rx: Some(exit_rx),
     })
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    pub(crate) async fn spawn_process_with_response_timeout(
+        shared: &Arc<Shared>,
+        command: &str,
+        stream_stdout: bool,
+        response_timeout: Duration,
+    ) -> io::Result<GuestProcessHandle> {
+        spawn_process_on_shared_with_response_timeout(
+            shared,
+            SpawnProcessOnSharedRequest {
+                command,
+                timeout_ms: 0,
+                env: &[],
+                sudo: false,
+                stream_stdout,
+                stdout_log_path: None,
+                control_sink: false,
+                write_observer: FrameWriteObserver::default(),
+            },
+            response_timeout,
+        )
+        .await
+    }
+
+    pub(crate) fn drop_started_frame_write_guard(shared: Arc<Shared>) {
+        let mut guard = ProcessOperationFrameWriteGuard::new(shared);
+        guard.mark_started();
+        drop(guard);
+    }
 }

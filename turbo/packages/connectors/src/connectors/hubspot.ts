@@ -29,6 +29,13 @@ export const hubspot = {
     oauth: {
       authorizationUrl: "https://app.hubspot.com/oauth/authorize",
       tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "HUBSPOT_OAUTH_CLIENT_ID",
+        clientSecretEnv: "HUBSPOT_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "crm.objects.contacts.read",
         "crm.objects.contacts.write",

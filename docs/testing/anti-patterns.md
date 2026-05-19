@@ -378,7 +378,11 @@ When an API route wraps a service function, test through the route — not the s
 import { upsertOrgModelProvider } from "../../../lib/zero/model-provider/org-model-provider";
 
 it("should create a provider", async () => {
-  const result = await upsertOrgModelProvider(orgId, "anthropic-api-key", "sk-test");
+  const result = await upsertOrgModelProvider(
+    orgId,
+    "anthropic-api-key",
+    "sk-test",
+  );
   expect(result.type).toBe("anthropic-api-key");
 });
 ```
@@ -400,7 +404,10 @@ it("should create a provider", async () => {
 
 The service test passes even if the route handler has a bug in request parsing, auth checking, or response formatting. The route test catches all of these.
 
-**Exception**: Some service functions have no route — see the [Acceptable Service-Level Test Exceptions](web-testing.md#acceptable-service-level-test-exceptions) section in `web-testing.md` for the approved list.
+**Exception**: Some service functions have no route. For `apps/api`, see
+[Service-Level Exceptions](api-testing.md#service-level-exceptions). For legacy
+`apps/web` routes, see
+[Acceptable Service-Level Test Exceptions](web-testing.md#acceptable-service-level-test-exceptions).
 
 ---
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command, Help } from "commander";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
@@ -332,6 +333,37 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should hide built-in when only host:write is present and hostedSites is disabled", () => {
+    const token = buildZeroToken({
+      userId: "user-non-staff",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: ["host:write"],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("built-in");
+  });
+
+  it("should show built-in when hostedSites is enabled", () => {
+    const token = buildZeroToken({
+      userId: "user-enabled",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: [],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("built-in");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
   it("should show the host help example when host:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -340,6 +372,34 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
       "Host a static site?",
+    );
+  });
+
+  it("should hide the website help example when hostedSites is disabled", () => {
+    const token = buildZeroToken({
+      userId: "user-non-staff",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: ["host:write"],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Generate website?",
+    );
+  });
+
+  it("should show the website help example when hostedSites is enabled", () => {
+    const token = buildZeroToken({
+      userId: "user-enabled",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: [],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Generate website?",
     );
   });
 
@@ -561,5 +621,48 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("connector");
+  });
+});
+
+describe("built-in generate feature switch visibility", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function importGenerateCommand(token: string) {
+    vi.resetModules();
+    vi.stubEnv("ZERO_TOKEN", token);
+    const { generateCommand } =
+      await import("../commands/zero/built-in/generate");
+    return generateCommand as Command;
+  }
+
+  it("should hide website generation when hostedSites is disabled", async () => {
+    const token = buildZeroToken({
+      userId: "user-non-staff",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: ["host:write"],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
+    });
+
+    const generateCommand = await importGenerateCommand(token);
+
+    expect(visibleCommandNames(generateCommand)).not.toContain("website");
+  });
+
+  it("should show website generation when hostedSites is enabled", async () => {
+    const token = buildZeroToken({
+      userId: "user-enabled",
+      orgId: "org-non-staff",
+      scope: "zero",
+      capabilities: [],
+      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
+    });
+
+    const generateCommand = await importGenerateCommand(token);
+
+    expect(visibleCommandNames(generateCommand)).toContain("website");
   });
 });

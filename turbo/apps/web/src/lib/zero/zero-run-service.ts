@@ -114,7 +114,7 @@ type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
  * pre-fetch pass the result through as `preloadedAgent` so the service skips
  * this query.
  */
-export async function fetchZeroAgentForRun(
+async function fetchZeroAgentForRun(
   agentId: string,
 ): Promise<ZeroAgentForRun | undefined> {
   const [row] = await globalThis.services.db

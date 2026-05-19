@@ -28,6 +28,7 @@ export {
   countOrgRows,
   getOrgCredits,
   findTestModelProviderTokenState,
+  findTestOrgModelProviderByType,
   setTestModelProviderTokenExpiresAt,
   setTestModelProviderNeedsReconnect,
 } from "../db-test-assertions/org";

@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   exchangeChatgptCode,
   refreshChatgptToken,
@@ -258,8 +258,10 @@ describe("connector/providers/codex-oauth", () => {
   });
 
   describe("codexOauthHandler", () => {
-    it("is registered in PROVIDER_HANDLERS under codex-oauth key", () => {
-      expect(PROVIDER_HANDLERS["codex-oauth"]).toBe(codexOauthHandler);
+    it("is registered as a model-provider OAuth handler", () => {
+      expect(getModelProviderOAuthHandler("codex-oauth-token")).toBe(
+        codexOauthHandler,
+      );
     });
 
     it("buildAuthUrl returns OpenAI OAuth authorization URL with PKCE", async () => {
@@ -284,7 +286,11 @@ describe("connector/providers/codex-oauth", () => {
       expect(url.searchParams.get("state")).toBe("state-1");
       expect(url.searchParams.get("code_challenge_method")).toBe("S256");
       expect(url.searchParams.get("code_challenge")).toBeTruthy();
-      expect(result.codeVerifier.length).toBeGreaterThan(20);
+      const { codeVerifier } = result;
+      if (!codeVerifier) {
+        throw new Error("Expected PKCE code verifier");
+      }
+      expect(codeVerifier.length).toBeGreaterThan(20);
     });
 
     it("exchangeCode requires a PKCE verifier", async () => {

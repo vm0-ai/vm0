@@ -4,12 +4,27 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
+  type ConnectorCliAuthConfig,
+  type ConnectorCliAuthFlow,
   type ConnectorConfig,
+  type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
-  type ConnectorSecretConfig,
   type ConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
+
+/**
+ * Connector utility vocabulary:
+ *
+ * - Available auth methods are user-selectable connection flows after
+ *   feature-switch filtering.
+ * - Runtime available connector types are connector types the current server
+ *   environment can offer as connection candidates.
+ * - User connected connector types come from persisted OAuth rows or inferred
+ *   api-token state from user secrets and variables.
+ * - Runtime injection happens later when a run receives env vars, secrets,
+ *   variables, and firewall context.
+ */
 
 /**
  * Get auth methods for a connector type
@@ -21,9 +36,43 @@ export function getConnectorAuthMethods(
 }
 
 /**
+ * Get one auth method config for a connector type.
+ */
+export function getConnectorAuthMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodType,
+): ConnectorAuthMethodConfig | undefined {
+  return getConnectorAuthMethods(type)[authMethod];
+}
+
+/**
+ * Get CLI auth flow config for connector types that support provider CLI auth.
+ */
+function getConnectorCliAuthConfig(
+  type: ConnectorType,
+): ConnectorCliAuthConfig | undefined {
+  return CONNECTOR_TYPES[type].cliAuth;
+}
+
+/**
+ * Get the frontend CLI auth flow for connector types that support it.
+ */
+export function getConnectorCliAuthFlow(
+  type: ConnectorType,
+): ConnectorCliAuthFlow | undefined {
+  return getConnectorCliAuthConfig(type)?.flow;
+}
+
+export function getConnectorCliAuthModes(
+  type: ConnectorType,
+): NonNullable<ConnectorCliAuthConfig["modes"]> {
+  return getConnectorCliAuthConfig(type)?.modes ?? [];
+}
+
+/**
  * Get default auth method for a connector type
  */
-export function getConnectorDefaultAuthMethod(
+function getConnectorDefaultAuthMethod(
   type: ConnectorType,
 ): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
@@ -48,7 +97,7 @@ export function isConnectorAuthMethodAvailable(
   authMethod: ConnectorAuthMethodType,
   featureStates: ConnectorFeatureStates,
 ): boolean {
-  const method = CONNECTOR_TYPES[type].authMethods[authMethod];
+  const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return false;
   }
@@ -79,12 +128,11 @@ export function getAvailableConnectorAuthMethods(
   featureStates: ConnectorFeatureStates,
   options: AvailableConnectorAuthMethodsOptions = {},
 ): ConnectorAuthMethodType[] {
-  const methods = CONNECTOR_TYPES[type].authMethods;
   const apiAuthMethodPolicy = options.apiAuthMethodPolicy ?? "exclude";
   const availableAuthMethods: ConnectorAuthMethodType[] = [];
 
   for (const authMethod of CONNECTOR_AUTH_METHOD_TYPES) {
-    if (!methods[authMethod]) {
+    if (!getConnectorAuthMethod(type, authMethod)) {
       continue;
     }
     if (
@@ -105,224 +153,108 @@ export type ConnectorEnvReader = (name: string) => string | undefined;
 
 export interface ConnectorOAuthEnvKeys {
   readonly clientId: string;
-  readonly clientSecret: string;
+  readonly clientSecret?: string;
 }
 
-const OAUTH_ENV_KEYS_BY_CONNECTOR: Partial<
-  Record<ConnectorType, ConnectorOAuthEnvKeys>
-> = {
-  ahrefs: {
-    clientId: "AHREFS_OAUTH_CLIENT_ID",
-    clientSecret: "AHREFS_OAUTH_CLIENT_SECRET",
-  },
-  airtable: {
-    clientId: "AIRTABLE_OAUTH_CLIENT_ID",
-    clientSecret: "AIRTABLE_OAUTH_CLIENT_SECRET",
-  },
-  asana: {
-    clientId: "ASANA_OAUTH_CLIENT_ID",
-    clientSecret: "ASANA_OAUTH_CLIENT_SECRET",
-  },
-  canva: {
-    clientId: "CANVA_OAUTH_CLIENT_ID",
-    clientSecret: "CANVA_OAUTH_CLIENT_SECRET",
-  },
-  close: {
-    clientId: "CLOSE_OAUTH_CLIENT_ID",
-    clientSecret: "CLOSE_OAUTH_CLIENT_SECRET",
-  },
-  deel: {
-    clientId: "DEEL_OAUTH_CLIENT_ID",
-    clientSecret: "DEEL_OAUTH_CLIENT_SECRET",
-  },
-  docusign: {
-    clientId: "DOCUSIGN_OAUTH_CLIENT_ID",
-    clientSecret: "DOCUSIGN_OAUTH_CLIENT_SECRET",
-  },
-  dropbox: {
-    clientId: "DROPBOX_OAUTH_CLIENT_ID",
-    clientSecret: "DROPBOX_OAUTH_CLIENT_SECRET",
-  },
-  figma: {
-    clientId: "FIGMA_OAUTH_CLIENT_ID",
-    clientSecret: "FIGMA_OAUTH_CLIENT_SECRET",
-  },
-  "garmin-connect": {
-    clientId: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
-    clientSecret: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
-  },
-  github: {
-    clientId: "GH_OAUTH_CLIENT_ID",
-    clientSecret: "GH_OAUTH_CLIENT_SECRET",
-  },
-  gmail: {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-ads": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-calendar": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-docs": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-drive": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-meet": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-sheets": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  gumroad: {
-    clientId: "GUMROAD_OAUTH_CLIENT_ID",
-    clientSecret: "GUMROAD_OAUTH_CLIENT_SECRET",
-  },
-  hubspot: {
-    clientId: "HUBSPOT_OAUTH_CLIENT_ID",
-    clientSecret: "HUBSPOT_OAUTH_CLIENT_SECRET",
-  },
-  "intervals-icu": {
-    clientId: "INTERVALS_ICU_OAUTH_CLIENT_ID",
-    clientSecret: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
-  },
-  linear: {
-    clientId: "LINEAR_OAUTH_CLIENT_ID",
-    clientSecret: "LINEAR_OAUTH_CLIENT_SECRET",
-  },
-  mercury: {
-    clientId: "MERCURY_OAUTH_CLIENT_ID",
-    clientSecret: "MERCURY_OAUTH_CLIENT_SECRET",
-  },
-  "meta-ads": {
-    clientId: "META_ADS_OAUTH_CLIENT_ID",
-    clientSecret: "META_ADS_OAUTH_CLIENT_SECRET",
-  },
-  monday: {
-    clientId: "MONDAY_OAUTH_CLIENT_ID",
-    clientSecret: "MONDAY_OAUTH_CLIENT_SECRET",
-  },
-  neon: {
-    clientId: "NEON_OAUTH_CLIENT_ID",
-    clientSecret: "NEON_OAUTH_CLIENT_SECRET",
-  },
-  notion: {
-    clientId: "NOTION_OAUTH_CLIENT_ID",
-    clientSecret: "NOTION_OAUTH_CLIENT_SECRET",
-  },
-  "outlook-calendar": {
-    clientId: "MICROSOFT_OAUTH_CLIENT_ID",
-    clientSecret: "MICROSOFT_OAUTH_CLIENT_SECRET",
-  },
-  "outlook-mail": {
-    clientId: "MICROSOFT_OAUTH_CLIENT_ID",
-    clientSecret: "MICROSOFT_OAUTH_CLIENT_SECRET",
-  },
-  posthog: {
-    clientId: "POSTHOG_OAUTH_CLIENT_ID",
-    clientSecret: "POSTHOG_OAUTH_CLIENT_SECRET",
-  },
-  reddit: {
-    clientId: "REDDIT_OAUTH_CLIENT_ID",
-    clientSecret: "REDDIT_OAUTH_CLIENT_SECRET",
-  },
-  sentry: {
-    clientId: "SENTRY_OAUTH_CLIENT_ID",
-    clientSecret: "SENTRY_OAUTH_CLIENT_SECRET",
-  },
-  slack: {
-    clientId: "SLACK_CLIENT_ID",
-    clientSecret: "SLACK_CLIENT_SECRET",
-  },
-  spotify: {
-    clientId: "SPOTIFY_OAUTH_CLIENT_ID",
-    clientSecret: "SPOTIFY_OAUTH_CLIENT_SECRET",
-  },
-  strava: {
-    clientId: "STRAVA_OAUTH_CLIENT_ID",
-    clientSecret: "STRAVA_OAUTH_CLIENT_SECRET",
-  },
-  stripe: {
-    clientId: "STRIPE_OAUTH_CLIENT_ID",
-    clientSecret: "STRIPE_OAUTH_CLIENT_SECRET",
-  },
-  supabase: {
-    clientId: "SUPABASE_OAUTH_CLIENT_ID",
-    clientSecret: "SUPABASE_OAUTH_CLIENT_SECRET",
-  },
-  todoist: {
-    clientId: "TODOIST_OAUTH_CLIENT_ID",
-    clientSecret: "TODOIST_OAUTH_CLIENT_SECRET",
-  },
-  vercel: {
-    clientId: "VERCEL_OAUTH_CLIENT_ID",
-    clientSecret: "VERCEL_OAUTH_CLIENT_SECRET",
-  },
-  webflow: {
-    clientId: "WEBFLOW_OAUTH_CLIENT_ID",
-    clientSecret: "WEBFLOW_OAUTH_CLIENT_SECRET",
-  },
-  x: {
-    clientId: "X_OAUTH_CLIENT_ID",
-    clientSecret: "X_OAUTH_CLIENT_SECRET",
-  },
-  xero: {
-    clientId: "XERO_OAUTH_CLIENT_ID",
-    clientSecret: "XERO_OAUTH_CLIENT_SECRET",
-  },
-  zoom: {
-    clientId: "ZOOM_OAUTH_CLIENT_ID",
-    clientSecret: "ZOOM_OAUTH_CLIENT_SECRET",
-  },
-};
-
-const STATIC_OAUTH_CONFIGURED_CONNECTOR_TYPES = new Set<ConnectorType>([
-  "test-oauth",
-]);
+export interface ConnectorOAuthCredentials {
+  readonly configured: boolean;
+  readonly client: ConnectorOAuthClientConfig;
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+}
 
 function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
   return Boolean(readEnv(name));
+}
+
+export function getConnectorOAuthClientConfig(
+  type: ConnectorType,
+): ConnectorOAuthClientConfig | undefined {
+  return getConnectorOAuthConfig(type)?.client;
+}
+
+export function resolveConnectorOAuthClientCredentials(
+  client: ConnectorOAuthClientConfig,
+  readEnv: ConnectorEnvReader,
+): ConnectorOAuthCredentials {
+  if (client.clientRegistration === "dynamic") {
+    return { configured: true, client };
+  }
+
+  if ("clientId" in client) {
+    return {
+      configured: true,
+      client,
+      clientId: client.clientId,
+      clientSecret:
+        client.clientType === "confidential" ? client.clientSecret : undefined,
+    };
+  }
+
+  const clientId = readEnv(client.clientIdEnv);
+  if (!clientId) {
+    return { configured: false, client };
+  }
+
+  if (client.clientType === "public") {
+    return { configured: true, client, clientId };
+  }
+
+  const clientSecret = readEnv(client.clientSecretEnv);
+  if (!clientSecret) {
+    return { configured: false, client, clientId };
+  }
+
+  return { configured: true, client, clientId, clientSecret };
+}
+
+export function getConnectorOAuthCredentials(
+  type: ConnectorType,
+  readEnv: ConnectorEnvReader,
+): ConnectorOAuthCredentials | undefined {
+  const client = getConnectorOAuthClientConfig(type);
+  if (!client) {
+    return undefined;
+  }
+  return resolveConnectorOAuthClientCredentials(client, readEnv);
 }
 
 function hasConfiguredOAuth(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  if (STATIC_OAUTH_CONFIGURED_CONNECTOR_TYPES.has(type)) {
-    return true;
-  }
-  const keys = OAUTH_ENV_KEYS_BY_CONNECTOR[type];
-  return keys
-    ? hasEnvValue(readEnv, keys.clientId) &&
-        hasEnvValue(readEnv, keys.clientSecret)
-    : false;
+  return getConnectorOAuthCredentials(type, readEnv)?.configured ?? false;
 }
 
 export function getConnectorOAuthEnvKeys(
   type: ConnectorType,
 ): ConnectorOAuthEnvKeys | undefined {
-  return OAUTH_ENV_KEYS_BY_CONNECTOR[type];
+  const client = getConnectorOAuthClientConfig(type);
+  if (
+    !client ||
+    client.clientRegistration !== "static" ||
+    !("clientIdEnv" in client)
+  ) {
+    return undefined;
+  }
+  return {
+    clientId: client.clientIdEnv,
+    clientSecret:
+      client.clientType === "confidential" ? client.clientSecretEnv : undefined,
+  };
 }
 
 /**
- * Return connector types configured by platform/runtime environment.
+ * Return connector types the current runtime can offer as connection candidates.
  *
- * This is intentionally the shared source of truth for the Web and API
- * implementations of GET /api/zero/connectors.
+ * This is not user connected state and it does not evaluate feature switches.
+ * It includes API-token default connectors because they do not require server
+ * credentials, while OAuth connectors require their runtime OAuth env to exist.
  */
-export function getConfiguredConnectorTypes(
+export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,
 ): ConnectorType[] {
-  const configured = new Set<ConnectorType>();
+  const runtimeAvailable = new Set<ConnectorType>();
 
   for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
     const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
@@ -330,7 +262,7 @@ export function getConfiguredConnectorTypes(
       hasConfiguredOAuth(readEnv, type) ||
       defaultAuthMethod === "api-token"
     ) {
-      configured.add(type);
+      runtimeAvailable.add(type);
     }
   }
 
@@ -338,21 +270,10 @@ export function getConfiguredConnectorTypes(
     hasEnvValue(readEnv, "NGROK_API_KEY") &&
     hasEnvValue(readEnv, "NGROK_COMPUTER_CONNECTOR_DOMAIN")
   ) {
-    configured.add("computer");
+    runtimeAvailable.add("computer");
   }
 
-  return [...configured].sort();
-}
-
-/**
- * Get secrets config for a specific auth method
- */
-export function getConnectorSecretsForAuthMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
-): Record<string, ConnectorSecretConfig> | undefined {
-  const authMethods = getConnectorAuthMethods(type);
-  return authMethods[authMethod]?.secrets;
+  return [...runtimeAvailable].sort();
 }
 
 /**
@@ -362,7 +283,7 @@ export function getConnectorSecretNames(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodType,
 ): string[] {
-  const secrets = getConnectorSecretsForAuthMethod(type, authMethod);
+  const secrets = getConnectorAuthMethod(type, authMethod)?.secrets;
   return secrets ? Object.keys(secrets) : [];
 }
 
@@ -598,39 +519,13 @@ export function getConnectorTypeForSecretName(
 }
 
 /**
- * Get required secret names for a connector's api-token auth method.
- * Returns null if the connector type does not support api-token auth.
- * Note: Returns ALL required field names regardless of storage type (secret or variable).
- */
-export function getApiTokenRequiredSecretNames(
-  type: ConnectorType,
-): string[] | null {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"] as
-    | ConnectorAuthMethodConfig
-    | undefined;
-  if (!apiTokenConfig) return null;
-
-  return Object.entries(apiTokenConfig.secrets)
-    .filter(([, cfg]) => {
-      return cfg.required;
-    })
-    .map(([name]) => {
-      return name;
-    });
-}
-
-/**
  * Get required field names grouped by storage type for a connector's api-token auth method.
  * Returns null if the connector type does not support api-token auth.
  */
 export function getApiTokenFieldsByType(
   type: ConnectorType,
 ): { secrets: string[]; variables: string[] } | null {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"] as
-    | ConnectorAuthMethodConfig
-    | undefined;
+  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   if (!apiTokenConfig) return null;
 
   const secretNames: string[] = [];
@@ -644,6 +539,20 @@ export function getApiTokenFieldsByType(
     }
   }
   return { secrets: secretNames, variables: variableNames };
+}
+
+/**
+ * Return the storage target for a connector API-token field.
+ *
+ * Unknown fields preserve the historical form-submit behavior and are treated
+ * as encrypted secrets.
+ */
+export function getApiTokenFieldStorageType(
+  type: ConnectorType,
+  name: string,
+): "secret" | "variable" {
+  const fieldConfig = getConnectorAuthMethod(type, "api-token")?.secrets[name];
+  return fieldConfig?.type ?? "secret";
 }
 
 /**

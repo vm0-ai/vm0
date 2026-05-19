@@ -399,28 +399,44 @@ mod tests {
 
     #[test]
     fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
-        let iterations = 20;
-        let start = Instant::now();
+        let iterations = 20u32;
+        let mut baseline_total = Duration::default();
+        let mut timed_total = Duration::default();
 
-        for _ in 0..iterations {
-            let child = Command::new("sleep")
-                .arg("0.02")
+        fn wait_for_fast_child(timeout_ms: u32) -> Duration {
+            let child = Command::new("true")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
                 .unwrap();
-            let outcome = wait_with_kill_timeout(child, 30_000);
+            let start = Instant::now();
+            let outcome = wait_with_kill_timeout(child, timeout_ms);
+            let elapsed = start.elapsed();
             assert!(
                 matches!(outcome, WaitOutcome::Exited(status) if status.success()),
                 "unexpected wait outcome"
             );
+            elapsed
         }
 
-        let elapsed = start.elapsed();
+        for i in 0..iterations {
+            if i % 2 == 0 {
+                baseline_total += wait_for_fast_child(0);
+                timed_total += wait_for_fast_child(30_000);
+            } else {
+                timed_total += wait_for_fast_child(30_000);
+                baseline_total += wait_for_fast_child(0);
+            }
+        }
+
+        let overhead = timed_total.saturating_sub(baseline_total);
+        let allowed_overhead =
+            Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS * u64::from(iterations) / 2);
         assert!(
-            elapsed < Duration::from_millis(900),
-            "fast child exits should not accumulate the 50ms cancel poll interval per child; \
-             {iterations} waits took {elapsed:?}",
+            overhead < allowed_overhead,
+            "timed waits should not accumulate the {WATCHDOG_CANCEL_POLL_INTERVAL_MS}ms cancel \
+             poll interval per child; {iterations} timed waits took {timed_total:?}, baseline \
+             waits took {baseline_total:?}, overhead was {overhead:?}",
         );
     }
 

@@ -504,8 +504,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // Without body.error, stored error is the fallback string. The frontend's
-      // formatChatRunErrorMessage handles UI rendering; the column is debug-only.
+      // Without body.error, stored error is the fallback string. The chat
+      // callback path handles UI rendering; the column is debug-only.
       const run = await findTestRunRecord(runId);
       expect(run!.error).toBe("Run failed without error message");
     });
@@ -541,10 +541,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // body.error must be stored verbatim — frontend transforms it for UI
-      // display via formatChatRunErrorMessage, so the column itself is the
-      // debuggable underlying error. Without this, engineers cannot diagnose
-      // production failures from agent_runs alone.
+      // body.error must be stored verbatim so the column itself is the
+      // debuggable underlying error. The chat callback path transforms the
+      // raw value for UI display.
       const run = await findTestRunRecord(runId);
       expect(run!.error).toBe(
         "unable to load auth.json: refresh_token cannot be empty",
@@ -1148,7 +1147,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { runId } = await createTestRun(composeId, "Scheduled task");
       await linkRunToSchedule(runId, schedule.id);
 
-      // Register callbacks (as executeSchedule now does)
+      // Register callbacks for schedule-linked runs.
       await createTestCallback({
         runId,
         url: "http://localhost/api/zero/email/callbacks/schedule",
@@ -1444,9 +1443,8 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   // Terminal completion kicks processOrgUsageEvents() inside the after()
   // block so connector-kind charges drain immediately instead of waiting
-  // up to a minute for the usage-event cron. The cron itself is tested
-  // in app/api/cron/process-usage-events/__tests__; this test verifies
-  // the inline wiring from the complete webhook.
+  // up to a minute for the API usage-event cron. This test verifies the
+  // inline wiring from the complete webhook.
   describe("Usage event settlement", () => {
     it("settles pending usage_event rows inline in the after() block", async () => {
       await insertTestUsagePricing({

@@ -19,6 +19,8 @@ interface SeedComposeRow {
   readonly sound?: string | null;
   readonly avatarUrl?: string | null;
   readonly headVersionId?: string | null;
+  readonly ownerId?: string;
+  readonly visibility?: "public" | "private";
   readonly withZeroAgent?: boolean;
 }
 
@@ -57,12 +59,13 @@ export const seedTeamCompose$ = command(
         await writeDb.insert(zeroAgents).values({
           id: composeId,
           orgId,
-          owner: userId,
+          owner: row.ownerId ?? userId,
           name: `agent-${composeId.slice(0, 8)}`,
           displayName: row.displayName ?? null,
           description: row.description ?? null,
           sound: row.sound ?? null,
           avatarUrl: row.avatarUrl ?? null,
+          visibility: row.visibility ?? "public",
         });
         signal.throwIfAborted();
       }

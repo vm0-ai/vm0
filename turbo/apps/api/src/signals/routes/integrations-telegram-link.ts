@@ -4,8 +4,11 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import type { z } from "zod";
 
@@ -13,7 +16,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { waitUntil } from "../context/wait-until";
 import { bodyResultOf, queryOf } from "../context/request";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
@@ -87,6 +90,14 @@ function invalidConnectSignatureResponse() {
     400,
     "Invalid or expired connect link. Please use /connect again in Telegram.",
     "BAD_REQUEST",
+  );
+}
+
+function missingOfficialAgentResponse() {
+  return errorResult(
+    409,
+    "Finish onboarding before connecting Telegram. Telegram needs a default agent for this workspace.",
+    "CONFLICT",
   );
 }
 
@@ -192,6 +203,63 @@ async function publishTelegramUserChanged(userId: string): Promise<void> {
   }
 }
 
+async function resolveOfficialConnectComposeId(
+  db: Db,
+  auth: OrganizationAuth,
+): Promise<string | null> {
+  const [preference] = await db
+    .select({
+      selectedComposeId: telegramUserAgentPreferences.selectedComposeId,
+    })
+    .from(telegramUserAgentPreferences)
+    .where(
+      and(
+        eq(telegramUserAgentPreferences.vm0UserId, auth.userId),
+        eq(telegramUserAgentPreferences.orgId, auth.orgId),
+      ),
+    )
+    .limit(1);
+
+  const preferredComposeId = preference?.selectedComposeId ?? null;
+  if (preferredComposeId) {
+    const [compose] = await db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.id, preferredComposeId),
+          eq(agentComposes.orgId, auth.orgId),
+        ),
+      )
+      .limit(1);
+    if (compose) {
+      return compose.id;
+    }
+  }
+
+  const [metadata] = await db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, auth.orgId))
+    .limit(1);
+  const defaultAgentId = metadata?.defaultAgentId ?? null;
+  if (!defaultAgentId) {
+    return null;
+  }
+
+  const [compose] = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.id, defaultAgentId),
+        eq(agentComposes.orgId, auth.orgId),
+      ),
+    )
+    .limit(1);
+  return compose?.id ?? null;
+}
+
 const unlinkInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const { botId } = get(queryOf(zeroIntegrationsTelegramContract.unlink));
@@ -280,6 +348,13 @@ const linkOfficialInner$ = command(
         return invalidTelegramAuthResponse();
       }
 
+      const db = set(writeDb$);
+      const composeId = await resolveOfficialConnectComposeId(db, args.auth);
+      signal.throwIfAborted();
+      if (!composeId) {
+        return missingOfficialAgentResponse();
+      }
+
       const telegramUserId = String(telegramAuth.id);
       const result = await set(
         linkOfficialTelegramUserToVm0User$,
@@ -317,6 +392,13 @@ const linkOfficialInner$ = command(
         })
       ) {
         return invalidConnectSignatureResponse();
+      }
+
+      const db = set(writeDb$);
+      const composeId = await resolveOfficialConnectComposeId(db, args.auth);
+      signal.throwIfAborted();
+      if (!composeId) {
+        return missingOfficialAgentResponse();
       }
 
       const result = await set(

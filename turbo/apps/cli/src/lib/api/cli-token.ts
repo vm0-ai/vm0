@@ -19,14 +19,10 @@ export function decodeCliTokenPayload(
   if (!raw) return undefined;
 
   const patPrefix = "vm0_pat_";
-  const legacyPrefix = "vm0_sandbox_";
 
   let jwt: string;
   if (raw.startsWith(patPrefix)) {
     jwt = raw.slice(patPrefix.length);
-  } else if (raw.startsWith(legacyPrefix)) {
-    // Backward compat: accept old vm0_sandbox_ prefix during transition
-    jwt = raw.slice(legacyPrefix.length);
   } else {
     return undefined;
   }

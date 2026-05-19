@@ -42,17 +42,6 @@ export interface RunResult {
 }
 
 /**
- * Run state information returned by events API
- * Replaces the previous vm0_start/vm0_result/vm0_error events
- */
-export interface RunState {
-  status: RunStatus;
-  result?: RunResult; // Present when status = 'completed'
-  error?: string; // Present when status = 'failed'
-  lastEventSequence?: number; // Highest event sequence reported by terminal webhook
-}
-
-/**
  * Session history restoration data
  */
 export interface ResumeSession {

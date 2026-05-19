@@ -1,16 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
+import { connectorTypeSchema } from "../connectors";
 import {
+  getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   hasRequiredScopes,
+  getConnectorAuthMethod,
+  getConnectorCliAuthFlow,
+  getConnectorCliAuthModes,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
+  getConnectorOAuthClientConfig,
+  getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
-  getConfiguredConnectorTypes,
+  getRuntimeAvailableConnectorTypes,
   isGoogleOAuthConnector,
+  resolveConnectorOAuthClientCredentials,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
@@ -60,14 +67,21 @@ describe("hasRequiredScopes", () => {
 });
 
 describe("connector auth method config", () => {
+  it("returns a single auth method config when present", () => {
+    expect(getConnectorAuthMethod("stripe", "cli-auth")?.label).toBe(
+      "Sign in with Stripe",
+    );
+    expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
+  });
+
   it("declares Stripe CLI auth as a gated connection flow with modes", () => {
-    const method = CONNECTOR_TYPES.stripe.authMethods["cli-auth"];
+    const method = getConnectorAuthMethod("stripe", "cli-auth");
 
     expect(method).toBeDefined();
     expect(method?.secrets).toStrictEqual({});
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
-    expect(CONNECTOR_TYPES.stripe.cliAuth?.flow).toBe("browser-verification");
-    expect(CONNECTOR_TYPES.stripe.cliAuth?.modes).toStrictEqual([
+    expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
+    expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
       {
         value: "test",
         label: "Test mode",
@@ -79,6 +93,18 @@ describe("connector auth method config", () => {
         description: "Import a Stripe live mode key.",
       },
     ]);
+  });
+
+  it("returns api-token field storage types with secret default", () => {
+    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_EMAIL")).toBe(
+      "variable",
+    );
+    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_API_TOKEN")).toBe(
+      "secret",
+    );
+    expect(getApiTokenFieldStorageType("zendesk", "UNKNOWN_FIELD")).toBe(
+      "secret",
+    );
   });
 });
 
@@ -163,6 +189,13 @@ describe("getConnectorEnvironmentMapping", () => {
   it("returns correct mapping for apollo connector", () => {
     expect(getConnectorEnvironmentMapping("apollo")).toEqual({
       APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
+    });
+  });
+
+  it("returns correct mapping for SproutGigs connector", () => {
+    expect(getConnectorEnvironmentMapping("sproutgigs")).toEqual({
+      SPROUTGIGS_USER_ID: "$vars.SPROUTGIGS_USER_ID",
+      SPROUTGIGS_API_SECRET: "$secrets.SPROUTGIGS_API_SECRET",
     });
   });
 
@@ -282,16 +315,23 @@ describe("getConnectorEnvironmentMapping", () => {
   });
 });
 
-describe("getConfiguredConnectorTypes", () => {
+describe("getRuntimeAvailableConnectorTypes", () => {
   const emptyEnv = () => {
     return undefined;
   };
 
-  it("includes api-token connectors without environment credentials", () => {
-    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+  it("includes api-token default connectors without environment credentials or feature switches", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
-    expect(configuredTypes).toContain("amplitude");
-    expect(configuredTypes).toContain("openai");
+    expect(runtimeAvailableTypes).toContain("amplitude");
+    expect(runtimeAvailableTypes).toContain("bentoml");
+    expect(runtimeAvailableTypes).toContain("openai");
+  });
+
+  it("includes static OAuth test connectors without runtime environment credentials", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toContain("test-oauth");
   });
 
   it("includes OAuth connectors only when client id and secret are configured", () => {
@@ -301,12 +341,111 @@ describe("getConfiguredConnectorTypes", () => {
       ["SENTRY_OAUTH_CLIENT_ID", "sentry-client-id"],
     ]);
 
-    const configuredTypes = getConfiguredConnectorTypes((name) => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
       return env.get(name);
     });
 
-    expect(configuredTypes).toContain("airtable");
-    expect(configuredTypes).not.toContain("sentry");
+    expect(runtimeAvailableTypes).toContain("airtable");
+    expect(runtimeAvailableTypes).not.toContain("sentry");
+  });
+
+  it("treats empty OAuth environment values as not configured", () => {
+    const env = new Map([
+      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
+      ["AIRTABLE_OAUTH_CLIENT_SECRET", ""],
+      ["SENTRY_OAUTH_CLIENT_ID", ""],
+      ["SENTRY_OAUTH_CLIENT_SECRET", "sentry-client-secret"],
+    ]);
+
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
+      return env.get(name);
+    });
+
+    expect(runtimeAvailableTypes).not.toContain("airtable");
+    expect(runtimeAvailableTypes).not.toContain("sentry");
+  });
+
+  it("derives static confidential OAuth credentials from connector config", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return (
+        {
+          GH_OAUTH_CLIENT_ID: "github-client-id",
+          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
+        } as Record<string, string>
+      )[name];
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+      clientSecret: "github-client-secret",
+    });
+  });
+
+  it("does not configure static confidential OAuth when the secret is missing", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: false,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+    });
+  });
+
+  it("supports literal static OAuth clients without environment credentials", () => {
+    const credentials = getConnectorOAuthCredentials("test-oauth", emptyEnv);
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("test-oauth"),
+      clientId: "test-oauth-client",
+      clientSecret: "test-oauth-secret",
+    });
+  });
+
+  it("supports static public OAuth clients with only a client id", () => {
+    const credentials = resolveConnectorOAuthClientCredentials(
+      {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
+      },
+      (name) => {
+        return name === "PUBLIC_OAUTH_CLIENT_ID"
+          ? "public-client-id"
+          : undefined;
+      },
+    );
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
+      },
+      clientId: "public-client-id",
+    });
+  });
+
+  it("supports dynamic public OAuth clients without environment credentials", () => {
+    const client = {
+      clientRegistration: "dynamic",
+      clientType: "public",
+      tokenEndpointAuthMethod: "none",
+    } as const;
+
+    expect(
+      resolveConnectorOAuthClientCredentials(client, emptyEnv),
+    ).toStrictEqual({
+      configured: true,
+      client,
+    });
   });
 
   it("includes all connectors that share a configured OAuth app", () => {
@@ -315,11 +454,11 @@ describe("getConfiguredConnectorTypes", () => {
       ["GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret"],
     ]);
 
-    const configuredTypes = getConfiguredConnectorTypes((name) => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes((name) => {
       return env.get(name);
     });
 
-    expect(configuredTypes).toEqual(
+    expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining([
         "gmail",
         "google-calendar",
@@ -332,22 +471,17 @@ describe("getConfiguredConnectorTypes", () => {
   });
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
-    const oauthTypesWithoutRuntimeClientCredentials = new Set([
-      "codex-oauth",
-      "mailchimp",
-    ]);
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return (
-        getConnectorOAuthConfig(type) &&
-        !oauthTypesWithoutRuntimeClientCredentials.has(type)
-      );
+      return getConnectorOAuthConfig(type);
     });
 
-    const configuredTypes = getConfiguredConnectorTypes(() => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
       return "configured";
     });
 
-    expect(configuredTypes).toEqual(expect.arrayContaining(activeOAuthTypes));
+    expect(runtimeAvailableTypes).toEqual(
+      expect.arrayContaining(activeOAuthTypes),
+    );
   });
 
   it("includes computer only when both ngrok env vars are configured", () => {
@@ -358,21 +492,38 @@ describe("getConfiguredConnectorTypes", () => {
     ]);
 
     expect(
-      getConfiguredConnectorTypes((name) => {
+      getRuntimeAvailableConnectorTypes((name) => {
         return partialComputerEnv.get(name);
       }),
     ).not.toContain("computer");
     expect(
-      getConfiguredConnectorTypes((name) => {
+      getRuntimeAvailableConnectorTypes((name) => {
         return fullComputerEnv.get(name);
       }),
     ).toContain("computer");
   });
 
-  it("returns connector types in sorted order", () => {
-    const configuredTypes = getConfiguredConnectorTypes(emptyEnv);
+  it("excludes API-managed local connectors without special runtime env support", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
-    expect(configuredTypes).toStrictEqual([...configuredTypes].sort());
+    expect(runtimeAvailableTypes).not.toContain("local-agent");
+    expect(runtimeAvailableTypes).not.toContain("local-browser");
+  });
+
+  it("does not include Stripe without OAuth runtime env despite alternative auth methods", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(getConnectorAuthMethod("stripe", "api-token")).toBeDefined();
+    expect(getConnectorAuthMethod("stripe", "cli-auth")).toBeDefined();
+    expect(runtimeAvailableTypes).not.toContain("stripe");
+  });
+
+  it("returns connector types in sorted order", () => {
+    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
+
+    expect(runtimeAvailableTypes).toStrictEqual(
+      [...runtimeAvailableTypes].sort(),
+    );
   });
 });
 

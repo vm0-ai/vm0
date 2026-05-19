@@ -1,12 +1,13 @@
 import { type ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 
 /**
- * Bridge: model-provider type (api-contracts) → connector handler key (PROVIDER_HANDLERS).
+ * Bridge: model-provider type (api-contracts) → model-provider OAuth handler key.
  *
  * The model-provider type and connector handler key are intentionally distinct:
  * the model-provider type names the user-facing provider (e.g., the row in
  * `model_providers.type`), while the connector handler key names the OAuth
- * implementation in `PROVIDER_HANDLERS` that knows how to refresh its tokens.
+ * implementation in `MODEL_PROVIDER_OAUTH_HANDLERS` that knows how to refresh
+ * its tokens.
  *
  * Add an entry when a new model-provider OAuth type ships its handler.
  *
@@ -16,7 +17,7 @@ import { type ModelProviderType } from "@vm0/api-contracts/contracts/model-provi
 export const MODEL_PROVIDER_HANDLER_KEY: Partial<
   Record<ModelProviderType, string>
 > = {
-  "codex-oauth-token": "codex-oauth",
+  "codex-oauth-token": "codex-oauth-token",
 };
 
 /**
@@ -26,7 +27,7 @@ export const MODEL_PROVIDER_HANDLER_KEY: Partial<
  * default connector source.
  */
 export const HANDLER_KEY_SOURCE_TYPE: Record<string, "model-provider"> = {
-  "codex-oauth": "model-provider",
+  "codex-oauth-token": "model-provider",
 };
 
 /**
@@ -38,7 +39,7 @@ export const SOURCE_HANDLER_TO_PROVIDER_TYPE: Record<
   string,
   ModelProviderType
 > = {
-  "codex-oauth": "codex-oauth-token",
+  "codex-oauth-token": "codex-oauth-token",
 };
 
 /**

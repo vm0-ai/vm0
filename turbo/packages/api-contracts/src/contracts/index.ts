@@ -26,10 +26,17 @@ export {
   apiErrorSchema,
   ApiError,
   createErrorResponse,
+  formatChatgptCodexUsageLimitError,
   RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,
 } from "./errors";
+export {
+  desktopAuthConsumeContract,
+  desktopAuthHandoffContract,
+  type DesktopAuthConsumeContract,
+  type DesktopAuthHandoffContract,
+} from "./desktop-auth";
 export {
   composesMainContract,
   composesByIdContract,
@@ -221,6 +228,7 @@ export {
   webhookFirewallAuthContract,
   webhookGithubContract,
   webhookStripeContract,
+  webhookBuiltInGenerationFalContract,
   webhookCompleteContract,
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -248,6 +256,7 @@ export {
   type WebhookUsageEventContract,
   type WebhookGithubContract,
   type WebhookStripeContract,
+  type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
 export {
   cliAuthDeviceContract,
@@ -696,8 +705,6 @@ export {
 } from "@vm0/connectors/connectors";
 export {
   getConnectorAuthMethods,
-  getConnectorDefaultAuthMethod,
-  getConnectorSecretsForAuthMethod,
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
@@ -710,7 +717,6 @@ export {
   hasRequiredScopes,
   getScopeDiff,
   type ScopeDiff,
-  getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
   searchConnectors,
@@ -1386,7 +1392,6 @@ export {
   zeroImageIoGenerateContract,
   zeroImageIoGenerateRequestSchema,
   zeroImageIoGenerateResponseSchema,
-  zeroImageIoUsageSchema,
   type ZeroImageIoGenerateContract,
   type ZeroImageIoGenerateRequest,
   type ZeroImageIoGenerateResponse,
@@ -1408,6 +1413,29 @@ export {
   type ZeroPresentationIoGenerateRequest,
   type ZeroPresentationIoGenerateResponse,
 } from "./zero-presentation-io-generate";
+export {
+  zeroWebsiteIoGenerateContract,
+  zeroWebsiteIoGenerateRequestSchema,
+  zeroWebsiteIoGenerateResponseSchema,
+  zeroWebsiteIoUsageSchema,
+  zeroWebsiteTemplateIdSchema,
+  zeroWebsiteTemplateRequestSchema,
+  zeroWebsiteCtaSchema,
+  zeroWebsiteHighlightSchema,
+  zeroWebsiteSectionSchema,
+  zeroWebsiteStatSchema,
+  zeroWebsiteFooterSchema,
+  zeroWebsiteThemeSchema,
+  zeroWebsiteSiteDataSchema,
+  zeroWebsiteGenerationPayloadSchema,
+  type ZeroWebsiteIoGenerateContract,
+  type ZeroWebsiteIoGenerateRequest,
+  type ZeroWebsiteIoGenerateResponse,
+  type ZeroWebsiteTemplateId,
+  type ZeroWebsiteTemplateRequest,
+  type ZeroWebsiteSiteData,
+  type ZeroWebsiteGenerationPayload,
+} from "./zero-website-io-generate";
 export {
   zeroBuiltInGenerationContract,
   zeroBuiltInGenerationTypeSchema,

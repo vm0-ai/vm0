@@ -14,6 +14,9 @@ use guest_agent::metrics;
 use guest_agent::paths;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
+use agent_diagnostics::{
+    AgentFramework, FailureClass, FailureDiagnostic, PromptMetadata, SessionHistoryStatus,
+};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use std::io::ErrorKind;
@@ -158,6 +161,10 @@ async fn execute(
     {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
+        write_guest_error_file(&msg);
+        write_guest_failure_diagnostic(&base_failure_diagnostic(
+            FailureClass::WorkingDirSetupFailed,
+        ));
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
         return 1;
     }
@@ -186,46 +193,71 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (cli_exit_code, exit_code, error_message, skip_recovery_checkpoint_for_no_history) =
-        match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
-            Ok(cli_result) => {
-                last_event_sequence = cli_result.last_event_sequence;
-                let cli_exit_code = cli_result.exit_code;
-                if cli_exit_code != 0 {
-                    (
+    let (
+        cli_exit_code,
+        exit_code,
+        error_message,
+        skip_recovery_checkpoint_for_no_history,
+        failure_diagnostic,
+    ) = match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
+        Ok(cli_result) => {
+            last_event_sequence = cli_result.last_event_sequence;
+            let cli_exit_code = cli_result.exit_code;
+            if cli_exit_code != 0 {
+                let diagnostic = cli_result_failure_diagnostic(
+                    FailureClass::CliNonzero,
+                    cli_exit_code,
+                    cli_result.claude_result,
+                );
+                (
+                    cli_exit_code,
+                    cli_exit_code,
+                    cli_failure_message(
                         cli_exit_code,
-                        cli_exit_code,
-                        cli_failure_message(cli_exit_code, &cli_result.stderr_lines),
+                        &cli_result.stderr_lines,
+                        cli_result.failure_diagnostic.as_deref(),
+                    ),
+                    false,
+                    Some(diagnostic),
+                )
+            } else if env::has_api()
+                && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
+            {
+                let history_check_start = Instant::now();
+                let session_history_status = claude_history_target_status();
+                if session_history_unavailable(session_history_status) {
+                    let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
+                    record_sandbox_op(
+                        "session_history_available",
+                        history_check_start.elapsed(),
                         false,
-                    )
-                } else if env::has_api()
-                    && is_claude_zero_turn_result(env::Framework::from_env(), &cli_result)
-                {
-                    let history_check_start = Instant::now();
-                    if claude_history_target_unavailable() {
-                        let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
-                        record_sandbox_op(
-                            "session_history_available",
-                            history_check_start.elapsed(),
-                            false,
-                            Some(msg),
-                        );
-                        log_info!(LOG_TAG, "{msg}");
-                        let _ = std::fs::write(paths::checkpoint_error_file(), msg);
-                        (cli_exit_code, 1, msg.to_string(), true)
-                    } else {
-                        (0, 0, String::new(), false)
-                    }
+                        Some(msg),
+                    );
+                    log_info!(LOG_TAG, "{msg}");
+                    let diagnostic = base_failure_diagnostic(FailureClass::ClaudeZeroTurnNoHistory)
+                        .with_cli_exit_code(cli_exit_code)
+                        .with_claude_num_turns(Some(0))
+                        .with_session_history_status(session_history_status);
+                    (cli_exit_code, 1, msg.to_string(), true, Some(diagnostic))
                 } else {
-                    (0, 0, String::new(), false)
+                    (0, 0, String::new(), false, None)
                 }
+            } else {
+                (0, 0, String::new(), false, None)
             }
-            Err(e) => {
-                let msg = e.to_string();
-                log_error!(LOG_TAG, "CLI execution failed: {msg}");
-                (1, 1, msg, false)
-            }
-        };
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            log_error!(LOG_TAG, "CLI execution failed: {msg}");
+            (
+                1,
+                1,
+                msg,
+                false,
+                Some(base_failure_diagnostic(FailureClass::CliExecutionError)),
+            )
+        }
+    };
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
         "cli_execution",
@@ -242,8 +274,12 @@ async fn execute(
         cli_exit_code,
         exit_code,
         cli_elapsed,
-        last_event_sequence,
-        skip_recovery_checkpoint_for_no_history,
+        CompletionState {
+            last_event_sequence,
+            failure_message: (exit_code != 0).then_some(error_message.as_str()),
+            failure_diagnostic,
+            skip_recovery_checkpoint_for_no_history,
+        },
         telemetry,
         &http,
     )
@@ -261,28 +297,121 @@ fn is_claude_zero_turn_result(
             .is_some_and(|result| result.num_turns == Some(0))
 }
 
-fn claude_history_target_unavailable() -> bool {
+fn cli_result_failure_diagnostic(
+    failure_class: FailureClass,
+    cli_exit_code: i32,
+    claude_result: Option<cli::ClaudeResultSummary>,
+) -> FailureDiagnostic {
+    let mut diagnostic = base_failure_diagnostic(failure_class)
+        .with_cli_exit_code(cli_exit_code)
+        .with_session_history_status(diagnostic_session_history_status());
+    if let Some(result) = claude_result {
+        diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
+    }
+    diagnostic
+}
+
+fn base_failure_diagnostic(failure_class: FailureClass) -> FailureDiagnostic {
+    FailureDiagnostic::new(
+        failure_class,
+        diagnostic_framework(),
+        PromptMetadata::from_prompt(env::prompt()),
+    )
+}
+
+fn diagnostic_framework() -> AgentFramework {
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
+        env::Framework::Codex => AgentFramework::Codex,
+    }
+}
+
+fn diagnostic_session_history_status() -> SessionHistoryStatus {
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => claude_history_target_status(),
+        env::Framework::Codex => SessionHistoryStatus::NotApplicable,
+    }
+}
+
+fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
+    matches!(
+        status,
+        SessionHistoryStatus::Missing | SessionHistoryStatus::Empty
+    )
+}
+
+fn claude_history_target_status() -> SessionHistoryStatus {
     let raw = match std::fs::read_to_string(paths::session_history_path_file()) {
         Ok(raw) => raw,
-        Err(e) if e.kind() == ErrorKind::NotFound => return true,
-        Err(_) => return false,
+        Err(e) if e.kind() == ErrorKind::NotFound => return SessionHistoryStatus::Missing,
+        Err(_) => return SessionHistoryStatus::Unknown,
     };
     let target = raw.trim();
     if target.is_empty() {
-        return true;
+        return SessionHistoryStatus::Missing;
     }
-    history_target_unavailable(Path::new(target))
+    history_target_status(Path::new(target))
 }
 
+#[cfg(test)]
 fn history_target_unavailable(path: &Path) -> bool {
+    session_history_unavailable(history_target_status(path))
+}
+
+fn history_target_status(path: &Path) -> SessionHistoryStatus {
     match path.metadata() {
-        Ok(metadata) => metadata.is_file() && metadata.len() == 0,
-        Err(e) if e.kind() == ErrorKind::NotFound => true,
-        Err(_) => false,
+        Ok(metadata) if metadata.is_file() && metadata.len() == 0 => SessionHistoryStatus::Empty,
+        Ok(_) => SessionHistoryStatus::Present,
+        Err(e) if e.kind() == ErrorKind::NotFound => SessionHistoryStatus::Missing,
+        Err(_) => SessionHistoryStatus::Unknown,
     }
 }
 
-fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
+fn write_guest_error_file(message: &str) {
+    let message = message.trim();
+    if message.is_empty() {
+        return;
+    }
+
+    if let Err(e) = std::fs::write(paths::checkpoint_error_file(), message) {
+        log_warn!(LOG_TAG, "Failed to write guest error file: {e}");
+    }
+}
+
+fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
+    let bytes = match serde_json::to_vec(diagnostic) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log_warn!(LOG_TAG, "Failed to serialize guest failure diagnostic: {e}");
+            return;
+        }
+    };
+
+    if let Err(e) = std::fs::write(paths::failure_diagnostic_file(), bytes) {
+        log_warn!(
+            LOG_TAG,
+            "Failed to write guest failure diagnostic file: {e}"
+        );
+    }
+}
+
+fn cli_failure_message(
+    code: i32,
+    stderr_lines: &[String],
+    failure_diagnostic: Option<&str>,
+) -> String {
+    if let Some(message) = failure_diagnostic.and_then(|message| {
+        let message = message.trim();
+        if message.is_empty() {
+            None
+        } else {
+            Some(message)
+        }
+    }) && (!is_generic_codex_failure_diagnostic(message) || stderr_lines.is_empty())
+    {
+        return message.to_string();
+    }
+
     if stderr_lines.is_empty() {
         return format!("Agent exited with code {code}");
     }
@@ -312,6 +441,10 @@ fn cli_failure_message(code: i32, stderr_lines: &[String]) -> String {
     message_lines.join(" ")
 }
 
+fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
+    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+}
+
 fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
     if line.len() <= MAX_LOGGED_CLI_STDERR_LINE_BYTES {
         return std::borrow::Cow::Borrowed(line);
@@ -331,18 +464,47 @@ fn truncate_cli_stderr_line(line: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(truncated)
 }
 
+struct CompletionState<'a> {
+    last_event_sequence: Option<u32>,
+    failure_message: Option<&'a str>,
+    failure_diagnostic: Option<FailureDiagnostic>,
+    skip_recovery_checkpoint_for_no_history: bool,
+}
+
 async fn complete_execution(
     cli_exit_code: i32,
     mut exit_code: i32,
     cli_elapsed: Duration,
-    last_event_sequence: Option<u32>,
-    skip_recovery_checkpoint_for_no_history: bool,
+    state: CompletionState<'_>,
     telemetry: &Telemetry,
     http: &HttpClient,
 ) -> i32 {
+    let has_failure_message = state
+        .failure_message
+        .is_some_and(|message| !message.trim().is_empty());
+    if let Some(message) = state.failure_message {
+        write_guest_error_file(message);
+    }
+    let mut wrote_failure_diagnostic = false;
+    if let Some(diagnostic) = &state.failure_diagnostic {
+        write_guest_failure_diagnostic(diagnostic);
+        wrote_failure_diagnostic = true;
+    }
+
     // Check if any events failed to send (before logging execution result)
     if std::path::Path::new(paths::event_error_flag()).exists() {
-        log_error!(LOG_TAG, "Some events failed to send, marking run as failed");
+        let msg = "Some events failed to send, marking run as failed";
+        log_error!(LOG_TAG, "{msg}");
+        if !has_failure_message {
+            write_guest_error_file(msg);
+        }
+        if !wrote_failure_diagnostic {
+            let diagnostic = base_failure_diagnostic(FailureClass::EventUploadFailed)
+                .with_cli_exit_code(cli_exit_code)
+                .with_session_history_status(diagnostic_session_history_status());
+            write_guest_failure_diagnostic(&diagnostic);
+            wrote_failure_diagnostic = true;
+        }
         exit_code = 1;
     }
 
@@ -396,7 +558,7 @@ async fn complete_execution(
                     http,
                     env::sandbox_id(),
                     env::sandbox_reuse_result(),
-                    last_event_sequence,
+                    state.last_event_sequence,
                 )
                 .await;
                 final_telemetry(telemetry).await;
@@ -409,7 +571,13 @@ async fn complete_execution(
                     "✗ Checkpoint failed ({}s)",
                     cp_start.elapsed().as_secs()
                 );
-                let _ = std::fs::write(paths::checkpoint_error_file(), &msg);
+                write_guest_error_file(&msg);
+                if !wrote_failure_diagnostic {
+                    let diagnostic = base_failure_diagnostic(FailureClass::CheckpointFailed)
+                        .with_cli_exit_code(cli_exit_code)
+                        .with_session_history_status(diagnostic_session_history_status());
+                    write_guest_failure_diagnostic(&diagnostic);
+                }
                 exit_code = 1;
 
                 // Failure path: don't call /complete from guest. The runner's
@@ -422,7 +590,7 @@ async fn complete_execution(
     } else {
         if cli_exit_code == 0 && exit_code == 0 {
             log_info!(LOG_TAG, "{agent_type} completed successfully");
-        } else if skip_recovery_checkpoint_for_no_history {
+        } else if state.skip_recovery_checkpoint_for_no_history {
             log_info!(
                 LOG_TAG,
                 "{agent_type} completed without resumable session history; marking run as failed"
@@ -435,7 +603,7 @@ async fn complete_execution(
         }
 
         if env::has_api() {
-            if skip_recovery_checkpoint_for_no_history {
+            if state.skip_recovery_checkpoint_for_no_history {
                 log_info!(
                     LOG_TAG,
                     "Skipping recovery checkpoint because no session history was created"
@@ -514,7 +682,7 @@ mod tests {
             .chain(std::iter::once(long_line.clone()))
             .chain((0..(MAX_LOGGED_CLI_STDERR_LINES - 2)).map(|i| format!("extra line {i}")))
             .collect::<Vec<_>>();
-        let msg = cli_failure_message(1, &stderr_lines);
+        let msg = cli_failure_message(1, &stderr_lines, None);
         assert!(
             !msg.contains("prefix line"),
             "returned error message should omit older stderr lines"
@@ -575,7 +743,7 @@ mod tests {
             .chain((1..MAX_LOGGED_CLI_STDERR_LINES).map(|i| format!("line {i}")))
             .collect::<Vec<_>>();
 
-        let msg = cli_failure_message(1, &stderr_lines);
+        let msg = cli_failure_message(1, &stderr_lines, None);
         assert!(
             msg.contains(&exact_limit_line),
             "returned error message should preserve line at exact size limit"
@@ -609,7 +777,7 @@ mod tests {
 
         let prefix = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES - 1);
         let stderr_line = format!("{prefix}é-tail");
-        let msg = cli_failure_message(1, &[stderr_line]);
+        let msg = cli_failure_message(1, &[stderr_line], None);
 
         assert!(
             msg.contains(&prefix),
@@ -636,12 +804,45 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_message_prefers_codex_failure_diagnostic() {
+        let stderr_lines = vec!["background task noise".to_string()];
+        let msg = cli_failure_message(
+            1,
+            &stderr_lines,
+            Some(
+                "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
+            ),
+        );
+
+        assert_eq!(
+            msg,
+            "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
+        );
+    }
+
+    #[test]
+    fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
+        let stderr_lines = vec!["specific stderr failure".to_string()];
+        let msg = cli_failure_message(1, &stderr_lines, Some("turn failed"));
+
+        assert_eq!(msg, "specific stderr failure");
+    }
+
+    #[test]
+    fn cli_failure_message_uses_generic_codex_failure_diagnostic_without_stderr() {
+        let msg = cli_failure_message(1, &[], Some("turn failed"));
+
+        assert_eq!(msg, "turn failed");
+    }
+
+    #[test]
     fn is_claude_zero_turn_result_requires_all_guards() {
         let zero_turn = cli::CliExecutionResult {
             exit_code: 0,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(0) }),
+            failure_diagnostic: None,
         };
         let one_turn = cli::CliExecutionResult {
             claude_result: Some(cli::ClaudeResultSummary { num_turns: Some(1) }),
@@ -796,6 +997,260 @@ mod tests {
             .block_on(complete_execution_skips_recovery_checkpoint_for_no_history_inner());
     }
 
+    #[test]
+    fn complete_execution_writes_event_upload_failure_diagnostic() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_writes_event_upload_failure_diagnostic_inner());
+    }
+
+    #[test]
+    fn complete_execution_writes_checkpoint_failure_diagnostic() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
+    }
+
+    #[test]
+    fn complete_execution_preserves_existing_failure_diagnostic_when_events_fail() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(
+                complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner(),
+            );
+    }
+
+    async fn complete_execution_writes_event_upload_failure_diagnostic_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "/event-upload-failure");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::write(paths::event_error_flag(), "").unwrap();
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            "Some events failed to send, marking run as failed"
+        );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+        assert_eq!(
+            diagnostic.session_history_status,
+            SessionHistoryStatus::Missing
+        );
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        let error = std::fs::read_to_string(paths::checkpoint_error_file()).unwrap();
+        assert!(error.contains("Checkpoint failed"), "got: {error}");
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+        assert_eq!(
+            diagnostic.session_history_status,
+            SessionHistoryStatus::Missing
+        );
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    async fn complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner() {
+        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
+        server.reset_async().await;
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "plain prompt");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+        std::fs::write(paths::event_error_flag(), "").unwrap();
+
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let failure_message = "CLI failed before all events uploaded";
+        let failure_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_session_history_status(SessionHistoryStatus::Missing);
+        let exit_code = complete_execution(
+            1,
+            1,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: Some(failure_message),
+                failure_diagnostic: Some(failure_diagnostic.clone()),
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            failure_message
+        );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic, failure_diagnostic);
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     async fn complete_execution_skips_recovery_checkpoint_for_no_history_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
@@ -804,10 +1259,12 @@ mod tests {
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
             std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "/help");
         }
 
         let cleanup_paths = [
             paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
             paths::event_error_flag().to_string(),
             paths::sandbox_ops_file().to_string(),
             paths::telemetry_system_log_pos_file().to_string(),
@@ -837,11 +1294,40 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = HttpClient::new().unwrap();
         let telemetry = Telemetry::spawn(masker, http.clone());
-        let exit_code =
-            complete_execution(0, 1, Duration::ZERO, None, true, &telemetry, &http).await;
+        let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
+        let failure_diagnostic = FailureDiagnostic::new(
+            FailureClass::ClaudeZeroTurnNoHistory,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("/help"),
+        )
+        .with_cli_exit_code(0)
+        .with_claude_num_turns(Some(0))
+        .with_session_history_status(SessionHistoryStatus::Missing);
+        let exit_code = complete_execution(
+            0,
+            1,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: Some(failure_message),
+                failure_diagnostic: Some(failure_diagnostic.clone()),
+                skip_recovery_checkpoint_for_no_history: true,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            failure_message
+        );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic, failure_diagnostic);
         assert_eq!(prepare_mock.calls_async().await, 0);
         assert_eq!(checkpoint_mock.calls_async().await, 0);
 
@@ -858,12 +1344,14 @@ mod tests {
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
             std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+            std::env::set_var("VM0_PROMPT", "plain prompt");
         }
 
         let cleanup_paths = [
             paths::session_id_file().to_string(),
             paths::session_history_path_file().to_string(),
             paths::checkpoint_error_file().to_string(),
+            paths::failure_diagnostic_file().to_string(),
             paths::event_error_flag().to_string(),
             paths::sandbox_ops_file().to_string(),
             paths::telemetry_system_log_pos_file().to_string(),
@@ -920,15 +1408,39 @@ mod tests {
         let masker = Arc::new(masker::SecretMasker::from_env());
         let http = HttpClient::new().unwrap();
         let telemetry = Telemetry::spawn(masker, http.clone());
-        let exit_code =
-            complete_execution(1, 1, Duration::ZERO, None, false, &telemetry, &http).await;
+        let failure_message = "You've hit your usage limit.";
+        let failure_diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(1)
+        .with_session_history_status(SessionHistoryStatus::Present);
+        let exit_code = complete_execution(
+            1,
+            1,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: Some(failure_message),
+                failure_diagnostic: Some(failure_diagnostic.clone()),
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &http,
+        )
+        .await;
         telemetry.shutdown().await;
 
         assert_eq!(exit_code, 1);
-        assert!(
-            !std::path::Path::new(paths::checkpoint_error_file()).exists(),
-            "recovery checkpoint failure must not write the success-path checkpoint error file"
+        assert_eq!(
+            std::fs::read_to_string(paths::checkpoint_error_file()).unwrap(),
+            failure_message
         );
+        let diagnostic: FailureDiagnostic =
+            serde_json::from_slice(&std::fs::read(paths::failure_diagnostic_file()).unwrap())
+                .unwrap();
+        assert_eq!(diagnostic, failure_diagnostic);
         prepare_mock.assert_calls_async(1).await;
         upload_mock.assert_calls_async(1).await;
         checkpoint_mock.assert_calls_async(1).await;

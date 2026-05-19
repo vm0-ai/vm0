@@ -94,6 +94,39 @@ describe("GET /api/zero/agents", () => {
     expect(response.body[0]?.sound).toBe("friendly");
   });
 
+  it("returns an agent created through POST /api/zero/agents", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      apiClient().create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Listed Agent",
+          description: "desc",
+          sound: "friendly",
+        },
+      }),
+      [201],
+    );
+
+    const response = await accept(
+      apiClient().list({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toHaveLength(1);
+    expect(response.body[0]?.agentId).toBe(created.body.agentId);
+    expect(response.body[0]?.ownerId).toBe(fixture.userId);
+    expect(response.body[0]?.displayName).toBe("Listed Agent");
+    expect(response.body[0]?.description).toBe("desc");
+    expect(response.body[0]?.sound).toBe("friendly");
+  });
+
   it("returns agents only scoped to caller's org", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),

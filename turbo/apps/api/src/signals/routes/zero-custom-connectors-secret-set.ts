@@ -8,7 +8,8 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
-import { encryptSecretValue } from "../services/crypto.utils";
+import { encryptStoredSecretValue } from "../services/crypto.utils";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { getCustomConnectorById } from "../services/zero-custom-connector.service";
 import type { RouteEntry } from "../route";
 
@@ -36,7 +37,16 @@ const setSecretInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return notFound("Custom connector not found");
   }
 
-  const encryptedValue = encryptSecretValue(bodyResult.data.value);
+  const featureSwitchContext = await get(
+    userFeatureSwitchContext(auth.orgId, auth.userId),
+  );
+  signal.throwIfAborted();
+
+  const encryptedValue = await encryptStoredSecretValue(
+    bodyResult.data.value,
+    featureSwitchContext,
+  );
+  signal.throwIfAborted();
   const writeDb = set(writeDb$);
   await writeDb
     .insert(orgCustomConnectorSecrets)

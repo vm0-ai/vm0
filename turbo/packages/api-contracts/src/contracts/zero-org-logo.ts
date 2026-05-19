@@ -22,6 +22,7 @@ export const zeroOrgLogoContract = c.router({
     responses: {
       200: zeroOrgLogoResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get current organization logo",

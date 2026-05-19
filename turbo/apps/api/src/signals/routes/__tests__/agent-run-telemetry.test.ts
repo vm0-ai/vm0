@@ -349,6 +349,24 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     expect(response.body.metrics[1]?.cpu).toBe(0.2);
   });
 
+  it("returns empty legacy telemetry when no Postgres records exist", async () => {
+    const fixture = await setupRun();
+
+    const client = setupApp({ context })(runTelemetryContract);
+    const response = await accept(
+      client.getTelemetry({
+        params: { id: fixture.runId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      systemLog: "",
+      metrics: [],
+    });
+  });
+
   it("returns paged agent telemetry events from Axiom", async () => {
     const fixture = await setupRun();
     context.mocks.axiom.query.mockResolvedValueOnce([
@@ -400,6 +418,62 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     const apl = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
     expect(apl).toContain("sandbox-telemetry-system");
     expect(apl).toContain(new Date(since).toISOString());
+    expect(apl).toContain("| order by _time asc");
+  });
+
+  it("returns empty system log pages when Axiom has no records", async () => {
+    const fixture = await setupRun();
+    context.mocks.axiom.query.mockResolvedValueOnce([]);
+
+    const client = setupApp({ context })(runSystemLogContract);
+    const response = await accept(
+      client.getSystemLog({
+        params: { id: fixture.runId },
+        query: { limit: 10, order: "desc" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      systemLog: "",
+      hasMore: false,
+    });
+  });
+
+  it("returns 404 for another user's system log without leaking existence", async () => {
+    const owner = await setupRun();
+    const other = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(other.userId, other.orgId);
+
+    const client = setupApp({ context })(runSystemLogContract);
+    const response = await accept(
+      client.getSystemLog({
+        params: { id: owner.runId },
+        query: {},
+        headers: authHeaders(),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 400 for invalid system log query parameters", async () => {
+    const fixture = await setupRun();
+
+    const response = await rawRequest(
+      `/api/agent/runs/${fixture.runId}/telemetry/system-log?limit=101`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
   });
 
   it("returns metric pages from Axiom", async () => {
@@ -428,10 +502,11 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     ]);
 
     const client = setupApp({ context })(runMetricsContract);
+    const since = Date.parse("2026-01-15T10:29:00Z");
     const response = await accept(
       client.getMetrics({
         params: { id: fixture.runId },
-        query: { limit: 1, order: "desc" },
+        query: { limit: 1, order: "desc", since },
         headers: authHeaders(),
       }),
       [200],
@@ -450,6 +525,10 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       ],
       hasMore: true,
     });
+    const apl = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
+    expect(apl).toContain("sandbox-telemetry-metrics");
+    expect(apl).toContain(new Date(since).toISOString());
+    expect(apl).toContain("| order by _time desc");
   });
 
   it("returns network log pages with capture and firewall fields from Axiom", async () => {
@@ -495,10 +574,11 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     ]);
 
     const client = setupApp({ context })(runNetworkLogsContract);
+    const since = Date.parse("2026-01-15T10:29:00Z");
     const response = await accept(
       client.getNetworkLogs({
         params: { id: fixture.runId },
-        query: { limit: 10, order: "desc" },
+        query: { limit: 10, order: "desc", since },
         headers: authHeaders(),
       }),
       [200],
@@ -515,6 +595,84 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       response_body: "def",
     });
     expect(response.body.hasMore).toBeFalsy();
+    const apl = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
+    expect(apl).toContain("sandbox-telemetry-network");
+    expect(apl).toContain(new Date(since).toISOString());
+    expect(apl).toContain("| order by _time desc");
+  });
+
+  it("omits null optional network log fields from Axiom", async () => {
+    const fixture = await setupRun();
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      {
+        _time: "2026-01-15T10:30:00Z",
+        runId: fixture.runId,
+        userId: fixture.userId,
+        type: "tcp",
+        action: null,
+        host: null,
+        port: 0,
+        method: null,
+        url: null,
+        status: 0,
+        latency_ms: 0,
+        request_size: null,
+        response_size: null,
+        dns_event: null,
+        dns_query_type: null,
+        dns_result: null,
+        dns_serial: null,
+        firewall_base: null,
+        firewall_name: null,
+        firewall_permission: null,
+        firewall_rule_match: null,
+        firewall_params: { owner: "vm0-ai", empty: null },
+        firewall_billable: false,
+        firewall_error: null,
+        auth_resolved_secrets: null,
+        auth_refreshed_connectors: null,
+        auth_refreshed_secrets: null,
+        auth_cache_hit: false,
+        auth_url_rewrite: false,
+        error: null,
+        request_headers: { host: "example.com", authorization: null },
+        request_body: null,
+        request_body_encoding: null,
+        request_body_truncated: false,
+        response_headers: { server: "test", date: null },
+        response_body: null,
+        response_body_encoding: null,
+        response_body_truncated: false,
+      },
+    ]);
+
+    const client = setupApp({ context })(runNetworkLogsContract);
+    const response = await accept(
+      client.getNetworkLogs({
+        params: { id: fixture.runId },
+        query: { limit: 10, order: "desc" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.networkLogs).toStrictEqual([
+      {
+        timestamp: "2026-01-15T10:30:00Z",
+        type: "tcp",
+        port: 0,
+        status: 0,
+        latency_ms: 0,
+        firewall_params: { owner: "vm0-ai" },
+        firewall_billable: false,
+        auth_cache_hit: false,
+        auth_url_rewrite: false,
+        request_headers: { host: "example.com" },
+        request_body_truncated: false,
+        response_headers: { server: "test" },
+        response_body_truncated: false,
+      },
+    ]);
   });
 
   it("returns 400 for invalid telemetry query parameters", async () => {

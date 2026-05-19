@@ -5,6 +5,7 @@ import {
   type View,
 } from "@slack/web-api";
 
+import { optionalEnv } from "../../lib/env";
 import { settle } from "../utils";
 
 type OpenDmResult =
@@ -23,8 +24,48 @@ type PostEphemeralResult =
   | { readonly kind: "ok"; readonly ts: string | undefined }
   | { readonly kind: "slack_error"; readonly error: string };
 
+function resolveSlackApiUrl(): string | undefined {
+  const slackApiUrl = optionalEnv("SLACK_API_URL");
+  if (slackApiUrl) {
+    return slackApiUrl;
+  }
+
+  const flag = optionalEnv("E2E_SLACK_MOCK_ENABLED");
+  const mockEnabled = flag === "1" || flag === "true";
+  if (!mockEnabled) {
+    return undefined;
+  }
+
+  const vercelUrl = optionalEnv("VERCEL_URL");
+  if (!vercelUrl) {
+    throw new Error(
+      "E2E_SLACK_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Slack Web API traffic to the preview mock routes",
+    );
+  }
+
+  return `https://${vercelUrl}/api/test/slack-mock/`;
+}
+
 export function createSlackClient(token: string): WebClient {
-  return new WebClient(token);
+  const slackApiUrl = resolveSlackApiUrl();
+  if (!slackApiUrl) {
+    return new WebClient(token);
+  }
+
+  const bypass = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
+  const headers: Record<string, string> = bypass
+    ? {
+        "x-vercel-protection-bypass": bypass,
+        "x-vm0-test-endpoint-bypass": bypass,
+      }
+    : {};
+
+  return new WebClient(token, {
+    slackApiUrl,
+    headers,
+    retryConfig: { retries: 1 },
+    timeout: 5000,
+  });
 }
 
 function isSlackPlatformError(

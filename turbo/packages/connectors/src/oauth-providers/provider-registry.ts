@@ -1,7 +1,15 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConfiguredConnectorTypes as getConfiguredConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
+import { getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
 import {
   type AuthUrlResult,
+  type OAuthAuthorizeArgs,
+  type OAuthExchangeArgs,
+  type OAuthRefreshArgs,
+  type OAuthRefreshResult,
+  buildProviderAuthUrl,
+  exchangeProviderCode,
+  refreshProviderToken,
+  providerEnvFromObject,
   type OAuthTokenResult,
   type ProviderHandler,
   type ProviderEnv,
@@ -19,19 +27,26 @@ import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
+import { atlascloudHandler } from "./providers/atlascloud-handler";
+import { aviationstackHandler } from "./providers/aviationstack-handler";
 import { bentomlHandler } from "./providers/bentoml-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
 import { braveSearchHandler } from "./providers/brave-search-handler";
+import { brexHandler } from "./providers/brex-handler";
 import { brevoHandler } from "./providers/brevo-handler";
 import { brightDataHandler } from "./providers/bright-data-handler";
 import { browserbaseHandler } from "./providers/browserbase-handler";
 import { browserUseHandler } from "./providers/browser-use-handler";
 import { browserlessHandler } from "./providers/browserless-handler";
 import { bufferHandler } from "./providers/buffer-handler";
+import { builtwithHandler } from "./providers/builtwith-handler";
 import { calComHandler } from "./providers/cal-com-handler";
 import { calendlyHandler } from "./providers/calendly-handler";
 import { canvaHandler } from "./providers/canva-handler";
 import { chatwootHandler } from "./providers/chatwoot-handler";
+import { checkrHandler } from "./providers/checkr-handler";
+import { cladoHandler } from "./providers/clado-handler";
+import { clerkHandler } from "./providers/clerk-handler";
 import { clickupHandler } from "./providers/clickup-handler";
 import { cloudflareHandler } from "./providers/cloudflare-handler";
 import { cloudinaryHandler } from "./providers/cloudinary-handler";
@@ -46,6 +61,7 @@ import { deepseekHandler } from "./providers/deepseek-handler";
 import { doubaoHandler } from "./providers/doubao-handler";
 import { difyHandler } from "./providers/dify-handler";
 import { devtoHandler } from "./providers/devto-handler";
+import { diffbotHandler } from "./providers/diffbot-handler";
 import { dopplerHandler } from "./providers/doppler-handler";
 import { infisicalHandler } from "./providers/infisical-handler";
 import { docusignHandler } from "./providers/docusign-handler";
@@ -59,6 +75,7 @@ import { elevenlabsHandler } from "./providers/elevenlabs-handler";
 import { etsyHandler } from "./providers/etsy-handler";
 import { exaHandler } from "./providers/exa-handler";
 import { exploriumHandler } from "./providers/explorium-handler";
+import { faireHandler } from "./providers/faire-handler";
 import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
@@ -66,6 +83,7 @@ import { firecrawlHandler } from "./providers/firecrawl-handler";
 import { freshdeskHandler } from "./providers/freshdesk-handler";
 import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
+import { geminiHandler } from "./providers/gemini-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
@@ -76,12 +94,14 @@ import { heygenHandler } from "./providers/heygen-handler";
 import { heliconeHandler } from "./providers/helicone-handler";
 import { huggingFaceHandler } from "./providers/hugging-face-handler";
 import { humeHandler } from "./providers/hume-handler";
+import { hunterHandler } from "./providers/hunter-handler";
 import { htmlcsstoimageHandler } from "./providers/htmlcsstoimage-handler";
 import { hubspotHandler } from "./providers/hubspot-handler";
 import { imgurHandler } from "./providers/imgur-handler";
 import { instagramHandler } from "./providers/instagram-handler";
 import { gmailHandler } from "./providers/gmail-handler";
 import { googleAdsHandler } from "./providers/google-ads-handler";
+import { googleMapsHandler } from "./providers/google-maps-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
@@ -106,8 +126,12 @@ import { lumaAiHandler } from "./providers/luma-ai-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { manusHandler } from "./providers/manus-handler";
+import { mapboxHandler } from "./providers/mapbox-handler";
+import { mathpixHandler } from "./providers/mathpix-handler";
 import { mem0Handler } from "./providers/mem0-handler";
+import { supermemoryHandler } from "./providers/supermemory-handler";
 import { metabaseHandler } from "./providers/metabase-handler";
+import { mossHandler } from "./providers/moss-handler";
 import { mercuryHandler } from "./providers/mercury-handler";
 import { minioHandler } from "./providers/minio-handler";
 import { minimaxHandler } from "./providers/minimax-handler";
@@ -117,15 +141,19 @@ import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
+import { nyneHandler } from "./providers/nyne-handler";
 import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
-import { codexOauthHandler } from "./providers/codex-oauth-handler";
+import { openrouterHandler } from "./providers/openrouter-handler";
+import { openweatherHandler } from "./providers/openweather-handler";
 import { railwayHandler } from "./providers/railway-handler";
 import { railwayProjectHandler } from "./providers/railway-project-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reapHandler } from "./providers/reap-handler";
+import { reductoHandler } from "./providers/reducto-handler";
 import { localAgentHandler } from "./providers/local-agent-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
+import { segmentHandler } from "./providers/segment-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
@@ -178,6 +206,8 @@ import { resendHandler } from "./providers/resend-handler";
 import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
+import { spongeHandler } from "./providers/sponge-handler";
+import { sproutgigsHandler } from "./providers/sproutgigs-handler";
 import { spotifyHandler } from "./providers/spotify-handler";
 import { workosHandler } from "./providers/workos-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
@@ -203,9 +233,21 @@ import { gongHandler } from "./providers/gong-handler";
 import { ironcladHandler } from "./providers/ironclad-handler";
 import { snowflakeHandler } from "./providers/snowflake-handler";
 
-export type { AuthUrlResult, OAuthTokenResult };
+export type {
+  AuthUrlResult,
+  OAuthAuthorizeArgs,
+  OAuthExchangeArgs,
+  OAuthRefreshArgs,
+  OAuthRefreshResult,
+  OAuthTokenResult,
+};
 export type { ProviderEnv };
-export { providerEnvFromObject } from "./provider-types";
+export {
+  buildProviderAuthUrl,
+  exchangeProviderCode,
+  providerEnvFromObject,
+  refreshProviderToken,
+};
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,
@@ -224,9 +266,11 @@ export const PROVIDER_HANDLERS: Record<
   asana: asanaHandler,
   attio: attioHandler,
   atlassian: atlassianHandler,
+  atlascloud: atlascloudHandler,
   bentoml: bentomlHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,
+  brex: brexHandler,
   brevo: brevoHandler,
   "bright-data": brightDataHandler,
   browserbase: browserbaseHandler,
@@ -237,6 +281,8 @@ export const PROVIDER_HANDLERS: Record<
   calendly: calendlyHandler,
   canva: canvaHandler,
   chatwoot: chatwootHandler,
+  checkr: checkrHandler,
+  clerk: clerkHandler,
   clickup: clickupHandler,
   cloudflare: cloudflareHandler,
   cloudinary: cloudinaryHandler,
@@ -264,6 +310,7 @@ export const PROVIDER_HANDLERS: Record<
   etsy: etsyHandler,
   exa: exaHandler,
   explorium: exploriumHandler,
+  faire: faireHandler,
   fal: falHandler,
   figma: figmaHandler,
   fireflies: firefliesHandler,
@@ -271,6 +318,7 @@ export const PROVIDER_HANDLERS: Record<
   freshdesk: freshdeskHandler,
   gamma: gammaHandler,
   "garmin-connect": garminConnectHandler,
+  gemini: geminiHandler,
   gitlab: gitlabHandler,
   granola: granolaHandler,
   greenhouse: greenhouseHandler,
@@ -305,7 +353,9 @@ export const PROVIDER_HANDLERS: Record<
   make: makeHandler,
   manus: manusHandler,
   mem0: mem0Handler,
+  supermemory: supermemoryHandler,
   metabase: metabaseHandler,
+  moss: mossHandler,
   mailchimp: mailchimpHandler,
   mercury: mercuryHandler,
   minio: minioHandler,
@@ -318,7 +368,6 @@ export const PROVIDER_HANDLERS: Record<
   notion: notionHandler,
   onyx: onyxHandler,
   openai: openaiHandler,
-  "codex-oauth": codexOauthHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   railway: railwayHandler,
@@ -328,6 +377,7 @@ export const PROVIDER_HANDLERS: Record<
   "local-browser": localBrowserHandler,
   "local-agent": localAgentHandler,
   reportei: reporteiHandler,
+  segment: segmentHandler,
   serpapi: serpapiHandler,
   intercom: intercomHandler,
   jam: jamHandler,
@@ -366,6 +416,8 @@ export const PROVIDER_HANDLERS: Record<
   revenuecat: revenuecatHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
+  sponge: spongeHandler,
+  sproutgigs: sproutgigsHandler,
   spotify: spotifyHandler,
   workos: workosHandler,
   wrike: wrikeHandler,
@@ -407,16 +459,28 @@ export const PROVIDER_HANDLERS: Record<
   gong: gongHandler,
   ironclad: ironcladHandler,
   snowflake: snowflakeHandler,
+  aviationstack: aviationstackHandler,
+  builtwith: builtwithHandler,
+  clado: cladoHandler,
+  diffbot: diffbotHandler,
+  "google-maps": googleMapsHandler,
+  hunter: hunterHandler,
+  mapbox: mapboxHandler,
+  mathpix: mathpixHandler,
+  nyne: nyneHandler,
+  openrouter: openrouterHandler,
+  openweather: openweatherHandler,
+  reducto: reductoHandler,
 };
 
 /**
- * Returns connector types whose OAuth credentials (or equivalent) are
- * configured in the current environment.
+ * Returns connector types the current runtime environment can offer as
+ * connection candidates.
  */
-export function getConfiguredConnectorTypes(
+export function getRuntimeAvailableConnectorTypes(
   currentEnv: ProviderEnv,
 ): ConnectorType[] {
-  return getConfiguredConnectorTypesFromEnv((name) => {
+  return getRuntimeAvailableConnectorTypesFromEnv((name) => {
     const value = currentEnv[name];
     return typeof value === "string" ? value : undefined;
   });

@@ -1,6 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { initServices } from "../../lib/init-services";
+import { computeComposeVersionId } from "../../lib/infra/agent-compose/content-hash";
+import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import {
   agentComposes,
   agentComposeVersions,
@@ -80,23 +82,95 @@ export async function seedOrphanCompose(opts: {
 }
 
 /**
- * @why-db-direct Sets HEAD to an arbitrary version — API always sets HEAD to
- * the latest created version. Tests stale-version handling in recompose flows.
+ * @why-db-direct Seeds the compose create-route side effects after the legacy
+ * web route has been removed. Tests still need production-compatible compose
+ * rows without making network calls through the web-to-api rewrite.
  */
-export async function setComposeHeadVersion(
-  composeId: string,
-  headVersionId: string,
-): Promise<void> {
+export async function seedApiCompatibleCompose(opts: {
+  userId: string;
+  orgId: string;
+  content: AgentComposeYaml;
+}): Promise<{ composeId: string; versionId: string; name: string }> {
   initServices();
-  await globalThis.services.db
+
+  const agentNames = Object.keys(opts.content.agents);
+  if (agentNames.length !== 1) {
+    throw new Error("seedApiCompatibleCompose expects exactly one agent");
+  }
+
+  const agentName = agentNames[0];
+  if (!agentName) {
+    throw new Error("seedApiCompatibleCompose expects an agent name");
+  }
+
+  const agent = opts.content.agents[agentName];
+  if (!agent) {
+    throw new Error(`seedApiCompatibleCompose missing agent ${agentName}`);
+  }
+
+  const normalizedAgentName = agentName.toLowerCase();
+  const resolvedContent: AgentComposeYaml = {
+    ...opts.content,
+    agents: {
+      [normalizedAgentName]: agent,
+    },
+  };
+  const versionId = computeComposeVersionId(resolvedContent);
+  const db = globalThis.services.db;
+
+  const [existingCompose] = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, opts.orgId),
+        eq(agentComposes.name, normalizedAgentName),
+      ),
+    )
+    .limit(1);
+
+  let composeId = existingCompose?.id;
+  if (!composeId) {
+    const [created] = await db
+      .insert(agentComposes)
+      .values({
+        userId: opts.userId,
+        orgId: opts.orgId,
+        name: normalizedAgentName,
+      })
+      .returning({ id: agentComposes.id });
+    if (!created) {
+      throw new Error("Failed to seed agent compose");
+    }
+    composeId = created.id;
+  }
+
+  const [existingVersion] = await db
+    .select({ id: agentComposeVersions.id })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, versionId))
+    .limit(1);
+
+  if (!existingVersion) {
+    await db.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId,
+      content: resolvedContent,
+      createdBy: opts.userId,
+    });
+  }
+
+  await db
     .update(agentComposes)
-    .set({ headVersionId })
+    .set({ headVersionId: versionId, updatedAt: new Date() })
     .where(eq(agentComposes.id, composeId));
+
+  return { composeId, versionId, name: normalizedAgentName };
 }
 
 /**
  * @why-db-direct Sets HEAD to null — API never creates a versionless compose.
- * Tests pre-run failure when no version exists (e.g., executeSchedule).
+ * Tests pre-run failure paths that require a versionless compose.
  */
 export async function clearComposeHeadVersion(
   composeId: string,
@@ -262,25 +336,6 @@ export async function setTestZeroAgentModelProvider(
   await globalThis.services.db
     .update(zeroAgents)
     .set({ modelProviderId, selectedModel })
-    .where(eq(zeroAgents.id, agentId));
-}
-
-/**
- * Flip the `prefer_personal_provider` flag on a zero_agents row directly.
- * Used by tests that need to exercise the personal-tier resolver branch
- * (#11899) without going through the agent edit API.
- *
- * @why-db-direct The agent UI for this flag isn't implemented yet (Wave 3
- * of Epic #11868); tests need a direct setter to verify runtime plumbing.
- */
-export async function setTestZeroAgentPreferPersonalProvider(
-  agentId: string,
-  preferPersonalProvider: boolean,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(zeroAgents)
-    .set({ preferPersonalProvider })
     .where(eq(zeroAgents.id, agentId));
 }
 

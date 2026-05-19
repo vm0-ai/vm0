@@ -8,6 +8,24 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
+const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
+
+export function elapsedSinceApiStartMs(
+  apiStartTimeMs: number | undefined,
+  nowMs: number,
+): number | undefined {
+  if (
+    apiStartTimeMs === undefined ||
+    !Number.isInteger(apiStartTimeMs) ||
+    apiStartTimeMs < MIN_EPOCH_MS_TIMESTAMP
+  ) {
+    return undefined;
+  }
+
+  return Math.max(0, nowMs - apiStartTimeMs);
+}
+
 /**
  * Default profile when none is specified.
  * Must stay in sync with Rust: crates/runner/src/profile.rs → DEFAULT_PROFILE
@@ -141,8 +159,8 @@ export const storedExecutionContextSchema = z.object({
   debugNoMockCodex: z.boolean().optional(),
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: z.boolean().optional(),
-  // Dispatch timestamp for E2E timing metrics
-  apiStartTime: z.number().optional(),
+  // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
+  apiStartTime: apiStartTimeSchema.optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
@@ -197,8 +215,8 @@ export const executionContextSchema = z.object({
   debugNoMockCodex: z.boolean().optional(),
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: z.boolean().optional(),
-  // Dispatch timestamp for E2E timing metrics
-  apiStartTime: z.number().optional(),
+  // Dispatch timestamp for E2E timing metrics, as Unix epoch milliseconds
+  apiStartTime: apiStartTimeSchema.optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)

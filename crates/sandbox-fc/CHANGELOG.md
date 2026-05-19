@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.34.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.3...sandbox-fc-v0.34.4) (2026-05-19)
+
+
+### Bug Fixes
+
+* reject malformed firecracker netns names ([#13964](https://github.com/vm0-ai/vm0/issues/13964)) ([637aa3f](https://github.com/vm0-ai/vm0/commit/637aa3ff0b2f6e059d26445c6a6eec4e3858d695))
+
+
+### Refactoring
+
+* remove sandbox-fc operation lease mirror ([#13961](https://github.com/vm0-ai/vm0/issues/13961)) ([c175dc4](https://github.com/vm0-ai/vm0/commit/c175dc4d9ac88556deecbdc5193837ce28b2b0e5))
+
+## [0.34.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.2...sandbox-fc-v0.34.3) (2026-05-19)
+
+
+### Refactoring
+
+* fence normal operations during sandbox park ([#13898](https://github.com/vm0-ai/vm0/issues/13898)) ([00358eb](https://github.com/vm0-ai/vm0/commit/00358ebbe2bce58f5081cb4b98c5e57958f947c3))
+
+## [0.34.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.1...sandbox-fc-v0.34.2) (2026-05-19)
+
+
+### Refactoring
+
+* gate process control requests ([#13845](https://github.com/vm0-ai/vm0/issues/13845)) ([9dc1d33](https://github.com/vm0-ai/vm0/commit/9dc1d33ddb9fb1e2d479c574ebf85afd61cb45b8))
+
+## [0.34.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.34.0...sandbox-fc-v0.34.1) (2026-05-18)
+
+
+### Performance Improvements
+
+* offload cow slot teardown ([#13677](https://github.com/vm0-ai/vm0/issues/13677)) ([4060d0d](https://github.com/vm0-ai/vm0/commit/4060d0d99f72139aa68d0ffb82ca5fcfee70b208))
+
 ## [0.34.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.33.5...sandbox-fc-v0.34.0) (2026-05-17)
 
 

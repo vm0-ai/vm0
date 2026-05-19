@@ -39,6 +39,13 @@ export const mailchimp = {
     oauth: {
       authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "MAILCHIMP_OAUTH_CLIENT_ID",
+        clientSecretEnv: "MAILCHIMP_OAUTH_CLIENT_SECRET",
+      },
       scopes: [],
     },
   },

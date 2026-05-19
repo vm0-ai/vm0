@@ -87,6 +87,10 @@ pub(crate) fn masked_codex_failure_diagnostic(
     })
 }
 
+pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
+    matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
+}
+
 fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnostic> {
     match event.get("type").and_then(Value::as_str)? {
         "error" => Some(CodexFailureDiagnostic {

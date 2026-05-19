@@ -1,4 +1,5 @@
 import { createStore } from "ccstate";
+import { WebClient } from "@slack/web-api";
 import type { TestSlackDispatchProbeResponse } from "@vm0/api-contracts/contracts/test-slack-dispatch-probe";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -124,6 +125,90 @@ describe("POST /api/test/slack-dispatch-probe", () => {
 
     expect(response.status).toBe(404);
     await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("allows Vercel preview runtimes with the internal bypass header", async () => {
+    mockEnv("ENV", "production");
+    mockOptionalEnv("VERCEL_ENV", "preview");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+    const response = await requestApp(ROUTE, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-vm0-test-endpoint-bypass": "preview-secret",
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "team_id, channel_id, user_id, message_text, message_ts required",
+    });
+  });
+
+  it("allows preview with the schema-backed bypass secret", async () => {
+    mockEnv("ENV", "preview");
+    mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+    const response = await requestApp(ROUTE, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-vm0-test-endpoint-bypass": "preview-secret",
+      },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "team_id, channel_id, user_id, message_text, message_ts required",
+    });
+  });
+
+  it("allows protected preview rewrites after Vercel consumes bypass headers", async () => {
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+    const response = await postProbe({});
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "team_id, channel_id, user_id, message_text, message_ts required",
+    });
+  });
+
+  it("routes preview Slack Web API calls to API mock routes", async () => {
+    mockOptionalEnv("E2E_SLACK_MOCK_ENABLED", "1");
+    mockOptionalEnv("VERCEL_URL", "pr-13948-api.vm6.ai");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: "mock Slack API",
+      message_ts: "1710000003.000000",
+    });
+
+    expect(response.status).toBe(200);
+    expect(WebClient).toHaveBeenCalledWith(expect.any(String), {
+      slackApiUrl: "https://pr-13948-api.vm6.ai/api/test/slack-mock/",
+      headers: {
+        "x-vercel-protection-bypass": "preview-secret",
+        "x-vm0-test-endpoint-bypass": "preview-secret",
+      },
+      retryConfig: { retries: 1 },
+      timeout: 5000,
+    });
   });
 
   it("returns the legacy missing-field error", async () => {

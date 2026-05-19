@@ -51,6 +51,12 @@ function clerkNotFoundError(): Error {
   return error;
 }
 
+function clerkBadRequestError(): Error {
+  const error = new Error("Invalid organization");
+  error.name = "BadRequestError";
+  return error;
+}
+
 function clerkForbiddenError(): Error {
   const error = new Error("Forbidden");
   error.name = "ForbiddenError";
@@ -185,6 +191,55 @@ describe("GET /api/zero/org/logo", () => {
       message: "Org not found",
       code: "BAD_REQUEST",
     });
+  });
+
+  it("maps Clerk bad-request errors to 404", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+    context.mocks.clerk.organizations.getOrganization.mockRejectedValue(
+      clerkBadRequestError(),
+    );
+
+    const client = setupApp({ context })(zeroOrgLogoContract);
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Org not found",
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("rejects zero tokens", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroOrgLogoContract);
+    const response = await accept(
+      client.get({ headers: { authorization: `Bearer ${token}` } }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "This endpoint is not available for sandbox tokens",
+      code: "FORBIDDEN",
+    });
+    expect(
+      context.mocks.clerk.organizations.getOrganization,
+    ).not.toHaveBeenCalled();
   });
 });
 
@@ -384,6 +439,24 @@ describe("POST /api/zero/org/logo", () => {
     });
   });
 
+  it("maps Clerk bad-request errors to 404", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.clerk.organizations.updateOrganizationLogo.mockRejectedValue(
+      clerkBadRequestError(),
+    );
+
+    const response = await postLogo(logoForm(pngLogoFile()), {
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Org not found", code: "BAD_REQUEST" },
+    });
+  });
+
   it("maps Clerk forbidden errors to 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -535,6 +608,24 @@ describe("DELETE /api/zero/org/logo", () => {
     mocks.clerk.session(userId, orgId, "org:admin");
     context.mocks.clerk.organizations.deleteOrganizationLogo.mockRejectedValue(
       clerkNotFoundError(),
+    );
+
+    const response = await deleteLogo({
+      authorization: "Bearer clerk-session",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "Org not found", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("maps Clerk bad-request errors to 404", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId, "org:admin");
+    context.mocks.clerk.organizations.deleteOrganizationLogo.mockRejectedValue(
+      clerkBadRequestError(),
     );
 
     const response = await deleteLogo({

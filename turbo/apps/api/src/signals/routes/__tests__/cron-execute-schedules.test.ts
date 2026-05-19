@@ -153,7 +153,17 @@ describe("GET /api/cron/execute-schedules", () => {
       [401],
     );
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("rejects requests with no authorization header", async () => {
+    const response = await accept(apiClient().execute({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
   });
 
   it("returns execution counts when no schedules are due", async () => {
@@ -328,6 +338,36 @@ describe("GET /api/cron/execute-schedules", () => {
     expect(runs[0]?.status).toBe("queued");
 
     const schedule = await findSchedule(scheduleId);
+    expect(schedule?.retryStartedAt).toBeNull();
+    expect(schedule?.nextRunAt).toBeNull();
+  });
+
+  it("disables a queued one-time schedule after creating the run", async () => {
+    const fixture = await seedFixture([
+      {
+        name: "queued-once",
+        prompt: "Queued one-time task",
+        atTime: dueDate(),
+        nextRunAt: dueDate(),
+      },
+    ]);
+    const scheduleId = fixture.scheduleIds[0]!;
+    mockNow(DUE_TIME - 5 * 60 * 1000);
+    await insertBlockingRun(fixture);
+    mockNow(DUE_TIME);
+
+    const response = await accept(
+      apiClient().execute({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.executed).toBe(1);
+    const runs = await findScheduleRuns(scheduleId);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("queued");
+
+    const schedule = await findSchedule(scheduleId);
+    expect(schedule?.enabled).toBeFalsy();
     expect(schedule?.retryStartedAt).toBeNull();
     expect(schedule?.nextRunAt).toBeNull();
   });

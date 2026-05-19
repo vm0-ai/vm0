@@ -26,16 +26,11 @@ import type {
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import {
-  type RunStatus,
-  type GetRunResponse,
-} from "@vm0/api-contracts/contracts/runs";
+import { type RunStatus } from "@vm0/api-contracts/contracts/runs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { publishCancelNotification } from "../realtime/client";
-import type { CancelRunResult } from "../../zero/zero-run-cancel";
 
 const log = logger("service:run");
 
@@ -77,7 +72,7 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
  * partial results (e.g. 201 with status=failed) that still satisfy the
  * required-sessionId response contract.
  */
-export interface RunDispatchError extends Error {
+interface RunDispatchError extends Error {
   runId?: string;
   sessionId?: string;
 }
@@ -550,86 +545,4 @@ export async function insertRunRecord(
   }
 
   return { id: newRun.id, createdAt: newRun.createdAt, sessionId };
-}
-
-/**
- * Get a run by ID, scoped to user and org for security.
- * Returns the run response object or null if not found.
- */
-export async function getRunById(
-  runId: string,
-  userId: string,
-  orgId: string,
-): Promise<GetRunResponse | null> {
-  const [run] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        eq(agentRuns.userId, userId),
-        eq(agentRuns.orgId, orgId),
-      ),
-    )
-    .limit(1);
-
-  if (!run) return null;
-
-  return {
-    runId: run.id,
-    agentComposeVersionId: run.agentComposeVersionId,
-    status: run.status as RunStatus,
-    prompt: run.prompt,
-    appendSystemPrompt: run.appendSystemPrompt,
-    vars: run.vars as Record<string, string> | undefined,
-    sandboxId: run.sandboxId || undefined,
-    result: run.result as Record<string, unknown> | undefined,
-    error: run.error || undefined,
-    createdAt: run.createdAt.toISOString(),
-    startedAt: run.startedAt?.toISOString(),
-    completedAt: run.completedAt?.toISOString(),
-  };
-}
-
-/**
- * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain).
- *
- * Returns `true` when the cancelled run was previously active (running/pending),
- * indicating the caller should also process org credits.
- */
-export async function dispatchCancelSideEffects(
-  result: CancelRunResult,
-  drain: (orgId: string) => Promise<void>,
-): Promise<boolean> {
-  const log = logger("service:run:cancel");
-
-  if (result.alreadyCancelled) {
-    return false;
-  }
-
-  if (result.previousStatus === "running" && result.runnerGroup) {
-    const published = await publishCancelNotification(
-      result.runnerGroup,
-      result.runId,
-    );
-    if (!published) {
-      log.warn(
-        `Ably cancel notification failed for run ${result.runId}, VM will run until natural completion`,
-      );
-    }
-  }
-
-  const shouldProcessCredits =
-    result.previousStatus === "running" || result.previousStatus === "pending";
-
-  await dispatchTerminalSideEffects(
-    result.runId,
-    "cancelled",
-    "Run cancelled",
-    () => {
-      return drain(result.orgId);
-    },
-  );
-
-  return shouldProcessCredits;
 }

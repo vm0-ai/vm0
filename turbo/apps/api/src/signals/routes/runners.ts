@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import {
+  elapsedSinceApiStartMs,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
@@ -416,11 +417,15 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const sandboxToken = generateSandboxToken(run.userId, run.id, run.orgId);
 
-  if (storedContext.apiStartTime) {
+  const apiToClaimMs = elapsedSinceApiStartMs(
+    storedContext.apiStartTime,
+    currentTime,
+  );
+  if (apiToClaimMs !== undefined) {
     recordSandboxOperation({
       sandboxType: "runner",
       actionType: "api_to_claim",
-      durationMs: currentTime - storedContext.apiStartTime,
+      durationMs: apiToClaimMs,
       success: true,
       runId,
     });

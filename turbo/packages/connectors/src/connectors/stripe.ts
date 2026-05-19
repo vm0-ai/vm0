@@ -65,6 +65,13 @@ export const stripe = {
     oauth: {
       authorizationUrl: "https://connect.stripe.com/oauth/authorize",
       tokenUrl: "https://connect.stripe.com/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["read_write"],
     },
   },

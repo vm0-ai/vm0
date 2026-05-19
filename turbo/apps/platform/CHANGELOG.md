@@ -1,5 +1,171 @@
 # Changelog
 
+## [0.366.2](https://github.com/vm0-ai/vm0/compare/app-v0.366.1...app-v0.366.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* separate desktop development app identity ([#13980](https://github.com/vm0-ai/vm0/issues/13980)) ([21fe633](https://github.com/vm0-ai/vm0/commit/21fe6334d52eb4059df4a65fd6d177f1a8293012))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+    * @vm0/core bumped to 8.283.0
+
+## [0.366.1](https://github.com/vm0-ai/vm0/compare/app-v0.366.0...app-v0.366.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* **desktop:** complete auth callback handoff ([#13959](https://github.com/vm0-ai/vm0/issues/13959)) ([846c076](https://github.com/vm0-ai/vm0/commit/846c076be0c391de49a9d2eaad649b8f827d5cdd))
+
+## [0.366.0](https://github.com/vm0-ai/vm0/compare/app-v0.365.1...app-v0.366.0) (2026-05-19)
+
+
+### Features
+
+* add Atlas Cloud connector ([#13896](https://github.com/vm0-ai/vm0/issues/13896)) ([d6fe5a7](https://github.com/vm0-ai/vm0/commit/d6fe5a76be42291e5826daf3363e8ded0f040e48))
+* add priority api connectors ([#13924](https://github.com/vm0-ai/vm0/issues/13924)) ([7813d13](https://github.com/vm0-ai/vm0/commit/7813d13763d5aebdb84f1e976aba755df548d6e1))
+* add sproutgigs connector ([#13929](https://github.com/vm0-ai/vm0/issues/13929)) ([d3d8dd4](https://github.com/vm0-ai/vm0/commit/d3d8dd4a30e2ae4f4ab73e80f93839758b2a680d))
+
+
+### Bug Fixes
+
+* remove unofficial suno connector ([#13897](https://github.com/vm0-ai/vm0/issues/13897)) ([a2b95d6](https://github.com/vm0-ai/vm0/commit/a2b95d61b1e65cd1b8f5862c7228731c11bb4b85))
+
+
+### Refactoring
+
+* remove codex oauth connector ([#13937](https://github.com/vm0-ai/vm0/issues/13937)) ([6a60a23](https://github.com/vm0-ai/vm0/commit/6a60a23bc1ff798e3c1f5c5431cd0da59dd6e83e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+
+## [0.365.1](https://github.com/vm0-ai/vm0/compare/app-v0.365.0...app-v0.365.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* handle desktop auth routes in platform ([#13874](https://github.com/vm0-ai/vm0/issues/13874)) ([37c79cd](https://github.com/vm0-ai/vm0/commit/37c79cdb68b4e66688fe56bf7bdb7a06e45de822))
+
+
+### Refactoring
+
+* reduce connector registry coupling ([#13919](https://github.com/vm0-ai/vm0/issues/13919)) ([59beef3](https://github.com/vm0-ai/vm0/commit/59beef398677629082e27347e3ec9d4292273904))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.9
+    * @vm0/connectors bumped to 1.19.1
+    * @vm0/core bumped to 8.281.7
+
+## [0.365.0](https://github.com/vm0-ai/vm0/compare/app-v0.364.1...app-v0.365.0) (2026-05-19)
+
+
+### Features
+
+* add 13 Sponge-catalog api-token connectors ([#13809](https://github.com/vm0-ai/vm0/issues/13809)) ([61c0e71](https://github.com/vm0-ai/vm0/commit/61c0e71e79b74ff0d98eb50525defc711da3232e))
+* **platform:** fire Google Ads conversion on subscription success ([#13824](https://github.com/vm0-ai/vm0/issues/13824)) ([4175e32](https://github.com/vm0-ai/vm0/commit/4175e32298da32311095a344164cedf5f46b9afb))
+
+
+### Bug Fixes
+
+* align queued message hover and row height with sidebar ([#13822](https://github.com/vm0-ai/vm0/issues/13822)) ([37503b1](https://github.com/vm0-ai/vm0/commit/37503b13415464ed5f9d9c6af2fc80b4fcfdb7c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+    * @vm0/core bumped to 8.281.6
+
+## [0.364.1](https://github.com/vm0-ai/vm0/compare/app-v0.364.0...app-v0.364.1) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+    * @vm0/core bumped to 8.281.5
+
+## [0.364.0](https://github.com/vm0-ai/vm0/compare/app-v0.363.1...app-v0.364.0) (2026-05-18)
+
+
+### Features
+
+* add clerk connector ([#13776](https://github.com/vm0-ai/vm0/issues/13776)) ([f464e29](https://github.com/vm0-ai/vm0/commit/f464e29fc5993d18fff98379772412270107a324))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+    * @vm0/core bumped to 8.281.4
+
+## [0.363.1](https://github.com/vm0-ai/vm0/compare/app-v0.363.0...app-v0.363.1) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.5
+    * @vm0/core bumped to 8.281.3
+
+## [0.363.0](https://github.com/vm0-ai/vm0/compare/app-v0.362.0...app-v0.363.0) (2026-05-18)
+
+
+### Features
+
+* add gemini connector ([#13611](https://github.com/vm0-ai/vm0/issues/13611)) ([721f52e](https://github.com/vm0-ai/vm0/commit/721f52eb908d10fa0e55320189c2cdc05ba35f5a))
+* add moss connector ([#13608](https://github.com/vm0-ai/vm0/issues/13608)) ([c424718](https://github.com/vm0-ai/vm0/commit/c424718cffecac857b8872d9b1f09aad936651e7))
+* add sponge connector ([#13609](https://github.com/vm0-ai/vm0/issues/13609)) ([9c648cc](https://github.com/vm0-ai/vm0/commit/9c648cc1c2bd7d010dc24215110e92c92cefc628))
+* **composer:** stack queued messages card behind the composer ([#13518](https://github.com/vm0-ai/vm0/issues/13518)) ([72cbf9c](https://github.com/vm0-ai/vm0/commit/72cbf9c9b4ccf6fad0d0f50a69dbe5b23ff1e66f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.4
+    * @vm0/connectors bumped to 1.17.0
+    * @vm0/core bumped to 8.281.2
+
+## [0.362.0](https://github.com/vm0-ai/vm0/compare/app-v0.361.0...app-v0.362.0) (2026-05-17)
+
+
+### Features
+
+* add supermemory connector ([#13605](https://github.com/vm0-ai/vm0/issues/13605)) ([eee2113](https://github.com/vm0-ai/vm0/commit/eee21132e2d1b6635d7ae31ff0300191c3de1e6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.3
+    * @vm0/connectors bumped to 1.16.0
+    * @vm0/core bumped to 8.281.1
+
 ## [0.361.0](https://github.com/vm0-ai/vm0/compare/app-v0.360.1...app-v0.361.0) (2026-05-17)
 
 

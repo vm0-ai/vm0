@@ -17,15 +17,6 @@ export interface RunEventContext {
 }
 
 /**
- * Payload POSTed to each event consumer endpoint.
- */
-export interface EventConsumerPayload {
-  runId: string;
-  events: AgentEvent[];
-  context: RunEventContext;
-}
-
-/**
  * Static registration entry for an event consumer.
  */
 export interface EventConsumerConfig {

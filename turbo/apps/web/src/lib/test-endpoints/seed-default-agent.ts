@@ -24,9 +24,9 @@ interface SeedDefaultAgentInput {
  * an org_metadata entry pointing `default_agent_id` at it.
  *
  * Idempotent per (orgId, name) — re-running reuses the existing compose.
- * Used by `/api/test/slack-state` and `/api/test/telegram-state` so BATS e2e
- * tests can drive the full mention/DM dispatch path without going through the
- * compose API.
+ * Used by the legacy `/api/test/telegram-state` web route so BATS e2e tests
+ * can drive the full mention/DM dispatch path without going through the compose
+ * API.
  */
 export async function seedDefaultAgent(
   services: Services,

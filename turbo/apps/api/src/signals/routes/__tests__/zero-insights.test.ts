@@ -153,6 +153,47 @@ describe("GET /api/zero/insights", () => {
     ).toBeFalsy();
   });
 
+  it("normalizes sparse insight rows to the full day shape", async () => {
+    const fixture = await track(
+      store.set(seedInsightsFixture$, undefined, context.signal),
+    );
+    const yesterday = daysAgo(1);
+    await store.set(
+      seedInsightsDaily$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: yesterday,
+        data: {},
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({ query: {}, headers: authHeaders() }),
+      [200],
+    );
+
+    expect(response.body.days).toStrictEqual([
+      {
+        date: yesterday,
+        agents: [],
+        creditsUsed: 0,
+        creditBalance: 0,
+        teamUsage: [],
+        topTask: null,
+        services: [],
+        permissions: [],
+        schedules: [],
+        chats: [],
+      },
+    ]);
+    expect(response.body.totalCredits).toBe(0);
+    expect(response.body.totalRuns).toBe(0);
+    expect(response.body.lastUpdated).toBeTruthy();
+  });
+
   it("aggregates totals across multiple days", async () => {
     const fixture = await track(
       store.set(seedInsightsFixture$, undefined, context.signal),

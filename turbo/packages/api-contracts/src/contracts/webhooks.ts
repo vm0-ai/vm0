@@ -69,6 +69,28 @@ export const webhookStripeContract = c.router({
   },
 });
 
+export const webhookBuiltInGenerationFalContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/built-in-generations/fal/:generationId",
+    pathParams: z.object({
+      generationId: z.uuid(),
+    }),
+    query: z.object({
+      token: z.string().min(1),
+      visualKey: z.string().min(1).optional(),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: thirdPartyWebhookOkSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle fal built-in generation webhooks",
+  },
+});
+
 /**
  * Sandbox reuse outcome. One enum value per code branch in the runner's
  * reuse-decision block. `reused` means the sandbox was unparked from the idle
@@ -590,6 +612,8 @@ export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookBuiltInGenerationFalContract =
+  typeof webhookBuiltInGenerationFalContract;
 export type WebhookFirewallAuthContract = typeof webhookFirewallAuthContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;

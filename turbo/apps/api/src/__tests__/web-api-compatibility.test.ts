@@ -125,12 +125,12 @@ function apiBackendRewriteConstants(
   return constants;
 }
 
-function apiBackendRewriteSources(): readonly string[] {
+function apiBackendRewritePaths(): readonly string[] {
   const source = readFileSync(WEB_API_REWRITES_PATH, "utf8");
   const constants = apiBackendRewriteConstants(source);
-  const sources: string[] = [];
+  const paths: string[] = [];
   const rewriteEntryPattern =
-    /\[\s*("[^"]+"|`[^`]+`|[A-Z0-9_]+)\s*,\s*"[^"]+"/gu;
+    /\[\s*("[^"]+"|`[^`]+`|[A-Z0-9_]+)\s*,\s*("[^"]+")/gu;
   let match = rewriteEntryPattern.exec(source);
 
   while (match) {
@@ -138,12 +138,18 @@ function apiBackendRewriteSources(): readonly string[] {
       ? jsStringValue(match[1], constants)
       : undefined;
     if (sourcePath) {
-      sources.push(sourcePath);
+      paths.push(sourcePath);
+    }
+    const destinationPath = match[2]
+      ? jsStringValue(match[2], constants)
+      : undefined;
+    if (destinationPath) {
+      paths.push(destinationPath);
     }
     match = rewriteEntryPattern.exec(source);
   }
 
-  return sources;
+  return paths;
 }
 
 function segmentMatches(
@@ -195,7 +201,7 @@ describe("web API compatibility", () => {
       routePatternFromWebRouteFile,
     );
     const apiBackendRewritePatterns =
-      apiBackendRewriteSources().map(routePattern);
+      apiBackendRewritePaths().map(routePattern);
     const webCompatiblePatterns = [
       ...webRoutePatterns,
       ...apiBackendRewritePatterns,

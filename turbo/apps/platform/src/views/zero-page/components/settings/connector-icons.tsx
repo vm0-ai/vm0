@@ -6,7 +6,6 @@ import { cn } from "@vm0/ui";
 
 const CONNECTOR_ICON_ALIASES = {
   "slack-webhook": "slack",
-  "codex-oauth": "openai",
   "railway-project": "railway",
 } as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
 
@@ -109,6 +108,7 @@ const CONNECTOR_ICON_COLORFUL = {
   freshdesk: true,
   gamma: true,
   "garmin-connect": true,
+  gemini: true,
   gitlab: true,
   gmail: true,
   "google-ads": true,
@@ -145,6 +145,7 @@ const CONNECTOR_ICON_COLORFUL = {
   minimax: true,
   minio: true,
   monday: true,
+  moss: true,
   n8n: true,
   neon: true,
   pandadoc: true,
@@ -169,6 +170,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "slack-webhook": true,
   snowflake: true,
   spotify: true,
+  sproutgigs: true,
   "stability-ai": true,
   strapi: true,
   strava: true,

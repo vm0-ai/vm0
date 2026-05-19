@@ -25,6 +25,13 @@ export const intervalsIcu = {
     oauth: {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "INTERVALS_ICU_OAUTH_CLIENT_ID",
+        clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
     },
   },

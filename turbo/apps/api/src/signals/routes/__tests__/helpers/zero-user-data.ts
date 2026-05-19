@@ -5,6 +5,7 @@ import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { command } from "ccstate";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
@@ -182,6 +183,10 @@ export const deleteUserData$ = command(
     await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(userFeatureSwitches)
+      .where(eq(userFeatureSwitches.orgId, fixture.orgId));
     signal.throwIfAborted();
   },
 );

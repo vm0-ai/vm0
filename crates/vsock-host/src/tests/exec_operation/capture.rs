@@ -39,7 +39,12 @@ async fn exec_operation_capture_sends_start_and_receives_result() {
     let msg = read_guest_message(&mut guest).await;
     assert_eq!(msg.msg_type, MSG_EXEC_START);
     let decoded = vsock_proto::decode_exec_start(&msg.payload).unwrap();
-    assert_eq!(decoded.timeout_ms, 7000);
+    assert_eq!(
+        decoded.timeout,
+        vsock_proto::ExecTimeoutPolicy::Duration { timeout_ms: 7000 }
+    );
+    assert_eq!(decoded.lifecycle, vsock_proto::ExecLifecyclePolicy::OneShot);
+    assert_eq!(decoded.control, vsock_proto::ExecControlPolicy::Disabled);
     assert_eq!(decoded.command, "printf hello");
     assert_eq!(decoded.env, vec![("A", "B")]);
     assert!(decoded.sudo);

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { StoredExecutionContext } from "@vm0/api-contracts/contracts/runners";
 import {
   testContext,
   uniqueId,
@@ -31,12 +32,14 @@ import {
 } from "../../../__tests__/db-test-seeders/runs";
 import { insertTestChatThread } from "../../../__tests__/db-test-seeders/agents";
 import { getTestAgentSessionArtifacts } from "../../../__tests__/db-test-assertions/agents";
+import { findTestRunnerJobEntry } from "../../../__tests__/db-test-assertions/runner";
 import {
   AUTO_MEMORY_ARTIFACT_NAME,
   AUTO_MEMORY_MOUNT_PATH,
   CODEX_AUTO_MEMORY_MOUNT_PATH,
 } from "../memory";
 import { mockAblyPublish } from "../../../__tests__/ably-mock";
+import { encryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 
 const context = testContext();
 
@@ -385,6 +388,67 @@ describe("run-queue-service", () => {
       // Queue entry should be consumed
       const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
+    });
+
+    it("promotes API-created queue payloads into runner job queue", async () => {
+      const { runId } = await seedTestRun(user.userId, composeId, {
+        prompt: "Queued API run",
+        status: "queued",
+      });
+      const executionContext: StoredExecutionContext = {
+        workingDir: "/home/user",
+        storageManifest: null,
+        environment: { INJECTED: "true" },
+        resumeSession: null,
+        encryptedSecrets: null,
+        cliAgentType: "codex",
+        billableFirewalls: [],
+      };
+      const runnerPayload = {
+        version: 1,
+        runnerGroup: "vm0/default",
+        profile: "vm0/default",
+        sessionId: "runner-session-1",
+        executionContext,
+      } as const;
+      const encryptedParams = encryptSecretsMap(
+        {
+          __api_runner_job_payload__: JSON.stringify(runnerPayload),
+        },
+        globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+      );
+      if (!encryptedParams) {
+        throw new Error("Failed to encrypt queued runner job payload");
+      }
+      await insertTestQueueEntry(runId, { encryptedParams });
+
+      const dispatchedRunIds: string[] = [];
+      mockAblyPublish.mockClear();
+      await drainOrgQueue(user.orgId, async (dispatchedRunId) => {
+        dispatchedRunIds.push(dispatchedRunId);
+      });
+
+      expect(dispatchedRunIds).toEqual([]);
+
+      const run = await findTestRunRecord(runId);
+      expect(run!.status).toBe("pending");
+      expect(run!.runnerGroup).toBe("vm0/default");
+
+      const queueEntry = await findTestQueueEntry(runId);
+      expect(queueEntry).toBeUndefined();
+
+      const runnerJob = await findTestRunnerJobEntry(runId);
+      expect(runnerJob).toMatchObject({
+        runId,
+        runnerGroup: "vm0/default",
+        profile: "vm0/default",
+        sessionId: "runner-session-1",
+      });
+      expect(runnerJob!.executionContext).toEqual(executionContext);
+      expect(mockAblyPublish).toHaveBeenCalledWith("job", {
+        runId,
+        profile: "vm0/default",
+      });
     });
   });
 

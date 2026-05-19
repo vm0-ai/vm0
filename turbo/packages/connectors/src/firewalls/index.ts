@@ -15,6 +15,12 @@ import type {
 import type { ConnectorType } from "../connectors";
 import { CONNECTOR_TYPES } from "../connectors";
 import {
+  clerkDefaultAllowed,
+  clerkCategories,
+  clerkCategoryOrder,
+  clerkFirewall,
+} from "./clerk.generated";
+import {
   gmailDefaultAllowed,
   gmailCategories,
   gmailCategoryOrder,
@@ -46,20 +52,29 @@ import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
+import { atlascloudFirewall } from "./atlascloud.generated";
+import { aviationstackFirewall } from "./aviationstack.generated";
+// NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
+// mathpix/nyne/openrouter/openweather/reducto were added in the same
+// Sponge-catalog batch and are wired below.
 import { axiomFirewall } from "./axiom.generated";
 import { bentomlFirewall } from "./bentoml.generated";
 import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
+import { brexFirewall } from "./brex.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
 import { browserUseFirewall } from "./browser-use.generated";
 import { browserlessFirewall } from "./browserless.generated";
 import { bufferFirewall } from "./buffer.generated";
+import { builtwithFirewall } from "./builtwith.generated";
 import { calComFirewall } from "./cal-com.generated";
 import { calendlyFirewall } from "./calendly.generated";
 import { canvaFirewall } from "./canva.generated";
 import { chatwootFirewall } from "./chatwoot.generated";
+import { checkrFirewall } from "./checkr.generated";
+import { cladoFirewall } from "./clado.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -70,6 +85,7 @@ import { deepseekFirewall } from "./deepseek.generated";
 import { doubaoFirewall } from "./doubao.generated";
 import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
+import { diffbotFirewall } from "./diffbot.generated";
 import { difyFirewall } from "./dify.generated";
 import { discordFirewall } from "./discord.generated";
 import { discordWebhookFirewall } from "./discord-webhook.generated";
@@ -84,6 +100,7 @@ import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { etsyFirewall } from "./etsy.generated";
 import { exaFirewall } from "./exa.generated";
 import { exploriumFirewall } from "./explorium.generated";
+import { faireFirewall } from "./faire.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
@@ -91,10 +108,12 @@ import { firefliesFirewall } from "./fireflies.generated";
 import { freshdeskFirewall } from "./freshdesk.generated";
 import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
+import { geminiFirewall } from "./gemini.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { googleAdsFirewall } from "./google-ads.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
+import { googleMapsFirewall } from "./google-maps.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleMeetFirewall } from "./google-meet.generated";
@@ -109,6 +128,7 @@ import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
+import { hunterFirewall } from "./hunter.generated";
 import { imgurFirewall } from "./imgur.generated";
 import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
@@ -131,10 +151,13 @@ import { mailchimpFirewall } from "./mailchimp.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { manusFirewall } from "./manus.generated";
+import { mapboxFirewall } from "./mapbox.generated";
+import { mathpixFirewall } from "./mathpix.generated";
 import { mem0Firewall } from "./mem0.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
+import { mossFirewall } from "./moss.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { miroFirewall } from "./miro.generated";
 import { mixpanelFirewall } from "./mixpanel.generated";
@@ -143,8 +166,11 @@ import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
+import { nyneFirewall } from "./nyne.generated";
 import { onyxFirewall } from "./onyx.generated";
 import { openaiFirewall } from "./openai.generated";
+import { openrouterFirewall } from "./openrouter.generated";
+import { openweatherFirewall } from "./openweather.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pandadocFirewall } from "./pandadoc.generated";
@@ -167,6 +193,7 @@ import { railwayFirewall } from "./railway.generated";
 import { railwayProjectFirewall } from "./railway-project.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reapFirewall } from "./reap.generated";
+import { reductoFirewall } from "./reducto.generated";
 import { reporteiFirewall } from "./reportei.generated";
 import { replicateFirewall } from "./replicate.generated";
 import { resendFirewall } from "./resend.generated";
@@ -174,6 +201,7 @@ import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
 import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
+import { segmentFirewall } from "./segment.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shopifyFirewall } from "./shopify.generated";
@@ -181,6 +209,8 @@ import { shortioFirewall } from "./shortio.generated";
 import { stabilityAiFirewall } from "./stability-ai.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
+import { spongeFirewall } from "./sponge.generated";
+import { sproutgigsFirewall } from "./sproutgigs.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { strapiFirewall } from "./strapi.generated";
@@ -188,6 +218,7 @@ import { streakFirewall } from "./streak.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
+import { supermemoryFirewall } from "./supermemory.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { testOauthFirewall } from "./test-oauth.generated";
 import { tldvFirewall } from "./tldv.generated";
@@ -250,10 +281,12 @@ const CONNECTOR_FIREWALLS = {
   asana: asanaFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
+  atlascloud: atlascloudFirewall,
   axiom: axiomFirewall,
   bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
+  brex: brexFirewall,
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
@@ -264,6 +297,8 @@ const CONNECTOR_FIREWALLS = {
   calendly: calendlyFirewall,
   canva: canvaFirewall,
   chatwoot: chatwootFirewall,
+  checkr: checkrFirewall,
+  clerk: clerkFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
@@ -290,6 +325,7 @@ const CONNECTOR_FIREWALLS = {
   etsy: etsyFirewall,
   exa: exaFirewall,
   explorium: exploriumFirewall,
+  faire: faireFirewall,
   fal: falFirewall,
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
@@ -297,6 +333,7 @@ const CONNECTOR_FIREWALLS = {
   freshdesk: freshdeskFirewall,
   gamma: gammaFirewall,
   "garmin-connect": garminConnectFirewall,
+  gemini: geminiFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
@@ -342,6 +379,7 @@ const CONNECTOR_FIREWALLS = {
   mercury: mercuryFirewall,
   metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
+  moss: mossFirewall,
   minimax: minimaxFirewall,
   miro: miroFirewall,
   mixpanel: mixpanelFirewall,
@@ -381,6 +419,7 @@ const CONNECTOR_FIREWALLS = {
   runway: runwayFirewall,
   salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
+  segment: segmentFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shopify: shopifyFirewall,
@@ -389,6 +428,8 @@ const CONNECTOR_FIREWALLS = {
   similarweb: similarwebFirewall,
   slack: slackFirewall,
   "slack-webhook": slackWebhookFirewall,
+  sponge: spongeFirewall,
+  sproutgigs: sproutgigsFirewall,
   spotify: spotifyFirewall,
   strava: stravaFirewall,
   strapi: strapiFirewall,
@@ -396,6 +437,7 @@ const CONNECTOR_FIREWALLS = {
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
   supadata: supadataFirewall,
+  supermemory: supermemoryFirewall,
   tavily: tavilyFirewall,
   "test-oauth": testOauthFirewall,
   tldv: tldvFirewall,
@@ -429,6 +471,18 @@ const CONNECTOR_FIREWALLS = {
   gong: gongFirewall,
   ironclad: ironcladFirewall,
   snowflake: snowflakeFirewall,
+  aviationstack: aviationstackFirewall,
+  builtwith: builtwithFirewall,
+  clado: cladoFirewall,
+  diffbot: diffbotFirewall,
+  "google-maps": googleMapsFirewall,
+  hunter: hunterFirewall,
+  mapbox: mapboxFirewall,
+  mathpix: mathpixFirewall,
+  nyne: nyneFirewall,
+  openrouter: openrouterFirewall,
+  openweather: openweatherFirewall,
+  reducto: reductoFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**
@@ -522,6 +576,7 @@ export type PermissionNamesOf<T extends FirewallConfig> =
 const CONNECTOR_CATEGORIES: Partial<
   Record<FirewallConnectorType, ConnectorCategories>
 > = {
+  clerk: { categories: clerkCategories, displayOrder: clerkCategoryOrder },
   gmail: { categories: gmailCategories, displayOrder: gmailCategoryOrder },
   slack: { categories: slackCategories, displayOrder: slackCategoryOrder },
   vercel: { categories: vercelCategories, displayOrder: vercelCategoryOrder },
@@ -584,9 +639,6 @@ export type NonFirewallConnectorType =
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
-  // OAuth-only connectors used by model-provider pipelines (firewall integration
-  // lives in MODEL_PROVIDER_FIREWALL_CONFIGS, not here).
-  | "codex-oauth"
   // Other
   | "computer" // not an API connector
   | "local-browser" // virtual connector backed by a user-authorized browser host
@@ -640,6 +692,7 @@ export function getConnectorFirewall(
 const DEFAULT_ALLOWED: Partial<
   Record<FirewallConnectorType, ReadonlyArray<string>>
 > = {
+  clerk: clerkDefaultAllowed,
   gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
 };

@@ -79,6 +79,7 @@ interface ZeroTokenPayload {
   orgId: string;
   scope: "zero";
   capabilities: readonly ZeroCapability[];
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>;
   iat: number;
   exp: number;
 }
@@ -112,6 +113,7 @@ export interface ZeroAuth {
   runId: string;
   orgId: string;
   capabilities: readonly ZeroCapability[];
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
 /**
@@ -355,13 +357,23 @@ export async function generateZeroToken(
 
   // Build capabilities, filtering out agent-excluded and conditionally gated ones
   const capabilities: ZeroCapability[] = [];
+  const featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {};
+  const resolveFeatureSwitch = (flag: FeatureSwitchKey): boolean => {
+    const cached = featureSwitches[flag];
+    if (cached !== undefined) return cached;
+
+    const enabled = isFeatureEnabled(flag, { userId, orgId, overrides });
+    featureSwitches[flag] = enabled;
+    return enabled;
+  };
+
   for (const cap of ZERO_CAPABILITIES) {
     if (AGENT_EXCLUDED_CAPABILITIES.has(cap)) {
       continue;
     }
     const flag = CONDITIONAL_CAPABILITIES.get(cap);
     if (flag) {
-      if (isFeatureEnabled(flag, { userId, orgId, overrides })) {
+      if (resolveFeatureSwitch(flag)) {
         capabilities.push(cap);
       }
     } else {
@@ -375,6 +387,7 @@ export async function generateZeroToken(
     orgId,
     scope: "zero",
     capabilities,
+    featureSwitches,
     iat: now,
     exp: now + expiresIn,
   };
@@ -424,6 +437,10 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     runId: p.runId,
     orgId: p.orgId,
     capabilities: p.capabilities,
+    featureSwitches:
+      typeof p.featureSwitches === "object" && p.featureSwitches !== null
+        ? p.featureSwitches
+        : {},
   };
 }
 
@@ -532,15 +549,10 @@ export async function generateCliToken(
  * @param token - The full prefixed token (without "Bearer " prefix)
  */
 export function verifyCliToken(token: string): CliAuth | null {
-  let rawJwt: string;
-  if (token.startsWith(PAT_TOKEN_PREFIX)) {
-    rawJwt = token.slice(PAT_TOKEN_PREFIX.length);
-  } else if (token.startsWith(SANDBOX_TOKEN_PREFIX)) {
-    // Backward compat: accept old vm0_sandbox_ prefix for CLI tokens during transition
-    rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
-  } else {
+  if (!token.startsWith(PAT_TOKEN_PREFIX)) {
     return null;
   }
+  const rawJwt = token.slice(PAT_TOKEN_PREFIX.length);
   const payload = verifyJwtPayload(rawJwt);
   if (!payload) {
     return null;

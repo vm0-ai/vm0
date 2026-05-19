@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use vsock_proto::{ExecTermination, MSG_EXEC_CANCEL, MSG_EXEC_START};
@@ -12,6 +13,21 @@ use super::super::support::{
 use super::start_capture_operation;
 use crate::exec_operation as exec_operation_impl;
 use crate::operation_tracker::NormalOperationReadiness;
+use crate::{ExecCaptureRequest, FrameWriteObserver};
+
+fn capture_request(command: &str) -> ExecCaptureRequest<'_> {
+    ExecCaptureRequest {
+        timeout_ms: 5000,
+        command,
+        env: &[],
+        sudo: false,
+        label: "test-command",
+        stdout_limit_bytes: 1024,
+        stderr_limit_bytes: 1024,
+        expected_exit_codes: &[],
+        wait_timeout: Duration::from_secs(5),
+    }
+}
 
 #[tokio::test]
 async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
@@ -59,6 +75,123 @@ async fn exec_start_cancelled_before_write_does_not_poison_or_send_frame() {
     .await;
     let exec_result = exec_task.await.unwrap().unwrap();
     assert_eq!(exec_result.stdout, b"ok");
+    assert!(is_connected(&host));
+}
+
+#[tokio::test]
+async fn exec_write_observer_does_not_fire_before_frame_write() {
+    let (host, _guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.exec_capture_with_write_observer(
+                capture_request("blocked"),
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while operation_count(&host) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    task.abort();
+    let _ = task.await;
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    assert!(is_connected(&host));
+
+    drop(writer_guard);
+}
+
+#[tokio::test]
+async fn exec_write_observer_fires_at_frame_write_boundary() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let task = {
+        let host = Arc::clone(&host);
+        let write_start_count = Arc::clone(&write_start_count);
+        tokio::spawn(async move {
+            host.exec_capture_with_write_observer(
+                capture_request("observed"),
+                FrameWriteObserver::new(move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while operation_count(&host) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+
+    drop(writer_guard);
+    let msg = read_guest_message(&mut guest).await;
+    assert_eq!(msg.msg_type, MSG_EXEC_START);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+    send_exec_result(
+        &mut guest,
+        msg.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"ok",
+        b"",
+    )
+    .await;
+
+    let result = task.await.unwrap().unwrap();
+    assert_eq!(result.stdout, b"ok");
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn exec_write_observer_error_cleans_registration_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .exec_capture_with_write_observer(
+            capture_request("observer-error"),
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send exec frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
     assert!(is_connected(&host));
 }
 

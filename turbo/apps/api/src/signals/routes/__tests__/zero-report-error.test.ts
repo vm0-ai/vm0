@@ -4,6 +4,7 @@ import AdmZip from "adm-zip";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach, expect } from "vitest";
+import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -82,6 +83,16 @@ function zipText(zip: AdmZip, name: string): string {
   }
   return entry.getData().toString("utf8");
 }
+
+function zipEntryNames(zip: AdmZip): string[] {
+  return zip.getEntries().map((entry) => {
+    return entry.entryName;
+  });
+}
+
+const networkBodyUtf8Encoding = ["utf", "8"].join("-") as NonNullable<
+  AxiomNetworkEvent["request_body_encoding"]
+>;
 
 function activityLogJson(zip: AdmZip): Record<string, unknown> {
   const activityLogEntry = zip.getEntries().find((entry) => {
@@ -183,6 +194,22 @@ describe("POST /api/zero/report-error", () => {
     expect(putObjectInput().ContentType).toBe("application/zip");
   });
 
+  it("writes title-only description when description is omitted", async () => {
+    const fixture = await seedReportRun();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      submitReport({
+        runId: fixture.runId,
+        title: "Run crashed",
+      }),
+      [200],
+    );
+
+    expect(response.body.reference).toMatch(/^er-[a-f0-9]{8}$/);
+    expect(zipText(uploadedZip(), "description.md")).toBe("# Run crashed");
+  });
+
   it("returns 400 for a non-existent run", async () => {
     const fixture = await seedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -208,6 +235,21 @@ describe("POST /api/zero/report-error", () => {
         runId: "2b9b2303",
         title: "Bug",
         description: "Desc",
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when title is empty", async () => {
+    const fixture = await seedReportRun();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      client().submit({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { runId: fixture.runId, title: "" },
       }),
       [400],
     );
@@ -267,9 +309,7 @@ describe("POST /api/zero/report-error", () => {
     expect(String(input.Key)).toMatch(/er-[a-f0-9]{8}\.zip$/);
 
     const zip = uploadedZip();
-    const entryNames = zip.getEntries().map((entry) => {
-      return entry.entryName;
-    });
+    const entryNames = zipEntryNames(zip);
     expect(entryNames).toStrictEqual(
       expect.arrayContaining([
         "manifest.json",
@@ -300,6 +340,64 @@ describe("POST /api/zero/report-error", () => {
       orgId: fixture.orgId,
       status: "failed",
     });
+  });
+
+  it("includes run metadata in manifest and user prompt in chat history", async () => {
+    const fixture = await seedReportRun({ prompt: "Deploy the service" });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(
+      submitReport({ runId: fixture.runId, title: "Deploy failed" }),
+      [200],
+    );
+
+    const zip = uploadedZip();
+    const manifest = JSON.parse(zipText(zip, "manifest.json")) as {
+      readonly reference: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly runId: string;
+      readonly createdAt: string;
+    };
+    expect(manifest).toMatchObject({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: fixture.runId,
+    });
+    expect(manifest.reference).toMatch(/^er-[a-f0-9]{8}$/);
+    expect(manifest.createdAt).toBeTruthy();
+
+    const lines = zipText(zip, "chat-history.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        return JSON.parse(line) as {
+          readonly eventType: string;
+          readonly eventData: {
+            readonly role?: string;
+            readonly content?: string;
+          };
+          readonly sequenceNumber: number;
+        };
+      });
+    const promptEvent = lines.find((event) => {
+      return event.eventType === "user_prompt";
+    });
+
+    expect(promptEvent?.eventData.role).toBe("user");
+    expect(promptEvent?.eventData.content).toBe("Deploy the service");
+    expect(promptEvent?.sequenceNumber).toBe(-1);
+  });
+
+  it("excludes optional system and network logs when Axiom returns no data", async () => {
+    const fixture = await seedReportRun();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    await accept(submitReport({ runId: fixture.runId, title: "Bug" }), [200]);
+
+    const entryNames = zipEntryNames(uploadedZip());
+    expect(entryNames).not.toContain("system-log.txt");
+    expect(entryNames).not.toContain("network-log.jsonl");
   });
 
   it("includes agent, system, and network logs when Axiom returns data", async () => {
@@ -339,13 +437,13 @@ describe("POST /api/zero/report-error", () => {
       error: "upstream failure",
       request_headers: { "content-type": "application/json" },
       request_body: '{"hello":"world"}',
-      request_body_encoding: "utf8",
+      request_body_encoding: networkBodyUtf8Encoding,
       request_body_truncated: false,
       response_headers: { "x-request-id": "req-1" },
       response_body: '{"ok":true}',
-      response_body_encoding: "utf8",
+      response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
-    };
+    } satisfies AxiomNetworkEvent;
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = String(args[0]);
@@ -391,11 +489,43 @@ describe("POST /api/zero/report-error", () => {
     const activityLog = JSON.parse(
       activityLogEntry.getData().toString("utf8"),
     ) as { readonly networkLogs?: readonly Record<string, unknown>[] };
-    expect(activityLog.networkLogs?.[0]).toMatchObject({
+    expect(activityLog.networkLogs?.[0]).toStrictEqual({
       timestamp: "2026-04-28T07:00:00.123Z",
       type: "http",
+      action: "ALLOW",
+      host: "api.github.com",
+      port: 443,
       method: "POST",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+      status: 201,
+      latency_ms: 123,
+      request_size: 456,
+      response_size: 789,
+      dns_event: "reply",
+      dns_query_type: "A",
+      dns_result: "140.82.121.4",
+      dns_serial: "42",
+      firewall_base: "https://api.github.com",
+      firewall_name: "github",
+      firewall_permission: "repos:write",
+      firewall_rule_match: "POST /repos/{owner}/{repo}",
+      firewall_params: { owner: "vm0-ai", repo: "vm0" },
+      firewall_billable: true,
+      firewall_error: "permission denied",
+      auth_resolved_secrets: ["GITHUB_TOKEN"],
+      auth_refreshed_connectors: ["github"],
+      auth_refreshed_secrets: ["GITHUB_TOKEN"],
+      auth_cache_hit: false,
+      auth_url_rewrite: true,
+      error: "upstream failure",
+      request_headers: { "content-type": "application/json" },
+      request_body: '{"hello":"world"}',
+      request_body_encoding: networkBodyUtf8Encoding,
+      request_body_truncated: false,
+      response_headers: { "x-request-id": "req-1" },
       response_body: '{"ok":true}',
+      response_body_encoding: networkBodyUtf8Encoding,
+      response_body_truncated: false,
     });
   });
 
@@ -477,6 +607,16 @@ describe("POST /api/zero/report-error", () => {
         return event.eventData.content;
       }),
     ).toStrictEqual(["First prompt", "Second prompt"]);
+
+    const agentEventsQuery = context.mocks.axiom.query.mock.calls
+      .map(([apl]) => {
+        return String(apl);
+      })
+      .find((apl) => {
+        return apl.includes("agent-run-events") && apl.includes("runId in");
+      });
+    expect(agentEventsQuery).toContain(first.runId);
+    expect(agentEventsQuery).toContain(failedRunId);
   });
 
   it("succeeds when optional Axiom log queries fail", async () => {
@@ -497,6 +637,67 @@ describe("POST /api/zero/report-error", () => {
       });
     expect(entryNames).not.toContain("system-log.txt");
     expect(entryNames).not.toContain("network-log.jsonl");
+  });
+
+  it("keeps the bundle successful when one run activity log fails", async () => {
+    const sessionId = randomUUID();
+    const first = await seedReportRun({
+      status: "completed",
+      prompt: "First prompt",
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+      result: { agentSessionId: sessionId },
+    });
+    const { runId: failedRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: first.orgId,
+        userId: first.userId,
+        composeId: first.composeId,
+        status: "failed",
+        prompt: "Second prompt",
+        createdAt: new Date("2024-01-01T01:00:00Z"),
+        continuedFromSessionId: sessionId,
+      },
+      context.signal,
+    );
+    mocks.clerk.session(first.userId, first.orgId);
+
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = String(args[0]);
+      if (
+        apl.includes(`runId == "${first.runId}"`) &&
+        apl.includes("sandbox-telemetry-network")
+      ) {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve([]);
+    });
+
+    const response = await accept(
+      submitReport({ runId: failedRunId, title: "Resilience test" }),
+      [200],
+    );
+
+    expect(response.body.reference).toMatch(/^er-[a-f0-9]{8}$/);
+    const activityLogEntries = uploadedZip()
+      .getEntries()
+      .filter((entry) => {
+        return entry.entryName.startsWith("activity-log-");
+      });
+    expect(activityLogEntries).toHaveLength(2);
+
+    const contents = activityLogEntries.map((entry) => {
+      return JSON.parse(entry.getData().toString("utf8")) as {
+        readonly ok?: boolean;
+        readonly runId?: string;
+        readonly error?: string;
+      };
+    });
+    const erroredEntry = contents.find((entry) => {
+      return entry.ok === false;
+    });
+    expect(erroredEntry?.runId).toBe(first.runId);
+    expect(typeof erroredEntry?.error).toBe("string");
   });
 
   it("returns sanitized 500 when ZIP upload fails", async () => {

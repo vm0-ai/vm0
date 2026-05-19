@@ -200,6 +200,29 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
     expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
   });
 
+  it("returns 404 for anthropic-api-key", async () => {
+    const fixture = uniqueOrgUser("zmmp-anthropic-rejected");
+    await track(Promise.resolve(fixture));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(
+      zeroPersonalModelProvidersMainContract,
+    );
+    const response = await accept(
+      client.upsert({
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(response.body).toMatchObject({
+      error: {
+        code: "NOT_FOUND",
+        message: 'Provider "anthropic-api-key" not found',
+      },
+    });
+  });
+
   it("returns 404 when posting vm0 with a secret", async () => {
     const fixture = uniqueOrgUser("zmmp-vm0-with-secret");
     await track(Promise.resolve(fixture));

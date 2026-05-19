@@ -2,7 +2,7 @@
  * Shared extension-to-MIME-type mapping used by download routes and
  * services that need to infer a content-type from a filename.
  */
-export const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
+const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

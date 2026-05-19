@@ -1,4 +1,10 @@
 use crate::error::ProtocolError;
+use crate::payloads::process_control::{
+    DecodedProcessControl, DecodedProcessControlResult, EXEC_CONTROL_CODEC_ERRORS,
+    EXEC_CONTROL_RESULT_CODEC_ERRORS, PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce,
+    ProcessControlStatus, decode_control_result_with_errors, decode_control_with_errors,
+    encode_control_result_with_errors, encode_control_with_errors,
+};
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u16_len, ensure_u32_len,
     expect_consumed, read_i32, read_slice, read_str, read_u8, read_u16, read_u32,
@@ -14,6 +20,16 @@ const EXEC_OUTPUT_POLICY_DISCARD: u8 = 0x00;
 const EXEC_OUTPUT_POLICY_CAPTURE: u8 = 0x01;
 const EXEC_OUTPUT_POLICY_STREAM: u8 = 0x02;
 const EXEC_OUTPUT_POLICY_CAPTURE_AND_STREAM: u8 = 0x03;
+
+const EXEC_LIFECYCLE_ONE_SHOT: u8 = 0x00;
+const EXEC_LIFECYCLE_SUPERVISED: u8 = 0x01;
+
+const EXEC_TIMEOUT_DURATION: u8 = 0x00;
+const EXEC_TIMEOUT_NONE: u8 = 0x01;
+
+const EXEC_CONTROL_DISABLED: u8 = 0x00;
+const EXEC_CONTROL_ENABLED: u8 = 0x01;
+const EXEC_CONTROL_FLAG_SINK: u8 = 0x01;
 
 const EXEC_TERMINATION_EXITED: u8 = 0x00;
 const EXEC_TERMINATION_TIMED_OUT: u8 = 0x01;
@@ -62,6 +78,36 @@ pub enum ExecOutputPolicy {
     },
 }
 
+/// Exec process lifecycle policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecLifecyclePolicy {
+    /// Run a command to completion and report one terminal result.
+    OneShot,
+    /// Start a long-running process that will acknowledge its pid.
+    Supervised,
+}
+
+/// Exec timeout policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecTimeoutPolicy {
+    /// Kill the operation after `timeout_ms`.
+    Duration { timeout_ms: u32 },
+    /// Do not apply a protocol-level timeout.
+    None,
+}
+
+/// Exec control channel policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecControlPolicy {
+    /// Do not enable exec control messages for this operation.
+    Disabled,
+    /// Enable exec control messages using a per-operation nonce.
+    Enabled {
+        control_nonce: ProcessControlNonce,
+        sink: bool,
+    },
+}
+
 /// Exec terminal state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecTermination {
@@ -81,7 +127,8 @@ pub enum ExecCapturedOutput<'a> {
 
 /// Parameters for encoding an exec_start payload with extended metadata.
 pub struct ExecStartEncodeRequest<'a> {
-    pub timeout_ms: u32,
+    pub lifecycle: ExecLifecyclePolicy,
+    pub timeout: ExecTimeoutPolicy,
     pub command: &'a str,
     pub env: &'a [(&'a str, &'a str)],
     pub sudo: bool,
@@ -89,12 +136,14 @@ pub struct ExecStartEncodeRequest<'a> {
     pub stdout: ExecOutputPolicy,
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: &'a [i32],
+    pub control: ExecControlPolicy,
 }
 
 /// Decoded exec_start payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedExecStart<'a> {
-    pub timeout_ms: u32,
+    pub lifecycle: ExecLifecyclePolicy,
+    pub timeout: ExecTimeoutPolicy,
     pub command: &'a str,
     pub env: Vec<(&'a str, &'a str)>,
     pub sudo: bool,
@@ -102,6 +151,36 @@ pub struct DecodedExecStart<'a> {
     pub stdout: ExecOutputPolicy,
     pub stderr: ExecOutputPolicy,
     pub expected_exit_codes: Vec<i32>,
+    pub control: ExecControlPolicy,
+}
+
+/// Decoded exec_started payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecodedExecStarted {
+    pub pid: u32,
+}
+
+/// Exec control request status.
+pub type ExecControlStatus = ProcessControlStatus;
+
+/// Decoded exec_control payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecodedExecControl<'a> {
+    pub target_seq: u32,
+    pub request_timeout_ms: u32,
+    pub control_nonce: ProcessControlNonce,
+    pub message_id: &'a str,
+    pub payload: &'a [u8],
+}
+
+/// Decoded exec_control_result payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecodedExecControlResult<'a> {
+    pub target_seq: u32,
+    pub control_nonce: ProcessControlNonce,
+    pub message_id: &'a str,
+    pub status: ExecControlStatus,
+    pub diagnostic: &'a str,
 }
 
 /// Decoded exec_output payload.
@@ -153,6 +232,60 @@ fn exec_output_policy_encoded_len(policy: ExecOutputPolicy) -> Result<usize, Pro
     }
 }
 
+fn exec_timeout_policy_encoded_len(timeout: ExecTimeoutPolicy) -> usize {
+    match timeout {
+        ExecTimeoutPolicy::Duration { .. } => 1 + 4,
+        ExecTimeoutPolicy::None => 1,
+    }
+}
+
+fn exec_control_policy_encoded_len(control: ExecControlPolicy) -> usize {
+    match control {
+        ExecControlPolicy::Disabled => 1,
+        ExecControlPolicy::Enabled { .. } => 1 + 1 + PROCESS_CONTROL_NONCE_LEN,
+    }
+}
+
+fn append_exec_lifecycle(p: &mut Vec<u8>, lifecycle: ExecLifecyclePolicy) {
+    p.push(match lifecycle {
+        ExecLifecyclePolicy::OneShot => EXEC_LIFECYCLE_ONE_SHOT,
+        ExecLifecyclePolicy::Supervised => EXEC_LIFECYCLE_SUPERVISED,
+    });
+}
+
+fn append_exec_timeout_policy(p: &mut Vec<u8>, timeout: ExecTimeoutPolicy) {
+    match timeout {
+        ExecTimeoutPolicy::Duration { timeout_ms } => {
+            p.push(EXEC_TIMEOUT_DURATION);
+            p.extend_from_slice(&timeout_ms.to_be_bytes());
+        }
+        ExecTimeoutPolicy::None => p.push(EXEC_TIMEOUT_NONE),
+    }
+}
+
+fn append_exec_control_policy(p: &mut Vec<u8>, control: ExecControlPolicy) {
+    match control {
+        ExecControlPolicy::Disabled => p.push(EXEC_CONTROL_DISABLED),
+        ExecControlPolicy::Enabled {
+            control_nonce,
+            sink,
+        } => {
+            p.push(EXEC_CONTROL_ENABLED);
+            p.push(if sink { EXEC_CONTROL_FLAG_SINK } else { 0 });
+            p.extend_from_slice(&control_nonce);
+        }
+    }
+}
+
+fn validate_exec_timeout_policy(timeout: ExecTimeoutPolicy) -> Result<(), ProtocolError> {
+    if let ExecTimeoutPolicy::Duration { timeout_ms: 0 } = timeout {
+        return Err(ProtocolError::InvalidPayload(
+            "exec start timeout duration must be positive",
+        ));
+    }
+    Ok(())
+}
+
 fn append_exec_output_policy(p: &mut Vec<u8>, policy: ExecOutputPolicy) {
     match policy {
         ExecOutputPolicy::Discard => p.push(EXEC_OUTPUT_POLICY_DISCARD),
@@ -192,7 +325,8 @@ pub fn encode_exec_start(
     stderr: ExecOutputPolicy,
 ) -> Result<Vec<u8>, ProtocolError> {
     encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
-        timeout_ms,
+        lifecycle: ExecLifecyclePolicy::OneShot,
+        timeout: ExecTimeoutPolicy::Duration { timeout_ms },
         command,
         env,
         sudo,
@@ -200,13 +334,17 @@ pub fn encode_exec_start(
         stdout,
         stderr,
         expected_exit_codes: &[],
+        control: ExecControlPolicy::Disabled,
     })
 }
 
 /// Encode exec_start payload.
 ///
 /// Wire format:
-/// `[4B timeout_ms][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...`.
+/// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]`.
+///
+/// Duration timeout policies require a positive `timeout_ms`; use the explicit
+/// no-timeout policy for unbounded operation lifetimes.
 pub fn encode_exec_start_with_expected_exit_codes(
     request: ExecStartEncodeRequest<'_>,
 ) -> Result<Vec<u8>, ProtocolError> {
@@ -232,8 +370,11 @@ pub fn encode_exec_start_with_expected_exit_codes(
 
     let stdout_policy_len = exec_output_policy_encoded_len(request.stdout)?;
     let stderr_policy_len = exec_output_policy_encoded_len(request.stderr)?;
+    let timeout_policy_len = exec_timeout_policy_encoded_len(request.timeout);
+    let control_policy_len = exec_control_policy_encoded_len(request.control);
+    validate_exec_timeout_policy(request.timeout)?;
 
-    let mut payload_len = 4 + 1 + 4;
+    let mut payload_len = 1 + timeout_policy_len + 1 + 4;
     payload_len = checked_payload_len_add(payload_len, cmd.len())?;
     payload_len = checked_payload_len_add(payload_len, 4)?;
     for (key, val) in request.env {
@@ -251,10 +392,12 @@ pub fn encode_exec_start_with_expected_exit_codes(
     payload_len = checked_payload_len_add(payload_len, stderr_policy_len)?;
     payload_len = checked_payload_len_add(payload_len, 2)?;
     payload_len = checked_payload_len_add(payload_len, request.expected_exit_codes.len() * 4)?;
+    payload_len = checked_payload_len_add(payload_len, control_policy_len)?;
     ensure_payload_fits_message(payload_len)?;
 
     let mut p = Vec::with_capacity(payload_len);
-    p.extend_from_slice(&request.timeout_ms.to_be_bytes());
+    append_exec_lifecycle(&mut p, request.lifecycle);
+    append_exec_timeout_policy(&mut p, request.timeout);
     p.push(if request.sudo { EXEC_FLAG_SUDO } else { 0 });
     p.extend_from_slice(&cmd_len.to_be_bytes());
     p.extend_from_slice(cmd);
@@ -275,8 +418,55 @@ pub fn encode_exec_start_with_expected_exit_codes(
     for exit_code in request.expected_exit_codes {
         p.extend_from_slice(&exit_code.to_be_bytes());
     }
+    append_exec_control_policy(&mut p, request.control);
     debug_assert_eq!(p.len(), payload_len);
     Ok(p)
+}
+
+/// Encode exec_started payload: `[4B pid]`.
+pub fn encode_exec_started(pid: u32) -> Result<Vec<u8>, ProtocolError> {
+    if pid == 0 {
+        return Err(ProtocolError::InvalidPayload(
+            "exec started pid must be non-zero",
+        ));
+    }
+    Ok(pid.to_be_bytes().to_vec())
+}
+
+/// Encode exec_control payload.
+pub fn encode_exec_control(
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+    payload: &[u8],
+    request_timeout_ms: u32,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_control_with_errors(
+        target_seq,
+        control_nonce,
+        message_id,
+        payload,
+        request_timeout_ms,
+        EXEC_CONTROL_CODEC_ERRORS,
+    )
+}
+
+/// Encode exec_control_result payload.
+pub fn encode_exec_control_result(
+    target_seq: u32,
+    control_nonce: ProcessControlNonce,
+    message_id: &str,
+    status: ExecControlStatus,
+    diagnostic: &str,
+) -> Result<Vec<u8>, ProtocolError> {
+    encode_control_result_with_errors(
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
+        EXEC_CONTROL_RESULT_CODEC_ERRORS,
+    )
 }
 
 /// Encode exec_output payload: `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]`.
@@ -456,10 +646,78 @@ fn decode_exec_output_policy(
     }
 }
 
+fn decode_exec_lifecycle(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<ExecLifecyclePolicy, ProtocolError> {
+    match read_u8(payload, offset, "exec start lifecycle truncated")? {
+        EXEC_LIFECYCLE_ONE_SHOT => Ok(ExecLifecyclePolicy::OneShot),
+        EXEC_LIFECYCLE_SUPERVISED => Ok(ExecLifecyclePolicy::Supervised),
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start lifecycle invalid",
+        )),
+    }
+}
+
+fn decode_exec_timeout_policy(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<ExecTimeoutPolicy, ProtocolError> {
+    match read_u8(payload, offset, "exec start timeout policy truncated")? {
+        EXEC_TIMEOUT_DURATION => {
+            let timeout_ms = read_u32(payload, offset, "exec start timeout truncated")?;
+            if timeout_ms == 0 {
+                return Err(ProtocolError::InvalidPayload(
+                    "exec start timeout duration must be positive",
+                ));
+            }
+            Ok(ExecTimeoutPolicy::Duration { timeout_ms })
+        }
+        EXEC_TIMEOUT_NONE => Ok(ExecTimeoutPolicy::None),
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start timeout policy invalid",
+        )),
+    }
+}
+
+fn decode_exec_control_policy(
+    payload: &[u8],
+    offset: &mut usize,
+) -> Result<ExecControlPolicy, ProtocolError> {
+    match read_u8(payload, offset, "exec start control policy truncated")? {
+        EXEC_CONTROL_DISABLED => Ok(ExecControlPolicy::Disabled),
+        EXEC_CONTROL_ENABLED => {
+            let flags = read_u8(payload, offset, "exec start control flags truncated")?;
+            if flags & !EXEC_CONTROL_FLAG_SINK != 0 {
+                return Err(ProtocolError::InvalidPayload(
+                    "exec start control unknown flags",
+                ));
+            }
+            let nonce_bytes = read_slice(
+                payload,
+                offset,
+                PROCESS_CONTROL_NONCE_LEN,
+                "exec start control nonce truncated",
+            )?;
+            let control_nonce: ProcessControlNonce = nonce_bytes
+                .try_into()
+                .map_err(|_| ProtocolError::InvalidPayload("exec start control nonce invalid"))?;
+            Ok(ExecControlPolicy::Enabled {
+                control_nonce,
+                sink: flags & EXEC_CONTROL_FLAG_SINK != 0,
+            })
+        }
+        _ => Err(ProtocolError::InvalidPayload(
+            "exec start control policy invalid",
+        )),
+    }
+}
+
 /// Decode exec_start payload into a [`DecodedExecStart`] struct.
 pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, ProtocolError> {
     let mut offset = 0;
-    let timeout_ms = read_u32(payload, &mut offset, "exec start timeout truncated")?;
+    let lifecycle = decode_exec_lifecycle(payload, &mut offset)?;
+    let timeout = decode_exec_timeout_policy(payload, &mut offset)?;
     let flags = read_u8(payload, &mut offset, "exec start flags truncated")?;
     if flags & !EXEC_FLAG_SUDO != 0 {
         return Err(ProtocolError::InvalidPayload("exec start unknown flags"));
@@ -544,9 +802,11 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
             "exec start expected exit truncated",
         )?);
     }
+    let control = decode_exec_control_policy(payload, &mut offset)?;
     expect_consumed(payload, offset, "exec start trailing bytes")?;
     Ok(DecodedExecStart {
-        timeout_ms,
+        lifecycle,
+        timeout,
         command,
         env,
         sudo: (flags & EXEC_FLAG_SUDO) != 0,
@@ -554,6 +814,58 @@ pub fn decode_exec_start(payload: &[u8]) -> Result<DecodedExecStart<'_>, Protoco
         stdout,
         stderr,
         expected_exit_codes,
+        control,
+    })
+}
+
+/// Decode exec_started payload into a [`DecodedExecStarted`] struct.
+pub fn decode_exec_started(payload: &[u8]) -> Result<DecodedExecStarted, ProtocolError> {
+    let mut offset = 0;
+    let pid = read_u32(payload, &mut offset, "exec started pid truncated")?;
+    if pid == 0 {
+        return Err(ProtocolError::InvalidPayload(
+            "exec started pid must be non-zero",
+        ));
+    }
+    expect_consumed(payload, offset, "exec started trailing bytes")?;
+    Ok(DecodedExecStarted { pid })
+}
+
+/// Decode exec_control payload into a [`DecodedExecControl`] struct.
+pub fn decode_exec_control(payload: &[u8]) -> Result<DecodedExecControl<'_>, ProtocolError> {
+    let DecodedProcessControl {
+        target_seq,
+        request_timeout_ms,
+        control_nonce,
+        message_id,
+        payload: message_payload,
+    } = decode_control_with_errors(payload, EXEC_CONTROL_CODEC_ERRORS)?;
+    Ok(DecodedExecControl {
+        target_seq,
+        request_timeout_ms,
+        control_nonce,
+        message_id,
+        payload: message_payload,
+    })
+}
+
+/// Decode exec_control_result payload into a [`DecodedExecControlResult`] struct.
+pub fn decode_exec_control_result(
+    payload: &[u8],
+) -> Result<DecodedExecControlResult<'_>, ProtocolError> {
+    let DecodedProcessControlResult {
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
+    } = decode_control_result_with_errors(payload, EXEC_CONTROL_RESULT_CODEC_ERRORS)?;
+    Ok(DecodedExecControlResult {
+        target_seq,
+        control_nonce,
+        message_id,
+        status,
+        diagnostic,
     })
 }
 

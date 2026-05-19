@@ -52,6 +52,9 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/sign-in-token",
   "/:locale/sign-in-token",
+  "/desktop-auth/start(.*)",
+  "/desktop-auth/callback(.*)",
+  "/desktop-auth/consume(.*)",
   "/api/cli/auth/device",
   "/api/cli/auth/token",
   "/api/slack/oauth/(.*)",
@@ -70,12 +73,21 @@ const isPublicRoute = createRouteMatcher([
  */
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
+const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-forwarded-host", request.nextUrl.host);
+  requestHeaders.set(
+    "x-forwarded-proto",
+    request.nextUrl.protocol.slice(0, -1),
+  );
   const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypass) {
     requestHeaders.set("x-vercel-protection-bypass", bypass);
+    if (request.nextUrl.pathname.startsWith("/api/test/")) {
+      requestHeaders.set(TEST_ENDPOINT_BYPASS_HEADER, bypass);
+    }
   }
 
   return applyCorsHeaders(

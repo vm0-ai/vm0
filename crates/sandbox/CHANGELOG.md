@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.16.0...sandbox-v0.16.1) (2026-05-19)
+
+
+### Refactoring
+
+* gate process control requests ([#13845](https://github.com/vm0-ai/vm0/issues/13845)) ([9dc1d33](https://github.com/vm0-ai/vm0/commit/9dc1d33ddb9fb1e2d479c574ebf85afd61cb45b8))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.15.1...sandbox-v0.16.0) (2026-05-17)
 
 

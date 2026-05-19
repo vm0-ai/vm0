@@ -11,10 +11,8 @@ use vsock_proto::{
     RawMessage,
 };
 
-use crate::{
-    ConnectionState, VsockHost,
-    operation_tracker::{NormalOperationFence, NormalOperationReadiness},
-};
+use crate::operation_tracker::NormalOperationReadiness;
+use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
@@ -47,6 +45,14 @@ pub(crate) fn operation_count(host: &VsockHost) -> usize {
     }
 }
 
+pub(crate) fn pending_request_count(host: &VsockHost) -> usize {
+    let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        ConnectionState::Connected { pending, .. } => pending.len(),
+        ConnectionState::Closed { .. } => 0,
+    }
+}
+
 pub(crate) fn is_connected(host: &VsockHost) -> bool {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     matches!(&*guard, ConnectionState::Connected { .. })
@@ -57,9 +63,7 @@ pub(crate) fn normal_operation_readiness(host: &VsockHost) -> NormalOperationRea
 }
 
 pub(crate) fn fence_normal_operations(host: &VsockHost) -> NormalOperationFence {
-    host.shared
-        .normal_operations
-        .try_fence()
+    host.try_fence_normal_operations()
         .expect("normal operations should fence")
 }
 
@@ -67,8 +71,13 @@ pub(crate) fn poison_connection(host: &VsockHost) {
     host.shared.poison_connection();
 }
 
-pub(crate) fn drop_started_pending_normal_request_write_guard(host: &VsockHost) {
-    let mut guard = crate::PendingNormalRequestWriteGuard::new(Arc::clone(&host.shared));
+pub(crate) fn drop_idle_request_write_guard(host: &VsockHost) {
+    let guard = crate::RequestWriteGuard::new(Arc::clone(&host.shared));
+    drop(guard);
+}
+
+pub(crate) fn drop_started_request_write_guard(host: &VsockHost) {
+    let mut guard = crate::RequestWriteGuard::new(Arc::clone(&host.shared));
     guard.mark_started();
     drop(guard);
 }

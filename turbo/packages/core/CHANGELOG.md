@@ -1,5 +1,114 @@
 # Changelog
 
+## [8.283.0](https://github.com/vm0-ai/vm0/compare/core-v8.282.0...core-v8.283.0) (2026-05-19)
+
+
+### Features
+
+* enable stored secret kms reads ([#13970](https://github.com/vm0-ai/vm0/issues/13970)) ([11ee709](https://github.com/vm0-ai/vm0/commit/11ee7097d118f5b6b03726b3e810a5be0fae5d15))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.1
+    * @vm0/connectors bumped to 1.21.0
+
+## [8.282.0](https://github.com/vm0-ai/vm0/compare/core-v8.281.7...core-v8.282.0) (2026-05-19)
+
+
+### Features
+
+* enable stored secret kms writes ([#13946](https://github.com/vm0-ai/vm0/issues/13946)) ([77f6fd7](https://github.com/vm0-ai/vm0/commit/77f6fd7d2fc61ced4e4350260235d6d5dd84efc3))
+
+
+### Refactoring
+
+* remove obsolete connector helper exports ([#13933](https://github.com/vm0-ai/vm0/issues/13933)) ([efd4129](https://github.com/vm0-ai/vm0/commit/efd41291ae124b30010102caab81ca5c39505ee0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+
+## [8.281.7](https://github.com/vm0-ai/vm0/compare/core-v8.281.6...core-v8.281.7) (2026-05-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.9
+    * @vm0/connectors bumped to 1.19.1
+
+## [8.281.6](https://github.com/vm0-ai/vm0/compare/core-v8.281.5...core-v8.281.6) (2026-05-19)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+
+## [8.281.5](https://github.com/vm0-ai/vm0/compare/core-v8.281.4...core-v8.281.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* gate KMS dual-write behind StoredSecretKmsWrite feature switch ([#13799](https://github.com/vm0-ai/vm0/issues/13799)) ([e699848](https://github.com/vm0-ai/vm0/commit/e6998484e874db0da320924b17ea57f4c2f383c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.7
+    * @vm0/connectors bumped to 1.18.1
+
+## [8.281.4](https://github.com/vm0-ai/vm0/compare/core-v8.281.3...core-v8.281.4) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.6
+    * @vm0/connectors bumped to 1.18.0
+
+## [8.281.3](https://github.com/vm0-ai/vm0/compare/core-v8.281.2...core-v8.281.3) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.5
+
+## [8.281.2](https://github.com/vm0-ai/vm0/compare/core-v8.281.1...core-v8.281.2) (2026-05-18)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.4
+    * @vm0/connectors bumped to 1.17.0
+
+## [8.281.1](https://github.com/vm0-ai/vm0/compare/core-v8.281.0...core-v8.281.1) (2026-05-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.3
+    * @vm0/connectors bumped to 1.16.0
+
 ## [8.281.0](https://github.com/vm0-ai/vm0/compare/core-v8.280.1...core-v8.281.0) (2026-05-17)
 
 

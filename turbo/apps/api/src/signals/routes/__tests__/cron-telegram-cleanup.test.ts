@@ -113,6 +113,14 @@ describe("GET /api/cron/telegram-cleanup", () => {
     });
   });
 
+  it("rejects requests without cron authorization", async () => {
+    const response = await accept(apiClient().cleanup({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("preserves recent messages and returns a deleted count", async () => {
     const fixture = await track(seedInstallation());
     const installationId = fixture.telegramBotIds[0] ?? "";

@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  CONNECTOR_TYPES,
+  type ConnectorOAuthClientConfig,
+} from "@vm0/connectors/connectors";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
@@ -64,28 +69,76 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
 }
 
+const dynamicPublicClient = {
+  clientRegistration: "dynamic",
+  clientType: "public",
+  tokenEndpointAuthMethod: "none",
+} as const satisfies ConnectorOAuthClientConfig;
+
+function useDynamicTestOAuthAuthorize(): () => void {
+  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
+  if (!oauth) {
+    throw new Error("test-oauth OAuth config is missing");
+  }
+
+  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
+  const originalClient = oauth.client;
+  const handler = PROVIDER_HANDLERS["test-oauth"];
+  const originalBuildAuthUrlWithArgs = handler.buildAuthUrlWithArgs;
+
+  mutableOAuth.client = dynamicPublicClient;
+  handler.buildAuthUrlWithArgs = (args) => {
+    expect(args.clientId).toBeUndefined();
+    return {
+      url: `https://dynamic-oauth.test/authorize?state=${args.state}`,
+      oauthContext: "dynamic-oauth-context; tenant=example",
+    };
+  };
+
+  return () => {
+    mutableOAuth.client = originalClient;
+    if (originalBuildAuthUrlWithArgs) {
+      handler.buildAuthUrlWithArgs = originalBuildAuthUrlWithArgs;
+    } else {
+      delete handler.buildAuthUrlWithArgs;
+    }
+  };
+}
+
 async function requestAuthorize(
   type: string,
-  options: { readonly session?: string; readonly authenticated?: boolean } = {},
+  options: {
+    readonly session?: string;
+    readonly authenticated?: boolean;
+    readonly headers?: HeadersInit;
+  } = {},
 ): Promise<Response> {
   if (options.authenticated) {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
   }
+  const headers = new Headers(options.headers);
+  if (options.authenticated) {
+    headers.set("cookie", "__session=opaque");
+  }
   const app = createApp({ signal: context.signal });
   return await app.request(authorizeUrl(type, options.session), {
     method: "GET",
-    headers: options.authenticated ? sessionHeaders() : undefined,
+    headers,
   });
 }
 
 describe("GET /api/zero/connectors/:type/authorize", () => {
   const orgIds: string[] = [];
+  let restoreDynamicTestOAuthAuthorize: (() => void) | undefined;
 
   beforeEach(() => {
     mockOAuthEnv();
   });
 
   afterEach(async () => {
+    restoreDynamicTestOAuthAuthorize?.();
+    restoreDynamicTestOAuthAuthorize = undefined;
+
     const db = store.set(writeDb$);
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
@@ -116,6 +169,24 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(url.searchParams.get("redirect_url")).toBe(authorizeUrl("github"));
   });
 
+  it("redirects unauthenticated users to sign-in on the forwarded web origin", async () => {
+    const response = await requestAuthorize("github", {
+      headers: {
+        "x-forwarded-host": "www.vm0.ai",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe("https://www.vm0.ai/sign-in");
+    expect(url.searchParams.get("redirect_url")).toBe(
+      "https://www.vm0.ai/api/zero/connectors/github/authorize",
+    );
+  });
+
   it("redirects to GitHub OAuth and sets the state cookie", async () => {
     const response = await requestAuthorize("github", { authenticated: true });
 
@@ -141,6 +212,24 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeTruthy();
   });
 
+  it("uses the forwarded web origin for OAuth callback URLs", async () => {
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      headers: {
+        "x-forwarded-host": "www.vm0.ai",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "https://www.vm0.ai/api/connectors/github/callback",
+    );
+  });
+
   it("stores the connector session id when provided", async () => {
     const response = await requestAuthorize("github", {
       authenticated: true,
@@ -155,6 +244,32 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeTruthy();
   });
 
+  it("allows dynamic public OAuth authorize without env credentials", async () => {
+    restoreDynamicTestOAuthAuthorize = useDynamicTestOAuthAuthorize();
+
+    const response = await requestAuthorize("test-oauth", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://dynamic-oauth.test/authorize",
+    );
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith(
+          "connector_oauth_context=dynamic-oauth-context%3B%20tenant%3Dexample",
+        );
+      }),
+    ).toBeTruthy();
+  });
+
   it("does not set a session cookie when the query parameter is absent", async () => {
     const response = await requestAuthorize("github", { authenticated: true });
 
@@ -164,19 +279,6 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith("connector_oauth_session=");
       }),
     ).toBeFalsy();
-  });
-
-  it("returns 400 for refresh-only codex-oauth connector", async () => {
-    const response = await requestAuthorize("codex-oauth", {
-      authenticated: true,
-    });
-
-    expect(response.status).toBe(400);
-    const body = await response.json();
-    expect(body).toStrictEqual({
-      error:
-        "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
-    });
   });
 
   it("uses Slack user_scope rather than scope", async () => {

@@ -1,9 +1,29 @@
 import { command, computed, type Computed } from "ccstate";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
+
+async function loadUserFeatureSwitchOverrides(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+): Promise<Record<string, boolean>> {
+  const [row] = await db
+    .select({ switches: userFeatureSwitches.switches })
+    .from(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, orgId),
+        eq(userFeatureSwitches.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  return row?.switches ?? {};
+}
 
 export function userFeatureSwitchOverrides(
   orgId: string,
@@ -11,18 +31,32 @@ export function userFeatureSwitchOverrides(
 ): Computed<Promise<Record<string, boolean>>> {
   return computed(async (get): Promise<Record<string, boolean>> => {
     const db = get(db$);
-    const [row] = await db
-      .select({ switches: userFeatureSwitches.switches })
-      .from(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, orgId),
-          eq(userFeatureSwitches.userId, userId),
-        ),
-      )
-      .limit(1);
+    return await loadUserFeatureSwitchOverrides(db, orgId, userId);
+  });
+}
 
-    return row?.switches ?? {};
+export async function loadUserFeatureSwitchContext(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+): Promise<FeatureSwitchContext> {
+  return {
+    orgId,
+    userId,
+    overrides: await loadUserFeatureSwitchOverrides(db, orgId, userId),
+  };
+}
+
+export function userFeatureSwitchContext(
+  orgId: string,
+  userId: string,
+): Computed<Promise<FeatureSwitchContext>> {
+  return computed(async (get): Promise<FeatureSwitchContext> => {
+    return {
+      orgId,
+      userId,
+      overrides: await get(userFeatureSwitchOverrides(orgId, userId)),
+    };
   });
 }
 

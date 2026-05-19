@@ -3,7 +3,6 @@ use std::future::Future;
 use std::io;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -19,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
-use vsock_host::VsockHost;
+use vsock_host::{NormalOperationFence, NormalOperationFenceRejection, VsockHost};
 
 use crate::api::ApiError;
 use nbd_cow::PooledNbdCowDevice;
@@ -29,14 +28,12 @@ use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
-use crate::guest_operations::{
-    GuestOperation, GuestOperationGate, GuestOperationStartError, guest_error_is_terminal,
-};
+use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
 use crate::park_coordinator::{
-    CoordinatorState, DirtyReason, OperationLease, OperationTransitionError, ParkAttempt,
-    ParkCoordinator, PrepareParkError, PrepareParkEvidence,
+    CoordinatorState, DirtyReason, OperationStartRejection, ParkAttempt, ParkCoordinator,
+    PrepareParkError, PrepareParkEvidence,
 };
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
@@ -501,6 +498,8 @@ pub struct FirecrackerSandbox {
     /// touch the balloon controller, and to let `stop()` skip vsock
     /// graceful shutdown (guest can't respond with paused vCPUs).
     is_parked: bool,
+    /// Host-side normal-operation fence held while this sandbox is parked.
+    park_fence: Option<NormalOperationFence>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -567,6 +566,7 @@ impl FirecrackerSandbox {
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
             is_parked: false,
+            park_fence: None,
         }
     }
 
@@ -646,17 +646,6 @@ impl FirecrackerSandbox {
         }
     }
 
-    fn operation_gate_transition_error(
-        operation: SandboxOperation,
-        error: OperationTransitionError,
-    ) -> SandboxError {
-        SandboxError::Operation {
-            operation,
-            reason: SandboxOperationReason::Other,
-            message: format!("operation gate transition failed: {error:?}"),
-        }
-    }
-
     fn operation_start_error(
         &self,
         operation: SandboxOperation,
@@ -682,15 +671,15 @@ impl FirecrackerSandbox {
         publish_process_state(&self.state, &self.state_publish_lock, &self.state_tx, state);
     }
 
-    fn guest_operations(&self) -> GuestOperationGate {
-        GuestOperationGate::new(Arc::clone(&self.guest), self.park_coordinator.clone())
+    fn guest_operation_start_gate(&self) -> GuestOperationStartGate {
+        GuestOperationStartGate::new(Arc::clone(&self.guest), self.park_coordinator.clone())
     }
 
     async fn begin_guest_operation(
         &self,
         operation: SandboxOperation,
-    ) -> sandbox::Result<GuestOperation> {
-        self.guest_operations()
+    ) -> sandbox::Result<Arc<VsockHost>> {
+        self.guest_operation_start_gate()
             .begin_sandbox_operation(|| self.current_state())
             .await
             .map_err(|error| self.operation_start_error(operation, error))
@@ -709,11 +698,7 @@ impl FirecrackerSandbox {
             BackendCrashed,
         }
 
-        let mut guest = self.begin_guest_operation(operation).await?;
-        guest
-            .mark_writing()
-            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-        let vsock = guest.guest();
+        let vsock = self.begin_guest_operation(operation).await?;
 
         let outcome = tokio::select! {
             result = call(vsock) => {
@@ -725,24 +710,109 @@ impl FirecrackerSandbox {
         };
 
         match outcome {
-            GuestCallOutcome::Returned(Ok(value)) => {
-                guest
-                    .complete()
-                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                Ok(value)
-            }
+            GuestCallOutcome::Returned(Ok(value)) => Ok(value),
             GuestCallOutcome::Returned(Err(error)) => {
                 let backend_crashed = self.has_backend_crashed();
-                let is_terminal = guest_error_is_terminal(&error, backend_crashed);
-                let result = Err(Self::operation_error(operation, error, backend_crashed));
-                if is_terminal {
-                    guest
-                        .complete()
-                        .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                }
-                result
+                Err(Self::operation_error(operation, error, backend_crashed))
             }
             GuestCallOutcome::BackendCrashed => Err(Self::backend_crashed_error(operation)),
+        }
+    }
+
+    fn current_state_from(state: &AtomicU8) -> SandboxState {
+        SandboxState::from_u8(state.load(Ordering::Acquire))
+    }
+
+    fn begin_process_control(
+        coordinator: &ParkCoordinator,
+        current_state: impl Fn() -> SandboxState,
+    ) -> Result<(), GuestOperationStartError> {
+        match current_state() {
+            SandboxState::Running => {}
+            SandboxState::Crashed => return Err(GuestOperationStartError::BackendCrashed),
+            state => return Err(GuestOperationStartError::NotRunning { state }),
+        }
+
+        coordinator
+            .ensure_operation_start_allowed()
+            .map_err(|error| match error {
+                OperationStartRejection::GateClosed { state } => {
+                    GuestOperationStartError::GateClosed { state }
+                }
+            })?;
+
+        match current_state() {
+            SandboxState::Running => {}
+            SandboxState::Crashed => return Err(GuestOperationStartError::BackendCrashed),
+            state => return Err(GuestOperationStartError::NotRunning { state }),
+        }
+
+        Ok(())
+    }
+
+    fn operation_start_io_error(
+        operation: SandboxOperation,
+        error: GuestOperationStartError,
+        current_state: SandboxState,
+    ) -> io::Error {
+        let error = match error {
+            GuestOperationStartError::BackendCrashed => Self::backend_crashed_error(operation),
+            GuestOperationStartError::NotRunning { state } => {
+                Self::operation_unavailable_error(operation, state)
+            }
+            GuestOperationStartError::NoGuest => {
+                Self::operation_unavailable_error(operation, current_state)
+            }
+            GuestOperationStartError::GateClosed { state } => {
+                Self::operation_gate_closed_error(operation, state)
+            }
+        };
+        io::Error::other(error)
+    }
+
+    async fn process_control(
+        coordinator: ParkCoordinator,
+        state: Arc<AtomicU8>,
+        state_rx: watch::Receiver<SandboxState>,
+        control: vsock_host::GuestProcessControlHandle,
+        message_id: String,
+        payload: Vec<u8>,
+        timeout: Duration,
+    ) -> io::Result<ProcessControlAck> {
+        enum ControlOutcome {
+            Returned(io::Result<vsock_host::ProcessControlAck>),
+            BackendCrashed,
+        }
+
+        let operation = SandboxOperation::ProcessControl;
+        Self::begin_process_control(&coordinator, || Self::current_state_from(&state)).map_err(
+            |error| {
+                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
+            },
+        )?;
+
+        let outcome = tokio::select! {
+            result = control.control(
+                &message_id,
+                &payload,
+                timeout,
+            ) => ControlOutcome::Returned(result),
+            () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
+        };
+
+        match outcome {
+            ControlOutcome::Returned(Ok(ack)) => Ok(ProcessControlAck {
+                message_id: ack.message_id,
+            }),
+            ControlOutcome::Returned(Err(error)) => {
+                if Self::current_state_from(&state) == SandboxState::Crashed {
+                    return Err(io::Error::other(Self::backend_crashed_error(operation)));
+                }
+                Err(error)
+            }
+            ControlOutcome::BackendCrashed => {
+                Err(io::Error::other(Self::backend_crashed_error(operation)))
+            }
         }
     }
 
@@ -1067,22 +1137,6 @@ async fn wait_for_backend_crash(mut state_rx: watch::Receiver<SandboxState>) {
     }
 }
 
-fn gated_spawn_exit_future<F>(
-    exit: F,
-    lease: OperationLease,
-) -> Pin<Box<dyn Future<Output = io::Result<ProcessExit>> + Send + 'static>>
-where
-    F: Future<Output = io::Result<ProcessExit>> + Send + 'static,
-{
-    Box::pin(async move {
-        let process_exit = exit.await?;
-        lease
-            .complete()
-            .map_err(|error| io::Error::other(format!("operation gate completion: {error:?}")))?;
-        Ok(process_exit)
-    })
-}
-
 fn state_publish_guard(state_publish_lock: &Mutex<()>) -> MutexGuard<'_, ()> {
     state_publish_lock
         .lock()
@@ -1298,20 +1352,19 @@ impl Sandbox for FirecrackerSandbox {
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
         let control_sock_path = self.sock_paths.control_sock();
-        let control_server =
-            match control::bind_server(control_sock_path.clone(), self.guest_operations()) {
-                Ok(server) => server,
-                Err(e) => {
-                    self.guest.lock().await.take();
-                    self.runtime.kill_process().await;
-                    return Err(SandboxError::Start {
-                        message: format!(
-                            "control socket bind {}: {e}",
-                            control_sock_path.display()
-                        ),
-                    });
-                }
-            };
+        let control_server = match control::bind_server(
+            control_sock_path.clone(),
+            self.guest_operation_start_gate(),
+        ) {
+            Ok(server) => server,
+            Err(e) => {
+                self.guest.lock().await.take();
+                self.runtime.kill_process().await;
+                return Err(SandboxError::Start {
+                    message: format!("control socket bind {}: {e}", control_sock_path.display()),
+                });
+            }
+        };
 
         // Use CAS to avoid overwriting Stopped if the process crashed between
         // spawn and vsock connect (the process monitor may have already
@@ -1345,6 +1398,7 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
+                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
                 self.runtime.kill_process().await;
             }
             return Ok(());
@@ -1365,14 +1419,15 @@ impl Sandbox for FirecrackerSandbox {
         // deflate failed), is_parked is true but vCPUs are actually running.
         // Skipping graceful shutdown is still correct — the sandbox was idle
         // with no user workload.
-        if !self.is_parked {
-            let guest = self.guest.lock().await.take();
-            if let Some(guest) = guest
-                && !guest.shutdown(SHUTDOWN_TIMEOUT).await
-            {
-                warn!(id = %self.id, "graceful shutdown timed out");
-            }
+        let was_parked = self.is_parked;
+        let guest = self.guest.lock().await.take();
+        if !was_parked
+            && let Some(guest) = guest
+            && !guest.shutdown(SHUTDOWN_TIMEOUT).await
+        {
+            warn!(id = %self.id, "graceful shutdown timed out");
         }
+        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
 
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
@@ -1385,12 +1440,14 @@ impl Sandbox for FirecrackerSandbox {
             if self.current_state() == SandboxState::Crashed {
                 self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
+                release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
                 self.runtime.kill_process().await;
             }
             return Ok(());
         }
         self.runtime.shutdown_services().await;
         self.guest.lock().await.take();
+        release_park_state_for_termination(&mut self.is_parked, &mut self.park_fence);
         self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
@@ -1412,12 +1469,15 @@ impl Sandbox for FirecrackerSandbox {
     // memory again. Ordering: resume before deflate — the guest needs
     // running vCPUs to process the deflate.
     //
-    // Both methods propagate guest lifecycle, operation-gate, and Firecracker
-    // PATCH failures as `IdleTransition(Park|Unpark)` errors. On failure the
-    // caller (runner) destroys the sandbox and falls through to fresh-create.
-    // Firecracker's pause/resume returns 400 when the VM is already in the
-    // target state; within park/unpark this only happens after a partial retry,
-    // so 400 is treated as success (idempotent).
+    // Park first closes the sandbox policy gate, then acquires a host-side
+    // vsock normal-operation fence before guest lifecycle quiesce. Unpark
+    // resumes the guest, releases the vsock fence, then reopens the policy
+    // gate. Both methods propagate guest lifecycle, operation-gate, fence, and
+    // Firecracker PATCH failures as `IdleTransition(Park|Unpark)` errors. On
+    // failure the caller (runner) destroys the sandbox and falls through to
+    // fresh-create. Firecracker's pause/resume returns 400 when the VM is
+    // already in the target state; within park/unpark this only happens after
+    // a partial retry, so 400 is treated as success (idempotent).
     //
     // For profiles where `memory_mb <= MIN_GUEST_MIB` there is no memory
     // to reclaim (balloon is skipped), but vCPUs are still paused — timer
@@ -1430,16 +1490,33 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn park(&mut self) -> sandbox::Result<()> {
         if self.is_parked {
+            if self.park_fence.is_none() {
+                let message = "sandbox is parked without a normal-operation fence";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+            }
             return ensure_park_noop_state(&self.park_coordinator);
         }
 
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
+        let fence_guest = Arc::clone(&guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
-        park_with_ready_for_park(
+        let normal_operations_fence = park_with_ready_for_park(
             &id,
             &coordinator,
+            || async move {
+                let guest = fence_guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                    ParkNormalOperationFenceError::GuestUnavailable(io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        "guest connection missing during park fence",
+                    ))
+                })?;
+                guest
+                    .try_fence_normal_operations()
+                    .map_err(ParkNormalOperationFenceError::Rejected)
+            },
             || async move {
                 let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
                     io::Error::new(
@@ -1459,28 +1536,51 @@ impl Sandbox for FirecrackerSandbox {
                 )
             },
         )
-        .await
+        .await?;
+        self.park_fence = Some(normal_operations_fence);
+        Ok(())
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
         if !self.is_parked {
+            if self.park_fence.is_some() {
+                let message = "sandbox has a normal-operation fence while unpark is a no-op";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    message,
+                ));
+            }
             return ensure_unpark_noop_state(&self.park_coordinator);
+        }
+        if self.park_fence.is_none() {
+            let message = "sandbox is parked without a normal-operation fence";
+            self.park_coordinator.mark_dirty(DirtyReason::new(message));
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                message,
+            ));
         }
 
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
+        let memory_mb = self.config.resources.memory_mb;
+        let state_rx = self.state_tx.subscribe();
+        let is_parked = &mut self.is_parked;
+        let balloon_controller = self.runtime.balloon_mut();
+        let park_fence = &mut self.park_fence;
         unpark_with_ready_for_operations(
             &id,
             &coordinator,
             || {
                 unpark_inner(
-                    &mut self.is_parked,
-                    self.config.resources.memory_mb,
-                    self.runtime.balloon_mut(),
+                    is_parked,
+                    memory_mb,
+                    balloon_controller,
                     &api_sock,
-                    self.state_tx.subscribe(),
+                    state_rx,
                     &id,
                 )
             },
@@ -1492,6 +1592,9 @@ impl Sandbox for FirecrackerSandbox {
                     )
                 })?;
                 guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
+            },
+            || {
+                drop(park_fence.take());
             },
         )
         .await
@@ -1585,31 +1688,35 @@ impl Sandbox for FirecrackerSandbox {
         request: &SpawnProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
         let operation = SandboxOperation::SpawnProcess;
-        let mut guest = self.begin_guest_operation(operation).await?;
-        guest
-            .mark_writing()
-            .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-        let vsock = guest.guest();
+        let vsock = self.begin_guest_operation(operation).await?;
 
-        let spawn_future: Pin<
-            Box<dyn Future<Output = io::Result<vsock_host::GuestProcessHandle>> + Send + '_>,
-        > = match request.control {
-            SpawnProcessControl::None => Box::pin(vsock.spawn_process(
-                request.cmd,
-                request.timeout_ms(),
-                request.env,
-                request.sudo,
-                request.output.streams_stdout(),
-                request.output.guest_log_path(),
-            )),
-            SpawnProcessControl::Enabled => Box::pin(vsock.spawn_process_with_control_sink(
-                request.cmd,
-                request.timeout_ms(),
-                request.env,
-                request.sudo,
-                request.output.streams_stdout(),
-                request.output.guest_log_path(),
-            )),
+        let spawn_future = async move {
+            match request.control {
+                SpawnProcessControl::None => {
+                    vsock
+                        .spawn_process(
+                            request.cmd,
+                            request.timeout_ms(),
+                            request.env,
+                            request.sudo,
+                            request.output.streams_stdout(),
+                            request.output.guest_log_path(),
+                        )
+                        .await
+                }
+                SpawnProcessControl::Enabled => {
+                    vsock
+                        .spawn_process_with_control_sink(
+                            request.cmd,
+                            request.timeout_ms(),
+                            request.env,
+                            request.sudo,
+                            request.output.streams_stdout(),
+                            request.output.guest_log_path(),
+                        )
+                        .await
+                }
+            }
         };
 
         tokio::select! {
@@ -1618,29 +1725,25 @@ impl Sandbox for FirecrackerSandbox {
                     Ok(handle) => handle,
                     Err(error) => {
                         let backend_crashed = self.has_backend_crashed();
-                        let is_terminal = guest_error_is_terminal(&error, backend_crashed);
-                        let result = Err(Self::operation_error(operation, error, backend_crashed));
-                        if is_terminal {
-                            guest
-                                .complete()
-                                .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
-                        }
-                        return result;
+                        return Err(Self::operation_error(operation, error, backend_crashed));
                     }
                 };
-                guest
-                    .mark_in_guest()
-                    .map_err(|error| Self::operation_gate_transition_error(operation, error))?;
                 let pid = handle.pid();
                 let process_control = (request.control == SpawnProcessControl::Enabled).then(|| {
                     let control = handle.control_handle();
+                    let coordinator = self.park_coordinator.clone();
+                    let state = Arc::clone(&self.state);
+                    let state_rx = self.state_tx.subscribe();
                     GuestProcessControlHandle::new(move |message_id, payload, timeout| {
                         let control = control.clone();
+                        let coordinator = coordinator.clone();
+                        let state = Arc::clone(&state);
+                        let state_rx = state_rx.clone();
                         Box::pin(async move {
-                            let ack = control.control(&message_id, &payload, timeout).await?;
-                            Ok(ProcessControlAck {
-                                message_id: ack.message_id,
-                            })
+                            Self::process_control(
+                                coordinator, state, state_rx, control, message_id, payload, timeout,
+                            )
+                            .await
                         })
                     })
                 });
@@ -1649,19 +1752,15 @@ impl Sandbox for FirecrackerSandbox {
                     .streams_stdout()
                     .then(|| handle.take_stdout_receiver())
                     .flatten();
-                let lease = guest.into_lease();
-                let exit = gated_spawn_exit_future(
-                    async move {
-                        let event = handle.wait().await?;
-                        Ok(ProcessExit {
-                            pid: event.pid,
-                            exit_code: event.exit_code,
-                            stdout: event.stdout,
-                            stderr: event.stderr,
-                        })
-                    },
-                    lease,
-                );
+                let exit = Box::pin(async move {
+                    let event = handle.wait().await?;
+                    Ok(ProcessExit {
+                        pid: event.pid,
+                        exit_code: event.exit_code,
+                        stdout: event.stdout,
+                        stderr: event.stderr,
+                    })
+                });
                 Ok(GuestProcessHandle::new(pid, stdout_rx, process_control, exit))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
@@ -1711,24 +1810,37 @@ impl Sandbox for FirecrackerSandbox {
 
 enum ParkBoundaryGuardState {
     Closing,
+    NormalOperationsFenced,
     GuestQuiesceStarted,
     ReadyForPark,
     Disarmed,
 }
 
-struct ParkBoundaryGuard {
+enum ParkNormalOperationFenceError {
+    GuestUnavailable(io::Error),
+    Rejected(NormalOperationFenceRejection),
+}
+
+struct ParkBoundaryGuard<Fence> {
     coordinator: ParkCoordinator,
     attempt: ParkAttempt,
     state: ParkBoundaryGuardState,
+    normal_operations_fence: Option<Fence>,
 }
 
-impl ParkBoundaryGuard {
+impl<Fence> ParkBoundaryGuard<Fence> {
     fn new(coordinator: ParkCoordinator, attempt: ParkAttempt) -> Self {
         Self {
             coordinator,
             attempt,
             state: ParkBoundaryGuardState::Closing,
+            normal_operations_fence: None,
         }
+    }
+
+    fn mark_normal_operations_fenced(&mut self, fence: Fence) {
+        self.normal_operations_fence = Some(fence);
+        self.state = ParkBoundaryGuardState::NormalOperationsFenced;
     }
 
     fn mark_guest_quiesce_started(&mut self) {
@@ -1747,15 +1859,23 @@ impl ParkBoundaryGuard {
         self.state = ParkBoundaryGuardState::Disarmed;
     }
 
-    fn mark_parked(mut self) -> Result<(), PrepareParkError> {
+    fn mark_parked(mut self) -> Result<Fence, PrepareParkError> {
         match self.coordinator.mark_parked(&self.attempt) {
             Ok(()) => {
                 self.state = ParkBoundaryGuardState::Disarmed;
-                Ok(())
+                match self.normal_operations_fence.take() {
+                    Some(fence) => Ok(fence),
+                    None => {
+                        let reason =
+                            DirtyReason::new("park completed without a normal-operation fence");
+                        self.coordinator.mark_dirty(reason.clone());
+                        Err(PrepareParkError::Dirty { reason })
+                    }
+                }
             }
             Err(error) => {
                 let message = format!(
-                    "operation gate failed to mark parked after Firecracker park: {}",
+                    "park policy failed to mark parked after Firecracker park: {}",
                     prepare_park_error_message(&error)
                 );
                 self.coordinator
@@ -1767,10 +1887,14 @@ impl ParkBoundaryGuard {
     }
 }
 
-impl Drop for ParkBoundaryGuard {
+impl<Fence> Drop for ParkBoundaryGuard<Fence> {
     fn drop(&mut self) {
         match self.state {
             ParkBoundaryGuardState::Closing => {
+                let _ = self.coordinator.abort_prepare_park(&self.attempt);
+            }
+            ParkBoundaryGuardState::NormalOperationsFenced => {
+                drop(self.normal_operations_fence.take());
                 let _ = self.coordinator.abort_prepare_park(&self.attempt);
             }
             ParkBoundaryGuardState::GuestQuiesceStarted => {
@@ -1838,13 +1962,21 @@ impl Drop for UnparkBoundaryGuard {
     }
 }
 
-async fn park_with_ready_for_park<Q, QF, P, PF>(
+fn release_park_state_for_termination<Fence>(is_parked: &mut bool, park_fence: &mut Option<Fence>) {
+    *is_parked = false;
+    drop(park_fence.take());
+}
+
+async fn park_with_ready_for_park<Fence, F, FF, Q, QF, P, PF>(
     log_id: &str,
     coordinator: &ParkCoordinator,
+    fence_normal_operations: F,
     quiesce_guest: Q,
     park_firecracker: P,
-) -> sandbox::Result<()>
+) -> sandbox::Result<Fence>
 where
+    F: FnOnce() -> FF,
+    FF: Future<Output = Result<Fence, ParkNormalOperationFenceError>>,
     Q: FnOnce() -> QF,
     QF: Future<Output = io::Result<()>>,
     P: FnOnce() -> PF,
@@ -1866,7 +1998,7 @@ where
                 PrepareParkError::InvalidState { .. } | PrepareParkError::StaleAttempt { .. }
             ) {
                 coordinator.mark_dirty(DirtyReason::new(format!(
-                    "operation gate failed to start park prepare: {}",
+                    "park policy failed to start park prepare: {}",
                     error_message
                 )));
             }
@@ -1882,6 +2014,60 @@ where
         }
     };
     let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "normal_operations_fence",
+        "sandbox park lifecycle normal-operation fence started"
+    );
+    match fence_normal_operations().await {
+        Ok(fence) => {
+            guard.mark_normal_operations_fenced(fence);
+        }
+        Err(ParkNormalOperationFenceError::Rejected(NormalOperationFenceRejection::Busy)) => {
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = "busy",
+                "sandbox park lifecycle normal-operation fence rejected"
+            );
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "normal operations busy while preparing park",
+            ));
+        }
+        Err(ParkNormalOperationFenceError::Rejected(error)) => {
+            let message = format!(
+                "normal operation fence failed while preparing park: {}",
+                normal_operation_fence_rejection_message(error)
+            );
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = normal_operation_fence_rejection_reason_kind(error),
+                error = %message,
+                "sandbox park lifecycle normal-operation fence failed"
+            );
+            guard.mark_dirty(message.clone());
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+        Err(ParkNormalOperationFenceError::GuestUnavailable(error)) => {
+            let message = format!("guest connection unavailable while fencing park: {error}");
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = "protocol_or_transport",
+                error = %error,
+                "sandbox park lifecycle normal-operation fence failed"
+            );
+            guard.mark_dirty(message.clone());
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+    }
 
     info!(
         id = %log_id,
@@ -1908,7 +2094,7 @@ where
         let reason_kind = prepare_park_error_reason_kind(&error);
         let error_message = prepare_park_error_message(&error);
         let message = format!(
-            "operation gate failed to enter ReadyForPark: {}",
+            "park policy failed to enter ReadyForPark: {}",
             error_message
         );
         warn!(
@@ -1944,23 +2130,26 @@ where
         return Err(error);
     }
 
-    if let Err(error) = guard.mark_parked() {
-        let reason_kind = prepare_park_error_reason_kind(&error);
-        let error_message = prepare_park_error_message(&error);
-        let message = format!(
-            "operation gate failed to mark parked after Firecracker park: {}",
-            error_message
-        );
-        warn!(
-            id = %log_id,
-            transition = "park",
-            phase = "parked",
-            reason_kind = reason_kind,
-            error = %error_message,
-            "sandbox park lifecycle failed to mark parked"
-        );
-        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
-    }
+    let normal_operations_fence = match guard.mark_parked() {
+        Ok(fence) => fence,
+        Err(error) => {
+            let reason_kind = prepare_park_error_reason_kind(&error);
+            let error_message = prepare_park_error_message(&error);
+            let message = format!(
+                "park policy failed to mark parked after Firecracker park: {}",
+                error_message
+            );
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "parked",
+                reason_kind = reason_kind,
+                error = %error_message,
+                "sandbox park lifecycle failed to mark parked"
+            );
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+    };
 
     info!(
         id = %log_id,
@@ -1968,20 +2157,22 @@ where
         phase = "parked",
         "sandbox park lifecycle marked parked"
     );
-    Ok(())
+    Ok(normal_operations_fence)
 }
 
-async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+async fn unpark_with_ready_for_operations<U, UF, R, RF, F>(
     log_id: &str,
     coordinator: &ParkCoordinator,
     unpark_firecracker: U,
     resume_guest: R,
+    release_normal_operations_fence: F,
 ) -> sandbox::Result<()>
 where
     U: FnOnce() -> UF,
     UF: Future<Output = sandbox::Result<()>>,
     R: FnOnce() -> RF,
     RF: Future<Output = io::Result<()>>,
+    F: FnOnce(),
 {
     info!(
         id = %log_id,
@@ -2044,11 +2235,13 @@ where
         ));
     }
 
+    release_normal_operations_fence();
+
     if let Err(error) = coordinator.reopen_after_unpark() {
         let reason_kind = prepare_park_error_reason_kind(&error);
         let error_message = prepare_park_error_message(&error);
         let message = format!(
-            "operation gate failed to reopen after unpark: {}",
+            "park policy failed to reopen after unpark: {}",
             error_message
         );
         warn!(
@@ -2081,10 +2274,10 @@ fn ensure_parked_before_unpark(coordinator: &ParkCoordinator) -> sandbox::Result
         CoordinatorState::Parked => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Unpark,
-            format!("operation gate dirty while unpark is starting: {reason}"),
+            format!("park policy dirty while unpark is starting: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while unpark is starting");
+            let message = format!("park policy is {state:?} while unpark is starting");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(
                 SandboxIdleTransition::Unpark,
@@ -2099,10 +2292,10 @@ fn ensure_park_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()> 
         CoordinatorState::Parked => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Park,
-            format!("operation gate dirty while park is a no-op: {reason}"),
+            format!("park policy dirty while park is a no-op: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while park is a no-op");
+            let message = format!("park policy is {state:?} while park is a no-op");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(SandboxIdleTransition::Park, message))
         }
@@ -2114,10 +2307,10 @@ fn ensure_unpark_noop_state(coordinator: &ParkCoordinator) -> sandbox::Result<()
         CoordinatorState::Open => Ok(()),
         CoordinatorState::Dirty { reason } => Err(idle_transition_error(
             SandboxIdleTransition::Unpark,
-            format!("operation gate dirty while unpark is a no-op: {reason}"),
+            format!("park policy dirty while unpark is a no-op: {reason}"),
         )),
         state => {
-            let message = format!("operation gate is {state:?} while unpark is a no-op");
+            let message = format!("park policy is {state:?} while unpark is a no-op");
             coordinator.mark_dirty(DirtyReason::new(message.clone()));
             Err(idle_transition_error(
                 SandboxIdleTransition::Unpark,
@@ -2133,23 +2326,41 @@ fn prepare_park_error(transition: SandboxIdleTransition, error: PrepareParkError
 
 fn prepare_park_error_message(error: &PrepareParkError) -> String {
     match error {
-        PrepareParkError::Busy => "operation gate busy while preparing park".into(),
-        PrepareParkError::Dirty { reason } => format!("operation gate dirty: {reason}"),
+        PrepareParkError::Dirty { reason } => format!("park policy dirty: {reason}"),
         PrepareParkError::InvalidState { state } => {
-            format!("operation gate state {state:?} cannot continue park lifecycle")
+            format!("park policy state {state:?} cannot continue park lifecycle")
         }
         PrepareParkError::StaleAttempt { attempt_id, state } => {
-            format!("stale park attempt {attempt_id:?} while operation gate is {state:?}")
+            format!("stale park attempt {attempt_id:?} while park policy is {state:?}")
         }
     }
 }
 
 fn prepare_park_error_reason_kind(error: &PrepareParkError) -> &'static str {
     match error {
-        PrepareParkError::Busy => "busy",
         PrepareParkError::Dirty { .. } => "dirty",
         PrepareParkError::InvalidState { .. } => "invalid_state",
         PrepareParkError::StaleAttempt { .. } => "stale_attempt",
+    }
+}
+
+fn normal_operation_fence_rejection_message(error: NormalOperationFenceRejection) -> &'static str {
+    match error {
+        NormalOperationFenceRejection::Busy => "normal operations busy",
+        NormalOperationFenceRejection::AlreadyFenced => "normal operations already fenced",
+        NormalOperationFenceRejection::NotParkable => "normal operations not parkable",
+        NormalOperationFenceRejection::Closed => "guest connection closed",
+    }
+}
+
+fn normal_operation_fence_rejection_reason_kind(
+    error: NormalOperationFenceRejection,
+) -> &'static str {
+    match error {
+        NormalOperationFenceRejection::Busy => "busy",
+        NormalOperationFenceRejection::AlreadyFenced => "already_fenced",
+        NormalOperationFenceRejection::NotParkable => "not_parkable",
+        NormalOperationFenceRejection::Closed => "closed",
     }
 }
 
@@ -2415,6 +2626,273 @@ async fn unpark_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::UnixStream;
+    use tokio::time::Instant;
+    use vsock_proto::{
+        Decoder, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_PING, MSG_PONG,
+        MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_READY,
+        MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, ProcessControlStatus, RawMessage,
+    };
+
+    struct TestNormalOperationFence;
+
+    async fn park_with_ready_for_park<Q, QF, P, PF>(
+        log_id: &str,
+        coordinator: &ParkCoordinator,
+        quiesce_guest: Q,
+        park_firecracker: P,
+    ) -> sandbox::Result<()>
+    where
+        Q: FnOnce() -> QF,
+        QF: Future<Output = io::Result<()>>,
+        P: FnOnce() -> PF,
+        PF: Future<Output = sandbox::Result<()>>,
+    {
+        super::park_with_ready_for_park(
+            log_id,
+            coordinator,
+            || async { Ok(TestNormalOperationFence) },
+            quiesce_guest,
+            park_firecracker,
+        )
+        .await
+        .map(drop)
+    }
+
+    async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+        log_id: &str,
+        coordinator: &ParkCoordinator,
+        unpark_firecracker: U,
+        resume_guest: R,
+    ) -> sandbox::Result<()>
+    where
+        U: FnOnce() -> UF,
+        UF: Future<Output = sandbox::Result<()>>,
+        R: FnOnce() -> RF,
+        RF: Future<Output = io::Result<()>>,
+    {
+        super::unpark_with_ready_for_operations(
+            log_id,
+            coordinator,
+            unpark_firecracker,
+            resume_guest,
+            || {},
+        )
+        .await
+    }
+
+    struct ProcessControlFixture {
+        host: Arc<VsockHost>,
+        handle: vsock_host::GuestProcessHandle,
+        guest: UnixStream,
+        spawn_seq: u32,
+        pid: u32,
+    }
+
+    async fn connect_mock_guest(vsock_path: &str) -> UnixStream {
+        let listener_path = format!("{vsock_path}_{}", vsock_proto::VSOCK_PORT);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match UnixStream::connect(&listener_path).await {
+                Ok(stream) => return stream,
+                Err(error)
+                    if error.kind() == io::ErrorKind::NotFound && Instant::now() < deadline =>
+                {
+                    tokio::task::yield_now().await;
+                }
+                Err(error) => panic!("connect mock guest: {error}"),
+            }
+        }
+    }
+
+    async fn read_vsock_message(stream: &mut UnixStream) -> RawMessage {
+        let mut header = [0u8; HEADER_SIZE];
+        stream.read_exact(&mut header).await.unwrap();
+
+        let body_len = u32::from_be_bytes(header) as usize;
+        assert!(
+            (MIN_BODY_SIZE..=MAX_MESSAGE_SIZE).contains(&body_len),
+            "invalid message body length: {body_len}",
+        );
+
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).await.unwrap();
+
+        RawMessage {
+            msg_type: body[0],
+            seq: u32::from_be_bytes(body[1..MIN_BODY_SIZE].try_into().unwrap()),
+            payload: body[MIN_BODY_SIZE..].to_vec(),
+        }
+    }
+
+    async fn mock_vsock_handshake(stream: &mut UnixStream, decoder: &mut Decoder) {
+        let ready = vsock_proto::encode(MSG_READY, 0, &[]).unwrap();
+        stream.write_all(&ready).await.unwrap();
+
+        let mut buf = [0u8; 1024];
+        let n = stream.read(&mut buf).await.unwrap();
+        let msgs = decoder.decode(&buf[..n]).unwrap();
+        assert_eq!(msgs[0].msg_type, MSG_PING);
+
+        let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
+        stream.write_all(&pong).await.unwrap();
+    }
+
+    async fn setup_process_control_fixture() -> ProcessControlFixture {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let vsock_path = temp_dir
+            .path()
+            .join("process-control")
+            .to_string_lossy()
+            .into_owned();
+        let wait_vsock_path = vsock_path.clone();
+        let host_task = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
+                .await
+                .unwrap()
+        });
+        let mut guest = connect_mock_guest(&vsock_path).await;
+        let mut decoder = Decoder::new();
+        mock_vsock_handshake(&mut guest, &mut decoder).await;
+        let host = Arc::new(host_task.await.unwrap());
+
+        let spawn_host = Arc::clone(&host);
+        let spawn_task = tokio::spawn(async move {
+            spawn_host
+                .spawn_process("sleep 60", 0, &[], false, false, None)
+                .await
+                .unwrap()
+        });
+        let spawn = read_vsock_message(&mut guest).await;
+        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+
+        let pid = 73;
+        let payload = vsock_proto::encode_spawn_process_result(pid);
+        let response = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
+        guest.write_all(&response).await.unwrap();
+        let handle = spawn_task.await.unwrap();
+
+        ProcessControlFixture {
+            host,
+            handle,
+            guest,
+            spawn_seq: spawn.seq,
+            pid,
+        }
+    }
+
+    fn running_process_state() -> (Arc<AtomicU8>, watch::Sender<SandboxState>) {
+        process_state(SandboxState::Running)
+    }
+
+    fn process_state(sandbox_state: SandboxState) -> (Arc<AtomicU8>, watch::Sender<SandboxState>) {
+        let state = Arc::new(AtomicU8::new(sandbox_state as u8));
+        let (state_tx, _state_rx) = watch::channel(sandbox_state);
+        (state, state_tx)
+    }
+
+    fn state_after_first_read(next_state: SandboxState) -> impl Fn() -> SandboxState {
+        let reads = std::sync::atomic::AtomicUsize::new(0);
+        move || {
+            if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                SandboxState::Running
+            } else {
+                next_state
+            }
+        }
+    }
+
+    #[test]
+    fn process_control_stop_after_policy_check_keeps_policy_open() {
+        let coordinator = ParkCoordinator::new();
+
+        let error = match FirecrackerSandbox::begin_process_control(
+            &coordinator,
+            state_after_first_read(SandboxState::Stopped),
+        ) {
+            Ok(_) => panic!("expected process control boundary to reject stopped state"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error,
+            GuestOperationStartError::NotRunning {
+                state: SandboxState::Stopped
+            }
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[test]
+    fn process_control_crash_after_policy_check_keeps_policy_open() {
+        let coordinator = ParkCoordinator::new();
+
+        let error = match FirecrackerSandbox::begin_process_control(
+            &coordinator,
+            state_after_first_read(SandboxState::Crashed),
+        ) {
+            Ok(_) => panic!("expected process control boundary to reject crashed state"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, GuestOperationStartError::BackendCrashed);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    async fn send_process_control_result(
+        stream: &mut UnixStream,
+        request: RawMessage,
+        status: ProcessControlStatus,
+        diagnostic: &str,
+    ) {
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        let decoded = vsock_proto::decode_process_control(&request.payload).unwrap();
+        let payload = vsock_proto::encode_process_control_result(
+            decoded.target_seq,
+            decoded.control_nonce,
+            decoded.message_id,
+            status,
+            diagnostic,
+        )
+        .unwrap();
+        let response =
+            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request.seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
+
+    async fn send_process_control_error(
+        stream: &mut UnixStream,
+        request: RawMessage,
+        message: &str,
+    ) {
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        let payload = vsock_proto::encode_error(message);
+        let response = vsock_proto::encode(vsock_proto::MSG_ERROR, request.seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
+
+    async fn send_mismatched_process_control_result(stream: &mut UnixStream, request: RawMessage) {
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        let decoded = vsock_proto::decode_process_control(&request.payload).unwrap();
+        let payload = vsock_proto::encode_process_control_result(
+            decoded.target_seq + 1,
+            decoded.control_nonce,
+            decoded.message_id,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .unwrap();
+        let response =
+            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request.seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
+
+    async fn send_process_exit(stream: &mut UnixStream, spawn_seq: u32, pid: u32) {
+        let payload = vsock_proto::encode_process_exit(pid, 0, b"", b"");
+        let response = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
 
     fn monitored_cat_process() -> tokio::process::Child {
         tokio::process::Command::new("cat")
@@ -2625,13 +3103,6 @@ mod tests {
         }
     }
 
-    fn active_spawn_process_lease(coordinator: &ParkCoordinator) -> OperationLease {
-        let mut lease = coordinator.reserve_operation().expect("reserve operation");
-        lease.mark_writing().expect("mark writing");
-        lease.mark_in_guest().expect("mark in guest");
-        lease
-    }
-
     fn mark_coordinator_parked(coordinator: &ParkCoordinator) {
         let attempt = coordinator
             .begin_prepare_park()
@@ -2648,6 +3119,47 @@ mod tests {
 
     fn logged_events(events: &Arc<Mutex<Vec<&'static str>>>) -> Vec<&'static str> {
         events.lock().unwrap().clone()
+    }
+
+    #[derive(Debug)]
+    struct RecordedFence {
+        events: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Drop for RecordedFence {
+        fn drop(&mut self) {
+            self.events.lock().unwrap().push("release_fence");
+        }
+    }
+
+    struct ClosingStateFence {
+        coordinator: ParkCoordinator,
+        events: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Drop for ClosingStateFence {
+        fn drop(&mut self) {
+            assert!(matches!(
+                self.coordinator.state(),
+                CoordinatorState::ClosingForPark { .. }
+            ));
+            self.events.lock().unwrap().push("release_fence");
+        }
+    }
+
+    #[test]
+    fn termination_releases_park_fence_and_clears_parked_flag() {
+        let events = event_log();
+        let mut is_parked = true;
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
+
+        release_park_state_for_termination(&mut is_parked, &mut fence);
+
+        assert!(!is_parked);
+        assert!(fence.is_none());
+        assert_eq!(logged_events(&events), vec!["release_fence"]);
     }
 
     #[test]
@@ -2719,16 +3231,101 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ready_for_park_boundary_busy_prevents_quiesce_and_pause() {
+    async fn ready_for_park_boundary_fences_before_quiesce_and_holds_until_returned() {
         let coordinator = ParkCoordinator::new();
-        let _lease = active_spawn_process_lease(&coordinator);
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
 
-        let result = park_with_ready_for_park(
+        let fence = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "firecracker_park"]
+        );
+        drop(fence);
+        assert_eq!(
+            logged_events(&events),
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
+        );
+    }
+
+    #[test]
+    fn ready_for_park_boundary_cancel_after_fence_releases_before_reopening_gate() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        let events = event_log();
+        let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+        guard.mark_normal_operations_fenced(ClosingStateFence {
+            coordinator: coordinator.clone(),
+            events: Arc::clone(&events),
+        });
+        drop(guard);
+
+        assert_eq!(logged_events(&events), vec!["release_fence"]);
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[test]
+    fn ready_for_park_boundary_missing_fence_marks_dirty_after_ready_for_park() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        let mut guard: ParkBoundaryGuard<RecordedFence> =
+            ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+        guard.complete_prepare().unwrap();
+        let error = guard.mark_parked().unwrap_err();
+
+        assert!(matches!(error, PrepareParkError::Dirty { .. }));
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_busy_fence_aborts_without_dirtying() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::Rejected(
+                    NormalOperationFenceRejection::Busy,
+                ))
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Ok(())
@@ -2740,9 +3337,66 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+        assert_eq!(logged_events(&events), vec!["fence"]);
         assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_not_parkable_fence_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async {
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::Rejected(
+                    NormalOperationFenceRejection::NotParkable,
+                ))
+            },
+            || async { Ok(()) },
+            || async { Ok(()) },
+        )
+        .await;
+
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_guest_unavailable_fence_marks_dirty_without_pause() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async {
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::GuestUnavailable(
+                    io::Error::new(io::ErrorKind::NotConnected, "guest missing"),
+                ))
+            },
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
     }
 
     #[tokio::test]
@@ -2809,12 +3463,19 @@ mod tests {
     async fn ready_for_park_boundary_quiesce_failure_marks_dirty_without_pause() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Err(io::Error::new(io::ErrorKind::TimedOut, "quiesce timeout"))
@@ -2826,25 +3487,35 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
-        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
     }
 
     #[tokio::test]
     async fn ready_for_park_boundary_complete_prepare_failure_marks_dirty_without_pause() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
         let quiesce_state = coordinator.clone();
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 quiesce_state.mark_dirty(DirtyReason::new("operation dropped during quiesce"));
@@ -2857,24 +3528,34 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
-        assert_eq!(logged_events(&events), vec!["guest_quiesce"]);
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
     }
 
     #[tokio::test]
     async fn ready_for_park_boundary_firecracker_failure_after_quiesce_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Ok(())
@@ -2889,14 +3570,19 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
         assert_eq!(
             logged_events(&events),
-            vec!["guest_quiesce", "firecracker_park"]
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
         );
     }
 
@@ -2904,13 +3590,20 @@ mod tests {
     async fn ready_for_park_boundary_mark_parked_failure_marks_dirty() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
+        let fence_events = Arc::clone(&events);
         let quiesce_events = Arc::clone(&events);
         let park_events = Arc::clone(&events);
         let park_state = coordinator.clone();
 
-        let result = park_with_ready_for_park(
+        let result = super::park_with_ready_for_park(
             "test-sandbox",
             &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
             || async move {
                 quiesce_events.lock().unwrap().push("guest_quiesce");
                 Ok(())
@@ -2923,27 +3616,42 @@ mod tests {
         )
         .await;
 
-        assert_idle_transition(result, SandboxIdleTransition::Park);
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
         ));
         assert_eq!(
             logged_events(&events),
-            vec!["guest_quiesce", "firecracker_park"]
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
         );
     }
 
     #[tokio::test]
     async fn ready_for_park_boundary_cancel_during_guest_quiesce_marks_dirty() {
         let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
         let (quiesce_started_tx, quiesce_started_rx) = tokio::sync::oneshot::channel();
 
         {
-            let park = park_with_ready_for_park(
+            let park = super::park_with_ready_for_park(
                 "test-sandbox",
                 &coordinator,
                 || async move {
+                    fence_events.lock().unwrap().push("fence");
+                    Ok(RecordedFence {
+                        events: Arc::clone(&fence_events),
+                    })
+                },
+                || async move {
+                    quiesce_events.lock().unwrap().push("guest_quiesce");
                     let _ = quiesce_started_tx.send(());
                     std::future::pending::<io::Result<()>>().await
                 },
@@ -2957,6 +3665,10 @@ mod tests {
             }
         }
 
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
@@ -2966,14 +3678,28 @@ mod tests {
     #[tokio::test]
     async fn ready_for_park_boundary_cancel_after_ready_for_park_marks_dirty() {
         let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
         let (park_started_tx, park_started_rx) = tokio::sync::oneshot::channel();
 
         {
-            let park = park_with_ready_for_park(
+            let park = super::park_with_ready_for_park(
                 "test-sandbox",
                 &coordinator,
-                || async { Ok(()) },
                 || async move {
+                    fence_events.lock().unwrap().push("fence");
+                    Ok(RecordedFence {
+                        events: Arc::clone(&fence_events),
+                    })
+                },
+                || async move {
+                    quiesce_events.lock().unwrap().push("guest_quiesce");
+                    Ok(())
+                },
+                || async move {
+                    park_events.lock().unwrap().push("firecracker_park");
                     let _ = park_started_tx.send(());
                     std::future::pending::<sandbox::Result<()>>().await
                 },
@@ -2990,6 +3716,15 @@ mod tests {
             ));
         }
 
+        assert_eq!(
+            logged_events(&events),
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
@@ -3032,14 +3767,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ready_for_operations_boundary_firecracker_failure_does_not_resume_guest() {
+    async fn ready_for_operations_boundary_releases_fence_before_reopening_gate() {
         let coordinator = ParkCoordinator::new();
         mark_coordinator_parked(&coordinator);
         let events = event_log();
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
+        let release_events = Arc::clone(&events);
+        let release_state = coordinator.clone();
 
-        let result = unpark_with_ready_for_operations(
+        super::unpark_with_ready_for_operations(
+            "test-sandbox",
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+            || {
+                assert!(matches!(release_state.state(), CoordinatorState::Parked));
+                release_events.lock().unwrap().push("release_fence");
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["firecracker_unpark", "guest_resume", "release_fence"]
+        );
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_firecracker_failure_does_not_resume_guest() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -3056,10 +3833,14 @@ mod tests {
                 resume_events.lock().unwrap().push("guest_resume");
                 Ok(())
             },
+            || {
+                drop(fence.take());
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(fence.is_some());
         assert_eq!(logged_events(&events), vec!["firecracker_unpark"]);
         assert!(matches!(coordinator.state(), CoordinatorState::Parked));
     }
@@ -3069,10 +3850,13 @@ mod tests {
         let coordinator = ParkCoordinator::new();
         mark_coordinator_parked(&coordinator);
         let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
 
-        let result = unpark_with_ready_for_operations(
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -3089,10 +3873,14 @@ mod tests {
                     "resume failed",
                 ))
             },
+            || {
+                drop(fence.take());
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(fence.is_some());
         assert_eq!(
             logged_events(&events),
             vec!["firecracker_unpark", "guest_resume"]
@@ -3209,6 +3997,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ready_for_operations_boundary_cancel_during_firecracker_unpark_keeps_fence() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
+        let (firecracker_started_tx, firecracker_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let unpark = super::unpark_with_ready_for_operations(
+                "test-sandbox",
+                &coordinator,
+                || async move {
+                    let _ = firecracker_started_tx.send(());
+                    std::future::pending::<sandbox::Result<()>>().await
+                },
+                || async { Ok(()) },
+                || {
+                    drop(fence.take());
+                },
+            );
+            tokio::pin!(unpark);
+
+            tokio::select! {
+                result = &mut unpark => panic!("unpark completed unexpectedly: {result:?}"),
+                result = firecracker_started_rx => result.unwrap(),
+            }
+        }
+
+        assert!(fence.is_some());
+        assert!(logged_events(&events).is_empty());
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
     async fn ready_for_operations_boundary_invalid_state_marks_dirty_without_resume() {
         let coordinator = ParkCoordinator::new();
         let events = event_log();
@@ -3247,9 +4074,10 @@ mod tests {
         let events = event_log();
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
+        let release_events = Arc::clone(&events);
         let resume_state = coordinator.clone();
 
-        let result = unpark_with_ready_for_operations(
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -3264,13 +4092,16 @@ mod tests {
                 resume_state.mark_dirty(DirtyReason::new("reopen race"));
                 Ok(())
             },
+            || {
+                release_events.lock().unwrap().push("release_fence");
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
         assert_eq!(
             logged_events(&events),
-            vec!["firecracker_unpark", "guest_resume"]
+            vec!["firecracker_unpark", "guest_resume", "release_fence"]
         );
         assert!(matches!(
             coordinator.state(),
@@ -3332,6 +4163,7 @@ mod tests {
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnProcess,
+            SandboxOperation::ProcessControl,
             SandboxOperation::WaitExit,
         ] {
             let err = FirecrackerSandbox::operation_error(
@@ -3350,6 +4182,7 @@ mod tests {
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
             SandboxOperation::SpawnProcess,
+            SandboxOperation::ProcessControl,
             SandboxOperation::WaitExit,
         ] {
             let err =
@@ -3360,79 +4193,388 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gated_spawn_exit_future_completes_lease_on_process_exit() {
+    async fn process_control_rejects_closed_policy_gate_without_dirtying() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
         let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit = gated_spawn_exit_future(
-            async {
-                Ok(ProcessExit {
-                    pid: 42,
-                    exit_code: 0,
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
-                })
-            },
-            lease,
-        );
-
-        assert!(matches!(
-            coordinator.begin_prepare_park(),
-            Err(PrepareParkError::Busy)
-        ));
-
-        let result = exit.await.expect("process exit should complete");
-        assert_eq!(result.pid, 42);
-
         let attempt = coordinator
             .begin_prepare_park()
-            .expect("completed spawn_process lease should allow prepare");
-        coordinator.abort_prepare_park(&attempt).unwrap();
-    }
+            .expect("begin prepare park");
+        let (state, state_tx) = running_process_state();
 
-    #[test]
-    fn dropped_gated_spawn_exit_future_marks_dirty() {
-        let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit =
-            gated_spawn_exit_future(std::future::pending::<io::Result<ProcessExit>>(), lease);
+        let error = FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "gate-closed".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
 
-        drop(exit);
-
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
-        ));
-        assert_eq!(
-            coordinator.active_operation_count(),
-            0,
-            "dropped spawn exit future should not leave an active operation"
+        assert!(
+            error.to_string().contains("sandbox operation gate closed"),
+            "unexpected error: {error}",
         );
+        coordinator.abort_prepare_park(&attempt).unwrap();
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
     }
 
     #[tokio::test]
-    async fn gated_spawn_exit_future_error_marks_dirty() {
+    async fn process_control_rejects_stopped_state_without_dirtying() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
         let coordinator = ParkCoordinator::new();
-        let lease = active_spawn_process_lease(&coordinator);
-        let exit = gated_spawn_exit_future(
-            async { Err(io::Error::new(io::ErrorKind::ConnectionReset, "closed")) },
-            lease,
+        let (state, state_tx) = process_state(SandboxState::Stopped);
+
+        let error = FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "stopped".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("sandbox not running"),
+            "unexpected error: {error}",
         );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        let error = match exit.await {
-            Ok(_) => panic!("expected spawn exit error"),
-            Err(error) => error,
-        };
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
 
-        assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
-        assert!(matches!(
-            coordinator.state(),
-            CoordinatorState::Dirty { .. }
+    #[tokio::test]
+    async fn process_control_local_validation_failure_keeps_gate_clean() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+        let too_large = vec![0; vsock_proto::PROCESS_CONTROL_MAX_PAYLOAD_BYTES + 1];
+
+        let error = FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control.clone(),
+            "too-large".to_owned(),
+            too_large,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "valid-after-local-failure".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
         ));
-        assert_eq!(
-            coordinator.active_operation_count(),
-            0,
-            "failed spawn exit future should not leave an active operation"
+        let request = read_vsock_message(&mut guest).await;
+        send_process_control_result(&mut guest, request, ProcessControlStatus::Delivered, "").await;
+
+        let ack = control_task.await.unwrap().unwrap();
+        assert_eq!(ack.message_id, "valid-after-local-failure");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_guest_status_keeps_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "sink-timeout".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_process_control_result(
+            &mut guest,
+            request,
+            ProcessControlStatus::SinkTimeout,
+            "guest sink timed out",
+        )
+        .await;
+
+        let error = control_task.await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(error.to_string(), "guest sink timed out");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_guest_error_keeps_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "guest-error".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_process_control_error(&mut guest, request, "guest rejected control").await;
+
+        let error = control_task.await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "guest rejected control");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_allows_concurrent_requests_while_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let first_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control.clone(),
+            "concurrent-a".to_owned(),
+            b"payload-a".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let second_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "concurrent-b".to_owned(),
+            b"payload-b".to_vec(),
+            Duration::from_secs(5),
+        ));
+
+        let first_request = read_vsock_message(&mut guest).await;
+        let second_request = read_vsock_message(&mut guest).await;
+        let mut message_ids = [
+            vsock_proto::decode_process_control(&first_request.payload)
+                .unwrap()
+                .message_id
+                .to_owned(),
+            vsock_proto::decode_process_control(&second_request.payload)
+                .unwrap()
+                .message_id
+                .to_owned(),
+        ];
+        message_ids.sort();
+        assert_eq!(message_ids, ["concurrent-a", "concurrent-b"]);
+
+        send_process_control_result(
+            &mut guest,
+            second_request,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+        send_process_control_result(
+            &mut guest,
+            first_request,
+            ProcessControlStatus::Delivered,
+            "",
+        )
+        .await;
+
+        let first_ack = first_task.await.unwrap().unwrap();
+        let second_ack = second_task.await.unwrap().unwrap();
+        assert_eq!(first_ack.message_id, "concurrent-a");
+        assert_eq!(second_ack.message_id, "concurrent-b");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_protocol_error_after_guest_write_keeps_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq: _,
+            pid: _,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "malformed-result".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_mismatched_process_control_result(&mut guest, request).await;
+
+        let error = control_task.await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(
+            error
+                .to_string()
+                .contains("process_control_result target seq mismatch"),
+            "unexpected error: {error}",
         );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[tokio::test]
+    async fn process_control_backend_crash_after_guest_write_keeps_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            Arc::clone(&state),
+            state_tx.subscribe(),
+            control,
+            "backend-crash".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+
+        state.store(SandboxState::Crashed as u8, Ordering::Release);
+        state_tx.send(SandboxState::Crashed).unwrap();
+
+        let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("firecracker process crashed"),
+            "unexpected error: {error}",
+        );
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_timeout_after_guest_write_keeps_policy_open() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx.subscribe(),
+            control,
+            "timeout-after-write".to_owned(),
+            b"payload".to_vec(),
+            Duration::ZERO,
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+
+        let error = tokio::time::timeout(Duration::from_secs(1), control_task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
     }
 
     /// Exercise the `monitor_process` crash detection flow through real child
@@ -3485,7 +4627,7 @@ mod tests {
         let runtime_cancel = CancellationToken::new();
         let mut control = crate::control::bind_server(
             sock_path.clone(),
-            GuestOperationGate::new(Arc::clone(&guest), ParkCoordinator::new()),
+            GuestOperationStartGate::new(Arc::clone(&guest), ParkCoordinator::new()),
         )
         .unwrap()
         .spawn(runtime_cancel.clone());
@@ -4026,7 +5168,6 @@ mod tests {
 
     use std::path::PathBuf;
     use std::sync::atomic::AtomicU32;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
     use tokio::sync::Mutex as TokioMutex;
 

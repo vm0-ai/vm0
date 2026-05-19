@@ -36,14 +36,23 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
+    /// Build an enabled HTTP client.
+    ///
+    /// This constructor always initializes the underlying `reqwest` client and
+    /// does not check `VM0_API_TOKEN` or [`env::has_api`]. Use this in tests or
+    /// manual callers that intentionally need HTTP requests to be active.
+    /// Production guest-agent initialization should use
+    /// [`Self::for_current_env`] so no-API runs can use a disabled client.
     pub fn new() -> Result<Self, AgentError> {
         Self::with_retry_delay(DEFAULT_RETRY_DELAY)
     }
 
-    /// Build a client with a custom retry delay.
+    /// Build an enabled client with a custom retry delay.
     ///
-    /// Production callers should use [`HttpClient::new`]. Integration tests use
-    /// this to cover real retry behavior without paying production backoff time.
+    /// Integration tests use this to cover real retry behavior without paying
+    /// production backoff time. Production guest-agent initialization should use
+    /// [`Self::for_current_env`] so environment-gated no-API runs get a disabled
+    /// client.
     #[doc(hidden)]
     pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
         let inner = Client::builder()
@@ -60,6 +69,13 @@ impl HttpClient {
         })
     }
 
+    /// Build the HTTP client appropriate for the current environment.
+    ///
+    /// Production guest-agent initialization should use this constructor. When
+    /// [`env::has_api`] is true, currently when `VM0_API_TOKEN` is non-empty,
+    /// this returns the same enabled client as [`Self::new`]. Otherwise it
+    /// returns a disabled client whose request methods fail with the
+    /// disabled-client error before building or sending HTTP requests.
     pub fn for_current_env() -> Result<Self, AgentError> {
         if env::has_api() {
             Self::new()

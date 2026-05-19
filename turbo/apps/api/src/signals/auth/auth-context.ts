@@ -220,17 +220,9 @@ const resolvedAuthContext$ = command(
     }
 
     if (isSandboxToken(token)) {
-      const cliAuth = verifyCliToken(token);
-      if (!cliAuth) {
-        const result = await set(sandboxTokenAuth$, token, options, signal);
-        if (result) {
-          return result;
-        }
-      } else {
-        const result = await set(cliAuth$, cliAuth, signal);
-        if (result) {
-          return result;
-        }
+      const result = await set(sandboxTokenAuth$, token, options, signal);
+      if (result) {
+        return result;
       }
       return null;
     }

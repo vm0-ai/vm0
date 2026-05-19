@@ -107,22 +107,48 @@ export async function insertTestUserSecret(params: {
   userId: string;
   name: string;
   value?: string;
+  description?: string | null;
   type?: SecretType;
-}): Promise<void> {
+}): Promise<{
+  id: string;
+  name: string;
+  description: string | null;
+  type: SecretType;
+  createdAt: Date;
+  updatedAt: Date;
+}> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
   const encrypted = encryptSecretValue(
     params.value ?? "test-secret-value",
     SECRETS_ENCRYPTION_KEY,
   );
-  await globalThis.services.db.insert(secrets).values({
-    name: params.name,
-    encryptedValue: encrypted,
-    type: params.type ?? "user",
-    userId: params.userId,
-    orgId: params.orgId,
-    description: "test seed",
-  });
+  const [secret] = await globalThis.services.db
+    .insert(secrets)
+    .values({
+      name: params.name,
+      encryptedValue: encrypted,
+      type: params.type ?? "user",
+      userId: params.userId,
+      orgId: params.orgId,
+      description: params.description ?? "test seed",
+    })
+    .returning({
+      id: secrets.id,
+      name: secrets.name,
+      description: secrets.description,
+      type: secrets.type,
+      createdAt: secrets.createdAt,
+      updatedAt: secrets.updatedAt,
+    });
+
+  if (!secret) {
+    throw new Error("Expected inserted secret to return a row");
+  }
+  return {
+    ...secret,
+    type: secret.type as SecretType,
+  };
 }
 
 /**
@@ -157,13 +183,47 @@ export async function insertTestUserVariable(params: {
   userId: string;
   name: string;
   value?: string;
-}): Promise<void> {
+  description?: string | null;
+}): Promise<{
+  id: string;
+  name: string;
+  value: string;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}> {
   initServices();
-  await globalThis.services.db.insert(variables).values({
-    name: params.name,
-    value: params.value ?? "test-variable-value",
-    userId: params.userId,
-    orgId: params.orgId,
-    description: "test seed",
-  });
+  const description =
+    "description" in params ? (params.description ?? null) : "test seed";
+  const [variable] = await globalThis.services.db
+    .insert(variables)
+    .values({
+      name: params.name,
+      value: params.value ?? "test-variable-value",
+      userId: params.userId,
+      orgId: params.orgId,
+      description,
+    })
+    .onConflictDoUpdate({
+      target: [variables.orgId, variables.userId, variables.name],
+      set: {
+        value: params.value ?? "test-variable-value",
+        description,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({
+      id: variables.id,
+      name: variables.name,
+      value: variables.value,
+      description: variables.description,
+      createdAt: variables.createdAt,
+      updatedAt: variables.updatedAt,
+    });
+
+  if (!variable) {
+    throw new Error("insertTestUserVariable: insert failed");
+  }
+
+  return variable;
 }

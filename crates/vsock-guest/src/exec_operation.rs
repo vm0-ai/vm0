@@ -8,8 +8,9 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    self, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR,
-    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
+    self, ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy,
+    ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT,
 };
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
@@ -140,10 +141,38 @@ pub(crate) struct ExecOperationWorkerRequest {
 }
 
 impl ExecOperationWorkerRequest {
-    pub(crate) fn from_decoded(seq: u32, decoded: vsock_proto::DecodedExecStart<'_>) -> Self {
-        Self {
+    pub(crate) fn from_decoded(
+        seq: u32,
+        decoded: vsock_proto::DecodedExecStart<'_>,
+    ) -> io::Result<Self> {
+        if decoded.lifecycle != ExecLifecyclePolicy::OneShot {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "exec supervised lifecycle is not supported",
+            ));
+        }
+        let ExecTimeoutPolicy::Duration { timeout_ms } = decoded.timeout else {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "exec timeout policy none is not supported",
+            ));
+        };
+        if timeout_ms == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "exec timeout duration must be positive",
+            ));
+        }
+        if decoded.control != ExecControlPolicy::Disabled {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "exec control policy is not supported",
+            ));
+        }
+
+        Ok(Self {
             seq,
-            timeout_ms: decoded.timeout_ms,
+            timeout_ms,
             command: decoded.command.to_owned(),
             env: decoded
                 .env
@@ -155,7 +184,7 @@ impl ExecOperationWorkerRequest {
             stdout: decoded.stdout,
             stderr: decoded.stderr,
             expected_exit_codes: decoded.expected_exit_codes,
-        }
+        })
     }
 }
 

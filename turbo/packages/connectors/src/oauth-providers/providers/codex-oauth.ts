@@ -1,11 +1,19 @@
 import { z } from "zod";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { throwOAuthError } from "./oauth-error";
 
-const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+export const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_ISSUER = "https://auth.openai.com";
 
-const TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
+export const CHATGPT_OAUTH_AUTHORIZATION_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/authorize`;
+export const CHATGPT_OAUTH_TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
+export const CHATGPT_OAUTH_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "api.connectors.read",
+  "api.connectors.invoke",
+] as const;
 
 export type ChatgptRefreshErrorCode =
   | "refresh_token_expired"
@@ -215,25 +223,20 @@ export async function buildChatgptAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const oauthConfig = getConnectorOAuthConfig("codex-oauth");
-  if (!oauthConfig?.authorizationUrl) {
-    throw new Error("ChatGPT OAuth config not found");
-  }
-
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
+    scope: CHATGPT_OAUTH_SCOPES.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   });
 
   return {
-    url: `${oauthConfig.authorizationUrl}?${params.toString()}`,
+    url: `${CHATGPT_OAUTH_AUTHORIZATION_URL}?${params.toString()}`,
     codeVerifier,
   };
 }
@@ -244,7 +247,7 @@ export async function exchangeChatgptCode(
   redirectUri: string,
   codeVerifier: string,
 ): Promise<ChatgptOAuthResult> {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -287,7 +290,7 @@ export async function refreshChatgptToken(
   _clientSecret: string,
   refreshToken: string,
 ): Promise<ChatgptRefreshResult> {
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

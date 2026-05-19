@@ -29,6 +29,13 @@ export const linear = {
     oauth: {
       authorizationUrl: "https://linear.app/oauth/authorize",
       tokenUrl: "https://api.linear.app/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
+        clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "read",
         "write",

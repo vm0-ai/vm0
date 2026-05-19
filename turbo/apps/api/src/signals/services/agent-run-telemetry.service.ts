@@ -157,44 +157,64 @@ function systemTelemetrySinceFilter(since: number | undefined): string {
     : "";
 }
 
+function optionalAxiomField<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
+}
+
+function optionalAxiomStringRecord(
+  value: Readonly<Record<string, unknown>> | null | undefined,
+): Record<string, string> | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => {
+      return typeof entry[1] === "string";
+    }),
+  );
+}
+
 function networkLogFromAxiom(event: AxiomNetworkEvent) {
   return {
     timestamp: event._time,
-    type: event.type,
-    action: event.action,
-    host: event.host,
-    port: event.port,
-    method: event.method,
-    url: event.url,
-    status: event.status,
-    latency_ms: event.latency_ms,
-    request_size: event.request_size,
-    response_size: event.response_size,
-    dns_event: event.dns_event,
-    dns_query_type: event.dns_query_type,
-    dns_result: event.dns_result,
-    dns_serial: event.dns_serial,
-    firewall_base: event.firewall_base,
-    firewall_name: event.firewall_name,
-    firewall_permission: event.firewall_permission,
-    firewall_rule_match: event.firewall_rule_match,
-    firewall_params: event.firewall_params,
-    firewall_billable: event.firewall_billable,
-    firewall_error: event.firewall_error,
-    auth_resolved_secrets: event.auth_resolved_secrets,
-    auth_refreshed_connectors: event.auth_refreshed_connectors,
-    auth_refreshed_secrets: event.auth_refreshed_secrets,
-    auth_cache_hit: event.auth_cache_hit,
-    auth_url_rewrite: event.auth_url_rewrite,
-    error: event.error,
-    request_headers: event.request_headers,
-    request_body: event.request_body,
-    request_body_encoding: event.request_body_encoding,
-    request_body_truncated: event.request_body_truncated,
-    response_headers: event.response_headers,
-    response_body: event.response_body,
-    response_body_encoding: event.response_body_encoding,
-    response_body_truncated: event.response_body_truncated,
+    type: optionalAxiomField(event.type),
+    action: optionalAxiomField(event.action),
+    host: optionalAxiomField(event.host),
+    port: optionalAxiomField(event.port),
+    method: optionalAxiomField(event.method),
+    url: optionalAxiomField(event.url),
+    status: optionalAxiomField(event.status),
+    latency_ms: optionalAxiomField(event.latency_ms),
+    request_size: optionalAxiomField(event.request_size),
+    response_size: optionalAxiomField(event.response_size),
+    dns_event: optionalAxiomField(event.dns_event),
+    dns_query_type: optionalAxiomField(event.dns_query_type),
+    dns_result: optionalAxiomField(event.dns_result),
+    dns_serial: optionalAxiomField(event.dns_serial),
+    firewall_base: optionalAxiomField(event.firewall_base),
+    firewall_name: optionalAxiomField(event.firewall_name),
+    firewall_permission: optionalAxiomField(event.firewall_permission),
+    firewall_rule_match: optionalAxiomField(event.firewall_rule_match),
+    firewall_params: optionalAxiomStringRecord(event.firewall_params),
+    firewall_billable: optionalAxiomField(event.firewall_billable),
+    firewall_error: optionalAxiomField(event.firewall_error),
+    auth_resolved_secrets: optionalAxiomField(event.auth_resolved_secrets),
+    auth_refreshed_connectors: optionalAxiomField(
+      event.auth_refreshed_connectors,
+    ),
+    auth_refreshed_secrets: optionalAxiomField(event.auth_refreshed_secrets),
+    auth_cache_hit: optionalAxiomField(event.auth_cache_hit),
+    auth_url_rewrite: optionalAxiomField(event.auth_url_rewrite),
+    error: optionalAxiomField(event.error),
+    request_headers: optionalAxiomStringRecord(event.request_headers),
+    request_body: optionalAxiomField(event.request_body),
+    request_body_encoding: optionalAxiomField(event.request_body_encoding),
+    request_body_truncated: optionalAxiomField(event.request_body_truncated),
+    response_headers: optionalAxiomStringRecord(event.response_headers),
+    response_body: optionalAxiomField(event.response_body),
+    response_body_encoding: optionalAxiomField(event.response_body_encoding),
+    response_body_truncated: optionalAxiomField(event.response_body_truncated),
   };
 }
 

@@ -114,7 +114,7 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("vm0");
     expect(text).toContain("Built-in image generation");
     expect(text).toContain(
-      "Models: OpenAI: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini; fal.ai: flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
+      "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4",
     );
     expect(text).toContain("Use: zero built-in generate image -h");
     expect(text).not.toContain("Use: zero built-in generate image --model");
@@ -191,7 +191,7 @@ describe("zero doctor generate command", () => {
     );
     expect(json).toMatchObject({
       builtInProvider: {
-        label: "Built-in OpenAI",
+        label: "Built-in fal.ai",
         model: "gpt-image-1",
         command: "zero built-in generate image --model gpt-image-1 -h",
       },
@@ -255,6 +255,27 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
     expect(text).toContain("Use: zero built-in generate presentation -h");
+    expect(text).not.toContain("Model: gpt-5.5");
+    expect(text).not.toContain("Fallback option:");
+    expect(text).not.toContain("Official provider:");
+  });
+
+  it("suggests the built-in website command", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes([], []),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "website"]);
+
+    const text = output();
+    expect(text).toContain("Website generation choices for current agent");
+    expect(text).toContain("Connectors:");
+    expect(text).toContain("No ready website generation connectors found.");
+    expect(text).toContain("Built-in command:");
+    expect(text).toContain("Built-in website generation");
+    expect(text).toContain("Models: gpt-5.5");
+    expect(text).toContain("Use: zero built-in generate website -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");

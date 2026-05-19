@@ -13,6 +13,7 @@ import {
   type ModelProviderType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray } from "drizzle-orm";
@@ -21,7 +22,8 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptStoredSecretValue } from "./crypto.utils";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("zero-model-provider.service");
 
@@ -408,9 +410,13 @@ async function upsertMultiAuthSecret(
     readonly name: string;
     readonly value: string;
     readonly description: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(
+    args.value,
+    args.featureSwitchContext,
+  );
   await writeDb
     .insert(secrets)
     .values({
@@ -439,7 +445,7 @@ async function upsertMultiAuthSecret(
  */
 export const upsertUserModelProvider$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -471,7 +477,16 @@ export const upsertUserModelProvider$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const encryptedValue = encryptSecretValue(args.secret);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    const encryptedValue = await encryptStoredSecretValue(
+      args.secret,
+      featureSwitchContext,
+    );
+    signal.throwIfAborted();
 
     L.debug("upserting model provider", {
       orgId: args.orgId,
@@ -580,6 +595,7 @@ async function persistMultiAuthSecrets(
     readonly type: ModelProviderType;
     readonly authMethod: string;
     readonly secretValues: Record<string, string>;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -591,6 +607,7 @@ async function persistMultiAuthSecrets(
       name,
       value,
       description,
+      featureSwitchContext: args.featureSwitchContext,
     });
     signal.throwIfAborted();
   }
@@ -651,7 +668,7 @@ function validateMultiAuthUpsertInput(args: {
  */
 export const upsertUserMultiAuthModelProvider$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -676,6 +693,10 @@ export const upsertUserMultiAuthModelProvider$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
 
     L.debug("upserting multi-auth model provider", {
       orgId: args.orgId,
@@ -712,7 +733,11 @@ export const upsertUserMultiAuthModelProvider$ = command(
 
     // Store/update all secrets atomically.
     const secretNames = Object.keys(args.secretValues);
-    await persistMultiAuthSecrets(writeDb, args, signal);
+    await persistMultiAuthSecrets(
+      writeDb,
+      { ...args, featureSwitchContext },
+      signal,
+    );
 
     // Atomic model provider upsert; metadata-aware conflict set clears stale flags.
     const insertValues = buildMultiAuthInsertValues({

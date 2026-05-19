@@ -33,6 +33,8 @@ static EVENT_ERROR_FLAG: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-event-error-{}", env::run_id()));
 static CHECKPOINT_ERROR_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-checkpoint-error-{}", env::run_id()));
+static FAILURE_DIAGNOSTIC_FILE: LazyLock<String> =
+    LazyLock::new(|| agent_diagnostics::failure_diagnostic_file(env::run_id()));
 static SYSTEM_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-system-{}.log", env::run_id()));
 static AGENT_LOG_FILE: LazyLock<String> =
@@ -45,6 +47,9 @@ pub fn event_error_flag() -> &'static str {
 }
 pub fn checkpoint_error_file() -> &'static str {
     &CHECKPOINT_ERROR_FILE
+}
+pub fn failure_diagnostic_file() -> &'static str {
+    &FAILURE_DIAGNOSTIC_FILE
 }
 pub fn system_log_file() -> &'static str {
     &SYSTEM_LOG_FILE

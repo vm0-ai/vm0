@@ -1,17 +1,22 @@
 import { randomUUID } from "node:crypto";
 
 import { runsCancelContract } from "@vm0/api-contracts/contracts/runs";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { verifyHmacSignature } from "../../../lib/event-consumer/hmac";
+import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { clearAllDetached } from "../../utils";
+import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -27,6 +32,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const TEST_CALLBACK_SECRET = "test-callback-secret";
 
 const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
@@ -186,6 +192,111 @@ describe("POST /api/agent/runs/:id/cancel", () => {
       .from(agentRunQueue)
       .where(eq(agentRunQueue.runId, runId));
     expect(queueRows).toHaveLength(0);
+  });
+
+  it("drains the org queue after cancelling a running run", async () => {
+    const fx = await fixture();
+    const runningRunId = await createRun({
+      fixture: fx.fixture,
+      composeId: fx.composeId,
+      status: "running",
+    });
+    const queuedRunId = await createRun({
+      fixture: fx.fixture,
+      composeId: fx.composeId,
+      status: "queued",
+    });
+    const db = store.set(writeDb$);
+    await db.insert(agentRunQueue).values({
+      runId: queuedRunId,
+      orgId: fx.fixture.orgId,
+      userId: fx.fixture.userId,
+      createdAt: nowDate(),
+      expiresAt: new Date(now() + 60_000),
+    });
+
+    await accept(
+      cancelClient().cancel({
+        params: { id: runningRunId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await clearAllDetached();
+
+    const queueRows = await db
+      .select()
+      .from(agentRunQueue)
+      .where(eq(agentRunQueue.runId, queuedRunId));
+    expect(queueRows).toHaveLength(0);
+    const [queuedRun] = await db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, queuedRunId));
+    expect(queuedRun?.status).toBe("pending");
+  });
+
+  it("dispatches registered callbacks after cancelling a run", async () => {
+    const fx = await fixture();
+    const runId = await createRun({
+      fixture: fx.fixture,
+      composeId: fx.composeId,
+      status: "running",
+    });
+    const callbackUrl = "https://callback.example/cancel";
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      { runId, url: callbackUrl, payload: { source: "cancel-test" } },
+      context.signal,
+    );
+    let callbackBody: unknown;
+    server.use(
+      http.post(callbackUrl, async ({ request }) => {
+        const rawBody = await request.text();
+        const timestamp = Number(request.headers.get("x-vm0-timestamp"));
+        const signature = request.headers.get("x-vm0-signature");
+        expect(signature).not.toBeNull();
+        expect(
+          verifyHmacSignature(
+            rawBody,
+            TEST_CALLBACK_SECRET,
+            timestamp,
+            signature ?? "",
+          ),
+        ).toBeTruthy();
+        callbackBody = JSON.parse(rawBody) as unknown;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await accept(
+      cancelClient().cancel({
+        params: { id: runId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await clearAllDetached();
+
+    expect(callbackBody).toStrictEqual({
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Run cancelled",
+      payload: { source: "cancel-test" },
+    });
+    const db = store.set(writeDb$);
+    const [callback] = await db
+      .select({
+        status: agentRunCallbacks.status,
+        attempts: agentRunCallbacks.attempts,
+        lastAttemptAt: agentRunCallbacks.lastAttemptAt,
+      })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.id, callbackId));
+    expect(callback?.status).toBe("delivered");
+    expect(callback?.attempts).toBe(1);
+    expect(callback?.lastAttemptAt).toBeInstanceOf(Date);
   });
 
   it("returns 200 for an already-cancelled run without side effects", async () => {

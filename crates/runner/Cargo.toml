@@ -1,10 +1,11 @@
 [package]
 name = "runner"
-version = "0.102.0"
+version = "0.102.4"
 edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
+agent-diagnostics.workspace = true
 api-contracts.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }

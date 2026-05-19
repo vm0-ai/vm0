@@ -73,11 +73,6 @@ export interface GitHubIssuesCallbackPayload {
   triggerReactionId?: string;
 }
 
-export interface ChatCallbackPayload {
-  threadId: string;
-  agentId: string;
-}
-
 /**
  * Consumed by the voice-chat task-run callback route
  * /api/internal/callbacks/voice-chat (Epic #10297, sub-issue #10311).

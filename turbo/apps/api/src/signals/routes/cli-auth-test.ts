@@ -1,4 +1,4 @@
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import {
   cliAuthTestApproveContract,
   cliAuthTestCodexOauthContract,
@@ -64,7 +64,20 @@ function stringError(status: 400 | 404, error: string) {
 function testEndpointAllowed(request: {
   header: (name: string) => string | undefined;
 }) {
-  return isTestEndpointAllowed(request);
+  if (isTestEndpointAllowed(request)) {
+    return true;
+  }
+
+  if (env("ENV") === "preview") {
+    // Vercel consumes the protection-bypass header before proxied web-preview
+    // rewrites reach the API preview runtime. Production still stays denied.
+    return (
+      optionalEnv("USE_MOCK_CLAUDE") === "true" &&
+      !!optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET")
+    );
+  }
+
+  return false;
 }
 
 const approveDeviceForTest$ = command(
@@ -166,6 +179,12 @@ const createTestConnector$ = command(
     const bodyResult = await get(testConnectorBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
+      if (
+        bodyResult.response.body.error.message ===
+        "Invalid JSON in request body"
+      ) {
+        return stringError(400, "Invalid JSON body");
+      }
       return stringError(400, "connectorName and accessToken are required");
     }
 
@@ -230,6 +249,12 @@ const enableTestConnectors$ = command(
     const bodyResult = await get(testEnableConnectorBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
+      if (
+        bodyResult.response.body.error.message ===
+        "Invalid JSON in request body"
+      ) {
+        return stringError(400, "Invalid JSON body");
+      }
       return stringError(400, "composeId and connectorTypes are required");
     }
 
@@ -314,6 +339,11 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(testCodexOauthBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
+    if (
+      bodyResult.response.body.error.message === "Invalid JSON in request body"
+    ) {
+      return stringError(400, "Invalid JSON body");
+    }
     return stringError(400, "Invalid body shape");
   }
 

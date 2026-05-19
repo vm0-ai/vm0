@@ -20,17 +20,25 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-/**
- * Build a valid ZERO_TOKEN for testing.
- * Format: vm0_sandbox_<header>.<payload>.<signature>
- */
-function buildZeroToken(payload: Record<string, unknown>): string {
+function buildJwt(payload: Record<string, unknown>, prefix: string): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
     "base64url",
   );
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = "test-signature";
-  return `vm0_sandbox_${header}.${body}.${signature}`;
+  return `${prefix}${header}.${body}.${signature}`;
+}
+
+/**
+ * Build a valid ZERO_TOKEN for testing.
+ * Format: vm0_sandbox_<header>.<payload>.<signature>
+ */
+function buildZeroToken(payload: Record<string, unknown>): string {
+  return buildJwt(payload, "vm0_sandbox_");
+}
+
+function buildCliToken(payload: Record<string, unknown>): string {
+  return buildJwt(payload, "vm0_pat_");
 }
 
 describe("zero whoami command", () => {
@@ -895,7 +903,7 @@ describe("zero whoami command", () => {
     });
 
     it("should display active org from CLI JWT token", async () => {
-      const cliJwt = buildZeroToken({
+      const cliJwt = buildCliToken({
         scope: "cli",
         orgId: "test-org-slug",
         userId: "user-1",
