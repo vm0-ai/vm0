@@ -14,6 +14,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -64,6 +65,7 @@ const FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL = 40;
 const FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL = Math.ceil(
   FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL * IMAGE_PRICING_MARKUP_MULTIPLIER,
 );
+const WEB_ORIGIN = "https://www.vm0.test";
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
   "output_image.low.standard",
@@ -625,6 +627,7 @@ describe("POST /api/zero/image-io/generate", () => {
   let releasePendingFalResponse: (() => void) | null = null;
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -938,7 +941,11 @@ describe("POST /api/zero/image-io/generate", () => {
       prompt: "A small robot paints a sunflower.",
     });
     await clearAllDetached();
-    expect(readWebhookUrl(observedRequestUrl)).toContain(generationId);
+    const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
+    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.pathname).toBe(
+      `/api/webhooks/built-in-generations/fal/${generationId}`,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `built-in-generation:${generationId}`,
       expect.objectContaining({

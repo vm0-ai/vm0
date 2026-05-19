@@ -1318,7 +1318,7 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches built-in generation webhook rewrites", () => {
+  it("matches the FAL built-in generation webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000",
@@ -1328,7 +1328,12 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath(
         "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000/extra",
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/built-in-generations/fal/not-a-uuid",
+      ),
+    ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/webhooks/built-in-generation"),
@@ -2625,6 +2630,46 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers["stripe-signature"]).toBe(
           "t=1710000000,v1=test-signature",
         );
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards FAL built-in generation webhook POST bodies", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const generationId = "550e8400-e29b-41d4-a716-446655440000";
+        const webhookBody = JSON.stringify({
+          status: "COMPLETED",
+          payload: {
+            images: [{ url: "https://fal.media/files/test.webp" }],
+          },
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/built-in-generations/fal/${generationId}?token=test-token`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          `/api/webhooks/built-in-generations/fal/${generationId}?token=test-token`,
+        );
+        expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);
       },
     );

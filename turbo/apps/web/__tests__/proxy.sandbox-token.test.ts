@@ -570,4 +570,32 @@ describe("proxy middleware: sandbox token handling", () => {
       false,
     );
   });
+
+  it("should not add OAuth web origin headers for FAL provider webhooks", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000?token=test-token",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+    expect(response.headers.has("x-middleware-request-x-vm0-web-origin")).toBe(
+      false,
+    );
+  });
 });

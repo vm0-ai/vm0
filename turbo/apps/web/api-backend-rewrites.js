@@ -142,6 +142,10 @@ const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
+const BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE = `/api/webhooks/built-in-generations/fal/:generationId(${UUID_PATH_SEGMENT_PATTERN})`;
+const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
+  `^/api/webhooks/built-in-generations/fal/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
@@ -381,8 +385,9 @@ export const API_BACKEND_REWRITES = [
   ["/api/storages/prepare", "/api/storages/prepare"],
   ["/api/usage", "/api/usage"],
   [
-    "/api/webhooks/built-in-generations/:path*",
-    "/api/webhooks/built-in-generations/:path*",
+    BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
+    "/api/webhooks/built-in-generations/fal/:generationId",
+    BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE,
   ],
   ["/api/integrations/agentphone/link", "/api/integrations/agentphone/link"],
   ["/api/internal/callbacks/agent", "/api/internal/callbacks/agent"],

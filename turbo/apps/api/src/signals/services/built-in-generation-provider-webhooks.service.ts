@@ -54,7 +54,7 @@ export function falBuiltInGenerationWebhookUrl(args: {
 }): string {
   const baseUrl = new URL(
     `/api/webhooks/built-in-generations/fal/${args.generationId}`,
-    env("VM0_API_URL"),
+    env("VM0_WEB_URL"),
   );
   baseUrl.searchParams.set(
     "token",

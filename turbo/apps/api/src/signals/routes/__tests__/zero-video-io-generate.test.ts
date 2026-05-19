@@ -13,6 +13,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
@@ -61,6 +62,7 @@ const SEEDANCE_STATUS_URL =
 const SEEDANCE_RESPONSE_URL =
   "https://queue.fal.run/bytedance/seedance-2.0/fast/text-to-video/requests/seedance-video-request/response";
 const SEEDANCE_VIDEO_URL = "https://v3b.fal.media/files/seedance-output.mp4";
+const WEB_ORIGIN = "https://www.vm0.test";
 const VIDEO_SECOND_PRICING_CATEGORIES = [
   "output_video_seconds.audio",
   "output_video_seconds.silent",
@@ -499,6 +501,7 @@ describe("POST /api/zero/video-io/generate", () => {
   );
 
   beforeEach(() => {
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -689,7 +692,11 @@ describe("POST /api/zero/video-io/generate", () => {
       },
     });
     await clearAllDetached();
-    expect(readWebhookUrl(observedRequestUrl)).toContain(generationId);
+    const webhookUrl = new URL(readWebhookUrl(observedRequestUrl));
+    expect(webhookUrl.origin).toBe(WEB_ORIGIN);
+    expect(webhookUrl.pathname).toBe(
+      `/api/webhooks/built-in-generations/fal/${generationId}`,
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `built-in-generation:${generationId}`,
       expect.objectContaining({
