@@ -38,6 +38,7 @@ import {
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import {
   expandHostWildcardsInBaseUrl,
+  extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
   type ExpandedFirewallConfig,
   type FirewallPolicies,
@@ -79,6 +80,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
@@ -216,6 +218,7 @@ interface ResolvedCompose {
   readonly agentName?: string;
   readonly content: AgentComposeContent;
   readonly artifacts: readonly ContextArtifact[];
+  readonly vars?: Record<string, string>;
   readonly volumeVersions?: Record<string, string>;
   readonly additionalVolumes?: readonly AdditionalVolume[];
   readonly sessionId?: string;
@@ -251,6 +254,7 @@ interface ResolvedModelProviderEnvironment {
 interface PermissionManifest {
   readonly firewalls: Firewalls;
   readonly networkPolicies: NetworkPolicies;
+  readonly environmentFirewalls: readonly ExpandedFirewallConfig[];
 }
 
 interface StoredExecutionSecrets {
@@ -631,6 +635,7 @@ function expandEnvironment(
   vars: Record<string, string> | undefined,
   secrets: Record<string, string> | undefined,
   additionalEnvironment: Record<string, string> | undefined,
+  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
 ): Record<string, string> | null {
   const environment = firstAgent(content)?.environment;
   const mergedEnvironment = {
@@ -641,20 +646,51 @@ function expandEnvironment(
     return null;
   }
 
-  const { result } = expandVariables(mergedEnvironment, { vars, secrets });
+  const { result } = expandVariables(mergedEnvironment, {
+    vars,
+    secrets: {
+      ...secrets,
+      ...firewallSecretPlaceholders(environmentFirewalls),
+    },
+  });
   return result;
+}
+
+function firewallSecretPlaceholders(
+  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
+): Record<string, string> | undefined {
+  if (!environmentFirewalls || environmentFirewalls.length === 0) {
+    return undefined;
+  }
+
+  const placeholders: Record<string, string> = {};
+  for (const firewall of environmentFirewalls) {
+    const secretNames = extractSecretNamesFromApis(firewall.apis);
+    for (const name of secretNames) {
+      placeholders[name] =
+        firewall.placeholders?.[name] ??
+        "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+    }
+    for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
+      placeholders[name] = value;
+    }
+  }
+
+  return Object.keys(placeholders).length > 0 ? placeholders : undefined;
 }
 
 function missingEnvironmentReferences(
   content: AgentComposeContent,
   vars: Record<string, string> | undefined,
   secrets: Record<string, string> | undefined,
+  environmentFirewalls: readonly ExpandedFirewallConfig[] | undefined,
 ): string[] {
   const environment = firstAgent(content)?.environment;
   if (!environment) {
     return [];
   }
   const grouped = extractAndGroupVariables(environment);
+  const firewallPlaceholders = firewallSecretPlaceholders(environmentFirewalls);
   const missingVars = grouped.vars
     .filter((ref) => {
       return vars?.[ref.name] === undefined;
@@ -664,7 +700,10 @@ function missingEnvironmentReferences(
     });
   const missingSecrets = grouped.secrets
     .filter((ref) => {
-      return secrets?.[ref.name] === undefined;
+      return (
+        secrets?.[ref.name] === undefined &&
+        firewallPlaceholders?.[ref.name] === undefined
+      );
     })
     .map((ref) => {
       return `secrets.${ref.name}`;
@@ -1576,7 +1615,7 @@ function collectPermissionNames(
 function applyConnectorPolicies(
   connectorFirewalls: readonly ExpandedFirewallConfig[],
   policies: FirewallPolicies | undefined,
-): PermissionManifest {
+): Omit<PermissionManifest, "environmentFirewalls"> {
   const firewalls: Firewalls = [];
   const networkPolicies: NetworkPolicies = {};
 
@@ -1647,6 +1686,7 @@ function modelProviderPermissionManifest(
   const askSet = new Set(firewall.defaultPolicies?.ask ?? []);
   return {
     firewalls: [firewall],
+    environmentFirewalls: [firewall],
     networkPolicies: {
       [firewall.name]: {
         allow: permissionNames.filter((name) => {
@@ -1691,6 +1731,11 @@ function buildPermissionManifest(args: {
 
   return {
     firewalls: resolveFirewallBaseUrlVars(firewalls, args.vars),
+    environmentFirewalls: [
+      ...(providerManifest?.environmentFirewalls ?? []),
+      ...connectorFirewalls,
+      ...(args.customConnectorFirewalls ?? []),
+    ],
     networkPolicies: {
       ...providerManifest?.networkPolicies,
       ...connectorManifest.networkPolicies,
@@ -1934,8 +1979,10 @@ async function resolveBySessionId(
       agentComposeId: agentSessions.agentComposeId,
       conversationId: agentSessions.conversationId,
       artifacts: agentSessions.artifacts,
+      conversationRunId: conversations.runId,
     })
     .from(agentSessions)
+    .leftJoin(conversations, eq(agentSessions.conversationId, conversations.id))
     .where(
       and(
         eq(agentSessions.id, sessionId),
@@ -1958,10 +2005,18 @@ async function resolveBySessionId(
     session.conversationId === null
       ? undefined
       : await loadResumeSession(get, db, session.conversationId);
+  const [lastRun] = session.conversationRunId
+    ? await db
+        .select({ vars: agentRuns.vars })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, session.conversationRunId))
+        .limit(1)
+    : [];
 
   return {
     ...resolved,
     artifacts: session.artifacts ?? [],
+    vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
     sessionId: session.id,
     continuedFromSessionId: session.id,
     resumeSession,
@@ -1993,7 +2048,10 @@ async function resolveByCheckpointId(
     return notFound("Checkpoint not found");
   }
 
-  const snapshot = row.snapshot as { readonly agentComposeVersionId?: string };
+  const snapshot = row.snapshot as {
+    readonly agentComposeVersionId?: string;
+    readonly vars?: Record<string, string>;
+  };
   if (!snapshot.agentComposeVersionId) {
     return badRequestMessage(
       "Invalid checkpoint: missing agentComposeVersionId",
@@ -2011,6 +2069,7 @@ async function resolveByCheckpointId(
   return {
     ...resolved,
     artifacts: row.artifacts ?? [],
+    vars: snapshot.vars ?? {},
     volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
     additionalVolumes: parseAdditionalVolumesSnapshot(
       row.volumeVersionsSnapshot,
@@ -2146,7 +2205,10 @@ function validateCompose(
   content: AgentComposeContent,
   vars: Record<string, string> | undefined,
   secrets: Record<string, string> | undefined,
-  options?: { readonly validateEnvironmentReferences?: boolean },
+  options?: {
+    readonly validateEnvironmentReferences?: boolean;
+    readonly environmentFirewalls?: readonly ExpandedFirewallConfig[];
+  },
 ): { readonly framework: SupportedFramework } | CreateRunErrorResult {
   const framework = resolveFramework(content);
   if (!framework) {
@@ -2156,7 +2218,12 @@ function validateCompose(
   }
 
   if (options?.validateEnvironmentReferences !== false) {
-    const missing = missingEnvironmentReferences(content, vars, secrets);
+    const missing = missingEnvironmentReferences(
+      content,
+      vars,
+      secrets,
+      options?.environmentFirewalls,
+    );
     if (missing.length > 0) {
       return badRequestMessage(
         `Missing required values: ${missing.join(", ")}`,
@@ -2377,6 +2444,7 @@ function buildStoredExecutionContext(args: {
   readonly storageManifest: StorageManifest;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly extraEnvironment: Record<string, string> | undefined;
+  readonly userTimezone: string | undefined;
 }): BuiltStoredExecutionContext {
   const permissions = buildPermissionManifest({
     modelProvider: args.modelProvider,
@@ -2408,6 +2476,7 @@ function buildStoredExecutionContext(args: {
           args.body.vars,
           executionSecrets.secrets,
           args.modelProvider?.environment,
+          permissions?.environmentFirewalls,
         ),
         ...args.extraEnvironment,
       },
@@ -2420,6 +2489,7 @@ function buildStoredExecutionContext(args: {
       debugNoMockCodex: args.body.debugNoMockCodex || undefined,
       captureNetworkBodies: args.body.captureNetworkBodies || undefined,
       apiStartTime: args.apiStartTime,
+      userTimezone: args.userTimezone,
       firewalls: permissions?.firewalls,
       networkPolicies: permissions?.networkPolicies,
       disallowedTools: args.body.disallowedTools,
@@ -2646,6 +2716,7 @@ async function buildRunnerJobPayload(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
+    readonly userTimezone: string | undefined;
   },
 ): Promise<ReturnType<typeof queuedRunnerJobPayload>> {
   const group =
@@ -2681,7 +2752,7 @@ async function buildRunnerJobPayload(
     runtimeOrgId: args.orgId,
     userId: args.userId,
     artifacts: args.artifacts,
-    volumeVersionOverrides: args.resolved.volumeVersions,
+    volumeVersionOverrides: body.volumeVersions,
     additionalVolumes: args.additionalVolumes,
     framework: args.framework,
   });
@@ -2690,6 +2761,7 @@ async function buildRunnerJobPayload(
     body,
     runId: args.run.id,
     storageManifest,
+    userTimezone: args.userTimezone,
   });
   ingestRunContextSnapshot({
     runId: args.run.id,
@@ -2724,6 +2796,7 @@ async function dispatchRun(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
+    readonly userTimezone: string | undefined;
   },
 ): Promise<{ readonly status: RunStatus; readonly sandboxId?: string }> {
   await db
@@ -2775,6 +2848,7 @@ async function enqueueRunForConcurrency(
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly includeZeroTokenSecret: boolean | undefined;
     readonly extraEnvironment: Record<string, string> | undefined;
+    readonly userTimezone: string | undefined;
   },
 ): Promise<void> {
   const payload = await buildRunnerJobPayload(get, db, args);
@@ -2834,6 +2908,7 @@ interface PreparedRunContext {
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly artifacts: readonly ContextArtifact[];
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly userTimezone: string | undefined;
 }
 
 async function resolveRunModelProvider(
@@ -2904,6 +2979,27 @@ async function loadRunFeatureSwitchContext(
   return { orgId: args.orgId, userId: args.userId, overrides };
 }
 
+async function loadUserTimezone(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ timezone: orgMembersMetadata.timezone })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, args.orgId),
+        eq(orgMembersMetadata.userId, args.userId),
+      ),
+    )
+    .limit(1);
+
+  return row?.timezone ?? undefined;
+}
+
 async function loadRunConnectorContexts(
   db: Db,
   args: {
@@ -2958,6 +3054,80 @@ async function loadRunConnectorContexts(
   };
 }
 
+async function buildResolvedRunBody(args: {
+  readonly db: Db;
+  readonly runArgs: CreateAgentRunArgs;
+  readonly initialBody: CreateRunBody;
+  readonly resolved: ResolvedCompose;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly signal: AbortSignal;
+}): Promise<CreateRunBody> {
+  const runVars =
+    args.initialBody.vars !== undefined
+      ? args.initialBody.vars
+      : args.resolved.vars;
+  const mergedVars = await loadMergedVariables(args.db, {
+    orgId: args.runArgs.orgId,
+    userId: args.runArgs.userId,
+    runVars,
+  });
+  args.signal.throwIfAborted();
+
+  const body: CreateRunBody = {
+    ...args.initialBody,
+    vars: mergedVars,
+    volumeVersions:
+      args.initialBody.volumeVersions !== undefined
+        ? args.initialBody.volumeVersions
+        : args.resolved.volumeVersions,
+  };
+  const mergedSecrets = await loadReferencedSecrets(args.db, {
+    orgId: args.runArgs.orgId,
+    userId: args.runArgs.userId,
+    content: args.resolved.content,
+    runSecrets: body.secrets,
+    allowedConnectorTypes: args.runArgs.allowedConnectorTypes,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  args.signal.throwIfAborted();
+
+  return { ...body, secrets: mergedSecrets };
+}
+
+function validateRunEnvironmentReferences(args: {
+  readonly resolved: ResolvedCompose;
+  readonly body: CreateRunBody;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+  readonly customConnectorContext: CustomConnectorRuntimeContext;
+  readonly validateEnvironmentReferences: boolean | undefined;
+}): CreateRunErrorResult | null {
+  const validationPermissions = buildPermissionManifest({
+    modelProvider: args.modelProvider,
+    permissionPolicies: args.body.permissionPolicies,
+    vars: args.body.vars,
+    connectorTypes: args.connectorContext.connectorTypes,
+    customConnectorFirewalls: args.customConnectorContext.firewalls,
+  });
+  const validationSecrets = buildStoredExecutionSecrets({
+    connectorContext: args.connectorContext,
+    modelProvider: args.modelProvider,
+    bodySecrets: args.body.secrets,
+    customConnectorContext: args.customConnectorContext,
+  });
+  const validation = validateCompose(
+    args.resolved.content,
+    args.body.vars,
+    validationSecrets.secrets,
+    {
+      validateEnvironmentReferences: args.validateEnvironmentReferences,
+      environmentFirewalls: validationPermissions?.environmentFirewalls,
+    },
+  );
+
+  return isRouteError(validation) ? validation : null;
+}
+
 async function prepareRunContext(
   get: ComputedGetter,
   db: Db,
@@ -2984,15 +3154,13 @@ async function prepareRunContext(
     signal,
   );
 
-  const mergedVars = await loadMergedVariables(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    runVars: initialBody.vars,
-  });
-  signal.throwIfAborted();
-  let body: CreateRunBody = { ...initialBody, vars: mergedVars };
-
-  const resolved = await resolveCompose(get, db, body, args.userId, args.orgId);
+  const resolved = await resolveCompose(
+    get,
+    db,
+    initialBody,
+    args.userId,
+    args.orgId,
+  );
   signal.throwIfAborted();
   if (isRouteError(resolved)) {
     return resolved;
@@ -3002,33 +3170,29 @@ async function prepareRunContext(
     return notFound("Resource not found");
   }
 
-  const mergedSecrets = await loadReferencedSecrets(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    content: resolved.content,
-    runSecrets: body.secrets,
-    allowedConnectorTypes: args.allowedConnectorTypes,
+  const body = await buildResolvedRunBody({
+    db,
+    runArgs: args,
+    initialBody,
+    resolved,
     featureSwitchContext,
+    signal,
   });
-  signal.throwIfAborted();
-  body = { ...body, secrets: mergedSecrets };
 
-  const validation = validateCompose(
+  const frameworkValidation = validateCompose(
     resolved.content,
     body.vars,
     body.secrets,
-    {
-      validateEnvironmentReferences: args.validateEnvironmentReferences,
-    },
+    { validateEnvironmentReferences: false },
   );
-  if (isRouteError(validation)) {
-    return validation;
+  if (isRouteError(frameworkValidation)) {
+    return frameworkValidation;
   }
 
   const requestedFramework = await resolveRequestedRunFramework(
     db,
     args,
-    validation.framework,
+    frameworkValidation.framework,
   );
   signal.throwIfAborted();
 
@@ -3047,6 +3211,21 @@ async function prepareRunContext(
 
   const { connectorContext, customConnectorContext } =
     await loadRunConnectorContexts(db, args, featureSwitchContext);
+  signal.throwIfAborted();
+
+  const validation = validateRunEnvironmentReferences({
+    resolved,
+    body,
+    modelProvider,
+    connectorContext,
+    customConnectorContext,
+    validateEnvironmentReferences: args.validateEnvironmentReferences,
+  });
+  if (validation) {
+    return validation;
+  }
+
+  const userTimezone = await loadUserTimezone(db, args);
   signal.throwIfAborted();
 
   const artifacts = artifactsForRun({
@@ -3068,6 +3247,7 @@ async function prepareRunContext(
     customConnectorContext,
     artifacts,
     additionalVolumes,
+    userTimezone,
   };
 }
 
@@ -3137,6 +3317,7 @@ async function completeQueuedRun(input: {
       additionalVolumes: input.context.additionalVolumes,
       includeZeroTokenSecret: input.args.includeZeroTokenSecret,
       extraEnvironment: input.args.extraEnvironment,
+      userTimezone: input.context.userTimezone,
     }),
   );
   input.signal.throwIfAborted();
@@ -3173,6 +3354,7 @@ async function completePendingRun(input: {
       additionalVolumes: input.context.additionalVolumes,
       includeZeroTokenSecret: input.args.includeZeroTokenSecret,
       extraEnvironment: input.args.extraEnvironment,
+      userTimezone: input.context.userTimezone,
     }),
   );
   input.signal.throwIfAborted();
