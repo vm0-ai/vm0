@@ -1092,6 +1092,15 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/schedule")).toBe(false);
   });
 
+  it("matches the zero runs queue rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/runs/queue")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/runs/queue/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/runs/queues")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/run/queue")).toBe(false);
+  });
+
   it("matches the zero schedules run rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/schedules/run")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/schedules/run/extra")).toBe(

@@ -114,7 +114,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/runs/[id]/route.ts",
   "app/api/zero/runs/[id]/runner/route.ts",
   "app/api/zero/runs/[id]/telemetry/agent/route.ts",
-  "app/api/zero/runs/queue/route.ts",
   "app/api/zero/runs/route.ts",
   "app/api/zero/slack/channels/route.ts",
   "app/api/zero/slack/commands/route.ts",

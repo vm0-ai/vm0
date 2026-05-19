@@ -695,6 +695,13 @@ const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/secrets/DELETE_ME/extra",
   "/api/zero/secret/DELETE_ME",
 ] as const;
+const ZERO_RUNS_QUEUE_REWRITE_SOURCE = "/api/zero/runs/queue";
+const ZERO_RUNS_QUEUE_PATH = "/api/zero/runs/queue";
+const ZERO_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/run/queue",
+  "/api/zero/runs/queues",
+  "/api/zero/runs/queue/extra",
+] as const;
 const ZERO_SCHEDULES_REWRITE_SOURCE = "/api/zero/schedules";
 const ZERO_SCHEDULES_PATH = "/api/zero/schedules";
 const ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS = [
@@ -1385,6 +1392,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/secrets/:name",
+        },
+        {
+          source: ZERO_RUNS_QUEUE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/runs/queue",
         },
         {
           source: ZERO_SCHEDULES_REWRITE_SOURCE,
@@ -3615,6 +3626,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero runs queue rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_RUNS_QUEUE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_RUNS_QUEUE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/runs/queue",
+    });
+
+    const matcher = getPathMatch(ZERO_RUNS_QUEUE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_RUNS_QUEUE_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero schedules run rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4567,6 +4601,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for zero schedules collection paths", () => {
     expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_PATH)).toBe(true);
     for (const pathname of ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero runs queue paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_RUNS_QUEUE_PATH)).toBe(true);
+    for (const pathname of ZERO_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

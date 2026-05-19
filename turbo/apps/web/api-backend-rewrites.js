@@ -25,6 +25,7 @@ const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
+const ZERO_RUNS_QUEUE_REWRITE_SOURCE = "/api/zero/runs/queue";
 const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
 const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
 const ZERO_SCHEDULES_RUN_REWRITE_SOURCE = "/api/zero/schedules/run";
@@ -472,6 +473,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/report-error", "/api/zero/report-error"],
+  [ZERO_RUNS_QUEUE_REWRITE_SOURCE, "/api/zero/runs/queue"],
   ["/api/zero/schedules", "/api/zero/schedules"],
   [ZERO_SCHEDULES_RUN_REWRITE_SOURCE, "/api/zero/schedules/run"],
   [
