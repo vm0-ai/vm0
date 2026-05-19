@@ -2,15 +2,13 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
+  getConnectorSecretNames,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthMethodType,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  CONNECTOR_TYPES,
-  connectorTypeSchema,
-} from "@vm0/connectors/connectors";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -389,13 +387,10 @@ export async function deleteConnector(
     // OAuth connector: delete DB record + connector-type secrets
     await db.delete(connectors).where(eq(connectors.id, existing.id));
 
-    const secretNames: string[] = [];
-    const config = CONNECTOR_TYPES[type];
-    const authMethodConfig =
-      config.authMethods[existing.authMethod as ConnectorAuthMethodType];
-    if (authMethodConfig) {
-      secretNames.push(...Object.keys(authMethodConfig.secrets));
-    }
+    const secretNames = getConnectorSecretNames(
+      type,
+      existing.authMethod as ConnectorAuthMethodType,
+    );
 
     if (existing.authMethod === "oauth" && type !== "computer") {
       const handler =

@@ -11,7 +11,10 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
+  getConnectorAuthMethod,
+  getConnectorCliAuthModes,
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -248,7 +251,7 @@ function buildConnectorTypeStatus(params: {
   );
   const hasApiToken = availableAuthMethods.includes("api-token");
   const hasFeatureFlaggedMethod = availableAuthMethods.some((authMethod) => {
-    return !!config.authMethods[authMethod]?.featureFlag;
+    return !!getConnectorAuthMethod(params.type, authMethod)?.featureFlag;
   });
   const connected = params.connector !== null;
 
@@ -576,13 +579,13 @@ export const submitApiToken$ = command(
         const createClient = get(zeroClient$);
         const secretsClient = createClient(zeroSecretsContract);
         const variablesClient = createClient(zeroVariablesContract);
-        const apiTokenConfig = CONNECTOR_TYPES[type].authMethods["api-token"];
         const secrets = sanitizeTokenInputRecord(inputSecrets);
         for (const [name, value] of Object.entries(secrets)) {
           if (!value) {
             continue;
           }
-          const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
+          const isVariable =
+            getApiTokenFieldStorageType(type, name) === "variable";
           if (isVariable) {
             await accept(
               variablesClient.set({
@@ -1288,7 +1291,7 @@ function getConnectorCliAuthMode(
 }
 
 function connectorCliAuthRequiresMode(type: ConnectorType): boolean {
-  return (CONNECTOR_TYPES[type].cliAuth?.modes?.length ?? 0) > 0;
+  return getConnectorCliAuthModes(type).length > 0;
 }
 
 function connectorCliAuthModeIsAllowed(

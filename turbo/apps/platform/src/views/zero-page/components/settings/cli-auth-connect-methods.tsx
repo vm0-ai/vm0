@@ -1,10 +1,12 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui/components/ui/button";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  getConnectorAuthMethod,
+  getConnectorCliAuthFlow,
+  getConnectorCliAuthModes,
+} from "@vm0/connectors/connector-utils";
 import type { MouseEventHandler, ReactElement } from "react";
 
 import {
@@ -50,7 +52,7 @@ function stateForConnector(
 }
 
 function cliAuthModeOptions(type: ConnectorType): readonly CliAuthModeOption[] {
-  return CONNECTOR_TYPES[type].cliAuth?.modes ?? [];
+  return getConnectorCliAuthModes(type);
 }
 
 function CliAuthModePicker({
@@ -164,7 +166,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
   signal,
 }: CliAuthConnectMethodContentProps) {
   const type = item.type;
-  const cliAuthConfig = CONNECTOR_TYPES[type].authMethods["cli-auth"];
+  const cliAuthConfig = getConnectorAuthMethod(type, "cli-auth");
   const rawState = useGet(connectorCliAuthState$);
   const cliAuthState = stateForConnector(rawState, type);
   const setMode = useSet(setConnectorCliAuthMode$);
@@ -258,7 +260,7 @@ function BrowserVerificationCliAuthConnectMethodContent({
 export function getCliAuthConnectMethodContentComponent(
   type: ConnectorType,
 ): CliAuthConnectMethodContentComponent | null {
-  switch (CONNECTOR_TYPES[type].cliAuth?.flow) {
+  switch (getConnectorCliAuthFlow(type)) {
     case "browser-verification": {
       return BrowserVerificationCliAuthConnectMethodContent;
     }
