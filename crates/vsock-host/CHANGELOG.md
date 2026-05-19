@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.5](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.4...vsock-host-v0.17.5) (2026-05-19)
+
+
+### Refactoring
+
+* add supervised exec host path ([#13999](https://github.com/vm0-ai/vm0/issues/13999)) ([3aab243](https://github.com/vm0-ai/vm0/commit/3aab243060e127601e411ca293d45f2d22b6069d))
+
 ## [0.17.4](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.3...vsock-host-v0.17.4) (2026-05-19)
 
 

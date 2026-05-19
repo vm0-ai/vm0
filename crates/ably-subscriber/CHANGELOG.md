@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.12](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.11...ably-subscriber-v0.7.12) (2026-05-19)
+
+
+### Refactoring
+
+* split ably connection module ([#14010](https://github.com/vm0-ai/vm0/issues/14010)) ([7d07b67](https://github.com/vm0-ai/vm0/commit/7d07b6767ba8151b440c965e109c6d53a2f47c36))
+
 ## [0.7.11](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.10...ably-subscriber-v0.7.11) (2026-05-15)
 
 

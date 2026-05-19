@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.58.0](https://github.com/vm0-ai/vm0/compare/api-v1.57.1...api-v1.58.0) (2026-05-19)
+
+
+### Features
+
+* **platform:** redesign edit model route modal ([#13606](https://github.com/vm0-ai/vm0/issues/13606)) ([47c770f](https://github.com/vm0-ai/vm0/commit/47c770f85e0912048bc37cb78ec45e0ed928cc12))
+
+
+### Bug Fixes
+
+* keep connector oauth on web host ([#14029](https://github.com/vm0-ai/vm0/issues/14029)) ([2058734](https://github.com/vm0-ai/vm0/commit/20587341936530649de46491119045562f55277b))
+* pass api feature flags to runner jobs ([#14009](https://github.com/vm0-ai/vm0/issues/14009)) ([8e615e1](https://github.com/vm0-ai/vm0/commit/8e615e1080bc728028b5902fa32ea37be1b82a27))
+
+
+### Refactoring
+
+* cut over internal chat callback route ([#14007](https://github.com/vm0-ai/vm0/issues/14007)) ([6c1f851](https://github.com/vm0-ai/vm0/commit/6c1f8518dd4b78580b5802acbdc45e318a199b28))
+* cut over internal github issue callback route ([#14026](https://github.com/vm0-ai/vm0/issues/14026)) ([2f4d865](https://github.com/vm0-ai/vm0/commit/2f4d86546b09edaac9c3f1cb9ac75947d1568ac8))
+* migrate zero run agent events rewrite ([#14016](https://github.com/vm0-ai/vm0/issues/14016)) ([1e7db97](https://github.com/vm0-ai/vm0/commit/1e7db977a9c645779952e78d739654e87cb7015a))
+* proxy test slack chat message route to api ([#14025](https://github.com/vm0-ai/vm0/issues/14025)) ([5e1e66b](https://github.com/vm0-ai/vm0/commit/5e1e66b6a1b05e7229137ed92bb74df92b128b37))
+
 ## [1.57.1](https://github.com/vm0-ai/vm0/compare/api-v1.57.0...api-v1.57.1) (2026-05-19)
 
 

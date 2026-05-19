@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.377.2](https://github.com/vm0-ai/vm0/compare/web-v12.377.1...web-v12.377.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* keep connector oauth on web host ([#14029](https://github.com/vm0-ai/vm0/issues/14029)) ([2058734](https://github.com/vm0-ai/vm0/commit/20587341936530649de46491119045562f55277b))
+
+
+### Refactoring
+
+* cut over internal chat callback route ([#14007](https://github.com/vm0-ai/vm0/issues/14007)) ([6c1f851](https://github.com/vm0-ai/vm0/commit/6c1f8518dd4b78580b5802acbdc45e318a199b28))
+* cut over internal github issue callback route ([#14026](https://github.com/vm0-ai/vm0/issues/14026)) ([2f4d865](https://github.com/vm0-ai/vm0/commit/2f4d86546b09edaac9c3f1cb9ac75947d1568ac8))
+* cut over zero composes root route ([#14019](https://github.com/vm0-ai/vm0/issues/14019)) ([04ae035](https://github.com/vm0-ai/vm0/commit/04ae035706dfef3f03681c4446a737ef3084e581))
+* migrate zero run agent events rewrite ([#14016](https://github.com/vm0-ai/vm0/issues/14016)) ([1e7db97](https://github.com/vm0-ai/vm0/commit/1e7db977a9c645779952e78d739654e87cb7015a))
+* proxy test slack auth mock route to api ([#14006](https://github.com/vm0-ai/vm0/issues/14006)) ([3535be0](https://github.com/vm0-ai/vm0/commit/3535be0e4f272a9f72d1075dcd46df5b05e6dbd3))
+* proxy test slack chat message route to api ([#14025](https://github.com/vm0-ai/vm0/issues/14025)) ([5e1e66b](https://github.com/vm0-ai/vm0/commit/5e1e66b6a1b05e7229137ed92bb74df92b128b37))
+
 ## [12.377.1](https://github.com/vm0-ai/vm0/compare/web-v12.377.0...web-v12.377.1) (2026-05-19)
 
 

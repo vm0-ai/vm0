@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.367.0](https://github.com/vm0-ai/vm0/compare/app-v0.366.2...app-v0.367.0) (2026-05-19)
+
+
+### Features
+
+* **platform:** redesign edit model route modal ([#13606](https://github.com/vm0-ai/vm0/issues/13606)) ([47c770f](https://github.com/vm0-ai/vm0/commit/47c770f85e0912048bc37cb78ec45e0ed928cc12))
+
+
+### Bug Fixes
+
+* keep connector oauth on web host ([#14029](https://github.com/vm0-ai/vm0/issues/14029)) ([2058734](https://github.com/vm0-ai/vm0/commit/20587341936530649de46491119045562f55277b))
+
 ## [0.366.2](https://github.com/vm0-ai/vm0/compare/app-v0.366.1...app-v0.366.2) (2026-05-19)
 
 
