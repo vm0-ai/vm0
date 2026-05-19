@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import {
+  MODEL_PROVIDER_OAUTH_HANDLERS,
+  getModelProviderOAuthHandler,
+} from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   HANDLER_KEY_SOURCE_TYPE,
   MODEL_PROVIDER_HANDLER_KEY,
@@ -41,6 +44,13 @@ describe("handler-key bridge tables stay in sync", () => {
       const handler = getModelProviderOAuthHandler(handlerKey!);
       expect(handler).toBeDefined();
       expect(handler?.refreshToken).toBeDefined();
+    }
+  });
+
+  it("every registered model-provider OAuth handler is bridged", () => {
+    for (const handlerKey of Object.keys(MODEL_PROVIDER_OAUTH_HANDLERS)) {
+      expect(HANDLER_KEY_SOURCE_TYPE[handlerKey]).toBe("model-provider");
+      expect(SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey]).toBeDefined();
     }
   });
 });
