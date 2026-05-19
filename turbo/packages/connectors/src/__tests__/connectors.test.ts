@@ -13,7 +13,6 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthConfig,
-  getConfiguredConnectorTypes,
   getRuntimeAvailableConnectorTypes,
   isGoogleOAuthConnector,
 } from "../connector-utils";
@@ -310,22 +309,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   const emptyEnv = () => {
     return undefined;
   };
-
-  it("keeps getConfiguredConnectorTypes compatible with runtime availability", () => {
-    const env = new Map([
-      ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
-      ["AIRTABLE_OAUTH_CLIENT_SECRET", "airtable-client-secret"],
-      ["NGROK_API_KEY", "ngrok-api-key"],
-      ["NGROK_COMPUTER_CONNECTOR_DOMAIN", "computer.example.com"],
-    ]);
-    const readEnv = (name: string) => {
-      return env.get(name);
-    };
-
-    expect(getConfiguredConnectorTypes(readEnv)).toStrictEqual(
-      getRuntimeAvailableConnectorTypes(readEnv),
-    );
-  });
 
   it("includes api-token default connectors without environment credentials or feature switches", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);

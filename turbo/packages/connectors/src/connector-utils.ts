@@ -8,7 +8,6 @@ import {
   type ConnectorCliAuthFlow,
   type ConnectorConfig,
   type ConnectorOAuthConfig,
-  type ConnectorSecretConfig,
   type ConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -48,7 +47,7 @@ export function getConnectorAuthMethod(
 /**
  * Get CLI auth flow config for connector types that support provider CLI auth.
  */
-export function getConnectorCliAuthConfig(
+function getConnectorCliAuthConfig(
   type: ConnectorType,
 ): ConnectorCliAuthConfig | undefined {
   return CONNECTOR_TYPES[type].cliAuth;
@@ -72,7 +71,7 @@ export function getConnectorCliAuthModes(
 /**
  * Get default auth method for a connector type
  */
-export function getConnectorDefaultAuthMethod(
+function getConnectorDefaultAuthMethod(
   type: ConnectorType,
 ): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
@@ -394,35 +393,13 @@ export function getRuntimeAvailableConnectorTypes(
 }
 
 /**
- * Compatibility wrapper for existing configuredTypes response semantics.
- *
- * The API response field and existing call sites still use "configuredTypes";
- * new connector utility code should prefer getRuntimeAvailableConnectorTypes.
- */
-export function getConfiguredConnectorTypes(
-  readEnv: ConnectorEnvReader,
-): ConnectorType[] {
-  return getRuntimeAvailableConnectorTypes(readEnv);
-}
-
-/**
- * Get secrets config for a specific auth method
- */
-export function getConnectorSecretsForAuthMethod(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodType,
-): Record<string, ConnectorSecretConfig> | undefined {
-  return getConnectorAuthMethod(type, authMethod)?.secrets;
-}
-
-/**
  * Get secret names for a specific auth method
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodType,
 ): string[] {
-  const secrets = getConnectorSecretsForAuthMethod(type, authMethod);
+  const secrets = getConnectorAuthMethod(type, authMethod)?.secrets;
   return secrets ? Object.keys(secrets) : [];
 }
 
@@ -655,26 +632,6 @@ export function getConnectorTypeForSecretName(
     }
   }
   return null;
-}
-
-/**
- * Get required secret names for a connector's api-token auth method.
- * Returns null if the connector type does not support api-token auth.
- * Note: Returns ALL required field names regardless of storage type (secret or variable).
- */
-export function getApiTokenRequiredSecretNames(
-  type: ConnectorType,
-): string[] | null {
-  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
-  if (!apiTokenConfig) return null;
-
-  return Object.entries(apiTokenConfig.secrets)
-    .filter(([, cfg]) => {
-      return cfg.required;
-    })
-    .map(([name]) => {
-      return name;
-    });
 }
 
 /**

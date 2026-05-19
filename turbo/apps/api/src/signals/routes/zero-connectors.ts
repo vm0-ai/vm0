@@ -15,7 +15,7 @@ import {
   zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  getConnectorAuthMethods,
+  getConnectorAuthMethod,
   getConnectorOAuthConfig,
   getConnectorOAuthEnvKeys,
   isGoogleOAuthConnector,
@@ -555,7 +555,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         400,
       );
     }
-    if (!("oauth" in getConnectorAuthMethods(type))) {
+    if (!getConnectorAuthMethod(type, "oauth")) {
       return jsonResponse(
         { error: `${type} connector does not use OAuth` },
         400,

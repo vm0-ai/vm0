@@ -455,12 +455,3 @@ export function getRuntimeAvailableConnectorTypes(
     return typeof value === "string" ? value : undefined;
   });
 }
-
-/**
- * Compatibility wrapper for existing configuredTypes response semantics.
- */
-export function getConfiguredConnectorTypes(
-  currentEnv: ProviderEnv,
-): ConnectorType[] {
-  return getRuntimeAvailableConnectorTypes(currentEnv);
-}

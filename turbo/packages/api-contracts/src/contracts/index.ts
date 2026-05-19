@@ -704,8 +704,6 @@ export {
 } from "@vm0/connectors/connectors";
 export {
   getConnectorAuthMethods,
-  getConnectorDefaultAuthMethod,
-  getConnectorSecretsForAuthMethod,
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
   getEligibleConnectorTypes,
@@ -718,7 +716,6 @@ export {
   hasRequiredScopes,
   getScopeDiff,
   type ScopeDiff,
-  getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
   searchConnectors,
