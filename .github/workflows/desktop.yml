@@ -95,9 +95,14 @@ jobs:
             find apps/desktop/out -maxdepth 4 -type d -print || true
             exit 1
           fi
-          if [ ! -f "$app_dir/Contents/Resources/app.asar" ]; then
-            echo "No packaged app.asar found"
+          if [ ! -f "$app_dir/Contents/Resources/app/dist/main.js" ]; then
+            echo "No packaged app main process bundle found"
             find "$app_dir/Contents/Resources" -maxdepth 2 -print || true
+            exit 1
+          fi
+          if [ -e "$app_dir/Contents/Resources/app/src" ]; then
+            echo "Packaged app should not contain desktop source files"
+            find "$app_dir/Contents/Resources/app/src" -maxdepth 2 -print || true
             exit 1
           fi
 
@@ -107,7 +112,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "vm0"
 
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
-          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app.asar"
+          unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"
           echo "path=$artifact_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload unsigned macOS artifact

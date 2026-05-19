@@ -3,14 +3,23 @@ module.exports = {
     name: "Zero",
     executableName: "Zero",
     appBundleId: "ai.vm0.zero.desktop",
-    asar: true,
+    asar: false,
     protocols: [
       {
         name: "Zero Desktop Auth",
         schemes: ["vm0"],
       },
     ],
-    ignore: [/^\/node_modules($|\/)/],
+    ignore: [
+      /^\/node_modules($|\/)/,
+      /^\/src($|\/)/,
+      /^\/\.turbo($|\/)/,
+      /^\/\.npmrc$/,
+      /^\/README\.md$/,
+      /^\/forge\.config\.js$/,
+      /^\/tsconfig\.json$/,
+      /^\/vitest\.config\.ts$/,
+    ],
   },
   rebuildConfig: {},
   makers: [
