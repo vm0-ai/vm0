@@ -130,9 +130,9 @@ describe("desktop auth", () => {
   const platformUrl = new URL("https://app.vm0.ai");
   const code = "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
 
-  it("builds the system-browser sign-in URL with a hosted callback", () => {
+  it("builds the system-browser desktop auth start URL", () => {
     expect(buildDesktopAuthStartUrl(platformUrl)).toBe(
-      "https://app.vm0.ai/sign-in?redirect_url=https%3A%2F%2Fapp.vm0.ai%2Fdesktop-auth%2Fcallback",
+      "https://app.vm0.ai/desktop-auth/start",
     );
   });
 
@@ -140,6 +140,12 @@ describe("desktop auth", () => {
     expect(
       isDesktopAuthStartNavigation(
         "https://app.vm0.ai/sign-in",
+        allowedOrigins,
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAuthStartNavigation(
+        "https://app.vm0.ai/desktop-auth/start",
         allowedOrigins,
       ),
     ).toBe(true);

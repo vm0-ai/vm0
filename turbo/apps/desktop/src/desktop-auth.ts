@@ -3,8 +3,12 @@ export const DESKTOP_AUTH_PROTOCOL = "vm0";
 const DESKTOP_AUTH_HOST = "auth";
 const DESKTOP_AUTH_CALLBACK_PATH = "/callback";
 const DESKTOP_AUTH_CONSUME_PATH = "/desktop-auth/consume";
-const DESKTOP_AUTH_CALLBACK_WEB_PATH = "/desktop-auth/callback";
-const DESKTOP_AUTH_START_PATHS = new Set(["/sign-in", "/sign-up"]);
+const DESKTOP_AUTH_START_WEB_PATH = "/desktop-auth/start";
+const DESKTOP_AUTH_START_PATHS = new Set([
+  "/desktop-auth/start",
+  "/sign-in",
+  "/sign-up",
+]);
 const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 interface DesktopAuthCallback {
@@ -51,10 +55,7 @@ export function buildDesktopAuthConsumeUrl(
 }
 
 export function buildDesktopAuthStartUrl(platformUrl: URL): string {
-  const signInUrl = new URL("/sign-in", platformUrl);
-  const callbackUrl = new URL(DESKTOP_AUTH_CALLBACK_WEB_PATH, platformUrl);
-  signInUrl.searchParams.set("redirect_url", callbackUrl.toString());
-  return signInUrl.toString();
+  return new URL(DESKTOP_AUTH_START_WEB_PATH, platformUrl).toString();
 }
 
 export function isDesktopAuthStartNavigation(

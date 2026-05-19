@@ -47,9 +47,7 @@ export function DesktopAuthCallbackClient() {
     didRun.current = true;
 
     if (!isSignedIn) {
-      window.location.href = `/sign-in?redirect_url=${encodeURIComponent(
-        "/desktop-auth/callback",
-      )}`;
+      window.location.replace("/desktop-auth/start");
       return;
     }
 

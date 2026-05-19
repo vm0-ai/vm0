@@ -80,6 +80,7 @@ describe("localeGuardLayer", () => {
     });
 
     it("should keep desktop auth outside locale processing", () => {
+      expect(classifyRoute("/desktop-auth/start")).toBe("skip");
       expect(classifyRoute("/desktop-auth/consume")).toBe("skip");
       expect(classifyRoute("/desktop-auth/callback")).toBe("skip");
     });
