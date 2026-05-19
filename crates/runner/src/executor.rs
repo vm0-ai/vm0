@@ -2810,6 +2810,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_unsupported_schema() {
+        let sandbox = MockSandbox::new("test");
+        let mut diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        );
+        diagnostic.schema_version = FAILURE_DIAGNOSTIC_SCHEMA_VERSION + 1;
+        sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_failure_diagnostic_file_returns_none_on_read_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_read_file_result(Err(sandbox_exec_error("vsock timeout")));
+
+        let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
+
+        assert!(diagnostic.is_none());
+    }
+
+    #[tokio::test]
     async fn read_guest_failure_diagnostic_file_returns_none_on_oversized_content() {
         let sandbox = MockSandbox::new("test");
         sandbox.push_read_file_result(Ok(Some(vec![
