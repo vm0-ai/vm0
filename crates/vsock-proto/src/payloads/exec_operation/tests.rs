@@ -805,6 +805,24 @@ fn exec_start_rejects_expected_exit_count_above_limit() {
 }
 
 #[test]
+fn exec_start_rejects_truncated_expected_exit_count() {
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    payload.truncate(payload.len() - 2);
+
+    let err = decode_exec_start(&payload).unwrap_err();
+    assert_invalid_payload(err, "exec start expected_exit_count truncated");
+}
+
+#[test]
 fn exec_start_rejects_truncated_expected_exit_codes() {
     let mut payload = encode_exec_start_with_expected_exit_codes(ExecStartEncodeRequest {
         lifecycle: ExecLifecyclePolicy::OneShot,
