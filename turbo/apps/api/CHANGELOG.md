@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.56.1](https://github.com/vm0-ai/vm0/compare/api-v1.56.0...api-v1.56.1) (2026-05-19)
+
+
+### Refactoring
+
+* cut over cron telegram cleanup route ([#13958](https://github.com/vm0-ai/vm0/issues/13958)) ([d33d5bc](https://github.com/vm0-ai/vm0/commit/d33d5bc21c71df6195138c483b4de4afe982b7fc))
+* cut over zero insights route ([#13949](https://github.com/vm0-ai/vm0/issues/13949)) ([6cee53d](https://github.com/vm0-ai/vm0/commit/6cee53df7b45caaff58cbf4e08355d8159efe4c0))
+
 ## [1.56.0](https://github.com/vm0-ai/vm0/compare/api-v1.55.0...api-v1.56.0) (2026-05-19)
 
 

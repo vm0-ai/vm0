@@ -1,5 +1,16 @@
 # Changelog
 
+## [12.376.1](https://github.com/vm0-ai/vm0/compare/web-v12.376.0...web-v12.376.1) (2026-05-19)
+
+
+### Refactoring
+
+* cut over cron telegram cleanup route ([#13958](https://github.com/vm0-ai/vm0/issues/13958)) ([d33d5bc](https://github.com/vm0-ai/vm0/commit/d33d5bc21c71df6195138c483b4de4afe982b7fc))
+* cut over zero insights route ([#13949](https://github.com/vm0-ai/vm0/issues/13949)) ([6cee53d](https://github.com/vm0-ai/vm0/commit/6cee53df7b45caaff58cbf4e08355d8159efe4c0))
+* migrate zero runs queue rewrite ([#13951](https://github.com/vm0-ai/vm0/issues/13951)) ([deea1c6](https://github.com/vm0-ai/vm0/commit/deea1c66b860c2c8ea69d2635abd25942fc6fe66))
+* migrate zero runs runner rewrite ([#13960](https://github.com/vm0-ai/vm0/issues/13960)) ([80394cd](https://github.com/vm0-ai/vm0/commit/80394cd3d6e16c89602f6d3663f023f7288a1bea))
+* proxy test oauth authorize route to api ([#13953](https://github.com/vm0-ai/vm0/issues/13953)) ([20591a4](https://github.com/vm0-ai/vm0/commit/20591a46a2ad27730d49918cdb5b179c2c37f427))
+
 ## [12.376.0](https://github.com/vm0-ai/vm0/compare/web-v12.375.1...web-v12.376.0) (2026-05-19)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.366.1](https://github.com/vm0-ai/vm0/compare/app-v0.366.0...app-v0.366.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* **desktop:** complete auth callback handoff ([#13959](https://github.com/vm0-ai/vm0/issues/13959)) ([846c076](https://github.com/vm0-ai/vm0/commit/846c076be0c391de49a9d2eaad649b8f827d5cdd))
+
 ## [0.366.0](https://github.com/vm0-ai/vm0/compare/app-v0.365.1...app-v0.366.0) (2026-05-19)
 
 
