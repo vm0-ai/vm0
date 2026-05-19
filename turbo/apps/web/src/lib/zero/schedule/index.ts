@@ -1,6 +1,5 @@
 export {
   deploySchedule,
-  listSchedules,
   getScheduleByName,
   getScheduleRecentRuns,
   deleteSchedule,

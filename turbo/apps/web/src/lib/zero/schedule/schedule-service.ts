@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -471,66 +471,6 @@ export async function deploySchedule(
     schedule: toResponse(created, displayName),
     created: true,
   };
-}
-
-/**
- * List schedules for a user, optionally scoped to an org.
- */
-export async function listSchedules(
-  userId: string,
-  orgId?: string,
-): Promise<ScheduleResponse[]> {
-  log.debug(
-    `Listing schedules for user ${userId}${orgId ? ` in org ${orgId}` : ""}`,
-  );
-
-  // Query schedules by userId, optionally filtered by orgId
-  const conditions = [eq(zeroAgentSchedules.userId, userId)];
-  if (orgId) {
-    conditions.push(eq(zeroAgentSchedules.orgId, orgId));
-  }
-
-  const userSchedules = await globalThis.services.db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(and(...conditions));
-
-  if (userSchedules.length === 0) {
-    return [];
-  }
-
-  // Load agent compose data (with displayName) for all schedules
-  const agentIds = [
-    ...new Set(
-      userSchedules.map((s) => {
-        return s.agentId;
-      }),
-    ),
-  ];
-  const agentRows = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      displayName: zeroAgents.displayName,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(inArray(agentComposes.id, agentIds));
-  const agentMap = new Map(
-    agentRows.map((r) => {
-      return [r.id, r];
-    }),
-  );
-
-  return userSchedules
-    .filter((schedule) => {
-      // FK constraints with CASCADE should guarantee these exist.
-      // Skip orphaned rows rather than masking with fallback values.
-      return agentMap.has(schedule.agentId);
-    })
-    .map((schedule) => {
-      const agent = agentMap.get(schedule.agentId)!;
-      return toResponse(schedule, agent.displayName ?? null);
-    });
 }
 
 /**
