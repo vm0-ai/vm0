@@ -111,6 +111,8 @@ const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
 const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/register";
+const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
+  "/api/zero/computer-use/unregister";
 const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
   "/api/zero/connectors/:type/authorize";
 const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
@@ -370,6 +372,10 @@ export const API_BACKEND_REWRITES = [
   [
     ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
     "/api/zero/computer-use/register",
+  ],
+  [
+    ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
+    "/api/zero/computer-use/unregister",
   ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
   [
