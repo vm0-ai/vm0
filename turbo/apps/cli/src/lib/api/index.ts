@@ -225,6 +225,9 @@ export {
   listLocalBrowserHosts,
 } from "./domains/zero-local-browser";
 
+// Domain modules - Zero Maps
+export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
+
 // Domain modules - Web
 export {
   downloadWebFile,

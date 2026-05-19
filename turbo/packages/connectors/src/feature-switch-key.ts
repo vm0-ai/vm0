@@ -63,4 +63,5 @@ export enum FeatureSwitchKey {
   VoiceChatRealtimeBilling = "voiceChatRealtimeBilling",
   HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
+  ZeroMaps = "zeroMaps",
 }

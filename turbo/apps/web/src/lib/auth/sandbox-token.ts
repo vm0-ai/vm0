@@ -19,6 +19,7 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
     ["local-browser:write", FeatureSwitchKey.LocalBrowserUse],
     ["host:read", FeatureSwitchKey.HostedSites],
     ["host:write", FeatureSwitchKey.HostedSites],
+    ["maps:read", FeatureSwitchKey.ZeroMaps],
   ]);
 
 /**

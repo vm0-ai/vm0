@@ -368,6 +368,7 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).not.toContain("local-browser:write");
       expect(auth?.capabilities).not.toContain("host:read");
       expect(auth?.capabilities).not.toContain("host:write");
+      expect(auth?.capabilities).not.toContain("maps:read");
     });
 
     it("should include conditional capabilities when feature flags are enabled", async () => {
@@ -379,6 +380,7 @@ describe("sandbox-token", () => {
       expect(auth?.capabilities).toContain("computer-use:write");
       expect(auth?.capabilities).toContain("local-browser:read");
       expect(auth?.capabilities).toContain("local-browser:write");
+      expect(auth?.capabilities).toContain("maps:read");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
@@ -397,6 +399,7 @@ describe("sandbox-token", () => {
         "chat-message:write",
         "chat-message:read",
         "connector:read",
+        "maps:read",
         "computer-use:write",
         "file:read",
         "file:write",

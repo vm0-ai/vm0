@@ -47,6 +47,7 @@ export const ZERO_CAPABILITIES = [
   "chat-message:write",
   "chat-message:read",
   "connector:read",
+  "maps:read",
   "computer-use:write",
   "file:read",
   "file:write",
@@ -123,6 +124,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Read chat messages",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
+    "maps:read": { group: "Maps", label: "Use managed maps services" },
     "computer-use:write": {
       group: "Computer Use",
       label: "Control desktop apps",

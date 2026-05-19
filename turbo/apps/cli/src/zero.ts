@@ -28,6 +28,7 @@ import { zeroWebCommand } from "./commands/zero/web";
 import { zeroLocalAgentCommand } from "./commands/zero/local-agent";
 import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
 import { zeroHostCommand } from "./commands/zero/host";
+import { zeroMapsCommand } from "./commands/zero/maps";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
@@ -67,6 +68,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "built-in": "file:write",
   web: null,
   host: "host:write",
+  maps: "maps:read",
   "local-agent": ["local-agent:read", "local-agent:write"],
   "local-browser": ["local-browser:read", "local-browser:write"],
 };
@@ -96,6 +98,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroBuiltInCommand,
   zeroWebCommand,
   zeroHostCommand,
+  zeroMapsCommand,
   zeroLocalAgentCommand,
   zeroLocalBrowserCommand,
 ];
@@ -151,6 +154,11 @@ export function buildZeroHelpText(
     ...(shouldHideCommand("host", payload)
       ? []
       : ["  Host a static site?    zero host ./dist --site my-site --spa"]),
+    ...(shouldHideCommand("maps", payload)
+      ? []
+      : [
+          '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
+        ]),
     "  Check your identity?   zero whoami",
   ];
 

@@ -32,6 +32,7 @@ function buildCommands(): Command[] {
     new Command("built-in"),
     new Command("web"),
     new Command("host"),
+    new Command("maps"),
     new Command("local-agent"),
     new Command("local-browser"),
   ];
@@ -161,6 +162,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "built-in",
       "host",
+      "maps",
       "local-agent",
       "local-browser",
     ]);
@@ -362,6 +364,53 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("built-in");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show maps when maps:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["maps:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("maps");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide maps when maps:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("maps");
+  });
+
+  it("should show the maps help example when maps:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["maps:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Get directions?",
+    );
+  });
+
+  it("should hide the maps help example when maps:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Get directions?",
+    );
   });
 
   it("should show the host help example when host:write capability is present", () => {
