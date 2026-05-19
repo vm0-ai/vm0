@@ -1628,17 +1628,21 @@ impl Sandbox for FirecrackerSandbox {
         let guest = Arc::clone(&self.guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
-        let mut normal_operations_fence = self.park_fence.take();
-        let result = unpark_with_ready_for_operations(
+        let memory_mb = self.config.resources.memory_mb;
+        let state_rx = self.state_tx.subscribe();
+        let is_parked = &mut self.is_parked;
+        let balloon_controller = self.runtime.balloon_mut();
+        let park_fence = &mut self.park_fence;
+        unpark_with_ready_for_operations(
             &id,
             &coordinator,
             || {
                 unpark_inner(
-                    &mut self.is_parked,
-                    self.config.resources.memory_mb,
-                    self.runtime.balloon_mut(),
+                    is_parked,
+                    memory_mb,
+                    balloon_controller,
                     &api_sock,
-                    self.state_tx.subscribe(),
+                    state_rx,
                     &id,
                 )
             },
@@ -1652,14 +1656,10 @@ impl Sandbox for FirecrackerSandbox {
                 guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
             },
             || {
-                drop(normal_operations_fence.take());
+                drop(park_fence.take());
             },
         )
-        .await;
-        if let Some(fence) = normal_operations_fence.take() {
-            self.park_fence = Some(fence);
-        }
-        result
+        .await
     }
 
     // -- operations --
@@ -3949,6 +3949,45 @@ mod tests {
         }
 
         assert_eq!(logged_events(&events), vec!["firecracker_unpark"]);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_cancel_during_firecracker_unpark_keeps_fence() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
+        let (firecracker_started_tx, firecracker_started_rx) = tokio::sync::oneshot::channel();
+
+        {
+            let unpark = super::unpark_with_ready_for_operations(
+                "test-sandbox",
+                &coordinator,
+                || async move {
+                    let _ = firecracker_started_tx.send(());
+                    std::future::pending::<sandbox::Result<()>>().await
+                },
+                || async { Ok(()) },
+                || {
+                    drop(fence.take());
+                },
+            );
+            tokio::pin!(unpark);
+
+            tokio::select! {
+                result = &mut unpark => panic!("unpark completed unexpectedly: {result:?}"),
+                result = firecracker_started_rx => result.unwrap(),
+            }
+        }
+
+        assert!(fence.is_some());
+        assert!(logged_events(&events).is_empty());
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
