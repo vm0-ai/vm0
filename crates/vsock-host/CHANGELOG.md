@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.2...vsock-host-v0.17.3) (2026-05-19)
+
+
+### Refactoring
+
+* fence normal operations during sandbox park ([#13898](https://github.com/vm0-ai/vm0/issues/13898)) ([00358eb](https://github.com/vm0-ai/vm0/commit/00358ebbe2bce58f5081cb4b98c5e57958f947c3))
+
 ## [0.17.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.1...vsock-host-v0.17.2) (2026-05-19)
 
 

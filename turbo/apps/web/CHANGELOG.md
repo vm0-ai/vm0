@@ -1,5 +1,40 @@
 # Changelog
 
+## [12.376.0](https://github.com/vm0-ai/vm0/compare/web-v12.375.1...web-v12.376.0) (2026-05-19)
+
+
+### Features
+
+* add built-in website generation ([#13655](https://github.com/vm0-ai/vm0/issues/13655)) ([f88868e](https://github.com/vm0-ai/vm0/commit/f88868ef7362503752aaa7dbb5465d2fa0770ed6))
+* add sproutgigs connector ([#13929](https://github.com/vm0-ai/vm0/issues/13929)) ([d3d8dd4](https://github.com/vm0-ai/vm0/commit/d3d8dd4a30e2ae4f4ab73e80f93839758b2a680d))
+
+
+### Bug Fixes
+
+* block telegram connect before onboarding ([#13942](https://github.com/vm0-ai/vm0/issues/13942)) ([1331dfd](https://github.com/vm0-ai/vm0/commit/1331dfdae8efec681d2c7ba55fb7df2f331ca6c8))
+* remove unofficial suno connector ([#13897](https://github.com/vm0-ai/vm0/issues/13897)) ([a2b95d6](https://github.com/vm0-ai/vm0/commit/a2b95d61b1e65cd1b8f5862c7228731c11bb4b85))
+
+
+### Refactoring
+
+* cut over cron process usage events route ([#13923](https://github.com/vm0-ai/vm0/issues/13923)) ([6700c58](https://github.com/vm0-ai/vm0/commit/6700c58c48b9cf3f32d04f1ca9d39ad30db1bf6f))
+* cut over cron reconcile billing entitlements route ([#13934](https://github.com/vm0-ai/vm0/issues/13934)) ([3c51fde](https://github.com/vm0-ai/vm0/commit/3c51fde143fa9cc1a02c86e1fe75cc3acb98d615))
+* cut over zero insights range route ([#13941](https://github.com/vm0-ai/vm0/issues/13941)) ([d446967](https://github.com/vm0-ai/vm0/commit/d446967502f1db37326807e6d37a4450743e6b8b))
+* migrate zero schedules root rewrite ([#13920](https://github.com/vm0-ai/vm0/issues/13920)) ([9db1a6e](https://github.com/vm0-ai/vm0/commit/9db1a6e8ac9f546697100f183bff622013c3e0fa))
+* migrate zero schedules run rewrite ([#13932](https://github.com/vm0-ai/vm0/issues/13932)) ([a7e8be4](https://github.com/vm0-ai/vm0/commit/a7e8be4454fe0b699e62591bbaea2a6ec690b26d))
+* proxy test oauth echo route to api ([#13936](https://github.com/vm0-ai/vm0/issues/13936)) ([d919095](https://github.com/vm0-ai/vm0/commit/d9190954eea60268f2859f5a9682172bf48727b5))
+* remove codex oauth connector ([#13937](https://github.com/vm0-ai/vm0/issues/13937)) ([6a60a23](https://github.com/vm0-ai/vm0/commit/6a60a23bc1ff798e3c1f5c5431cd0da59dd6e83e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+    * @vm0/db bumped to 1.14.15
+
 ## [12.375.1](https://github.com/vm0-ai/vm0/compare/web-v12.375.0...web-v12.375.1) (2026-05-19)
 
 

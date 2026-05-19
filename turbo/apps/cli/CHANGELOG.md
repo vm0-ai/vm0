@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.157.0](https://github.com/vm0-ai/vm0/compare/cli-v9.156.9...cli-v9.157.0) (2026-05-19)
+
+
+### Features
+
+* add built-in website generation ([#13655](https://github.com/vm0-ai/vm0/issues/13655)) ([f88868e](https://github.com/vm0-ai/vm0/commit/f88868ef7362503752aaa7dbb5465d2fa0770ed6))
+* add fal image-to-image generation ([#13890](https://github.com/vm0-ai/vm0/issues/13890)) ([98a1a94](https://github.com/vm0-ai/vm0/commit/98a1a94647d08b31070ff9385982c768aa0de19d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+
 ## [9.156.9](https://github.com/vm0-ai/vm0/compare/cli-v9.156.8...cli-v9.156.9) (2026-05-19)
 
 

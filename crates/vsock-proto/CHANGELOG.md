@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.1...vsock-proto-v0.18.2) (2026-05-19)
+
+
+### Documentation
+
+* document vsock protocol wire constants ([#13926](https://github.com/vm0-ai/vm0/issues/13926)) ([d232c21](https://github.com/vm0-ai/vm0/commit/d232c212ceb1e897dc44db641f69b75d775e6ea3))
+
 ## [0.18.1](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.0...vsock-proto-v0.18.1) (2026-05-18)
 
 

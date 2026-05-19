@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.56.0](https://github.com/vm0-ai/vm0/compare/api-v1.55.0...api-v1.56.0) (2026-05-19)
+
+
+### Features
+
+* add Atlas Cloud connector ([#13896](https://github.com/vm0-ai/vm0/issues/13896)) ([d6fe5a7](https://github.com/vm0-ai/vm0/commit/d6fe5a76be42291e5826daf3363e8ded0f040e48))
+* add built-in website generation ([#13655](https://github.com/vm0-ai/vm0/issues/13655)) ([f88868e](https://github.com/vm0-ai/vm0/commit/f88868ef7362503752aaa7dbb5465d2fa0770ed6))
+* add fal image-to-image generation ([#13890](https://github.com/vm0-ai/vm0/issues/13890)) ([98a1a94](https://github.com/vm0-ai/vm0/commit/98a1a94647d08b31070ff9385982c768aa0de19d))
+* enable stored secret kms writes ([#13946](https://github.com/vm0-ai/vm0/issues/13946)) ([77f6fd7](https://github.com/vm0-ai/vm0/commit/77f6fd7d2fc61ced4e4350260235d6d5dd84efc3))
+
+
+### Bug Fixes
+
+* block telegram connect before onboarding ([#13942](https://github.com/vm0-ai/vm0/issues/13942)) ([1331dfd](https://github.com/vm0-ai/vm0/commit/1331dfdae8efec681d2c7ba55fb7df2f331ca6c8))
+
+
+### Refactoring
+
+* cut over cron process usage events route ([#13923](https://github.com/vm0-ai/vm0/issues/13923)) ([6700c58](https://github.com/vm0-ai/vm0/commit/6700c58c48b9cf3f32d04f1ca9d39ad30db1bf6f))
+* cut over cron reconcile billing entitlements route ([#13934](https://github.com/vm0-ai/vm0/issues/13934)) ([3c51fde](https://github.com/vm0-ai/vm0/commit/3c51fde143fa9cc1a02c86e1fe75cc3acb98d615))
+* migrate zero schedules root rewrite ([#13920](https://github.com/vm0-ai/vm0/issues/13920)) ([9db1a6e](https://github.com/vm0-ai/vm0/commit/9db1a6e8ac9f546697100f183bff622013c3e0fa))
+* proxy test oauth echo route to api ([#13936](https://github.com/vm0-ai/vm0/issues/13936)) ([d919095](https://github.com/vm0-ai/vm0/commit/d9190954eea60268f2859f5a9682172bf48727b5))
+* remove codex oauth connector ([#13937](https://github.com/vm0-ai/vm0/issues/13937)) ([6a60a23](https://github.com/vm0-ai/vm0/commit/6a60a23bc1ff798e3c1f5c5431cd0da59dd6e83e))
+* remove obsolete connector helper exports ([#13933](https://github.com/vm0-ai/vm0/issues/13933)) ([efd4129](https://github.com/vm0-ai/vm0/commit/efd41291ae124b30010102caab81ca5c39505ee0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+    * @vm0/db bumped to 1.14.15
+
 ## [1.55.0](https://github.com/vm0-ai/vm0/compare/api-v1.54.9...api-v1.55.0) (2026-05-19)
 
 

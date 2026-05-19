@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.2...guest-agent-v0.32.3) (2026-05-19)
+
+
+### Bug Fixes
+
+* disable imagegen skill for codex runner ([#13902](https://github.com/vm0-ai/vm0/issues/13902)) ([0d1d61d](https://github.com/vm0-ai/vm0/commit/0d1d61d7a323442dcd2d4d1d98404b6aaceabc0f))
+
 ## [0.32.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.1...guest-agent-v0.32.2) (2026-05-19)
 
 

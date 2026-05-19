@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.282.0](https://github.com/vm0-ai/vm0/compare/core-v8.281.7...core-v8.282.0) (2026-05-19)
+
+
+### Features
+
+* enable stored secret kms writes ([#13946](https://github.com/vm0-ai/vm0/issues/13946)) ([77f6fd7](https://github.com/vm0-ai/vm0/commit/77f6fd7d2fc61ced4e4350260235d6d5dd84efc3))
+
+
+### Refactoring
+
+* remove obsolete connector helper exports ([#13933](https://github.com/vm0-ai/vm0/issues/13933)) ([efd4129](https://github.com/vm0-ai/vm0/commit/efd41291ae124b30010102caab81ca5c39505ee0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+
 ## [8.281.7](https://github.com/vm0-ai/vm0/compare/core-v8.281.6...core-v8.281.7) (2026-05-19)
 
 

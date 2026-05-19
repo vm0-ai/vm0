@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.366.0](https://github.com/vm0-ai/vm0/compare/app-v0.365.1...app-v0.366.0) (2026-05-19)
+
+
+### Features
+
+* add Atlas Cloud connector ([#13896](https://github.com/vm0-ai/vm0/issues/13896)) ([d6fe5a7](https://github.com/vm0-ai/vm0/commit/d6fe5a76be42291e5826daf3363e8ded0f040e48))
+* add priority api connectors ([#13924](https://github.com/vm0-ai/vm0/issues/13924)) ([7813d13](https://github.com/vm0-ai/vm0/commit/7813d13763d5aebdb84f1e976aba755df548d6e1))
+* add sproutgigs connector ([#13929](https://github.com/vm0-ai/vm0/issues/13929)) ([d3d8dd4](https://github.com/vm0-ai/vm0/commit/d3d8dd4a30e2ae4f4ab73e80f93839758b2a680d))
+
+
+### Bug Fixes
+
+* remove unofficial suno connector ([#13897](https://github.com/vm0-ai/vm0/issues/13897)) ([a2b95d6](https://github.com/vm0-ai/vm0/commit/a2b95d61b1e65cd1b8f5862c7228731c11bb4b85))
+
+
+### Refactoring
+
+* remove codex oauth connector ([#13937](https://github.com/vm0-ai/vm0/issues/13937)) ([6a60a23](https://github.com/vm0-ai/vm0/commit/6a60a23bc1ff798e3c1f5c5431cd0da59dd6e83e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.31.0
+    * @vm0/connectors bumped to 1.20.0
+    * @vm0/core bumped to 8.282.0
+
 ## [0.365.1](https://github.com/vm0-ai/vm0/compare/app-v0.365.0...app-v0.365.1) (2026-05-19)
 
 
