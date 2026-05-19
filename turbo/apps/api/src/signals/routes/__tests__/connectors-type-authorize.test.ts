@@ -42,6 +42,24 @@ describe("GET /api/connectors/:type/authorize", () => {
   beforeEach(() => {
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
+    mockOptionalEnv("DOCUSIGN_OAUTH_CLIENT_ID", "docusign-test-client-id");
+    mockOptionalEnv(
+      "DOCUSIGN_OAUTH_CLIENT_SECRET",
+      "docusign-test-client-secret",
+    );
+    mockOptionalEnv("MERCURY_OAUTH_CLIENT_ID", "mercury-test-client-id");
+    mockOptionalEnv(
+      "MERCURY_OAUTH_CLIENT_SECRET",
+      "mercury-test-client-secret",
+    );
+    mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-test-client-id");
+    mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-test-client-secret");
+    mockOptionalEnv("REDDIT_OAUTH_CLIENT_ID", "reddit-test-client-id");
+    mockOptionalEnv("REDDIT_OAUTH_CLIENT_SECRET", "reddit-test-client-secret");
+    mockOptionalEnv("SLACK_CLIENT_ID", "test-slack-client-id");
+    mockOptionalEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
+    mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
+    mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
   });
 
   it("returns 400 for an unknown connector type", async () => {
@@ -84,5 +102,169 @@ describe("GET /api/connectors/:type/authorize", () => {
         return cookie.startsWith("connector_oauth_state=");
       }),
     ).toBeTruthy();
+  });
+
+  it("sets the state cookie attributes", async () => {
+    const response = await requestAuthorize("github", { authenticated: true });
+
+    const cookies = response.headers.getSetCookie();
+    const stateCookie = cookies.find((cookie) => {
+      return cookie.startsWith("connector_oauth_state=");
+    });
+    expect(stateCookie).toBeDefined();
+    expect(stateCookie).toContain("HttpOnly");
+    expect(stateCookie).toContain("SameSite=Lax");
+  });
+
+  it("stores the connector session id when provided", async () => {
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      session: "session-123",
+    });
+
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith("connector_oauth_session=session-123");
+      }),
+    ).toBeTruthy();
+  });
+
+  it("does not set a session cookie when the query parameter is absent", async () => {
+    const response = await requestAuthorize("github", { authenticated: true });
+
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith("connector_oauth_session=");
+      }),
+    ).toBeFalsy();
+  });
+
+  it("returns 400 for refresh-only codex-oauth connector", async () => {
+    const response = await requestAuthorize("codex-oauth", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error:
+        "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
+    });
+  });
+
+  it("uses Slack user_scope rather than scope", async () => {
+    const response = await requestAuthorize("slack", { authenticated: true });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://slack.com/oauth/v2/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe("test-slack-client-id");
+    expect(url.searchParams.get("user_scope")).toContain("channels:read");
+    expect(url.searchParams.get("scope")).toBeNull();
+  });
+
+  it("includes DocuSign OAuth parameters", async () => {
+    const response = await requestAuthorize("docusign", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://account-d.docusign.com/oauth/auth",
+    );
+    expect(url.searchParams.get("client_id")).toBe("docusign-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/docusign/callback`,
+    );
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toContain("signature");
+    expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("includes Mercury OAuth parameters", async () => {
+    const response = await requestAuthorize("mercury", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://oauth2.mercury.com/oauth2/auth",
+    );
+    expect(url.searchParams.get("client_id")).toBe("mercury-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/mercury/callback`,
+    );
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toBe("offline_access");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("includes the Notion owner parameter", async () => {
+    const response = await requestAuthorize("notion", { authenticated: true });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://api.notion.com/v1/oauth/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe("notion-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/notion/callback`,
+    );
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("owner")).toBe("user");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("requests permanent Reddit authorization", async () => {
+    const response = await requestAuthorize("reddit", { authenticated: true });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://www.reddit.com/api/v1/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe("reddit-test-client-id");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toBe("identity read");
+    expect(url.searchParams.get("duration")).toBe("permanent");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("includes X PKCE parameters", async () => {
+    const response = await requestAuthorize("x", { authenticated: true });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://twitter.com/i/oauth2/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe("x-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/x/callback`,
+    );
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
   });
 });

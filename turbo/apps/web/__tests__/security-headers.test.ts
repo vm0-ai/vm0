@@ -279,6 +279,13 @@ const CRON_AGGREGATE_INSIGHTS_NEXT_NEGATIVE_PATHS = [
   "/api/cron/aggregate-insights/extra",
   "/api/cron",
 ] as const;
+const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
+const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
+const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
+  "/api/connectors/github/authorize/extra",
+  "/api/connectors/authorize",
+  "/api/connectors/github/callback",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -667,6 +674,14 @@ const STRIPE_CLI_AUTH_SESSIONS_PATH =
   "/api/zero/connectors/stripe/cli-auth/sessions";
 const STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH =
   "/api/zero/connectors/stripe/cli-auth/sessions/complete";
+const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/authorize";
+const ZERO_CONNECTORS_AUTHORIZE_PATH = "/api/zero/connectors/github/authorize";
+const ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/authorize/extra",
+  "/api/zero/connectors/authorize",
+  "/api/zero/connectors/github/callback",
+] as const;
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -959,6 +974,11 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/aggregate-insights",
         },
         {
+          source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/connectors/:type/authorize",
+        },
+        {
           source: "/api/device-token",
           destination: "https://api.example.test/api/device-token",
         },
@@ -1056,6 +1076,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_API_KEYS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/api-keys",
+        },
+        {
+          source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/connectors/:type/authorize",
         },
         {
           source: "/api/zero/devices/bb0/confirm",
@@ -1931,6 +1956,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the connector authorize rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/connectors/:type/authorize",
+    });
+
+    const matcher = getPathMatch(CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact Stripe CLI auth sessions rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -1961,6 +2011,32 @@ describe("API backend rewrites", () => {
 
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_PATH)).toStrictEqual({});
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH)).toBe(false);
+  });
+
+  it("should match only the zero connector authorize rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/authorize",
+    });
+
+    const matcher = getPathMatch(ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the exact email unsubscribe rewrite", async () => {

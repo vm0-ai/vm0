@@ -86,12 +86,18 @@ const AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_P
 const AGENT_RUN_TELEMETRY_NETWORK_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/network$`,
 );
+const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
+const CONNECTORS_AUTHORIZE_PATH_RE = /^\/api\/connectors\/[^/]+\/authorize$/;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/instructions$/;
 const ZERO_CHAT_MESSAGES_REWRITE_SOURCE = "/api/zero/chat/messages";
 const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
+const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/authorize";
+const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
+  /^\/api\/zero\/connectors\/[^/]+\/authorize$/;
 const ZERO_CHAT_THREAD_ARTIFACTS_REWRITE_SOURCE =
   "/api/zero/chat-threads/:threadId/artifacts";
 const ZERO_CHAT_THREAD_ARTIFACTS_PATH_RE =
@@ -194,6 +200,11 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cli/auth/test-token", "/api/cli/auth/test-token"],
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
+  [
+    CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+    "/api/connectors/:type/authorize",
+    CONNECTORS_AUTHORIZE_PATH_RE,
+  ],
   ["/api/device-token", "/api/device-token"],
   ["/api/device-token/poll", "/api/device-token/poll"],
   ["/api/agentphone/:path*", "/api/agentphone/:path*"],
@@ -251,6 +262,11 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/connectors/stripe/cli-auth/sessions/:path*",
   ],
   ["/api/zero/api-keys", "/api/zero/api-keys"],
+  [
+    ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/authorize",
+    ZERO_CONNECTORS_AUTHORIZE_PATH_RE,
+  ],
   ["/api/zero/devices/bb0/confirm", "/api/zero/devices/bb0/confirm"],
   [
     "/api/zero/host/deployments/:deploymentId/complete",

@@ -235,6 +235,38 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the connector authorize rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/authorize"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/authorize/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/connectors/authorize")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/connectors/github/callback"),
+    ).toBe(false);
+  });
+
+  it("matches the zero connector authorize rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/authorize"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/connectors/github/authorize/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/authorize")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/callback"),
+    ).toBe(false);
+  });
+
   it("matches only one segment for agent session by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
