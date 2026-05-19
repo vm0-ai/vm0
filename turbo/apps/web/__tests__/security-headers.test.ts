@@ -390,6 +390,12 @@ const CRON_TELEGRAM_CLEANUP_NEXT_NEGATIVE_PATHS = [
   "/api/cron/telegram-cleanup/extra",
   "/api/cron",
 ] as const;
+const CRON_VOICE_CHAT_CLEANUP_REWRITE_SOURCE = "/api/cron/voice-chat-cleanup";
+const CRON_VOICE_CHAT_CLEANUP_PATH = "/api/cron/voice-chat-cleanup";
+const CRON_VOICE_CHAT_CLEANUP_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/voice-chat-cleanup/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -1236,6 +1242,10 @@ describe("API backend rewrites", () => {
         {
           source: CRON_TELEGRAM_CLEANUP_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/telegram-cleanup",
+        },
+        {
+          source: CRON_VOICE_CHAT_CLEANUP_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/voice-chat-cleanup",
         },
         {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -2543,6 +2553,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_TELEGRAM_CLEANUP_PATH)).toStrictEqual({});
     for (const pathname of CRON_TELEGRAM_CLEANUP_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron voice chat cleanup rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_VOICE_CHAT_CLEANUP_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_VOICE_CHAT_CLEANUP_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/voice-chat-cleanup",
+    });
+
+    const matcher = getPathMatch(CRON_VOICE_CHAT_CLEANUP_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_VOICE_CHAT_CLEANUP_PATH)).toStrictEqual({});
+    for (const pathname of CRON_VOICE_CHAT_CLEANUP_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

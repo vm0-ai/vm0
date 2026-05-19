@@ -125,7 +125,9 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
   it("rejects requests with no authorization header", async () => {
     const response = await accept(apiClient().cleanup({ headers: {} }), [401]);
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
   });
 
   it("resets a stuck reasoner and queues a reasoning re-tick", async () => {

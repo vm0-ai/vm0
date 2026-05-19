@@ -360,6 +360,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the cron voice chat cleanup rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/voice-chat-cleanup")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/cron/voice-chat-cleanup/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

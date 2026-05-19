@@ -255,6 +255,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   ["/api/cron/telegram-cleanup", "/api/cron/telegram-cleanup"],
+  ["/api/cron/voice-chat-cleanup", "/api/cron/voice-chat-cleanup"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
