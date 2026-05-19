@@ -80,7 +80,7 @@ function storedSecretEnvelope(encryptedValue: string): {
     readonly ciphertext?: string;
   };
 } {
-  expect(encryptedValue.startsWith(STORED_SECRET_ENVELOPE_PREFIX)).toBe(true);
+  expect(encryptedValue.startsWith(STORED_SECRET_ENVELOPE_PREFIX)).toBeTruthy();
   return JSON.parse(
     Buffer.from(
       encryptedValue.slice(STORED_SECRET_ENVELOPE_PREFIX.length),
