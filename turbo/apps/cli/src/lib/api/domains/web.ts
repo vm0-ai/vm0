@@ -230,6 +230,10 @@ interface GenerateWebImageOptions {
   seed?: number;
   safetyTolerance?: string;
   enhancePrompt?: boolean;
+  imageUrls?: readonly string[];
+  maskImageUrl?: string;
+  inputFidelity?: string;
+  imagePromptStrength?: number;
 }
 
 interface GenerateWebImageResult {
@@ -259,6 +263,10 @@ interface GenerateWebImageResult {
   billingQuantity?: number;
   sourceUrl?: string;
   seed?: number;
+  sourceImageUrls?: string[];
+  maskImageUrl?: string;
+  inputFidelity?: string;
+  imagePromptStrength?: number;
 }
 
 interface GenerateWebVideoOptions {
@@ -850,6 +858,16 @@ export async function generateWebImage(
           : {}),
         ...(options.enhancePrompt !== undefined
           ? { enhancePrompt: options.enhancePrompt }
+          : {}),
+        ...(options.imageUrls && options.imageUrls.length > 0
+          ? { imageUrls: options.imageUrls }
+          : {}),
+        ...(options.maskImageUrl ? { maskImageUrl: options.maskImageUrl } : {}),
+        ...(options.inputFidelity
+          ? { inputFidelity: options.inputFidelity }
+          : {}),
+        ...(options.imagePromptStrength !== undefined
+          ? { imagePromptStrength: options.imagePromptStrength }
           : {}),
       }),
     },

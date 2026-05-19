@@ -50,6 +50,8 @@ const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
 const IMAGE_OUTPUT_FORMATS = ["png", "webp", "jpeg"] as const;
 const IMAGE_MODERATIONS = ["auto", "low"] as const;
 const IMAGE_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"] as const;
+const IMAGE_INPUT_FIDELITIES = ["low", "high"] as const;
+const MAX_SOURCE_IMAGE_URLS = 10;
 const STANDARD_GPT_IMAGE_SIZES = [
   "auto",
   "1024x1024",
@@ -84,6 +86,8 @@ const IMAGE_MODEL_CONFIGS = {
   "gpt-image-2": {
     alias: "gpt-image-2",
     endpointId: "openai/gpt-image-2",
+    imageToImageEndpointId: "openai/gpt-image-2/edit",
+    sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: undefined,
@@ -99,10 +103,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: true,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
   },
   "gpt-image-1.5": {
     alias: "gpt-image-1.5",
     endpointId: "fal-ai/gpt-image-1.5",
+    imageToImageEndpointId: "fal-ai/gpt-image-1.5/edit",
+    sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
@@ -118,10 +127,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: true,
+    supportsInputFidelity: true,
+    supportsImagePromptStrength: false,
   },
   "gpt-image-1": {
     alias: "gpt-image-1",
     endpointId: "fal-ai/gpt-image-1/text-to-image",
+    imageToImageEndpointId: "fal-ai/gpt-image-1/edit-image",
+    sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
@@ -137,10 +151,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: true,
+    supportsImagePromptStrength: false,
   },
   "gpt-image-1-mini": {
     alias: "gpt-image-1-mini",
     endpointId: "fal-ai/gpt-image-1-mini",
+    imageToImageEndpointId: "fal-ai/gpt-image-1-mini/edit",
+    sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "standard",
     sizeParameter: undefined,
@@ -156,10 +175,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: false,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
   },
   "fal-ai/flux-pro/v1.1": {
     alias: "flux-pro-1.1",
     endpointId: "fal-ai/flux-pro/v1.1",
+    imageToImageEndpointId: "fal-ai/flux-pro/v1.1/redux",
+    sourceImageInput: "image_url",
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
@@ -175,10 +199,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: true,
     supportsSafetyTolerance: true,
     supportsEnhancePrompt: true,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: true,
   },
   "fal-ai/flux-pro/v1.1-ultra": {
     alias: "flux-pro-1.1-ultra",
     endpointId: "fal-ai/flux-pro/v1.1-ultra",
+    imageToImageEndpointId: "fal-ai/flux-pro/v1.1-ultra/redux",
+    sourceImageInput: "image_url",
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "aspect_ratio",
@@ -194,10 +223,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: true,
     supportsSafetyTolerance: true,
     supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: true,
   },
   "fal-ai/qwen-image": {
     alias: "qwen-image",
     endpointId: "fal-ai/qwen-image",
+    imageToImageEndpointId: "fal-ai/qwen-image-2/edit",
+    sourceImageInput: "image_url",
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
@@ -213,10 +247,15 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: true,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
   },
   "fal-ai/bytedance/seedream/v4/text-to-image": {
     alias: "seedream4",
     endpointId: "fal-ai/bytedance/seedream/v4/text-to-image",
+    imageToImageEndpointId: "fal-ai/bytedance/seedream/v4/edit",
+    sourceImageInput: "image_urls",
     provider: "fal",
     sizeMode: "flexible",
     sizeParameter: "image_size",
@@ -232,6 +271,9 @@ const IMAGE_MODEL_CONFIGS = {
     supportsSeed: true,
     supportsSafetyTolerance: false,
     supportsEnhancePrompt: false,
+    supportsMaskImage: false,
+    supportsInputFidelity: false,
+    supportsImagePromptStrength: false,
   },
 } as const;
 
@@ -243,6 +285,7 @@ type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 type ImageOutputFormat = (typeof IMAGE_OUTPUT_FORMATS)[number];
 type ImageModeration = (typeof IMAGE_MODERATIONS)[number];
 type ImageSafetyTolerance = (typeof IMAGE_SAFETY_TOLERANCES)[number];
+type ImageInputFidelity = (typeof IMAGE_INPUT_FIDELITIES)[number];
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 export type ImageModel = keyof typeof IMAGE_MODEL_CONFIGS;
 export type ImageProvider = "fal";
@@ -289,6 +332,10 @@ export interface ImageOptions {
   readonly seed: number | undefined;
   readonly safetyTolerance: ImageSafetyTolerance;
   readonly enhancePrompt: boolean;
+  readonly sourceImageUrls: readonly string[];
+  readonly maskImageUrl: string | undefined;
+  readonly inputFidelity: ImageInputFidelity | undefined;
+  readonly imagePromptStrength: number | undefined;
 }
 
 export interface ParsedImageGeneration {
@@ -306,6 +353,10 @@ export interface ParsedImageGeneration {
   readonly billing: readonly ImageBillingEntry[];
   readonly sourceUrl: string | undefined;
   readonly seed: number | undefined;
+  readonly sourceImageUrls: readonly string[];
+  readonly maskImageUrl: string | undefined;
+  readonly inputFidelity: ImageInputFidelity | undefined;
+  readonly imagePromptStrength: number | undefined;
 }
 
 interface RecordedImage {
@@ -329,6 +380,10 @@ interface RecordedImage {
   readonly billingQuantity: number | undefined;
   readonly sourceUrl: string | undefined;
   readonly seed: number | undefined;
+  readonly sourceImageUrls: readonly string[];
+  readonly maskImageUrl: string | undefined;
+  readonly inputFidelity: ImageInputFidelity | undefined;
+  readonly imagePromptStrength: number | undefined;
 }
 
 interface ImageBillingEntry {
@@ -426,6 +481,46 @@ function readOptionalInteger(
   }
 
   return parsed;
+}
+
+function readOptionalNumberFromKeys(
+  body: Record<string, unknown>,
+  keys: readonly string[],
+): number | ErrorResponse | undefined {
+  for (const key of keys) {
+    const value = body[key];
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim().length > 0
+          ? Number(value.trim())
+          : Number.NaN;
+    if (!Number.isFinite(parsed)) {
+      return badRequest(`${key} must be a number`);
+    }
+    return parsed;
+  }
+  return undefined;
+}
+
+function readOptionalStringFromKeys(
+  body: Record<string, unknown>,
+  keys: readonly string[],
+): string | ErrorResponse | undefined {
+  for (const key of keys) {
+    const value = body[key];
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return badRequest(`${key} must be a non-empty string`);
+    }
+    return value.trim();
+  }
+  return undefined;
 }
 
 function includesString<T extends string>(
@@ -733,6 +828,143 @@ function parseEnhancePrompt(
   return enhancePrompt;
 }
 
+function appendSourceImageUrls(
+  target: string[],
+  value: unknown,
+  key: string,
+): ErrorResponse | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const values = Array.isArray(value) ? value : [value];
+  for (const item of values) {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      return badRequest(`${key} must contain non-empty strings`);
+    }
+    target.push(item.trim());
+  }
+  return null;
+}
+
+function parseSourceImageUrls(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+): readonly string[] | ErrorResponse {
+  const sourceImageUrls: string[] = [];
+  for (const key of [
+    "imageUrl",
+    "image_url",
+    "imageUrls",
+    "image_urls",
+    "sourceImageUrls",
+  ]) {
+    const error = appendSourceImageUrls(sourceImageUrls, body[key], key);
+    if (error) {
+      return error;
+    }
+  }
+
+  if (sourceImageUrls.length === 0) {
+    return sourceImageUrls;
+  }
+  if (sourceImageUrls.length > MAX_SOURCE_IMAGE_URLS) {
+    return badRequest(
+      `imageUrls supports at most ${MAX_SOURCE_IMAGE_URLS} images`,
+    );
+  }
+  if (
+    modelConfig.sourceImageInput === "image_url" &&
+    sourceImageUrls.length > 1
+  ) {
+    return badRequest(`${modelConfig.alias} accepts one source image`);
+  }
+
+  return sourceImageUrls;
+}
+
+function parseMaskImageUrl(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  hasSourceImages: boolean,
+): string | ErrorResponse | undefined {
+  const maskImageUrl = readOptionalStringFromKeys(body, [
+    "maskImageUrl",
+    "mask_image_url",
+  ]);
+  if (typeof maskImageUrl === "object") {
+    return maskImageUrl;
+  }
+  if (!maskImageUrl) {
+    return undefined;
+  }
+  if (!hasSourceImages) {
+    return badRequest("maskImageUrl requires imageUrl");
+  }
+  if (!modelConfig.supportsMaskImage) {
+    return badRequest(`maskImageUrl is not supported for ${modelConfig.alias}`);
+  }
+  return maskImageUrl;
+}
+
+function parseInputFidelity(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  hasSourceImages: boolean,
+): ImageInputFidelity | ErrorResponse | undefined {
+  const inputFidelity = readOptionalStringFromKeys(body, [
+    "inputFidelity",
+    "input_fidelity",
+  ]);
+  if (typeof inputFidelity === "object") {
+    return inputFidelity;
+  }
+  if (!inputFidelity) {
+    return undefined;
+  }
+  if (!includesString(IMAGE_INPUT_FIDELITIES, inputFidelity)) {
+    return badRequest(`Unsupported input fidelity: ${inputFidelity}`);
+  }
+  if (!hasSourceImages) {
+    return badRequest("inputFidelity requires imageUrl");
+  }
+  if (!modelConfig.supportsInputFidelity) {
+    return badRequest(
+      `inputFidelity is not supported for ${modelConfig.alias}`,
+    );
+  }
+  return inputFidelity;
+}
+
+function parseImagePromptStrength(
+  body: Record<string, unknown>,
+  modelConfig: ImageModelConfig,
+  hasSourceImages: boolean,
+): number | ErrorResponse | undefined {
+  const imagePromptStrength = readOptionalNumberFromKeys(body, [
+    "imagePromptStrength",
+    "image_prompt_strength",
+  ]);
+  if (typeof imagePromptStrength === "object") {
+    return imagePromptStrength;
+  }
+  if (imagePromptStrength !== undefined) {
+    if (imagePromptStrength < 0 || imagePromptStrength > 1) {
+      return badRequest("imagePromptStrength must be between 0 and 1");
+    }
+    if (!hasSourceImages) {
+      return badRequest("imagePromptStrength requires imageUrl");
+    }
+    if (!modelConfig.supportsImagePromptStrength) {
+      return badRequest(
+        `imagePromptStrength is not supported for ${modelConfig.alias}`,
+      );
+    }
+    return imagePromptStrength;
+  }
+  return undefined;
+}
+
 export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
   if (!isRecord(body)) {
     return badRequest("Invalid JSON body");
@@ -749,7 +981,13 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
   }
   const modelConfig = IMAGE_MODEL_CONFIGS[model];
 
-  const size = readString(body, "size", "1024x1024");
+  const sourceImageUrls = parseSourceImageUrls(body, modelConfig);
+  if (typeof sourceImageUrls === "object" && "status" in sourceImageUrls) {
+    return sourceImageUrls;
+  }
+  const hasSourceImages = sourceImageUrls.length > 0;
+
+  const size = readString(body, "size", hasSourceImages ? "auto" : "1024x1024");
   const sizeError = validateImageSize(model, size);
   if (sizeError) {
     return sizeError;
@@ -790,6 +1028,25 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     return enhancePrompt;
   }
 
+  const maskImageUrl = parseMaskImageUrl(body, modelConfig, hasSourceImages);
+  if (typeof maskImageUrl === "object") {
+    return maskImageUrl;
+  }
+
+  const inputFidelity = parseInputFidelity(body, modelConfig, hasSourceImages);
+  if (typeof inputFidelity === "object") {
+    return inputFidelity;
+  }
+
+  const imagePromptStrength = parseImagePromptStrength(
+    body,
+    modelConfig,
+    hasSourceImages,
+  );
+  if (typeof imagePromptStrength === "object") {
+    return imagePromptStrength;
+  }
+
   return {
     model,
     provider: modelConfig.provider,
@@ -803,6 +1060,10 @@ export function parseImageOptions(body: unknown): ImageOptions | ErrorResponse {
     seed,
     safetyTolerance,
     enhancePrompt,
+    sourceImageUrls,
+    maskImageUrl,
+    inputFidelity,
+    imagePromptStrength,
   };
 }
 
@@ -1057,11 +1318,29 @@ function falImageInput(options: ImageOptions): Record<string, unknown> {
     ...(modelConfig.supportsEnhancePrompt
       ? { enhance_prompt: options.enhancePrompt }
       : {}),
+    ...(options.sourceImageUrls.length > 0
+      ? modelConfig.sourceImageInput === "image_url"
+        ? { image_url: options.sourceImageUrls[0] }
+        : { image_urls: options.sourceImageUrls }
+      : {}),
+    ...(modelConfig.supportsMaskImage && options.maskImageUrl
+      ? { mask_image_url: options.maskImageUrl }
+      : {}),
+    ...(modelConfig.supportsInputFidelity && options.inputFidelity
+      ? { input_fidelity: options.inputFidelity }
+      : {}),
+    ...(modelConfig.supportsImagePromptStrength &&
+    options.imagePromptStrength !== undefined
+      ? { image_prompt_strength: options.imagePromptStrength }
+      : {}),
   };
 }
 
-function falImageEndpointId(model: ImageModel): string {
-  return IMAGE_MODEL_CONFIGS[model].endpointId;
+function falImageEndpointId(options: ImageOptions): string {
+  const modelConfig = IMAGE_MODEL_CONFIGS[options.model];
+  return options.sourceImageUrls.length > 0
+    ? modelConfig.imageToImageEndpointId
+    : modelConfig.endpointId;
 }
 
 async function readFalErrorBody(
@@ -1078,7 +1357,7 @@ async function submitFalImageGeneration(
   falKey: string,
   signal: AbortSignal,
 ): Promise<unknown | ErrorResponse> {
-  const endpointId = falImageEndpointId(options.model);
+  const endpointId = falImageEndpointId(options);
   const response = await fetch(`${FAL_IMAGE_RUN_URL_PREFIX}/${endpointId}`, {
     method: "POST",
     headers: falHeaders(falKey),
@@ -1106,7 +1385,7 @@ export async function submitFalImageQueueGeneration(
   webhookUrl: string,
   signal: AbortSignal,
 ): Promise<FalImageQueueHandle | ErrorResponse> {
-  const endpointId = falImageEndpointId(options.model);
+  const endpointId = falImageEndpointId(options);
   const queueUrl = new URL(`${FAL_IMAGE_QUEUE_URL_PREFIX}/${endpointId}`);
   queueUrl.searchParams.set("fal_webhook", webhookUrl);
   const response = await fetch(queueUrl, {
@@ -1276,6 +1555,10 @@ export async function downloadFalImage(
     billing: falBillingEntries(result.image, options),
     sourceUrl: result.image.url,
     seed: result.seed ?? options.seed,
+    sourceImageUrls: options.sourceImageUrls,
+    maskImageUrl: options.maskImageUrl,
+    inputFidelity: options.inputFidelity,
+    imagePromptStrength: options.imagePromptStrength,
   };
 }
 
@@ -1371,6 +1654,10 @@ export const recordGeneratedImage$ = command(
             safetyTolerance: params.generation.safetyTolerance,
             sourceUrl: params.generation.sourceUrl,
             seed: params.generation.seed,
+            sourceImageUrls: params.generation.sourceImageUrls,
+            maskImageUrl: params.generation.maskImageUrl,
+            inputFidelity: params.generation.inputFidelity,
+            imagePromptStrength: params.generation.imagePromptStrength,
           },
         },
         signal,
@@ -1432,6 +1719,10 @@ export const recordGeneratedImage$ = command(
       billingQuantity: params.generation.billing[0]?.quantity,
       sourceUrl: params.generation.sourceUrl,
       seed: params.generation.seed,
+      sourceImageUrls: params.generation.sourceImageUrls,
+      maskImageUrl: params.generation.maskImageUrl,
+      inputFidelity: params.generation.inputFidelity,
+      imagePromptStrength: params.generation.imagePromptStrength,
     };
   },
 );

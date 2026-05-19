@@ -56,6 +56,14 @@ const FAL_GPT_MINI_MEDIA_URL =
   "https://fal.media/files/test/gpt-image-1-mini.jpg";
 const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
+const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
+const FAL_FLUX_MEDIA_URL = "https://fal.media/files/test/flux-redux.jpg";
+const MOCKUP_IMAGE_URL = "https://example.com/mockup.png";
+const IMAGE_PRICING_MARKUP_MULTIPLIER = 1.2;
+const FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL = 40;
+const FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL = Math.ceil(
+  FAL_FLUX_PROVIDER_CREDITS_PER_MEGAPIXEL * IMAGE_PRICING_MARKUP_MULTIPLIER,
+);
 const MISSING_PRICING_IMAGE_MODEL = "gpt-image-2";
 const IMAGE_PRICING_CATEGORIES = [
   "output_image.low.standard",
@@ -324,6 +332,27 @@ async function upsertFalImagePricing(): Promise<void> {
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
       set: {
         unitPrice: 24,
+        unitSize: 1,
+        updatedAt: sql`now()`,
+      },
+    });
+}
+
+async function upsertFluxImagePricing(): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .insert(usagePricing)
+    .values({
+      kind: "image",
+      provider: "fal-ai/flux-pro/v1.1",
+      category: "output_megapixel",
+      unitPrice: FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL,
+      unitSize: 1,
+    })
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL,
         unitSize: 1,
         updatedAt: sql`now()`,
       },
@@ -1308,6 +1337,123 @@ describe("POST /api/zero/image-io/generate", () => {
       status: "processed",
       billingError: null,
       creditsCharged: 48,
+    });
+  });
+
+  it("generates image-to-image through fal with 20 percent markup pricing", async () => {
+    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    await upsertFluxImagePricing();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    let observedAuthorization: string | null = null;
+    let observedBody: Record<string, unknown> | null = null;
+    let observedRequestUrl: string | null = null;
+    server.use(
+      http.post(FAL_FLUX_REDUX_URL, async ({ request }) => {
+        observedAuthorization = request.headers.get("authorization");
+        observedRequestUrl = request.url;
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(falQueueHandle("flux-redux-request"));
+      }),
+      http.get(FAL_FLUX_MEDIA_URL, () => {
+        return new HttpResponse(IMAGE_BYTES, {
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }),
+    );
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/zero/image-io/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        prompt: "turn this wireframe into a polished product mockup",
+        model: "flux-pro-1.1",
+        imageUrl: MOCKUP_IMAGE_URL,
+        outputFormat: "jpeg",
+        seed: 42,
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const generationId = readAcceptedGenerationId(
+      await response.json(),
+      "image",
+      fixture.userId,
+    );
+
+    await postFalWebhook(app, observedRequestUrl, {
+      images: [
+        {
+          url: FAL_FLUX_MEDIA_URL,
+          width: 1536,
+          height: 1024,
+          content_type: "image/jpeg",
+        },
+      ],
+      prompt: "A polished product mockup.",
+      seed: 42,
+    });
+    await clearAllDetached();
+
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    const body = readGenerationResult(await statusResponse.json());
+    expect(body).toMatchObject({
+      contentType: "image/jpeg",
+      size: IMAGE_BYTES.byteLength,
+      creditsCharged: 96,
+      model: "fal-ai/flux-pro/v1.1",
+      provider: "fal",
+      imageSize: "1536x1024",
+      outputFormat: "jpeg",
+      billingCategory: "output_megapixel",
+      billingQuantity: 2,
+      sourceUrl: FAL_FLUX_MEDIA_URL,
+      sourceImageUrls: [MOCKUP_IMAGE_URL],
+      seed: 42,
+    });
+    expect(body).not.toHaveProperty("imagePromptStrength");
+    expect(observedAuthorization).toBe("Key test-fal-key");
+    expect(observedBody).toMatchObject({
+      prompt: "turn this wireframe into a polished product mockup",
+      image_size: "landscape_4_3",
+      num_images: 1,
+      output_format: "jpeg",
+      seed: 42,
+      safety_tolerance: "4",
+      enhance_prompt: false,
+      image_url: MOCKUP_IMAGE_URL,
+    });
+    expect(observedBody).not.toHaveProperty("image_prompt_strength");
+
+    const usageRows = await store
+      .set(writeDb$)
+      .select()
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.orgId, fixture.orgId),
+          eq(usageEvent.userId, fixture.userId),
+          eq(usageEvent.kind, "image"),
+          eq(usageEvent.provider, "fal-ai/flux-pro/v1.1"),
+        ),
+      );
+    expect(usageRows).toHaveLength(1);
+    expect(usageRows[0]).toMatchObject({
+      idempotencyKey: builtInGenerationUsageIdempotencyKey({
+        generationId,
+        scope: "image",
+        category: "output_megapixel",
+      }),
+      category: "output_megapixel",
+      quantity: 2,
+      status: "processed",
+      billingError: null,
+      creditsCharged: 96,
     });
   });
 

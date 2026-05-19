@@ -100,6 +100,10 @@ function imageRequestRecord(options: ImageOptions): Record<string, unknown> {
     ...(options.seed !== undefined ? { seed: options.seed } : {}),
     safetyTolerance: options.safetyTolerance,
     enhancePrompt: options.enhancePrompt,
+    sourceImageUrls: options.sourceImageUrls,
+    maskImageUrl: options.maskImageUrl,
+    inputFidelity: options.inputFidelity,
+    imagePromptStrength: options.imagePromptStrength,
   };
 }
 

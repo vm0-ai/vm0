@@ -174,6 +174,57 @@ describe("zero built-in generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
+  it("should pass image-to-image controls to the image API", async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.post(IMAGE_URL, async ({ request }) => {
+        capturedBody = await request.json();
+
+        return HttpResponse.json({
+          ...IMAGE_RESULT,
+          model: "fal-ai/flux-pro/v1.1",
+          provider: "fal",
+          outputFormat: "jpeg",
+          sourceImageUrls: ["https://example.com/mockup.png"],
+          imagePromptStrength: 0.2,
+        });
+      }),
+    );
+
+    await zeroBuiltInCommand.parseAsync([
+      "node",
+      "cli",
+      "generate",
+      "image",
+      "--model",
+      "flux-pro-1.1",
+      "--prompt",
+      "Turn this mockup into a polished product shot",
+      "--image-url",
+      "https://example.com/mockup.png",
+      "--image-prompt-strength",
+      "0.2",
+      "--format",
+      "jpeg",
+    ]);
+
+    expect(capturedBody).toEqual({
+      prompt: "Turn this mockup into a polished product shot",
+      model: "flux-pro-1.1",
+      size: "auto",
+      quality: "medium",
+      background: "auto",
+      outputFormat: "jpeg",
+      moderation: "auto",
+      safetyTolerance: "4",
+      imageUrls: ["https://example.com/mockup.png"],
+      imagePromptStrength: 0.2,
+    });
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Model: fal-ai/flux-pro/v1.1");
+    expect(stdout).toContain("Provider: fal");
+  });
+
   it("should print JSON metadata when --json is provided", async () => {
     server.use(
       http.post(IMAGE_URL, () => {
@@ -272,12 +323,13 @@ describe("zero built-in generate image command", () => {
     });
 
     imageCommand.outputHelp();
+    const normalizedHelpOutput = helpOutput.replace(/\s+/g, " ");
 
     expect(helpOutput).toContain("gpt-image-1.5");
     expect(helpOutput).toContain("gpt-image-1 (default)");
     expect(helpOutput).toContain("flux-pro-1.1");
     expect(helpOutput).toContain("qwen-image");
-    expect(helpOutput).toContain("support varies");
+    expect(normalizedHelpOutput).toContain("support varies");
     expect(helpOutput).toContain("3840x2160");
     expect(helpOutput).toContain("edges divisible by 16");
     expect(helpOutput).toContain("--compression <0-100>");
@@ -285,9 +337,13 @@ describe("zero built-in generate image command", () => {
     expect(helpOutput).toContain("Uses fal.ai for all image model execution");
     expect(helpOutput).toContain("--seed");
     expect(helpOutput).toContain("--safety-tolerance");
+    expect(helpOutput).toContain("--image-url");
+    expect(helpOutput).toContain("--image-prompt-strength");
+    expect(helpOutput).toContain("provider");
+    expect(helpOutput).toContain("default");
     expect(helpOutput).toContain("not support transparent");
     expect(helpOutput).toContain("backgrounds");
-    expect(helpOutput).toContain("image edits, reference images, masks");
+    expect(helpOutput).toContain("Image-to-image");
   });
 
   it("should surface API errors", async () => {

@@ -19,6 +19,16 @@ export const zeroImageIoGenerateRequestSchema = z
     seed: z.unknown().optional(),
     safetyTolerance: z.unknown().optional(),
     enhancePrompt: z.unknown().optional(),
+    imageUrl: z.unknown().optional(),
+    image_url: z.unknown().optional(),
+    imageUrls: z.unknown().optional(),
+    image_urls: z.unknown().optional(),
+    maskImageUrl: z.unknown().optional(),
+    mask_image_url: z.unknown().optional(),
+    inputFidelity: z.unknown().optional(),
+    input_fidelity: z.unknown().optional(),
+    imagePromptStrength: z.unknown().optional(),
+    image_prompt_strength: z.unknown().optional(),
   })
   .passthrough();
 
@@ -43,6 +53,10 @@ export const zeroImageIoGenerateResponseSchema = z.object({
   billingQuantity: z.number().optional(),
   sourceUrl: z.string().optional(),
   seed: z.number().optional(),
+  sourceImageUrls: z.array(z.string()).optional(),
+  maskImageUrl: z.string().optional(),
+  inputFidelity: z.string().optional(),
+  imagePromptStrength: z.number().optional(),
 });
 
 export type ZeroImageIoGenerateRequest = z.infer<
