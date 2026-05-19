@@ -575,6 +575,12 @@ const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
   "/api/email/unsubscribe/extra",
   "/api/email",
 ] as const;
+const ZERO_EMAIL_INBOUND_REWRITE_SOURCE = "/api/zero/email/inbound";
+const ZERO_EMAIL_INBOUND_PATH = "/api/zero/email/inbound";
+const ZERO_EMAIL_INBOUND_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/email/inbound/extra",
+  "/api/zero/email",
+] as const;
 const GENERATE_IMAGE_REWRITE_SOURCE = "/api/generate-image";
 const GENERATE_IMAGE_PATH = "/api/generate-image";
 const GENERATE_IMAGE_NEXT_NEGATIVE_PATHS = [
@@ -1708,6 +1714,10 @@ describe("API backend rewrites", () => {
         {
           source: EMAIL_UNSUBSCRIBE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/email/unsubscribe",
+        },
+        {
+          source: ZERO_EMAIL_INBOUND_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/email/inbound",
         },
         {
           source: GENERATE_IMAGE_REWRITE_SOURCE,
@@ -3532,6 +3542,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(EMAIL_UNSUBSCRIBE_PATH)).toStrictEqual({});
     for (const pathname of EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact inbound email provider webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_EMAIL_INBOUND_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_EMAIL_INBOUND_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/email/inbound",
+    });
+
+    const matcher = getPathMatch(ZERO_EMAIL_INBOUND_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_EMAIL_INBOUND_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_EMAIL_INBOUND_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

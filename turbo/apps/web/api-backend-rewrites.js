@@ -153,6 +153,7 @@ const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
 const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
   "/api/integrations/telegram/auth-callback";
+const ZERO_EMAIL_INBOUND_REWRITE_SOURCE = "/api/zero/email/inbound";
 const V1_CHAT_THREADS_MESSAGES_REWRITE_SOURCE = "/api/v1/chat-threads/messages";
 const V1_CHAT_THREAD_DETAIL_REWRITE_SOURCE =
   "/api/v1/chat-threads/:threadId((?!messages$)[^/]+)";
@@ -367,6 +368,7 @@ export const API_BACKEND_REWRITES = [
   [AGENTPHONE_CONNECT_REWRITE_SOURCE, "/api/agentphone/connect"],
   [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
+  [ZERO_EMAIL_INBOUND_REWRITE_SOURCE, "/api/zero/email/inbound"],
   ["/api/generate-image", "/api/generate-image"],
   [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],

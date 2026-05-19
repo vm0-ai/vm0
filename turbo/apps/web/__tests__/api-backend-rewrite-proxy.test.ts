@@ -1069,6 +1069,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/email")).toBe(false);
   });
 
+  it("matches the inbound email provider webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/email/inbound")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/email/inbound/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/email")).toBe(false);
+  });
+
   it("matches the generate image rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/generate-image")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/generate-image/extra")).toBe(
@@ -2589,6 +2597,51 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.url).toBe("/api/webhooks/clerk?from=clerk");
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.headers["svix-id"]).toBe("msg_clerk_1");
+        expect(payload.headers["svix-signature"]).toBe("v1,test-signature");
+        expect(payload.headers["svix-timestamp"]).toBe("1710000000");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards inbound email webhook POST bodies and Svix signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          type: "email.received",
+          data: {
+            email_id: "email_inbound_1",
+            from: "sender@example.com",
+            to: ["agent@mail.example.com"],
+          },
+        });
+        const response = await fetch(
+          `${origin}/api/zero/email/inbound?from=resend`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "svix-id": "msg_resend_1",
+              "svix-signature": "v1,test-signature",
+              "svix-timestamp": "1710000000",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/zero/email/inbound?from=resend");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["svix-id"]).toBe("msg_resend_1");
         expect(payload.headers["svix-signature"]).toBe("v1,test-signature");
         expect(payload.headers["svix-timestamp"]).toBe("1710000000");
         expect(payload.body).toBe(webhookBody);
