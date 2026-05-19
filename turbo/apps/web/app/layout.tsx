@@ -155,9 +155,30 @@ export default async function RootLayout({
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
       <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
         <head>
+          {/*
+            Google Consent Mode v2 default-denied. Must run synchronously in
+            <head> before gtag.js loads so Google itself respects consent and
+            withholds cookies + tracking pings until the user opts in. Inline
+            via dangerouslySetInnerHTML so it ships in SSR HTML with zero
+            network round-trip — any async strategy (incl. beforeInteractive
+            with src) loses the race against tag-manager bootstrap.
+          */}
+          <script
+            id="google-consent-default"
+            dangerouslySetInnerHTML={{
+              __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',wait_for_update:500});`,
+            }}
+          />
+          {/*
+            Termly resource-blocker. beforeInteractive ensures Next.js places
+            this in the SSR <head> ahead of client-injected tracking scripts
+            so Termly's MutationObserver is live before gtag.js mounts.
+            Previously loaded with afterInteractive, which raced gtag and let
+            the Google Ads pixel + _gcl_au cookie fire before consent.
+          */}
           <Script
             src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433"
-            strategy="afterInteractive"
+            strategy="beforeInteractive"
           />
           <Script
             id="google-ads-tag"
@@ -165,12 +186,7 @@ export default async function RootLayout({
             strategy="afterInteractive"
           />
           <Script id="google-ads-init" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){window.dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GOOGLE_ADS_ID}');
-            `}
+            {`gtag('js', new Date());gtag('config', '${GOOGLE_ADS_ID}');`}
           </Script>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link
