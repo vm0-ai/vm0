@@ -202,6 +202,14 @@ impl NormalOperationToken {
     pub(crate) fn complete(mut self) -> Result<(), NormalOperationTransitionError> {
         let mut inner = lock_inner(&self.inner);
         let Some(_phase) = inner.operations.remove(&self.id) else {
+            if matches!(inner.state, TrackerState::NotParkable) {
+                // A possible guest write can fail closed and clear all tracked
+                // operations before an independent terminal event completes an
+                // older token. The connection is already not parkable, so late
+                // completion only needs to release this token.
+                self.released = true;
+                return Ok(());
+            }
             return Err(NormalOperationTransitionError::UnknownOperation {
                 operation_id: self.id,
             });
@@ -622,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_after_not_parkable_returns_unknown_and_preserves_state() {
+    fn complete_after_not_parkable_is_idempotent_and_preserves_state() {
         let tracker = NormalOperationTracker::new();
         let mut token = reserve(&tracker);
         token
@@ -631,11 +639,9 @@ mod tests {
 
         tracker.mark_not_parkable();
 
-        let err = token.complete().unwrap_err();
-        assert!(matches!(
-            err,
-            NormalOperationTransitionError::UnknownOperation { .. }
-        ));
+        token
+            .complete()
+            .expect("operation completion should release token");
         assert_eq!(tracker.readiness(), NormalOperationReadiness::NotParkable);
     }
 

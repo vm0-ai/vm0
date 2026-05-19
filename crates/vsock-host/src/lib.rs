@@ -55,7 +55,8 @@ pub use exec_operation::{
 };
 pub use file::{CopyFileOptions, CopyFileResult};
 pub use process::{
-    GuestProcessControlHandle, GuestProcessHandle, ProcessControlAck, ProcessExitEvent,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessControlAck, ProcessControlGuestStatus,
+    ProcessControlOutcome, ProcessExitEvent,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;

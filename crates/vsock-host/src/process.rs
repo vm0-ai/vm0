@@ -13,10 +13,11 @@ use vsock_proto::{
 
 use crate::{
     ConnectionState, FrameWriteObserver, PendingRequestGuard, PendingResponse, Shared,
-    operation_tracker::NormalOperationToken, request_on_shared,
+    normal_request_on_shared_with_write_observer, operation_tracker::NormalOperationToken,
 };
 
 const SPAWN_PROCESS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const PROCESS_CONTROL_TERMINAL_MSG_TYPES: &[u8] = &[MSG_PROCESS_CONTROL_RESULT, MSG_ERROR];
 
 /// Event emitted when a spawned process exits.
 #[derive(Debug, Clone)]
@@ -32,6 +33,34 @@ pub struct ProcessExitEvent {
 pub struct ProcessControlAck {
     pub target_seq: u32,
     pub message_id: String,
+}
+
+/// Guest-side terminal status for a process-control request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessControlGuestStatus {
+    pub status: ProcessControlStatus,
+    pub diagnostic: String,
+}
+
+/// Typed process-control outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProcessControlOutcome {
+    Delivered(ProcessControlAck),
+    GuestStatus(ProcessControlGuestStatus),
+    GuestError(String),
+}
+
+impl ProcessControlOutcome {
+    pub fn into_ack(self) -> io::Result<ProcessControlAck> {
+        match self {
+            Self::Delivered(ack) => Ok(ack),
+            Self::GuestStatus(status) => Err(process_control_status_error(
+                status.status,
+                &status.diagnostic,
+            )),
+            Self::GuestError(message) => Err(io::Error::other(message)),
+        }
+    }
 }
 
 struct ProcessOperation {
@@ -342,6 +371,23 @@ impl GuestProcessControlHandle {
         payload: &[u8],
         timeout: Duration,
     ) -> io::Result<ProcessControlAck> {
+        self.control_with_write_observer(
+            message_id,
+            payload,
+            timeout,
+            FrameWriteObserver::default(),
+        )
+        .await?
+        .into_ack()
+    }
+
+    pub async fn control_with_write_observer(
+        &self,
+        message_id: &str,
+        payload: &[u8],
+        timeout: Duration,
+        write_observer: FrameWriteObserver,
+    ) -> io::Result<ProcessControlOutcome> {
         let request_timeout_ms = duration_to_request_timeout_ms(timeout);
         let request = vsock_proto::encode_process_control(
             self.target_seq,
@@ -351,20 +397,27 @@ impl GuestProcessControlHandle {
             request_timeout_ms,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-        let response =
-            request_on_shared(&self.shared, MSG_PROCESS_CONTROL, &request, timeout).await?;
-        self.decode_control_response(message_id, response)
+        let response = normal_request_on_shared_with_write_observer(
+            &self.shared,
+            MSG_PROCESS_CONTROL,
+            &request,
+            PROCESS_CONTROL_TERMINAL_MSG_TYPES,
+            timeout,
+            write_observer,
+        )
+        .await?;
+        self.decode_control_outcome(message_id, response)
     }
 
-    fn decode_control_response(
+    fn decode_control_outcome(
         &self,
         message_id: &str,
         response: RawMessage,
-    ) -> io::Result<ProcessControlAck> {
+    ) -> io::Result<ProcessControlOutcome> {
         if response.msg_type == MSG_ERROR {
             let msg =
                 vsock_proto::decode_error(&response.payload).map_err(|e| self.protocol_error(e))?;
-            return Err(io::Error::other(msg.to_owned()));
+            return Ok(ProcessControlOutcome::GuestError(msg.to_owned()));
         }
         if response.msg_type != MSG_PROCESS_CONTROL_RESULT {
             return Err(self.protocol_error(format!(
@@ -390,75 +443,56 @@ impl GuestProcessControlHandle {
             )));
         }
         match result.status {
-            ProcessControlStatus::Delivered => Ok(ProcessControlAck {
-                target_seq: result.target_seq,
-                message_id: result.message_id.to_owned(),
-            }),
-            ProcessControlStatus::Inactive => Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                if result.diagnostic.is_empty() {
-                    "process operation is not active".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::NonceMismatch => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                if result.diagnostic.is_empty() {
-                    "process operation nonce mismatch".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::Unsupported => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                if result.diagnostic.is_empty() {
-                    "process control is not supported by this operation".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::Rejected => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                if result.diagnostic.is_empty() {
-                    "process control request rejected".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkUnavailable => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                if result.diagnostic.is_empty() {
-                    "process control sink is not connected".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkTimeout => Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                if result.diagnostic.is_empty() {
-                    "process control sink timed out".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::QueueFull => Err(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                if result.diagnostic.is_empty() {
-                    "process control queue is full".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
-                },
-            )),
-            ProcessControlStatus::SinkError => Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                if result.diagnostic.is_empty() {
-                    "process control sink error".to_owned()
-                } else {
-                    result.diagnostic.to_owned()
+            ProcessControlStatus::Delivered => {
+                Ok(ProcessControlOutcome::Delivered(ProcessControlAck {
+                    target_seq: result.target_seq,
+                    message_id: result.message_id.to_owned(),
+                }))
+            }
+            status => Ok(ProcessControlOutcome::GuestStatus(
+                ProcessControlGuestStatus {
+                    status,
+                    diagnostic: result.diagnostic.to_owned(),
                 },
             )),
         }
+    }
+}
+
+fn process_control_status_error(status: ProcessControlStatus, diagnostic: &str) -> io::Error {
+    let message = if diagnostic.is_empty() {
+        default_process_control_status_message(status).to_owned()
+    } else {
+        diagnostic.to_owned()
+    };
+    io::Error::new(process_control_status_error_kind(status), message)
+}
+
+fn process_control_status_error_kind(status: ProcessControlStatus) -> io::ErrorKind {
+    match status {
+        ProcessControlStatus::Delivered => io::ErrorKind::Other,
+        ProcessControlStatus::Inactive => io::ErrorKind::NotFound,
+        ProcessControlStatus::NonceMismatch => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::Unsupported => io::ErrorKind::Unsupported,
+        ProcessControlStatus::Rejected => io::ErrorKind::PermissionDenied,
+        ProcessControlStatus::SinkUnavailable => io::ErrorKind::NotConnected,
+        ProcessControlStatus::SinkTimeout => io::ErrorKind::TimedOut,
+        ProcessControlStatus::QueueFull => io::ErrorKind::WouldBlock,
+        ProcessControlStatus::SinkError => io::ErrorKind::BrokenPipe,
+    }
+}
+
+fn default_process_control_status_message(status: ProcessControlStatus) -> &'static str {
+    match status {
+        ProcessControlStatus::Delivered => "process control request delivered",
+        ProcessControlStatus::Inactive => "process operation is not active",
+        ProcessControlStatus::NonceMismatch => "process operation nonce mismatch",
+        ProcessControlStatus::Unsupported => "process control is not supported by this operation",
+        ProcessControlStatus::Rejected => "process control request rejected",
+        ProcessControlStatus::SinkUnavailable => "process control sink is not connected",
+        ProcessControlStatus::SinkTimeout => "process control sink timed out",
+        ProcessControlStatus::QueueFull => "process control queue is full",
+        ProcessControlStatus::SinkError => "process control sink error",
     }
 }
 
