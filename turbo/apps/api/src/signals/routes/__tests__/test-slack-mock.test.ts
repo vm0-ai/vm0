@@ -98,6 +98,17 @@ describe("POST /api/test/slack-mock/*", () => {
     await expect(response.text()).resolves.toBe("Not found");
   });
 
+  it("returns 404 for views.publish outside allowed test environments", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(`${BASE_ROUTE}/views.publish`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
   it("returns 404 for conversations.history outside allowed test environments", async () => {
     mockEnv("ENV", "production");
 
