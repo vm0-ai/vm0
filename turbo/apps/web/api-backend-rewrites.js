@@ -82,6 +82,10 @@ const AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_P
 const AGENT_RUN_TELEMETRY_METRICS_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/metrics$`,
 );
+const AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/network`;
+const AGENT_RUN_TELEMETRY_NETWORK_PATH_RE = new RegExp(
+  `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/network$`,
+);
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH_RE =
@@ -164,6 +168,11 @@ export const API_BACKEND_REWRITES = [
     AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE,
     "/api/agent/runs/:id/telemetry/metrics",
     AGENT_RUN_TELEMETRY_METRICS_PATH_RE,
+  ],
+  [
+    AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE,
+    "/api/agent/runs/:id/telemetry/network",
+    AGENT_RUN_TELEMETRY_NETWORK_PATH_RE,
   ],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [
