@@ -12,9 +12,12 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
+  getConnectorOAuthClientConfig,
+  getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
   getRuntimeAvailableConnectorTypes,
   isGoogleOAuthConnector,
+  resolveConnectorOAuthClientCredentials,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
@@ -362,6 +365,89 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).not.toContain("sentry");
   });
 
+  it("derives static confidential OAuth credentials from connector config", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return (
+        {
+          GH_OAUTH_CLIENT_ID: "github-client-id",
+          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
+        } as Record<string, string>
+      )[name];
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+      clientSecret: "github-client-secret",
+    });
+  });
+
+  it("does not configure static confidential OAuth when the secret is missing", () => {
+    const credentials = getConnectorOAuthCredentials("github", (name) => {
+      return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
+    });
+
+    expect(credentials).toStrictEqual({
+      configured: false,
+      client: getConnectorOAuthClientConfig("github"),
+      clientId: "github-client-id",
+    });
+  });
+
+  it("supports literal static OAuth clients without environment credentials", () => {
+    const credentials = getConnectorOAuthCredentials("test-oauth", emptyEnv);
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: getConnectorOAuthClientConfig("test-oauth"),
+      clientId: "test-oauth-client",
+      clientSecret: "test-oauth-secret",
+    });
+  });
+
+  it("supports static public OAuth clients with only a client id", () => {
+    const credentials = resolveConnectorOAuthClientCredentials(
+      {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
+      },
+      (name) => {
+        return name === "PUBLIC_OAUTH_CLIENT_ID"
+          ? "public-client-id"
+          : undefined;
+      },
+    );
+
+    expect(credentials).toStrictEqual({
+      configured: true,
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientIdEnv: "PUBLIC_OAUTH_CLIENT_ID",
+      },
+      clientId: "public-client-id",
+    });
+  });
+
+  it("supports dynamic public OAuth clients without environment credentials", () => {
+    const client = {
+      clientRegistration: "dynamic",
+      clientType: "public",
+      tokenEndpointAuthMethod: "none",
+    } as const;
+
+    expect(
+      resolveConnectorOAuthClientCredentials(client, emptyEnv),
+    ).toStrictEqual({
+      configured: true,
+      client,
+    });
+  });
+
   it("includes all connectors that share a configured OAuth app", () => {
     const env = new Map([
       ["GOOGLE_OAUTH_CLIENT_ID", "google-client-id"],
@@ -385,12 +471,8 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
-    const oauthTypesWithoutRuntimeClientCredentials = new Set(["mailchimp"]);
     const activeOAuthTypes = connectorTypeSchema.options.filter((type) => {
-      return (
-        getConnectorOAuthConfig(type) &&
-        !oauthTypesWithoutRuntimeClientCredentials.has(type)
-      );
+      return getConnectorOAuthConfig(type);
     });
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {

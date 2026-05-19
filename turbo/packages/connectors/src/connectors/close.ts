@@ -31,6 +31,13 @@ export const close = {
     oauth: {
       authorizationUrl: "https://app.close.com/oauth2/authorize/",
       tokenUrl: "https://api.close.com/oauth2/token/",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["all.full_access", "offline_access"],
     },
   },

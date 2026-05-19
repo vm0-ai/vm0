@@ -29,6 +29,13 @@ export const sentry = {
     oauth: {
       authorizationUrl: "https://sentry.io/oauth/authorize/",
       tokenUrl: "https://sentry.io/oauth/token/",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "SENTRY_OAUTH_CLIENT_ID",
+        clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "org:read",
         "project:read",

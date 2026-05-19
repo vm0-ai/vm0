@@ -27,6 +27,13 @@ export const metaAds = {
     oauth: {
       authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
       tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
+        clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["ads_management", "ads_read", "business_management"],
     },
   },

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorOAuthClientConfig,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -81,6 +85,7 @@ function callbackHeaders(args: {
   readonly stateCookie?: string;
   readonly sessionId?: string;
   readonly codeVerifier?: string;
+  readonly oauthContext?: string;
 }): HeadersInit {
   const cookies = ["__session=opaque"];
   if (args.stateCookie) {
@@ -91,6 +96,9 @@ function callbackHeaders(args: {
   }
   if (args.codeVerifier) {
     cookies.push(`connector_oauth_pkce=${args.codeVerifier}`);
+  }
+  if (args.oauthContext) {
+    cookies.push(`connector_oauth_context=${args.oauthContext}`);
   }
   return { cookie: cookies.join("; ") };
 }
@@ -155,6 +163,81 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-client-secret");
   mockOptionalEnv("XERO_OAUTH_CLIENT_ID", "xero-client-id");
   mockOptionalEnv("XERO_OAUTH_CLIENT_SECRET", "xero-client-secret");
+}
+
+const dynamicPublicClient = {
+  clientRegistration: "dynamic",
+  clientType: "public",
+  tokenEndpointAuthMethod: "none",
+} as const satisfies ConnectorOAuthClientConfig;
+
+type CapturedOAuthExchange = {
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly state: string | undefined;
+  readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
+};
+
+function useDynamicTestOAuthExchange(): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+} {
+  const exchanges: CapturedOAuthExchange[] = [];
+
+  return {
+    exchanges,
+    restore: configureDynamicTestOAuthExchange(exchanges),
+  };
+}
+
+function configureDynamicTestOAuthExchange(
+  exchanges: CapturedOAuthExchange[],
+): () => void {
+  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
+  if (!oauth) {
+    throw new Error("test-oauth OAuth config is missing");
+  }
+
+  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
+  const originalClient = oauth.client;
+  const handler = PROVIDER_HANDLERS["test-oauth"];
+  const originalExchangeCodeWithArgs = handler.exchangeCodeWithArgs;
+
+  mutableOAuth.client = dynamicPublicClient;
+  handler.exchangeCodeWithArgs = (args) => {
+    exchanges.push({
+      clientId: args.clientId,
+      clientSecret: args.clientSecret,
+      code: args.code,
+      redirectUri: args.redirectUri,
+      state: args.state,
+      codeVerifier: args.codeVerifier,
+      oauthContext: args.oauthContext,
+    });
+    return Promise.resolve({
+      accessToken: "dynamic-access-token",
+      refreshToken: "dynamic-refresh-token",
+      expiresIn: 3600,
+      scopes: ["read"],
+      userInfo: {
+        id: "dynamic-user-id",
+        username: "dynamic-user",
+        email: "dynamic@example.com",
+      },
+    });
+  };
+
+  return () => {
+    mutableOAuth.client = originalClient;
+    if (originalExchangeCodeWithArgs) {
+      handler.exchangeCodeWithArgs = originalExchangeCodeWithArgs;
+    } else {
+      delete handler.exchangeCodeWithArgs;
+    }
+  };
 }
 
 function mockGitHubOAuth(options: {
@@ -1025,12 +1108,16 @@ const providerUserInfoErrorCases = providerSuccessCases.filter(
 describe("GET /api/connectors/:type/callback", () => {
   const orgIds: string[] = [];
   const sessionIds: string[] = [];
+  let restoreDynamicTestOAuthExchange: (() => void) | undefined;
 
   beforeEach(() => {
     mockOAuthEnv();
   });
 
   afterEach(async () => {
+    restoreDynamicTestOAuthExchange?.();
+    restoreDynamicTestOAuthExchange = undefined;
+
     server.resetHandlers();
 
     const db = store.set(writeDb$);
@@ -1207,7 +1294,10 @@ describe("GET /api/connectors/:type/callback", () => {
     const response = await requestCallback({
       type: "github",
       query: { code: "code-123", state: "returned-state" },
-      headers: callbackHeaders({ stateCookie: "saved-state" }),
+      headers: callbackHeaders({
+        stateCookie: "saved-state",
+        oauthContext: "opaque-context",
+      }),
     });
 
     expect(response.status).toBe(307);
@@ -1224,6 +1314,7 @@ describe("GET /api/connectors/:type/callback", () => {
         "connector_oauth_state=; Max-Age=0; Path=/",
         "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
     );
   });
@@ -1281,6 +1372,7 @@ describe("GET /api/connectors/:type/callback", () => {
       headers: callbackHeaders({
         stateCookie: "state-123",
         sessionId,
+        oauthContext: "opaque-context",
       }),
     });
 
@@ -1296,6 +1388,7 @@ describe("GET /api/connectors/:type/callback", () => {
         "connector_oauth_state=; Max-Age=0; Path=/",
         "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
     );
 
@@ -1328,6 +1421,70 @@ describe("GET /api/connectors/:type/callback", () => {
       .where(eq(connectorSessions.id, sessionId));
     expect(session?.status).toBe("complete");
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("passes OAuth context to dynamic public connector exchange", async () => {
+    const dynamicOAuth = useDynamicTestOAuthExchange();
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const { exchanges } = dynamicOAuth;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({
+        stateCookie: "state-123",
+        codeVerifier: "pkce-verifier",
+        oauthContext: "dynamic-oauth-context",
+      }),
+    });
+
+    expect(response.status).toBe(307);
+    expect(exchanges).toHaveLength(1);
+    expect(exchanges[0]).toStrictEqual({
+      clientId: undefined,
+      clientSecret: undefined,
+      code: "code-123",
+      redirectUri: `${BASE_URL}/api/connectors/test-oauth/callback`,
+      state: "state-123",
+      codeVerifier: "pkce-verifier",
+      oauthContext: "dynamic-oauth-context",
+    });
+    expect(response.headers.getSetCookie()).toStrictEqual(
+      expect.arrayContaining([
+        "connector_oauth_state=; Max-Age=0; Path=/",
+        "connector_oauth_session=; Max-Age=0; Path=/",
+        "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
+      ]),
+    );
+
+    const connector = await findConnector({
+      orgId,
+      userId,
+      type: "test-oauth",
+    });
+    expect(connector).toMatchObject({
+      type: "test-oauth",
+      authMethod: "oauth",
+      externalId: "dynamic-user-id",
+      externalUsername: "dynamic-user",
+      externalEmail: "dynamic@example.com",
+      needsReconnect: false,
+    });
+
+    const secret = await findSecret({
+      orgId,
+      userId,
+      name: "TEST_OAUTH_ACCESS_TOKEN",
+    });
+    expect(secret).toBeDefined();
+    expect(decryptSecretValue(secret!.encryptedValue)).toBe(
+      "dynamic-access-token",
+    );
   });
 
   it("stores a Slack user OAuth token without an expiry", async () => {

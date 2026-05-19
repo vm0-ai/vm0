@@ -34,6 +34,13 @@ export const testOauth = {
       // the preview-URL host changes per deploy.
       authorizationUrl: "/api/test/oauth-provider/authorize",
       tokenUrl: "/api/test/oauth-provider/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientId: "test-oauth-client",
+        clientSecret: "test-oauth-secret",
+      },
       scopes: ["read"],
     },
   },

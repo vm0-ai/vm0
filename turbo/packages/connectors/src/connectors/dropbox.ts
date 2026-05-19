@@ -42,6 +42,13 @@ export const dropbox = {
     oauth: {
       authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
       tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
+        clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "account_info.read",
         "files.metadata.read",

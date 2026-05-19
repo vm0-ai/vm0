@@ -1,10 +1,13 @@
 import { Buffer } from "node:buffer";
 
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   PROVIDER_HANDLERS,
+  refreshProviderToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
 import {
@@ -142,14 +145,13 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
 interface RefreshTokenContext {
   readonly refreshTokenSecret: string;
   readonly currentRefreshToken: string;
-  readonly clientId: string;
+  readonly clientId: string | undefined;
   readonly clientSecret: string | undefined;
   readonly accessTokenSecret: string;
   readonly secretUserId: string;
 }
 
 type RefreshableProviderHandler = ProviderHandler & {
-  readonly refreshToken: NonNullable<ProviderHandler["refreshToken"]>;
   readonly getRefreshSecretName: NonNullable<
     ProviderHandler["getRefreshSecretName"]
   >;
@@ -532,12 +534,14 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
   readonly context: RefreshTokenContext;
 } | null {
   const handler = providerHandler(args.connectorType);
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
+  if (
+    !handler?.getRefreshSecretName ||
+    (!handler.refreshToken && !handler.refreshTokenWithArgs)
+  ) {
     return null;
   }
   const refreshableHandler: RefreshableProviderHandler = {
     ...handler,
-    refreshToken: handler.refreshToken,
     getRefreshSecretName: handler.getRefreshSecretName,
   };
   if (args.sourceType === "model-provider" && !args.metadataKey) {
@@ -553,13 +557,38 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
     return null;
   }
 
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
   const env = currentProviderEnv();
-  const clientId = handler.getClientId(env);
-  if (!clientId) {
-    L.debug(
-      `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
+  if (args.sourceType === "connector") {
+    const typeResult = connectorTypeSchema.safeParse(args.connectorType);
+    if (!typeResult.success) {
+      L.debug(`${args.connectorType} is not a connector type, skipping`);
+      return null;
+    }
+    const credentials = getConnectorOAuthCredentials(
+      typeResult.data,
+      (name) => {
+        return optionalEnv(name);
+      },
     );
-    return null;
+    if (!credentials?.configured) {
+      L.debug(
+        `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
+      );
+      return null;
+    }
+    clientId = credentials.clientId;
+    clientSecret = credentials.clientSecret;
+  } else {
+    clientId = handler.getClientId(env);
+    if (!clientId) {
+      L.debug(
+        `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
+      );
+      return null;
+    }
+    clientSecret = refreshableHandler.getClientSecret(env);
   }
 
   return {
@@ -568,7 +597,7 @@ function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
       refreshTokenSecret,
       currentRefreshToken,
       clientId,
-      clientSecret: refreshableHandler.getClientSecret(env),
+      clientSecret,
       accessTokenSecret: refreshableHandler.getSecretName(),
       secretUserId: resolveSecretUserId(
         args.sourceType,
@@ -691,13 +720,19 @@ async function refreshConnectorAccessToken(
     return null;
   }
 
-  const refreshResult = await settle(
-    prepared.handler.refreshToken(
-      prepared.context.clientId,
-      prepared.context.clientSecret ?? "",
-      prepared.context.currentRefreshToken,
-    ),
-  );
+  const refreshPromise =
+    args.sourceType === "model-provider" && prepared.handler.refreshToken
+      ? prepared.handler.refreshToken(
+          prepared.context.clientId ?? "",
+          prepared.context.clientSecret ?? "",
+          prepared.context.currentRefreshToken,
+        )
+      : refreshProviderToken(prepared.handler, {
+          clientId: prepared.context.clientId,
+          clientSecret: prepared.context.clientSecret,
+          refreshToken: prepared.context.currentRefreshToken,
+        });
+  const refreshResult = await settle(refreshPromise);
 
   if (!refreshResult.ok) {
     const error = refreshResult.error;

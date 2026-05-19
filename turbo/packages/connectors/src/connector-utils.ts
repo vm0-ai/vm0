@@ -7,6 +7,7 @@ import {
   type ConnectorCliAuthConfig,
   type ConnectorCliAuthFlow,
   type ConnectorConfig,
+  type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
   type ConnectorType,
 } from "./connectors";
@@ -152,212 +153,95 @@ export type ConnectorEnvReader = (name: string) => string | undefined;
 
 export interface ConnectorOAuthEnvKeys {
   readonly clientId: string;
-  readonly clientSecret: string;
+  readonly clientSecret?: string;
 }
 
-const OAUTH_ENV_KEYS_BY_CONNECTOR: Partial<
-  Record<ConnectorType, ConnectorOAuthEnvKeys>
-> = {
-  ahrefs: {
-    clientId: "AHREFS_OAUTH_CLIENT_ID",
-    clientSecret: "AHREFS_OAUTH_CLIENT_SECRET",
-  },
-  airtable: {
-    clientId: "AIRTABLE_OAUTH_CLIENT_ID",
-    clientSecret: "AIRTABLE_OAUTH_CLIENT_SECRET",
-  },
-  asana: {
-    clientId: "ASANA_OAUTH_CLIENT_ID",
-    clientSecret: "ASANA_OAUTH_CLIENT_SECRET",
-  },
-  canva: {
-    clientId: "CANVA_OAUTH_CLIENT_ID",
-    clientSecret: "CANVA_OAUTH_CLIENT_SECRET",
-  },
-  close: {
-    clientId: "CLOSE_OAUTH_CLIENT_ID",
-    clientSecret: "CLOSE_OAUTH_CLIENT_SECRET",
-  },
-  deel: {
-    clientId: "DEEL_OAUTH_CLIENT_ID",
-    clientSecret: "DEEL_OAUTH_CLIENT_SECRET",
-  },
-  docusign: {
-    clientId: "DOCUSIGN_OAUTH_CLIENT_ID",
-    clientSecret: "DOCUSIGN_OAUTH_CLIENT_SECRET",
-  },
-  dropbox: {
-    clientId: "DROPBOX_OAUTH_CLIENT_ID",
-    clientSecret: "DROPBOX_OAUTH_CLIENT_SECRET",
-  },
-  figma: {
-    clientId: "FIGMA_OAUTH_CLIENT_ID",
-    clientSecret: "FIGMA_OAUTH_CLIENT_SECRET",
-  },
-  "garmin-connect": {
-    clientId: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
-    clientSecret: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
-  },
-  github: {
-    clientId: "GH_OAUTH_CLIENT_ID",
-    clientSecret: "GH_OAUTH_CLIENT_SECRET",
-  },
-  gmail: {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-ads": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-calendar": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-docs": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-drive": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-meet": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  "google-sheets": {
-    clientId: "GOOGLE_OAUTH_CLIENT_ID",
-    clientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-  },
-  gumroad: {
-    clientId: "GUMROAD_OAUTH_CLIENT_ID",
-    clientSecret: "GUMROAD_OAUTH_CLIENT_SECRET",
-  },
-  hubspot: {
-    clientId: "HUBSPOT_OAUTH_CLIENT_ID",
-    clientSecret: "HUBSPOT_OAUTH_CLIENT_SECRET",
-  },
-  "intervals-icu": {
-    clientId: "INTERVALS_ICU_OAUTH_CLIENT_ID",
-    clientSecret: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
-  },
-  linear: {
-    clientId: "LINEAR_OAUTH_CLIENT_ID",
-    clientSecret: "LINEAR_OAUTH_CLIENT_SECRET",
-  },
-  mercury: {
-    clientId: "MERCURY_OAUTH_CLIENT_ID",
-    clientSecret: "MERCURY_OAUTH_CLIENT_SECRET",
-  },
-  "meta-ads": {
-    clientId: "META_ADS_OAUTH_CLIENT_ID",
-    clientSecret: "META_ADS_OAUTH_CLIENT_SECRET",
-  },
-  monday: {
-    clientId: "MONDAY_OAUTH_CLIENT_ID",
-    clientSecret: "MONDAY_OAUTH_CLIENT_SECRET",
-  },
-  neon: {
-    clientId: "NEON_OAUTH_CLIENT_ID",
-    clientSecret: "NEON_OAUTH_CLIENT_SECRET",
-  },
-  notion: {
-    clientId: "NOTION_OAUTH_CLIENT_ID",
-    clientSecret: "NOTION_OAUTH_CLIENT_SECRET",
-  },
-  "outlook-calendar": {
-    clientId: "MICROSOFT_OAUTH_CLIENT_ID",
-    clientSecret: "MICROSOFT_OAUTH_CLIENT_SECRET",
-  },
-  "outlook-mail": {
-    clientId: "MICROSOFT_OAUTH_CLIENT_ID",
-    clientSecret: "MICROSOFT_OAUTH_CLIENT_SECRET",
-  },
-  posthog: {
-    clientId: "POSTHOG_OAUTH_CLIENT_ID",
-    clientSecret: "POSTHOG_OAUTH_CLIENT_SECRET",
-  },
-  reddit: {
-    clientId: "REDDIT_OAUTH_CLIENT_ID",
-    clientSecret: "REDDIT_OAUTH_CLIENT_SECRET",
-  },
-  sentry: {
-    clientId: "SENTRY_OAUTH_CLIENT_ID",
-    clientSecret: "SENTRY_OAUTH_CLIENT_SECRET",
-  },
-  slack: {
-    clientId: "SLACK_CLIENT_ID",
-    clientSecret: "SLACK_CLIENT_SECRET",
-  },
-  spotify: {
-    clientId: "SPOTIFY_OAUTH_CLIENT_ID",
-    clientSecret: "SPOTIFY_OAUTH_CLIENT_SECRET",
-  },
-  strava: {
-    clientId: "STRAVA_OAUTH_CLIENT_ID",
-    clientSecret: "STRAVA_OAUTH_CLIENT_SECRET",
-  },
-  stripe: {
-    clientId: "STRIPE_OAUTH_CLIENT_ID",
-    clientSecret: "STRIPE_OAUTH_CLIENT_SECRET",
-  },
-  supabase: {
-    clientId: "SUPABASE_OAUTH_CLIENT_ID",
-    clientSecret: "SUPABASE_OAUTH_CLIENT_SECRET",
-  },
-  todoist: {
-    clientId: "TODOIST_OAUTH_CLIENT_ID",
-    clientSecret: "TODOIST_OAUTH_CLIENT_SECRET",
-  },
-  vercel: {
-    clientId: "VERCEL_OAUTH_CLIENT_ID",
-    clientSecret: "VERCEL_OAUTH_CLIENT_SECRET",
-  },
-  webflow: {
-    clientId: "WEBFLOW_OAUTH_CLIENT_ID",
-    clientSecret: "WEBFLOW_OAUTH_CLIENT_SECRET",
-  },
-  x: {
-    clientId: "X_OAUTH_CLIENT_ID",
-    clientSecret: "X_OAUTH_CLIENT_SECRET",
-  },
-  xero: {
-    clientId: "XERO_OAUTH_CLIENT_ID",
-    clientSecret: "XERO_OAUTH_CLIENT_SECRET",
-  },
-  zoom: {
-    clientId: "ZOOM_OAUTH_CLIENT_ID",
-    clientSecret: "ZOOM_OAUTH_CLIENT_SECRET",
-  },
-};
-
-const STATIC_OAUTH_CONFIGURED_CONNECTOR_TYPES = new Set<ConnectorType>([
-  "test-oauth",
-]);
+export interface ConnectorOAuthCredentials {
+  readonly configured: boolean;
+  readonly client: ConnectorOAuthClientConfig;
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+}
 
 function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
   return Boolean(readEnv(name));
+}
+
+export function getConnectorOAuthClientConfig(
+  type: ConnectorType,
+): ConnectorOAuthClientConfig | undefined {
+  return getConnectorOAuthConfig(type)?.client;
+}
+
+export function resolveConnectorOAuthClientCredentials(
+  client: ConnectorOAuthClientConfig,
+  readEnv: ConnectorEnvReader,
+): ConnectorOAuthCredentials {
+  if (client.clientRegistration === "dynamic") {
+    return { configured: true, client };
+  }
+
+  if ("clientId" in client) {
+    return {
+      configured: true,
+      client,
+      clientId: client.clientId,
+      clientSecret:
+        client.clientType === "confidential" ? client.clientSecret : undefined,
+    };
+  }
+
+  const clientId = readEnv(client.clientIdEnv);
+  if (!clientId) {
+    return { configured: false, client };
+  }
+
+  if (client.clientType === "public") {
+    return { configured: true, client, clientId };
+  }
+
+  const clientSecret = readEnv(client.clientSecretEnv);
+  if (!clientSecret) {
+    return { configured: false, client, clientId };
+  }
+
+  return { configured: true, client, clientId, clientSecret };
+}
+
+export function getConnectorOAuthCredentials(
+  type: ConnectorType,
+  readEnv: ConnectorEnvReader,
+): ConnectorOAuthCredentials | undefined {
+  const client = getConnectorOAuthClientConfig(type);
+  if (!client) {
+    return undefined;
+  }
+  return resolveConnectorOAuthClientCredentials(client, readEnv);
 }
 
 function hasConfiguredOAuth(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  if (STATIC_OAUTH_CONFIGURED_CONNECTOR_TYPES.has(type)) {
-    return true;
-  }
-  const keys = OAUTH_ENV_KEYS_BY_CONNECTOR[type];
-  return keys
-    ? hasEnvValue(readEnv, keys.clientId) &&
-        hasEnvValue(readEnv, keys.clientSecret)
-    : false;
+  return getConnectorOAuthCredentials(type, readEnv)?.configured ?? false;
 }
 
 export function getConnectorOAuthEnvKeys(
   type: ConnectorType,
 ): ConnectorOAuthEnvKeys | undefined {
-  return OAUTH_ENV_KEYS_BY_CONNECTOR[type];
+  const client = getConnectorOAuthClientConfig(type);
+  if (
+    !client ||
+    client.clientRegistration !== "static" ||
+    !("clientIdEnv" in client)
+  ) {
+    return undefined;
+  }
+  return {
+    clientId: client.clientIdEnv,
+    clientSecret:
+      client.clientType === "confidential" ? client.clientSecretEnv : undefined,
+  };
 }
 
 /**

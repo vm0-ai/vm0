@@ -27,6 +27,13 @@ export const github = {
     oauth: {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "GH_OAUTH_CLIENT_ID",
+        clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["repo", "project", "workflow"],
     },
   },

@@ -43,6 +43,13 @@ export const mercury = {
     oauth: {
       authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
       tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
+        clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["offline_access"],
     },
   },

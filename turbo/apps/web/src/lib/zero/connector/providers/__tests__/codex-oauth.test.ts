@@ -286,7 +286,11 @@ describe("connector/providers/codex-oauth", () => {
       expect(url.searchParams.get("state")).toBe("state-1");
       expect(url.searchParams.get("code_challenge_method")).toBe("S256");
       expect(url.searchParams.get("code_challenge")).toBeTruthy();
-      expect(result.codeVerifier.length).toBeGreaterThan(20);
+      const { codeVerifier } = result;
+      if (!codeVerifier) {
+        throw new Error("Expected PKCE code verifier");
+      }
+      expect(codeVerifier.length).toBeGreaterThan(20);
     });
 
     it("exchangeCode requires a PKCE verifier", async () => {

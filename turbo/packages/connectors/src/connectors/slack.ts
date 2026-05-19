@@ -25,6 +25,13 @@ export const slack = {
     oauth: {
       authorizationUrl: "https://slack.com/oauth/v2/authorize",
       tokenUrl: "https://slack.com/api/oauth.v2.access",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "SLACK_CLIENT_ID",
+        clientSecretEnv: "SLACK_CLIENT_SECRET",
+      },
       // Note: Slack does not approve `search:read` or user `*:history`
       // scopes outside of RTS / MCP applications. The personal connector
       // intentionally omits them. Bot-side history access is provided

@@ -43,6 +43,13 @@ export const neon = {
     oauth: {
       authorizationUrl: "https://oauth2.neon.tech/oauth2/auth",
       tokenUrl: "https://oauth2.neon.tech/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "NEON_OAUTH_CLIENT_ID",
+        clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "openid",
         "offline_access",

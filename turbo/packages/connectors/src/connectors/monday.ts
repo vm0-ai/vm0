@@ -29,6 +29,13 @@ export const monday = {
     oauth: {
       authorizationUrl: "https://auth.monday.com/oauth2/authorize",
       tokenUrl: "https://auth.monday.com/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
+        clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "me:read",
         "boards:read",

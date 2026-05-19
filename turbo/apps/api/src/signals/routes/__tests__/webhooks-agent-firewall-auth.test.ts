@@ -4,8 +4,13 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorOAuthClientConfig,
+} from "@vm0/connectors/connectors";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -238,6 +243,97 @@ async function seedExpiredNotionConnector(
   });
 }
 
+async function seedExpiredTestOAuthConnector(
+  fixture: FirewallFixture,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "test-oauth",
+    authMethod: "oauth",
+    externalId: "test-oauth-user",
+    externalUsername: "test-oauth-user",
+    externalEmail: "test-oauth@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: new Date(now() - 60_000),
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_ACCESS_TOKEN",
+    value: "stale-test-oauth-token",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "TEST_OAUTH_REFRESH_TOKEN",
+    value: "test-oauth-refresh-token",
+    type: "connector",
+  });
+}
+
+const dynamicPublicClient = {
+  clientRegistration: "dynamic",
+  clientType: "public",
+  tokenEndpointAuthMethod: "none",
+} as const satisfies ConnectorOAuthClientConfig;
+
+type CapturedOAuthRefresh = {
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+  readonly refreshToken: string;
+};
+
+function useDynamicTestOAuthRefresh(): {
+  readonly refreshes: readonly CapturedOAuthRefresh[];
+  readonly restore: () => void;
+} {
+  const refreshes: CapturedOAuthRefresh[] = [];
+  return {
+    refreshes,
+    restore: configureDynamicTestOAuthRefresh(refreshes),
+  };
+}
+
+function configureDynamicTestOAuthRefresh(
+  refreshes: CapturedOAuthRefresh[],
+): () => void {
+  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
+  if (!oauth) {
+    throw new Error("test-oauth OAuth config is missing");
+  }
+
+  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
+  const originalClient = oauth.client;
+  const handler = PROVIDER_HANDLERS["test-oauth"];
+  const originalRefreshTokenWithArgs = handler.refreshTokenWithArgs;
+
+  mutableOAuth.client = dynamicPublicClient;
+  handler.refreshTokenWithArgs = (args) => {
+    refreshes.push({
+      clientId: args.clientId,
+      clientSecret: args.clientSecret,
+      refreshToken: args.refreshToken,
+    });
+    return Promise.resolve({
+      accessToken: "fresh-test-oauth-token",
+      refreshToken: "new-test-oauth-refresh-token",
+      expiresIn: 3600,
+    });
+  };
+
+  return () => {
+    mutableOAuth.client = originalClient;
+    if (originalRefreshTokenWithArgs) {
+      handler.refreshTokenWithArgs = originalRefreshTokenWithArgs;
+    } else {
+      delete handler.refreshTokenWithArgs;
+    }
+  };
+}
+
 async function seedExpiredCodexModelProvider(
   fixture: FirewallFixture,
 ): Promise<void> {
@@ -319,12 +415,19 @@ async function codexProviderState(fixture: FirewallFixture): Promise<{
   return row;
 }
 
-beforeEach(() => {
-  mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-client");
-  mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-secret");
-});
-
 describe("POST /api/webhooks/agent/firewall/auth", () => {
+  let restoreDynamicTestOAuthRefresh: (() => void) | undefined;
+
+  beforeEach(() => {
+    mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-client");
+    mockOptionalEnv("NOTION_OAUTH_CLIENT_SECRET", "notion-secret");
+  });
+
+  afterEach(() => {
+    restoreDynamicTestOAuthRefresh?.();
+    restoreDynamicTestOAuthRefresh = undefined;
+  });
+
   it("rejects missing sandbox auth before parsing the body", async () => {
     const response = await accept(
       firewallClient().resolve({
@@ -709,6 +812,63 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const connector = await notionConnectorState(fixture);
     expect(connector.needsReconnect).toBeFalsy();
     expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
+  });
+
+  it("refreshes dynamic public connector OAuth tokens without env client credentials", async () => {
+    const dynamicOAuth = useDynamicTestOAuthRefresh();
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const { refreshes } = dynamicOAuth;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            TEST_OAUTH_ACCESS_TOKEN: "stale-test-oauth-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(refreshes).toStrictEqual([
+      {
+        clientId: undefined,
+        clientSecret: undefined,
+        refreshToken: "test-oauth-refresh-token",
+      },
+    ]);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_ACCESS_TOKEN",
+    ]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-test-oauth-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "TEST_OAUTH_REFRESH_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("new-test-oauth-refresh-token");
   });
 
   it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {

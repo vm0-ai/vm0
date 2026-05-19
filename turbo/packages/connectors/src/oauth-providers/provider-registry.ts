@@ -2,6 +2,14 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import { getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
 import {
   type AuthUrlResult,
+  type OAuthAuthorizeArgs,
+  type OAuthExchangeArgs,
+  type OAuthRefreshArgs,
+  type OAuthRefreshResult,
+  buildProviderAuthUrl,
+  exchangeProviderCode,
+  refreshProviderToken,
+  providerEnvFromObject,
   type OAuthTokenResult,
   type ProviderHandler,
   type ProviderEnv,
@@ -225,9 +233,21 @@ import { gongHandler } from "./providers/gong-handler";
 import { ironcladHandler } from "./providers/ironclad-handler";
 import { snowflakeHandler } from "./providers/snowflake-handler";
 
-export type { AuthUrlResult, OAuthTokenResult };
+export type {
+  AuthUrlResult,
+  OAuthAuthorizeArgs,
+  OAuthExchangeArgs,
+  OAuthRefreshArgs,
+  OAuthRefreshResult,
+  OAuthTokenResult,
+};
 export type { ProviderEnv };
-export { providerEnvFromObject } from "./provider-types";
+export {
+  buildProviderAuthUrl,
+  exchangeProviderCode,
+  providerEnvFromObject,
+  refreshProviderToken,
+};
 
 export const PROVIDER_HANDLERS: Record<
   Exclude<ConnectorType, "computer">,

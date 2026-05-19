@@ -29,6 +29,13 @@ export const airtable = {
     oauth: {
       authorizationUrl: "https://airtable.com/oauth2/v1/authorize",
       tokenUrl: "https://airtable.com/oauth2/v1/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "data.records:read",
         "data.records:write",

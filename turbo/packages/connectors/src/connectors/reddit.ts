@@ -31,6 +31,13 @@ export const reddit = {
     oauth: {
       authorizationUrl: "https://www.reddit.com/api/v1/authorize",
       tokenUrl: "https://www.reddit.com/api/v1/access_token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
+        clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
+      },
       scopes: ["identity", "read"],
     },
   },

@@ -31,6 +31,13 @@ export const canva = {
     oauth: {
       authorizationUrl: "https://www.canva.com/api/oauth/authorize",
       tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
+        clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "asset:read",
         "asset:write",

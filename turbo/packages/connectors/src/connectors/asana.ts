@@ -29,6 +29,13 @@ export const asana = {
     oauth: {
       authorizationUrl: "https://app.asana.com/-/oauth_authorize",
       tokenUrl: "https://app.asana.com/-/oauth_token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_post",
+        clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
+        clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
+      },
       scopes: [],
     },
   },

@@ -29,6 +29,13 @@ export const x = {
     oauth: {
       authorizationUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "X_OAUTH_CLIENT_ID",
+        clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
+      },
       // https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
       scopes: [
         "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.

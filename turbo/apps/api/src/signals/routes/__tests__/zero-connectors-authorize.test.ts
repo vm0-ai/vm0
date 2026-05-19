@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  CONNECTOR_TYPES,
+  type ConnectorOAuthClientConfig,
+} from "@vm0/connectors/connectors";
+import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
@@ -64,6 +69,42 @@ function mockOAuthEnv(): void {
   mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
 }
 
+const dynamicPublicClient = {
+  clientRegistration: "dynamic",
+  clientType: "public",
+  tokenEndpointAuthMethod: "none",
+} as const satisfies ConnectorOAuthClientConfig;
+
+function useDynamicTestOAuthAuthorize(): () => void {
+  const oauth = CONNECTOR_TYPES["test-oauth"].oauth;
+  if (!oauth) {
+    throw new Error("test-oauth OAuth config is missing");
+  }
+
+  const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
+  const originalClient = oauth.client;
+  const handler = PROVIDER_HANDLERS["test-oauth"];
+  const originalBuildAuthUrlWithArgs = handler.buildAuthUrlWithArgs;
+
+  mutableOAuth.client = dynamicPublicClient;
+  handler.buildAuthUrlWithArgs = (args) => {
+    expect(args.clientId).toBeUndefined();
+    return {
+      url: `https://dynamic-oauth.test/authorize?state=${args.state}`,
+      oauthContext: "dynamic-oauth-context",
+    };
+  };
+
+  return () => {
+    mutableOAuth.client = originalClient;
+    if (originalBuildAuthUrlWithArgs) {
+      handler.buildAuthUrlWithArgs = originalBuildAuthUrlWithArgs;
+    } else {
+      delete handler.buildAuthUrlWithArgs;
+    }
+  };
+}
+
 async function requestAuthorize(
   type: string,
   options: { readonly session?: string; readonly authenticated?: boolean } = {},
@@ -80,12 +121,16 @@ async function requestAuthorize(
 
 describe("GET /api/zero/connectors/:type/authorize", () => {
   const orgIds: string[] = [];
+  let restoreDynamicTestOAuthAuthorize: (() => void) | undefined;
 
   beforeEach(() => {
     mockOAuthEnv();
   });
 
   afterEach(async () => {
+    restoreDynamicTestOAuthAuthorize?.();
+    restoreDynamicTestOAuthAuthorize = undefined;
+
     const db = store.set(writeDb$);
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
@@ -151,6 +196,32 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(
       cookies.some((cookie) => {
         return cookie.startsWith("connector_oauth_session=session-123");
+      }),
+    ).toBeTruthy();
+  });
+
+  it("allows dynamic public OAuth authorize without env credentials", async () => {
+    restoreDynamicTestOAuthAuthorize = useDynamicTestOAuthAuthorize();
+
+    const response = await requestAuthorize("test-oauth", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://dynamic-oauth.test/authorize",
+    );
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith(
+          "connector_oauth_context=dynamic-oauth-context",
+        );
       }),
     ).toBeTruthy();
   });

@@ -2,6 +2,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
+  getConnectorOAuthCredentials,
   getConnectorSecretNames,
 } from "@vm0/connectors/connector-utils";
 import type {
@@ -20,6 +21,7 @@ import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
   PROVIDER_HANDLERS,
   providerEnvFromObject,
+  refreshProviderToken,
 } from "@vm0/connectors/oauth-providers";
 import {
   getModelProviderOAuthHandler,
@@ -48,6 +50,91 @@ function getOAuthHandler(
     return getModelProviderOAuthHandler(handlerKey);
   }
   return PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+}
+
+interface OAuthClientCredentials {
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+}
+
+function resolveConnectorRefreshCredentials(
+  connectorType: string,
+): OAuthClientCredentials | null {
+  const typeResult = connectorTypeSchema.safeParse(connectorType);
+  if (!typeResult.success) {
+    log.debug(`${connectorType} is not a connector type, skipping`);
+    return null;
+  }
+
+  const env = providerEnvFromObject(globalThis.services.env);
+  const credentials = getConnectorOAuthCredentials(typeResult.data, (name) => {
+    return env[name];
+  });
+  if (!credentials?.configured) {
+    log.debug(
+      `${connectorType} OAuth credentials not configured, skipping token refresh`,
+    );
+    return null;
+  }
+
+  return {
+    clientId: credentials.clientId,
+    clientSecret: credentials.clientSecret,
+  };
+}
+
+function resolveModelProviderRefreshCredentials(
+  connectorType: string,
+  handler: OAuthHandler,
+): OAuthClientCredentials | null {
+  const env = providerEnvFromObject(globalThis.services.env);
+  const clientId = handler.getClientId(env);
+  if (!clientId) {
+    log.debug(
+      `${connectorType} OAuth client ID not configured, skipping token refresh`,
+    );
+    return null;
+  }
+
+  return {
+    clientId,
+    clientSecret: handler.getClientSecret(env),
+  };
+}
+
+function resolveRefreshOAuthCredentials(args: {
+  readonly connectorType: string;
+  readonly sourceType: OAuthSecretSource;
+  readonly handler: OAuthHandler;
+}): OAuthClientCredentials | null {
+  if (args.sourceType === "connector") {
+    return resolveConnectorRefreshCredentials(args.connectorType);
+  }
+  return resolveModelProviderRefreshCredentials(
+    args.connectorType,
+    args.handler,
+  );
+}
+
+async function refreshOAuthToken(args: {
+  readonly sourceType: OAuthSecretSource;
+  readonly handler: OAuthHandler;
+  readonly credentials: OAuthClientCredentials;
+  readonly refreshToken: string;
+}) {
+  if (args.sourceType === "model-provider" && args.handler.refreshToken) {
+    return await args.handler.refreshToken(
+      args.credentials.clientId ?? "",
+      args.credentials.clientSecret ?? "",
+      args.refreshToken,
+    );
+  }
+
+  return await refreshProviderToken(args.handler, {
+    clientId: args.credentials.clientId,
+    clientSecret: args.credentials.clientSecret,
+    refreshToken: args.refreshToken,
+  });
 }
 
 /**
@@ -506,7 +593,10 @@ export async function refreshConnectorAccessToken(
 ): Promise<string | null> {
   const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
   const handler = getOAuthHandler(connectorType, sourceType);
-  if (!handler?.refreshToken || !handler.getRefreshSecretName) {
+  if (
+    !handler?.getRefreshSecretName ||
+    (!handler.refreshToken && !handler.refreshTokenWithArgs)
+  ) {
     return null;
   }
   if (sourceType === "model-provider" && !options.metadataKey) {
@@ -522,19 +612,14 @@ export async function refreshConnectorAccessToken(
     return null;
   }
 
-  const env = providerEnvFromObject(globalThis.services.env);
-  const clientId = handler.getClientId(env);
-  if (!clientId) {
-    log.debug(
-      `${connectorType} OAuth client ID not configured, skipping token refresh`,
-    );
+  const credentials = resolveRefreshOAuthCredentials({
+    connectorType,
+    sourceType,
+    handler,
+  });
+  if (!credentials) {
     return null;
   }
-  // clientSecret may legitimately be undefined for PKCE-only handlers
-  // (e.g. codex-oauth-token). The handler's refreshToken is the source of truth
-  // for credential needs — if a non-PKCE handler is misconfigured the
-  // upstream call will fail and the catch below records the error.
-  const clientSecret = handler.getClientSecret(env);
 
   const accessTokenSecret = handler.getSecretName();
 
@@ -545,11 +630,12 @@ export async function refreshConnectorAccessToken(
   );
 
   try {
-    const result = await handler.refreshToken(
-      clientId,
-      clientSecret ?? "",
-      currentRefreshToken,
-    );
+    const result = await refreshOAuthToken({
+      sourceType,
+      handler,
+      credentials,
+      refreshToken: currentRefreshToken,
+    });
 
     // Persist new tokens to database
     await upsertConnectorSecret(

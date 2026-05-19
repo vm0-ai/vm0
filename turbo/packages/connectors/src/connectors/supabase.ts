@@ -43,6 +43,13 @@ export const supabase = {
     oauth: {
       authorizationUrl: "https://api.supabase.com/v1/oauth/authorize",
       tokenUrl: "https://api.supabase.com/v1/oauth/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "confidential",
+        tokenEndpointAuthMethod: "client_secret_basic",
+        clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
+        clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
+      },
       scopes: [
         "organizations:read",
         "projects:read",
