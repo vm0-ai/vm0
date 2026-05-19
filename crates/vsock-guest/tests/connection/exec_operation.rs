@@ -114,6 +114,24 @@ fn exec_operation_rejects_unsupported_start_policies() {
         "exec timeout policy none is not supported"
     );
 
+    let mut zero_timeout_payload = vsock_proto::encode_exec_start(
+        1,
+        "printf should-not-run",
+        &[],
+        false,
+        "test",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    zero_timeout_payload[2..6].copy_from_slice(&0u32.to_be_bytes());
+    let zero_timeout_msg = vsock_proto::encode(MSG_EXEC_START, 109, &zero_timeout_payload).unwrap();
+    host_stream.write_all(&zero_timeout_msg).unwrap();
+    assert_eq!(
+        read_error_response(&mut host_stream, 109),
+        "invalid payload: exec start timeout duration must be positive"
+    );
+
     send_exec_start_request(
         &mut host_stream,
         105,
@@ -334,7 +352,7 @@ fn exec_operation_stream_disconnect_cancels_child() {
         &mut host_stream,
         117,
         &command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Stream {
             limit_bytes: 1024 * 1024,
             chunk_limit_bytes: 16,
@@ -585,7 +603,7 @@ fn exec_operation_explicit_cancel_kills_child_and_returns_cancelled() {
         &mut host_stream,
         111,
         &command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Capture { limit_bytes: 64 },
     );
@@ -616,7 +634,7 @@ fn exec_operation_connection_close_cancels_child() {
         &mut host_stream,
         112,
         &command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Capture { limit_bytes: 64 },
     );
@@ -643,7 +661,7 @@ fn exec_operation_duplicate_start_returns_error_without_cancelling_active_exec_o
         &mut host_stream,
         113,
         &command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Capture { limit_bytes: 64 },
     );
@@ -693,7 +711,7 @@ fn exec_operation_different_sequences_run_concurrently_and_cancel_independently(
         &mut host_stream,
         120,
         &blocked_command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Capture { limit_bytes: 64 },
     );
@@ -798,7 +816,7 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
         &mut host_stream,
         122,
         &command,
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
     );
@@ -836,7 +854,7 @@ fn exec_operation_captures_grandchild_output_before_drain_deadline() {
         &mut host_stream,
         123,
         "echo stdout-early; echo stderr-early >&2; { sleep 1; echo stdout-late; echo stderr-late >&2; } &",
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
     );

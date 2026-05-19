@@ -197,6 +197,36 @@ fn exec_start_roundtrip_supervised_no_timeout_and_control_enabled() {
 }
 
 #[test]
+fn exec_start_rejects_zero_duration_timeout() {
+    let err = encode_exec_start(
+        0,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap_err();
+    assert_invalid_payload(err, "exec start timeout duration must be positive");
+
+    let mut payload = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        "",
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap();
+    payload[2..6].copy_from_slice(&0u32.to_be_bytes());
+
+    let err = decode_exec_start(&payload).unwrap_err();
+    assert_invalid_payload(err, "exec start timeout duration must be positive");
+}
+
+#[test]
 fn exec_start_roundtrip_capture_and_stream_policy() {
     let payload = encode_exec_start(
         1000,

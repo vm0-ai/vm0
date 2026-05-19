@@ -15,7 +15,7 @@ fn quiesce_busy_fences_new_exec_operations_until_pending_exec_finishes() {
         &mut host_stream,
         201,
         "sleep 60",
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Discard,
     );
@@ -286,7 +286,7 @@ fn resume_operations_reopens_after_busy_quiesce_with_pending_operation() {
         &mut host_stream,
         241,
         "sleep 60",
-        0,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 64 },
         ExecOutputPolicy::Discard,
     );

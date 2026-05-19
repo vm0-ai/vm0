@@ -50,7 +50,8 @@
 //! `exec_output.output_seq` is per exec operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
 //! `exec_start.lifecycle` uses 0=one_shot and 1=supervised.
-//! `exec_start.timeout_policy` uses 0=`[4B timeout_ms]` and 1=no timeout.
+//! `exec_start.timeout_policy` uses 0=`[4B positive timeout_ms]` and
+//! 1=no timeout.
 //! `exec_start.flags` currently uses `SUDO=0x01`.
 //! `exec_start.expected_exit_count` may be zero, but the count field is
 //! always present.

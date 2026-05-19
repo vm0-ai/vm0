@@ -277,6 +277,15 @@ fn append_exec_control_policy(p: &mut Vec<u8>, control: ExecControlPolicy) {
     }
 }
 
+fn validate_exec_timeout_policy(timeout: ExecTimeoutPolicy) -> Result<(), ProtocolError> {
+    if let ExecTimeoutPolicy::Duration { timeout_ms: 0 } = timeout {
+        return Err(ProtocolError::InvalidPayload(
+            "exec start timeout duration must be positive",
+        ));
+    }
+    Ok(())
+}
+
 fn append_exec_output_policy(p: &mut Vec<u8>, policy: ExecOutputPolicy) {
     match policy {
         ExecOutputPolicy::Discard => p.push(EXEC_OUTPUT_POLICY_DISCARD),
@@ -333,6 +342,9 @@ pub fn encode_exec_start(
 ///
 /// Wire format:
 /// `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]`.
+///
+/// Duration timeout policies require a positive `timeout_ms`; use the explicit
+/// no-timeout policy for unbounded operation lifetimes.
 pub fn encode_exec_start_with_expected_exit_codes(
     request: ExecStartEncodeRequest<'_>,
 ) -> Result<Vec<u8>, ProtocolError> {
@@ -360,6 +372,7 @@ pub fn encode_exec_start_with_expected_exit_codes(
     let stderr_policy_len = exec_output_policy_encoded_len(request.stderr)?;
     let timeout_policy_len = exec_timeout_policy_encoded_len(request.timeout);
     let control_policy_len = exec_control_policy_encoded_len(request.control);
+    validate_exec_timeout_policy(request.timeout)?;
 
     let mut payload_len = 1 + timeout_policy_len + 1 + 4;
     payload_len = checked_payload_len_add(payload_len, cmd.len())?;
@@ -653,6 +666,11 @@ fn decode_exec_timeout_policy(
     match read_u8(payload, offset, "exec start timeout policy truncated")? {
         EXEC_TIMEOUT_DURATION => {
             let timeout_ms = read_u32(payload, offset, "exec start timeout truncated")?;
+            if timeout_ms == 0 {
+                return Err(ProtocolError::InvalidPayload(
+                    "exec start timeout duration must be positive",
+                ));
+            }
             Ok(ExecTimeoutPolicy::Duration { timeout_ms })
         }
         EXEC_TIMEOUT_NONE => Ok(ExecTimeoutPolicy::None),

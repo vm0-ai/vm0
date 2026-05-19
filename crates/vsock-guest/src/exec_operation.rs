@@ -157,6 +157,12 @@ impl ExecOperationWorkerRequest {
                 "exec timeout policy none is not supported",
             ));
         };
+        if timeout_ms == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "exec timeout duration must be positive",
+            ));
+        }
         if decoded.control != ExecControlPolicy::Disabled {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
