@@ -682,6 +682,7 @@ jobs:
   # Deploy web application with database
   deploy-web:
     runs-on: ubuntu-latest-8-cores
+    timeout-minutes: 25
     concurrency:
       group: deploy-web-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
@@ -861,11 +862,24 @@ jobs:
             fi
           done < "$ENV_FILE"
 
-          DEPLOYMENT_URL=$(vercel "${DEPLOY_ARGS[@]}")
+          echo "Deploying to Vercel with timeout: $VERCEL_DEPLOY_TIMEOUT"
+          set +e
+          DEPLOYMENT_URL=$(timeout "$VERCEL_DEPLOY_TIMEOUT" vercel "${DEPLOY_ARGS[@]}")
+          DEPLOY_STATUS=$?
+          set -e
+          if [ "$DEPLOY_STATUS" -ne 0 ]; then
+            if [ "$DEPLOY_STATUS" -eq 124 ]; then
+              echo "::error::Vercel deploy timed out after $VERCEL_DEPLOY_TIMEOUT"
+            else
+              echo "::error::Vercel deploy failed with exit code $DEPLOY_STATUS"
+            fi
+            exit "$DEPLOY_STATUS"
+          fi
           echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
           echo "Deployment URL: $DEPLOYMENT_URL"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_DEPLOY_TIMEOUT: 15m
           META_BRANCH: ${{ github.head_ref || github.ref_name }}
           META_PR: ${{ needs.prepare.outputs.job-ref }}
           ENV_FILE: ${{ steps.web-deploy-env.outputs.file }}
