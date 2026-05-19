@@ -39,7 +39,7 @@ const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
 
-type BrowserOAuthConnectorType = Exclude<ConnectorType, "computer">;
+type ConnectorOAuthAuthorizeType = Exclude<ConnectorType, "computer">;
 
 /**
  * Generate a random state string for CSRF protection
@@ -73,17 +73,8 @@ function buildCookieHeader(
   return parts.join("; ");
 }
 
-function connectorOAuthAuthorizationError(
-  connectorType: BrowserOAuthConnectorType,
-): string {
-  if (connectorType === "codex-oauth") {
-    return "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow";
-  }
-  return `${connectorType} does not use connector OAuth authorization`;
-}
-
 function rejectUnsupportedConnectorOAuth(
-  connectorType: BrowserOAuthConnectorType,
+  connectorType: ConnectorOAuthAuthorizeType,
 ): NextResponse | undefined {
   const oauthStorage = getConnectorOAuthStorage(connectorType);
   if (!oauthStorage) {
@@ -95,7 +86,7 @@ function rejectUnsupportedConnectorOAuth(
 
   if (oauthStorage !== "connector") {
     return NextResponse.json(
-      { error: connectorOAuthAuthorizationError(connectorType) },
+      { error: `${connectorType} does not use connector OAuth authorization` },
       { status: 400 },
     );
   }

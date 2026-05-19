@@ -76,7 +76,7 @@ type ConnectorAuthorizeRoute = AppRoute & {
   readonly query: z.ZodType<{ readonly session?: string }>;
 };
 
-type OAuthConnectorType = Exclude<ConnectorType, "computer">;
+type ConnectorOAuthAuthorizeType = Exclude<ConnectorType, "computer">;
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -177,13 +177,6 @@ function redirectResponse(url: string): Response {
   });
 }
 
-function connectorOAuthAuthorizationError(type: OAuthConnectorType): string {
-  if (type === "codex-oauth") {
-    return "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow";
-  }
-  return `${type} does not use connector OAuth authorization`;
-}
-
 async function base64UrlSha256(value: string): Promise<string> {
   const data = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest("SHA-256", data);
@@ -227,7 +220,7 @@ function deterministicPkceSuffix(type: ConnectorType): string | undefined {
 }
 
 async function buildAuthorizeUrl(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: ConnectorOAuthAuthorizeType;
   readonly clientRegistration: "static" | "dynamic" | undefined;
   readonly clientId: string | undefined;
   readonly redirectUri: string;
@@ -316,7 +309,7 @@ async function buildAuthorizeUrl(args: {
 }
 
 function buildConnectorSpecificAuthorizeUrl(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: ConnectorOAuthAuthorizeType;
   readonly authorizationUrl: string;
   readonly clientId: string;
   readonly redirectUri: string;
@@ -356,7 +349,7 @@ function buildConnectorSpecificAuthorizeUrl(args: {
 }
 
 async function buildDynamicAuthorizeUrl(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: ConnectorOAuthAuthorizeType;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<{
@@ -624,7 +617,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
     if (oauthStorage !== "connector") {
       return jsonResponse(
-        { error: connectorOAuthAuthorizationError(type) },
+        { error: `${type} does not use connector OAuth authorization` },
         400,
       );
     }

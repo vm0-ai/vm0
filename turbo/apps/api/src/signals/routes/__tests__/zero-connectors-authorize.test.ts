@@ -174,8 +174,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body).toStrictEqual({
-      error:
-        "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
+      error: "codex-oauth does not use connector OAuth authorization",
     });
   });
 

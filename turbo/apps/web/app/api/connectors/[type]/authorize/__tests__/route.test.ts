@@ -172,7 +172,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe(
-      "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
+      "codex-oauth does not use connector OAuth authorization",
     );
   });
 
