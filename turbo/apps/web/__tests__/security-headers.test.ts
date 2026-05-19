@@ -362,6 +362,12 @@ const CRON_RECONCILE_BILLING_ENTITLEMENTS_NEXT_NEGATIVE_PATHS = [
   "/api/cron/reconcile-billing-entitlements/extra",
   "/api/cron",
 ] as const;
+const CRON_SYNC_SKILLS_REWRITE_SOURCE = "/api/cron/sync-skills";
+const CRON_SYNC_SKILLS_PATH = "/api/cron/sync-skills";
+const CRON_SYNC_SKILLS_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/sync-skills/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -2417,6 +2423,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_RECONCILE_BILLING_ENTITLEMENTS_PATH)).toStrictEqual({});
     for (const pathname of CRON_RECONCILE_BILLING_ENTITLEMENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron sync skills rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_SYNC_SKILLS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_SYNC_SKILLS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/sync-skills",
+    });
+
+    const matcher = getPathMatch(CRON_SYNC_SKILLS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_SYNC_SKILLS_PATH)).toStrictEqual({});
+    for (const pathname of CRON_SYNC_SKILLS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

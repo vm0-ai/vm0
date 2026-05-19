@@ -248,6 +248,7 @@ export const API_BACKEND_REWRITES = [
     "/api/cron/reconcile-billing-entitlements",
     "/api/cron/reconcile-billing-entitlements",
   ],
+  ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",

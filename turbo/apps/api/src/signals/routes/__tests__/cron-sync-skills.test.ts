@@ -339,7 +339,9 @@ describe("GET /api/cron/sync-skills", () => {
   it("rejects requests with no authorization header", async () => {
     const response = await accept(apiClient().sync({ headers: {} }), [401]);
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
   });
 
   it("skips sync when the stored commit SHA is unchanged", async () => {

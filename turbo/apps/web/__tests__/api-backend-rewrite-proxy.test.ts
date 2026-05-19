@@ -305,6 +305,14 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/insights")).toBe(false);
   });
 
+  it("matches the cron sync skills rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/sync-skills")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/cron/sync-skills/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),
