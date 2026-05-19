@@ -492,6 +492,45 @@ async fn supervised_exec_control_uses_exec_control_messages() {
 }
 
 #[tokio::test]
+async fn supervised_exec_control_disabled_returns_unsupported_without_frame() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("control-disabled"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+    assert!(handle.control_handle().is_none());
+
+    let err = handle
+        .control("disabled", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("disabled control must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after disabled control: {err}"),
+    }
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
 async fn supervised_exec_output_sequence_validation_applies_after_started() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -640,6 +679,74 @@ async fn supervised_exec_control_reports_guest_status_and_error() {
     )
     .await;
     handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervised_exec_control_timeout_ignores_late_result() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-timeout")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    let decoded_start = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    let ExecControlPolicy::Enabled { control_nonce, .. } = decoded_start.control else {
+        panic!("supervised exec should enable control");
+    };
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("timeout", b"payload", Duration::ZERO)
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    let decoded_control = vsock_proto::decode_exec_control(&control.payload).unwrap();
+    assert_eq!(decoded_control.request_timeout_ms, 0);
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    send_exec_control_result(
+        &mut guest,
+        control.seq,
+        start.seq,
+        control_nonce,
+        "timeout",
+        ProcessControlStatus::Delivered,
+        "",
+    )
+    .await;
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    let result = handle.wait(Duration::from_secs(5)).await.unwrap();
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]
