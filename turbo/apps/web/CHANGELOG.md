@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.375.0](https://github.com/vm0-ai/vm0/compare/web-v12.374.1...web-v12.375.0) (2026-05-19)
+
+
+### Features
+
+* add 13 Sponge-catalog api-token connectors ([#13809](https://github.com/vm0-ai/vm0/issues/13809)) ([61c0e71](https://github.com/vm0-ai/vm0/commit/61c0e71e79b74ff0d98eb50525defc711da3232e))
+* **web:** mount Clerk Google One Tap on marketing layout ([#13819](https://github.com/vm0-ai/vm0/issues/13819)) ([ff3d455](https://github.com/vm0-ai/vm0/commit/ff3d4557f4becb6d8021d7dd3c5f8730cb6c5c6a))
+
+
+### Refactoring
+
+* cut over cli auth token route ([#13812](https://github.com/vm0-ai/vm0/issues/13812)) ([9e56c33](https://github.com/vm0-ai/vm0/commit/9e56c336c44bd73583aa884d116649f3962cfdc3))
+* cut over zero chat thread detail route ([#13815](https://github.com/vm0-ai/vm0/issues/13815)) ([795f23a](https://github.com/vm0-ai/vm0/commit/795f23a5a615813dc7fe7a64ca0748f535dfd904))
+* cut over zero chat threads collection route ([#13823](https://github.com/vm0-ai/vm0/issues/13823)) ([fd1866b](https://github.com/vm0-ai/vm0/commit/fd1866b225408225d244cd2fb80ae05856f01a35))
+* proxy agent compose detail to api ([#13808](https://github.com/vm0-ai/vm0/issues/13808)) ([d7e6e30](https://github.com/vm0-ai/vm0/commit/d7e6e301238b8a0b3e39f43de4a2b719f0c45825))
+* proxy agent composes collection to api ([#13821](https://github.com/vm0-ai/vm0/issues/13821)) ([3b57896](https://github.com/vm0-ai/vm0/commit/3b5789634b0c66c4f7c29a020739153a887ccebd))
+* proxy agent run events to api ([#13827](https://github.com/vm0-ai/vm0/issues/13827)) ([83993dc](https://github.com/vm0-ai/vm0/commit/83993dc833305e6bbeccf420278634a069b93d00))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+    * @vm0/core bumped to 8.281.6
+    * @vm0/db bumped to 1.14.13
+
 ## [12.374.1](https://github.com/vm0-ai/vm0/compare/web-v12.374.0...web-v12.374.1) (2026-05-18)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.365.0](https://github.com/vm0-ai/vm0/compare/app-v0.364.1...app-v0.365.0) (2026-05-19)
+
+
+### Features
+
+* add 13 Sponge-catalog api-token connectors ([#13809](https://github.com/vm0-ai/vm0/issues/13809)) ([61c0e71](https://github.com/vm0-ai/vm0/commit/61c0e71e79b74ff0d98eb50525defc711da3232e))
+* **platform:** fire Google Ads conversion on subscription success ([#13824](https://github.com/vm0-ai/vm0/issues/13824)) ([4175e32](https://github.com/vm0-ai/vm0/commit/4175e32298da32311095a344164cedf5f46b9afb))
+
+
+### Bug Fixes
+
+* align queued message hover and row height with sidebar ([#13822](https://github.com/vm0-ai/vm0/issues/13822)) ([37503b1](https://github.com/vm0-ai/vm0/commit/37503b13415464ed5f9d9c6af2fc80b4fcfdb7c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+    * @vm0/core bumped to 8.281.6
+
 ## [0.364.1](https://github.com/vm0-ai/vm0/compare/app-v0.364.0...app-v0.364.1) (2026-05-18)
 
 

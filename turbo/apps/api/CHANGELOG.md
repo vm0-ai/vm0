@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.54.9](https://github.com/vm0-ai/vm0/compare/api-v1.54.8...api-v1.54.9) (2026-05-19)
+
+
+### Refactoring
+
+* cut over cli auth token route ([#13812](https://github.com/vm0-ai/vm0/issues/13812)) ([9e56c33](https://github.com/vm0-ai/vm0/commit/9e56c336c44bd73583aa884d116649f3962cfdc3))
+* cut over zero chat thread detail route ([#13815](https://github.com/vm0-ai/vm0/issues/13815)) ([795f23a](https://github.com/vm0-ai/vm0/commit/795f23a5a615813dc7fe7a64ca0748f535dfd904))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.30.8
+    * @vm0/connectors bumped to 1.19.0
+    * @vm0/core bumped to 8.281.6
+    * @vm0/db bumped to 1.14.13
+
 ## [1.54.8](https://github.com/vm0-ai/vm0/compare/api-v1.54.7...api-v1.54.8) (2026-05-18)
 
 
