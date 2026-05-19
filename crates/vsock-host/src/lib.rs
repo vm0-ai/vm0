@@ -39,6 +39,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 use operation_tracker::{
+    NormalOperationFenceRejection as TrackerNormalOperationFenceRejection,
     NormalOperationRejection, NormalOperationToken, NormalOperationTracker,
     NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
@@ -92,6 +93,36 @@ impl FrameWriteObserver {
 impl Default for FrameWriteObserver {
     fn default() -> Self {
         Self::noop()
+    }
+}
+
+/// Opaque guard that fences new normal guest operations on a [`VsockHost`].
+///
+/// While this guard is alive, normal operations such as exec, file transfer, and
+/// spawn-process requests are rejected by the host-side operation tracker.
+/// Lifecycle requests such as quiesce/resume are not normal operations and can
+/// still be sent while the guard is held.
+#[derive(Debug)]
+pub struct NormalOperationFence {
+    _inner: operation_tracker::NormalOperationFence,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NormalOperationFenceRejection {
+    Busy,
+    AlreadyFenced,
+    NotParkable,
+    Closed,
+}
+
+impl From<TrackerNormalOperationFenceRejection> for NormalOperationFenceRejection {
+    fn from(error: TrackerNormalOperationFenceRejection) -> Self {
+        match error {
+            TrackerNormalOperationFenceRejection::Busy => Self::Busy,
+            TrackerNormalOperationFenceRejection::AlreadyFenced => Self::AlreadyFenced,
+            TrackerNormalOperationFenceRejection::NotParkable => Self::NotParkable,
+            TrackerNormalOperationFenceRejection::Closed => Self::Closed,
+        }
     }
 }
 
@@ -1035,11 +1066,27 @@ impl VsockHost {
         validate_empty_lifecycle_response(&response, response_payload_name)
     }
 
-    /// Fence new guest operations before a higher-level lifecycle transition.
+    /// Try to fence new normal guest operations on this connection.
     ///
-    /// This is a same-connection lifecycle check: the guest either reports no
-    /// in-flight operations with `operations_quiesced`, or returns `error` and keeps
-    /// the operation fence closed until [`resume_operations`](Self::resume_operations).
+    /// The returned guard keeps normal operations fenced until it is dropped.
+    /// Lifecycle requests such as [`quiesce_operations`](Self::quiesce_operations)
+    /// and [`resume_operations`](Self::resume_operations) remain available while
+    /// the guard is held.
+    pub fn try_fence_normal_operations(
+        &self,
+    ) -> Result<NormalOperationFence, NormalOperationFenceRejection> {
+        self.shared
+            .normal_operations
+            .try_fence()
+            .map(|inner| NormalOperationFence { _inner: inner })
+            .map_err(Into::into)
+    }
+
+    /// Ask the guest to quiesce its own operation dispatcher.
+    ///
+    /// This does not fence host-side normal operations. Callers that need a
+    /// no-new-normal-operation boundary must hold a
+    /// [`NormalOperationFence`] before sending this lifecycle request.
     pub async fn quiesce_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_QUIESCE_OPERATIONS,

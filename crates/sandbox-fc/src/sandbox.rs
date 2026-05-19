@@ -19,7 +19,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
-use vsock_host::VsockHost;
+use vsock_host::{NormalOperationFence, NormalOperationFenceRejection, VsockHost};
 
 use crate::api::ApiError;
 use nbd_cow::PooledNbdCowDevice;
@@ -502,6 +502,8 @@ pub struct FirecrackerSandbox {
     /// touch the balloon controller, and to let `stop()` skip vsock
     /// graceful shutdown (guest can't respond with paused vCPUs).
     is_parked: bool,
+    /// Host-side normal-operation fence held while this sandbox is parked.
+    park_fence: Option<NormalOperationFence>,
 }
 
 pub(crate) struct SandboxNetwork {
@@ -568,6 +570,7 @@ impl FirecrackerSandbox {
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
             is_parked: false,
+            park_fence: None,
         }
     }
 
@@ -1546,16 +1549,33 @@ impl Sandbox for FirecrackerSandbox {
 
     async fn park(&mut self) -> sandbox::Result<()> {
         if self.is_parked {
+            if self.park_fence.is_none() {
+                let message = "sandbox is parked without a normal-operation fence";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+            }
             return ensure_park_noop_state(&self.park_coordinator);
         }
 
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
+        let fence_guest = Arc::clone(&guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
-        park_with_ready_for_park(
+        let normal_operations_fence = park_with_ready_for_park(
             &id,
             &coordinator,
+            || async move {
+                let guest = fence_guest.lock().await.as_ref().cloned().ok_or_else(|| {
+                    ParkNormalOperationFenceError::GuestUnavailable(io::Error::new(
+                        io::ErrorKind::NotConnected,
+                        "guest connection missing during park fence",
+                    ))
+                })?;
+                guest
+                    .try_fence_normal_operations()
+                    .map_err(ParkNormalOperationFenceError::Rejected)
+            },
             || async move {
                 let guest = guest.lock().await.as_ref().cloned().ok_or_else(|| {
                     io::Error::new(
@@ -1575,19 +1595,38 @@ impl Sandbox for FirecrackerSandbox {
                 )
             },
         )
-        .await
+        .await?;
+        self.park_fence = Some(normal_operations_fence);
+        Ok(())
     }
 
     async fn unpark(&mut self) -> sandbox::Result<()> {
         if !self.is_parked {
+            if self.park_fence.is_some() {
+                let message = "sandbox has a normal-operation fence while unpark is a no-op";
+                self.park_coordinator.mark_dirty(DirtyReason::new(message));
+                return Err(idle_transition_error(
+                    SandboxIdleTransition::Unpark,
+                    message,
+                ));
+            }
             return ensure_unpark_noop_state(&self.park_coordinator);
+        }
+        if self.park_fence.is_none() {
+            let message = "sandbox is parked without a normal-operation fence";
+            self.park_coordinator.mark_dirty(DirtyReason::new(message));
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Unpark,
+                message,
+            ));
         }
 
         let coordinator = self.park_coordinator.clone();
         let guest = Arc::clone(&self.guest);
         let id = self.id.clone();
         let api_sock = self.sock_paths.api_sock();
-        unpark_with_ready_for_operations(
+        let mut normal_operations_fence = self.park_fence.take();
+        let result = unpark_with_ready_for_operations(
             &id,
             &coordinator,
             || {
@@ -1609,8 +1648,15 @@ impl Sandbox for FirecrackerSandbox {
                 })?;
                 guest.resume_operations(GUEST_PARK_LIFECYCLE_TIMEOUT).await
             },
+            || {
+                drop(normal_operations_fence.take());
+            },
         )
-        .await
+        .await;
+        if let Some(fence) = normal_operations_fence.take() {
+            self.park_fence = Some(fence);
+        }
+        result
     }
 
     // -- operations --
@@ -1849,24 +1895,37 @@ impl Sandbox for FirecrackerSandbox {
 
 enum ParkBoundaryGuardState {
     Closing,
+    NormalOperationsFenced,
     GuestQuiesceStarted,
     ReadyForPark,
     Disarmed,
 }
 
-struct ParkBoundaryGuard {
+enum ParkNormalOperationFenceError {
+    GuestUnavailable(io::Error),
+    Rejected(NormalOperationFenceRejection),
+}
+
+struct ParkBoundaryGuard<Fence> {
     coordinator: ParkCoordinator,
     attempt: ParkAttempt,
     state: ParkBoundaryGuardState,
+    normal_operations_fence: Option<Fence>,
 }
 
-impl ParkBoundaryGuard {
+impl<Fence> ParkBoundaryGuard<Fence> {
     fn new(coordinator: ParkCoordinator, attempt: ParkAttempt) -> Self {
         Self {
             coordinator,
             attempt,
             state: ParkBoundaryGuardState::Closing,
+            normal_operations_fence: None,
         }
+    }
+
+    fn mark_normal_operations_fenced(&mut self, fence: Fence) {
+        self.normal_operations_fence = Some(fence);
+        self.state = ParkBoundaryGuardState::NormalOperationsFenced;
     }
 
     fn mark_guest_quiesce_started(&mut self) {
@@ -1885,11 +1944,19 @@ impl ParkBoundaryGuard {
         self.state = ParkBoundaryGuardState::Disarmed;
     }
 
-    fn mark_parked(mut self) -> Result<(), PrepareParkError> {
+    fn mark_parked(mut self) -> Result<Fence, PrepareParkError> {
         match self.coordinator.mark_parked(&self.attempt) {
             Ok(()) => {
                 self.state = ParkBoundaryGuardState::Disarmed;
-                Ok(())
+                match self.normal_operations_fence.take() {
+                    Some(fence) => Ok(fence),
+                    None => {
+                        let reason =
+                            DirtyReason::new("park completed without a normal-operation fence");
+                        self.coordinator.mark_dirty(reason.clone());
+                        Err(PrepareParkError::Dirty { reason })
+                    }
+                }
             }
             Err(error) => {
                 let message = format!(
@@ -1905,10 +1972,13 @@ impl ParkBoundaryGuard {
     }
 }
 
-impl Drop for ParkBoundaryGuard {
+impl<Fence> Drop for ParkBoundaryGuard<Fence> {
     fn drop(&mut self) {
         match self.state {
             ParkBoundaryGuardState::Closing => {
+                let _ = self.coordinator.abort_prepare_park(&self.attempt);
+            }
+            ParkBoundaryGuardState::NormalOperationsFenced => {
                 let _ = self.coordinator.abort_prepare_park(&self.attempt);
             }
             ParkBoundaryGuardState::GuestQuiesceStarted => {
@@ -1976,13 +2046,16 @@ impl Drop for UnparkBoundaryGuard {
     }
 }
 
-async fn park_with_ready_for_park<Q, QF, P, PF>(
+async fn park_with_ready_for_park<Fence, F, FF, Q, QF, P, PF>(
     log_id: &str,
     coordinator: &ParkCoordinator,
+    fence_normal_operations: F,
     quiesce_guest: Q,
     park_firecracker: P,
-) -> sandbox::Result<()>
+) -> sandbox::Result<Fence>
 where
+    F: FnOnce() -> FF,
+    FF: Future<Output = Result<Fence, ParkNormalOperationFenceError>>,
     Q: FnOnce() -> QF,
     QF: Future<Output = io::Result<()>>,
     P: FnOnce() -> PF,
@@ -2020,6 +2093,60 @@ where
         }
     };
     let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+    info!(
+        id = %log_id,
+        transition = "park",
+        phase = "normal_operations_fence",
+        "sandbox park lifecycle normal-operation fence started"
+    );
+    match fence_normal_operations().await {
+        Ok(fence) => {
+            guard.mark_normal_operations_fenced(fence);
+        }
+        Err(ParkNormalOperationFenceError::Rejected(NormalOperationFenceRejection::Busy)) => {
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = "busy",
+                "sandbox park lifecycle normal-operation fence rejected"
+            );
+            return Err(idle_transition_error(
+                SandboxIdleTransition::Park,
+                "normal operations busy while preparing park",
+            ));
+        }
+        Err(ParkNormalOperationFenceError::Rejected(error)) => {
+            let message = format!(
+                "normal operation fence failed while preparing park: {}",
+                normal_operation_fence_rejection_message(error)
+            );
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = normal_operation_fence_rejection_reason_kind(error),
+                error = %message,
+                "sandbox park lifecycle normal-operation fence failed"
+            );
+            guard.mark_dirty(message.clone());
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+        Err(ParkNormalOperationFenceError::GuestUnavailable(error)) => {
+            let message = format!("guest connection unavailable while fencing park: {error}");
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "normal_operations_fence",
+                reason_kind = "protocol_or_transport",
+                error = %error,
+                "sandbox park lifecycle normal-operation fence failed"
+            );
+            guard.mark_dirty(message.clone());
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+    }
 
     info!(
         id = %log_id,
@@ -2082,23 +2209,26 @@ where
         return Err(error);
     }
 
-    if let Err(error) = guard.mark_parked() {
-        let reason_kind = prepare_park_error_reason_kind(&error);
-        let error_message = prepare_park_error_message(&error);
-        let message = format!(
-            "operation gate failed to mark parked after Firecracker park: {}",
-            error_message
-        );
-        warn!(
-            id = %log_id,
-            transition = "park",
-            phase = "parked",
-            reason_kind = reason_kind,
-            error = %error_message,
-            "sandbox park lifecycle failed to mark parked"
-        );
-        return Err(idle_transition_error(SandboxIdleTransition::Park, message));
-    }
+    let normal_operations_fence = match guard.mark_parked() {
+        Ok(fence) => fence,
+        Err(error) => {
+            let reason_kind = prepare_park_error_reason_kind(&error);
+            let error_message = prepare_park_error_message(&error);
+            let message = format!(
+                "operation gate failed to mark parked after Firecracker park: {}",
+                error_message
+            );
+            warn!(
+                id = %log_id,
+                transition = "park",
+                phase = "parked",
+                reason_kind = reason_kind,
+                error = %error_message,
+                "sandbox park lifecycle failed to mark parked"
+            );
+            return Err(idle_transition_error(SandboxIdleTransition::Park, message));
+        }
+    };
 
     info!(
         id = %log_id,
@@ -2106,20 +2236,22 @@ where
         phase = "parked",
         "sandbox park lifecycle marked parked"
     );
-    Ok(())
+    Ok(normal_operations_fence)
 }
 
-async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+async fn unpark_with_ready_for_operations<U, UF, R, RF, F>(
     log_id: &str,
     coordinator: &ParkCoordinator,
     unpark_firecracker: U,
     resume_guest: R,
+    release_normal_operations_fence: F,
 ) -> sandbox::Result<()>
 where
     U: FnOnce() -> UF,
     UF: Future<Output = sandbox::Result<()>>,
     R: FnOnce() -> RF,
     RF: Future<Output = io::Result<()>>,
+    F: FnOnce(),
 {
     info!(
         id = %log_id,
@@ -2181,6 +2313,8 @@ where
             message,
         ));
     }
+
+    release_normal_operations_fence();
 
     if let Err(error) = coordinator.reopen_after_unpark() {
         let reason_kind = prepare_park_error_reason_kind(&error);
@@ -2288,6 +2422,26 @@ fn prepare_park_error_reason_kind(error: &PrepareParkError) -> &'static str {
         PrepareParkError::Dirty { .. } => "dirty",
         PrepareParkError::InvalidState { .. } => "invalid_state",
         PrepareParkError::StaleAttempt { .. } => "stale_attempt",
+    }
+}
+
+fn normal_operation_fence_rejection_message(error: NormalOperationFenceRejection) -> &'static str {
+    match error {
+        NormalOperationFenceRejection::Busy => "normal operations busy",
+        NormalOperationFenceRejection::AlreadyFenced => "normal operations already fenced",
+        NormalOperationFenceRejection::NotParkable => "normal operations not parkable",
+        NormalOperationFenceRejection::Closed => "guest connection closed",
+    }
+}
+
+fn normal_operation_fence_rejection_reason_kind(
+    error: NormalOperationFenceRejection,
+) -> &'static str {
+    match error {
+        NormalOperationFenceRejection::Busy => "busy",
+        NormalOperationFenceRejection::AlreadyFenced => "already_fenced",
+        NormalOperationFenceRejection::NotParkable => "not_parkable",
+        NormalOperationFenceRejection::Closed => "closed",
     }
 }
 
@@ -2561,6 +2715,53 @@ mod tests {
         MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_READY,
         MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, ProcessControlStatus, RawMessage,
     };
+
+    struct TestNormalOperationFence;
+
+    async fn park_with_ready_for_park<Q, QF, P, PF>(
+        log_id: &str,
+        coordinator: &ParkCoordinator,
+        quiesce_guest: Q,
+        park_firecracker: P,
+    ) -> sandbox::Result<()>
+    where
+        Q: FnOnce() -> QF,
+        QF: Future<Output = io::Result<()>>,
+        P: FnOnce() -> PF,
+        PF: Future<Output = sandbox::Result<()>>,
+    {
+        super::park_with_ready_for_park(
+            log_id,
+            coordinator,
+            || async { Ok(TestNormalOperationFence) },
+            quiesce_guest,
+            park_firecracker,
+        )
+        .await
+        .map(drop)
+    }
+
+    async fn unpark_with_ready_for_operations<U, UF, R, RF>(
+        log_id: &str,
+        coordinator: &ParkCoordinator,
+        unpark_firecracker: U,
+        resume_guest: R,
+    ) -> sandbox::Result<()>
+    where
+        U: FnOnce() -> UF,
+        UF: Future<Output = sandbox::Result<()>>,
+        R: FnOnce() -> RF,
+        RF: Future<Output = io::Result<()>>,
+    {
+        super::unpark_with_ready_for_operations(
+            log_id,
+            coordinator,
+            unpark_firecracker,
+            resume_guest,
+            || {},
+        )
+        .await
+    }
 
     struct ProcessControlFixture {
         host: Arc<VsockHost>,
@@ -3010,6 +3211,16 @@ mod tests {
         events.lock().unwrap().clone()
     }
 
+    struct RecordedFence {
+        events: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Drop for RecordedFence {
+        fn drop(&mut self) {
+            self.events.lock().unwrap().push("release_fence");
+        }
+    }
+
     #[test]
     fn park_noop_with_parked_gate_succeeds() {
         let coordinator = ParkCoordinator::new();
@@ -3076,6 +3287,107 @@ mod tests {
             vec!["guest_quiesce", "firecracker_park"]
         );
         assert!(matches!(coordinator.state(), CoordinatorState::Parked));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_fences_before_quiesce_and_holds_until_returned() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let fence = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Ok(RecordedFence {
+                    events: Arc::clone(&fence_events),
+                })
+            },
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "firecracker_park"]
+        );
+        drop(fence);
+        assert_eq!(
+            logged_events(&events),
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_busy_fence_aborts_without_dirtying() {
+        let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
+
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async move {
+                fence_events.lock().unwrap().push("fence");
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::Rejected(
+                    NormalOperationFenceRejection::Busy,
+                ))
+            },
+            || async move {
+                quiesce_events.lock().unwrap().push("guest_quiesce");
+                Ok(())
+            },
+            || async move {
+                park_events.lock().unwrap().push("firecracker_park");
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+        assert_eq!(logged_events(&events), vec!["fence"]);
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[tokio::test]
+    async fn ready_for_park_boundary_not_parkable_fence_marks_dirty() {
+        let coordinator = ParkCoordinator::new();
+        let result = super::park_with_ready_for_park(
+            "test-sandbox",
+            &coordinator,
+            || async {
+                Err::<RecordedFence, _>(ParkNormalOperationFenceError::Rejected(
+                    NormalOperationFenceRejection::NotParkable,
+                ))
+            },
+            || async { Ok(()) },
+            || async { Ok(()) },
+        )
+        .await;
+
+        assert_idle_transition(result.map(drop), SandboxIdleTransition::Park);
+        assert!(matches!(
+            coordinator.state(),
+            CoordinatorState::Dirty { .. }
+        ));
     }
 
     #[tokio::test]
@@ -3387,6 +3699,45 @@ mod tests {
         assert_eq!(
             logged_events(&events),
             vec!["firecracker_unpark", "guest_resume"]
+        );
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
+    }
+
+    #[tokio::test]
+    async fn ready_for_operations_boundary_releases_fence_before_reopening_gate() {
+        let coordinator = ParkCoordinator::new();
+        mark_coordinator_parked(&coordinator);
+        let events = event_log();
+        let firecracker_events = Arc::clone(&events);
+        let resume_events = Arc::clone(&events);
+        let release_events = Arc::clone(&events);
+        let release_state = coordinator.clone();
+
+        super::unpark_with_ready_for_operations(
+            "test-sandbox",
+            &coordinator,
+            || async move {
+                firecracker_events
+                    .lock()
+                    .unwrap()
+                    .push("firecracker_unpark");
+                Ok(())
+            },
+            || async move {
+                resume_events.lock().unwrap().push("guest_resume");
+                Ok(())
+            },
+            || {
+                assert!(matches!(release_state.state(), CoordinatorState::Parked));
+                release_events.lock().unwrap().push("release_fence");
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            logged_events(&events),
+            vec!["firecracker_unpark", "guest_resume", "release_fence"]
         );
         assert!(matches!(coordinator.state(), CoordinatorState::Open));
     }

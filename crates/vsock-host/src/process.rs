@@ -412,6 +412,7 @@ impl GuestProcessControlHandle {
             request_timeout_ms,
         )
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        ensure_process_control_target_active(&self.shared, self.target_seq)?;
         let response = normal_request_on_shared_with_write_observer(
             &self.shared,
             MSG_PROCESS_CONTROL,
@@ -519,6 +520,23 @@ fn duration_to_request_timeout_ms(timeout: Duration) -> u32 {
     u32::try_from(timeout.as_millis())
         .unwrap_or(u32::MAX)
         .max(1)
+}
+
+fn ensure_process_control_target_active(shared: &Arc<Shared>, target_seq: u32) -> io::Result<()> {
+    let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    match &*guard {
+        ConnectionState::Connected { process, .. } if process.contains_operation(target_seq) => {
+            Ok(())
+        }
+        ConnectionState::Connected { .. } => Err(process_control_status_error(
+            ProcessControlStatus::Inactive,
+            "process operation is not active",
+        )),
+        ConnectionState::Closed { .. } => Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        )),
+    }
 }
 
 fn remove_process_operation(shared: &Arc<Shared>, seq: u32) {

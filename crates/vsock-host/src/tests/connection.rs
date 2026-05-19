@@ -14,7 +14,9 @@ use super::support::{
     host_from_stream, is_connected, make_pair, mock_handshake, normal_operation_readiness,
     poison_connection, read_guest_message, send_exec_result, setup_host_and_guest,
 };
-use crate::{VsockHost, operation_tracker::NormalOperationReadiness};
+use crate::{
+    NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
+};
 
 #[tokio::test]
 async fn wait_for_connection_removes_listener_socket_on_abort() {
@@ -138,6 +140,92 @@ async fn lifecycle_request_bypasses_normal_operation_fence() {
     guest.write_all(&resp).await.unwrap();
 
     quiesce_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let fence = host
+        .try_fence_normal_operations()
+        .expect("idle host should fence normal operations");
+
+    let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+
+    drop(fence);
+    let exec_task = tokio::spawn(async move { host.exec("echo ok", 5000, &[], false).await });
+    let request = read_guest_message(&mut guest).await;
+    assert_eq!(request.msg_type, MSG_EXEC_START);
+    send_exec_result(
+        &mut guest,
+        request.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"ok",
+        b"",
+    )
+    .await;
+
+    assert_eq!(exec_task.await.unwrap().unwrap().stdout, b"ok");
+}
+
+#[tokio::test]
+async fn normal_operation_fence_reports_busy_closed_and_not_parkable() {
+    let (host_stream, mut guest) = make_pair();
+    let release_exec = Arc::new(tokio::sync::Notify::new());
+    let guest_task = {
+        let release_exec = Arc::clone(&release_exec);
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+            let request = read_guest_message(&mut guest).await;
+            assert_eq!(request.msg_type, MSG_EXEC_START);
+            release_exec.notified().await;
+            send_exec_result(
+                &mut guest,
+                request.seq,
+                ExecTermination::Exited { exit_code: 0 },
+                b"done",
+                b"",
+            )
+            .await;
+            drop(guest);
+        })
+    };
+
+    let host = Arc::new(host_from_stream(host_stream).await.unwrap());
+    let exec_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.exec("sleep", 5000, &[], false).await })
+    };
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while normal_operation_readiness(&host) != NormalOperationReadiness::Busy {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        host.try_fence_normal_operations().unwrap_err(),
+        NormalOperationFenceRejection::Busy
+    );
+
+    release_exec.notify_one();
+    exec_task.await.unwrap().unwrap();
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert_eq!(
+        host.try_fence_normal_operations().unwrap_err(),
+        NormalOperationFenceRejection::Closed
+    );
+    guest_task.await.unwrap();
+
+    let (poisoned_host, _guest) = setup_host_and_guest().await;
+    poison_connection(&poisoned_host);
+    assert_eq!(
+        poisoned_host.try_fence_normal_operations().unwrap_err(),
+        NormalOperationFenceRejection::NotParkable
+    );
 }
 
 #[tokio::test]

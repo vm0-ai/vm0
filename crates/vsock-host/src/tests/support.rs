@@ -11,10 +11,8 @@ use vsock_proto::{
     RawMessage,
 };
 
-use crate::{
-    ConnectionState, VsockHost,
-    operation_tracker::{NormalOperationFence, NormalOperationReadiness},
-};
+use crate::operation_tracker::NormalOperationReadiness;
+use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
@@ -65,9 +63,7 @@ pub(crate) fn normal_operation_readiness(host: &VsockHost) -> NormalOperationRea
 }
 
 pub(crate) fn fence_normal_operations(host: &VsockHost) -> NormalOperationFence {
-    host.shared
-        .normal_operations
-        .try_fence()
+    host.try_fence_normal_operations()
         .expect("normal operations should fence")
 }
 

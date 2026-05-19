@@ -463,6 +463,45 @@ async fn test_spawn_process_control_inactive_status_returns_not_found() {
 }
 
 #[tokio::test]
+async fn test_spawn_process_control_after_exit_returns_inactive_without_guest_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let spawn_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.spawn_process("quick-exit", 0, &[], false, false, None)
+                .await
+                .unwrap()
+        })
+    };
+
+    let spawn = read_guest_message(&mut guest).await;
+    assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
+    let spawn_result = vsock_proto::encode_spawn_process_result(44);
+    let response = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &spawn_result).unwrap();
+    guest.write_all(&response).await.unwrap();
+
+    let handle = spawn_task.await.unwrap();
+    let control = handle.control_handle();
+    let exit_payload = vsock_proto::encode_process_exit(44, 0, b"", b"");
+    let exit = vsock_proto::encode(MSG_PROCESS_EXIT, spawn.seq, &exit_payload).unwrap();
+    guest.write_all(&exit).await.unwrap();
+    handle.wait().await.unwrap();
+
+    let err = control
+        .control("message-after-exit", b"payload", Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    assert_eq!(err.to_string(), "process operation is not active");
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("stale process control must not send a frame; read {n} bytes"),
+        Err(error) => panic!("unexpected read error after stale process control: {error}"),
+    }
+}
+
+#[tokio::test]
 async fn test_spawn_process_control_nonce_mismatch_status_returns_permission_denied() {
     let (host_stream, mut guest) = make_pair();
 
