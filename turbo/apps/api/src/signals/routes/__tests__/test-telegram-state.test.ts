@@ -601,6 +601,49 @@ describe("POST /api/test/telegram-state", () => {
     expect(links[0]?.id).toBe(firstBody.user_link_id);
   });
 
+  it("reuses the shared default agent when Telegram preflights race", async () => {
+    mockEnv("ENV", "development");
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const botId = `bot_${randomUUID()}`;
+    const email = `${randomUUID()}@example.test`;
+    mockClerkTestUser({ userId, orgId });
+
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, () => {
+        return postTelegramState({
+          bot_id: botId,
+          telegram_user_id: "99001",
+          email,
+          seed_link: true,
+        });
+      }),
+    );
+
+    const bodies = await Promise.all(
+      responses.map(async (response) => {
+        if (response.status !== 200) {
+          throw new Error(
+            `Expected 200, got ${response.status}: ${await response.text()}`,
+          );
+        }
+        return readJson<TelegramStateSeedResponse>(response);
+      }),
+    );
+    const defaultAgentIds = bodies.map((body) => {
+      return body.default_agent_id;
+    });
+    const defaultAgentId = defaultAgentIds[0];
+    if (!defaultAgentId) {
+      throw new Error("Expected seeded default agent id");
+    }
+    await trackTelegramPostState(
+      Promise.resolve({ botId, orgId, composeId: defaultAgentId }),
+    );
+
+    expect(new Set(defaultAgentIds).size).toBe(1);
+  });
+
   it("reuses the shared default agent when Slack and Telegram preflights race", async () => {
     mockEnv("ENV", "development");
     const userId = `user_${randomUUID()}`;

@@ -661,6 +661,12 @@ const TEST_SLACK_STATE_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-state/extra",
   "/api/test/slack-states",
 ] as const;
+const TEST_TELEGRAM_STATE_REWRITE_SOURCE = "/api/test/telegram-state";
+const TEST_TELEGRAM_STATE_PATH = "/api/test/telegram-state";
+const TEST_TELEGRAM_STATE_NEXT_NEGATIVE_PATHS = [
+  "/api/test/telegram-state/extra",
+  "/api/test/telegram-states",
+] as const;
 const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
@@ -1728,6 +1734,10 @@ describe("API backend rewrites", () => {
         {
           source: TEST_SLACK_STATE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/test/slack-state",
+        },
+        {
+          source: TEST_TELEGRAM_STATE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/test/telegram-state",
         },
         {
           source: AGENTPHONE_CONNECT_REWRITE_SOURCE,
@@ -3762,6 +3772,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(TEST_SLACK_STATE_PATH)).toStrictEqual({});
     for (const pathname of TEST_SLACK_STATE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact test telegram state rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_TELEGRAM_STATE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_TELEGRAM_STATE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/test/telegram-state",
+    });
+
+    const matcher = getPathMatch(TEST_TELEGRAM_STATE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(TEST_TELEGRAM_STATE_PATH)).toStrictEqual({});
+    for (const pathname of TEST_TELEGRAM_STATE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

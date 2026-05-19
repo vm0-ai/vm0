@@ -455,6 +455,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/test/slack-mock/users.info", "/api/test/slack-mock/users.info"],
   ["/api/test/slack-mock/views.publish", "/api/test/slack-mock/views.publish"],
   ["/api/test/slack-state", "/api/test/slack-state"],
+  ["/api/test/telegram-state", "/api/test/telegram-state"],
   [
     TELEGRAM_WEBHOOK_REWRITE_SOURCE,
     "/api/telegram/webhook/:telegramBotId",

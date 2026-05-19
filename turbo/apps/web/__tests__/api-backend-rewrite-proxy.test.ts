@@ -1245,6 +1245,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-states")).toBe(false);
   });
 
+  it("matches the test telegram state rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/test/telegram-state")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/test/telegram-state/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/test/telegram-states")).toBe(
+      false,
+    );
+  });
+
   it("matches the internal event consumer axiom rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),
