@@ -1028,6 +1028,9 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
     assert_eq!(decoded.message_id, "message");
     assert_eq!(decoded.payload, b"body");
 
+    let empty_payload = encode_exec_control(7, NONCE, "message", b"", 5000).unwrap();
+    assert_eq!(decode_exec_control(&empty_payload).unwrap().payload, b"");
+
     let err = encode_exec_control(0, NONCE, "message", b"body", 5000).unwrap_err();
     assert!(matches!(
         err,
@@ -1077,6 +1080,46 @@ fn exec_control_roundtrip_and_rejects_malformed_payloads() {
         decode_exec_control(&trailing),
         Err(ProtocolError::InvalidPayload("exec_control trailing bytes"))
     ));
+}
+
+#[test]
+fn exec_control_rejects_truncated_fields() {
+    let payload = encode_exec_control(7, NONCE, "message", b"body", 5000).unwrap();
+    let request_timeout_offset = 4;
+    let nonce_offset = request_timeout_offset + 4;
+    let message_id_len_offset = nonce_offset + PROCESS_CONTROL_NONCE_LEN;
+    let message_id_offset = message_id_len_offset + 2;
+    let payload_len_offset = message_id_offset + "message".len();
+    let payload_offset = payload_len_offset + 4;
+
+    assert_invalid_payload(
+        decode_exec_control(&payload[..3]).unwrap_err(),
+        "exec_control target_seq truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..request_timeout_offset + 3]).unwrap_err(),
+        "exec_control request_timeout_ms truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..nonce_offset + PROCESS_CONTROL_NONCE_LEN - 1]).unwrap_err(),
+        "exec_control nonce truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..message_id_len_offset + 1]).unwrap_err(),
+        "exec_control message_id_len truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..message_id_offset + 2]).unwrap_err(),
+        "exec_control message_id truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..payload_len_offset + 3]).unwrap_err(),
+        "exec_control payload_len truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control(&payload[..payload_offset + 2]).unwrap_err(),
+        "exec_control payload truncated",
+    );
 }
 
 #[test]
@@ -1149,6 +1192,47 @@ fn exec_control_result_roundtrip_and_rejects_malformed_payloads() {
             "exec_control_result trailing bytes"
         ))
     ));
+}
+
+#[test]
+fn exec_control_result_rejects_truncated_fields() {
+    let payload =
+        encode_exec_control_result(7, NONCE, "message", ExecControlStatus::Delivered, "ok")
+            .unwrap();
+    let message_id_len_offset = 4 + PROCESS_CONTROL_NONCE_LEN;
+    let message_id_offset = message_id_len_offset + 2;
+    let status_offset = message_id_offset + "message".len();
+    let diagnostic_len_offset = status_offset + 1;
+    let diagnostic_offset = diagnostic_len_offset + 2;
+
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..3]).unwrap_err(),
+        "exec_control_result target_seq truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..4 + PROCESS_CONTROL_NONCE_LEN - 1]).unwrap_err(),
+        "exec_control_result nonce truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..message_id_len_offset + 1]).unwrap_err(),
+        "exec_control_result message_id_len truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..message_id_offset + 2]).unwrap_err(),
+        "exec_control_result message_id truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..status_offset]).unwrap_err(),
+        "exec_control_result status truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..diagnostic_len_offset + 1]).unwrap_err(),
+        "exec_control_result diagnostic_len truncated",
+    );
+    assert_invalid_payload(
+        decode_exec_control_result(&payload[..diagnostic_offset + 1]).unwrap_err(),
+        "exec_control_result diagnostic truncated",
+    );
 }
 
 #[test]
