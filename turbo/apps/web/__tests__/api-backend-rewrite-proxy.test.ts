@@ -318,6 +318,27 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test Slack conversations.history mock rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/conversations.history",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/conversations.history/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/conversations"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/conversations.historys",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the cron aggregate insights rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-insights")).toBe(
       true,
