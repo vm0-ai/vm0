@@ -3842,6 +3842,7 @@ mod tests {
         let ack = control_task.await.unwrap().unwrap();
         assert_eq!(ack.message_id, "valid-after-local-failure");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
 
         send_process_exit(&mut guest, spawn_seq, pid).await;
         handle.wait().await.unwrap();
