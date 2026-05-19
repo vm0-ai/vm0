@@ -2,9 +2,11 @@
 
 This document describes our standard testing patterns. These aren't arbitrary conventions—they're the patterns that have proven to work well for our codebase, helping us write tests that give real confidence while remaining maintainable.
 
-## Pattern 1: API Route Tests
+## Pattern 1: Legacy Web API Route Tests
 
-Our most common test type. When testing Next.js API route handlers, we follow a specific structure that has evolved through practice.
+For `apps/web` routes that still intentionally live in Next.js, we follow a
+specific structure that has evolved through practice. For `apps/api` routes, use
+[api-testing.md](./api-testing.md) instead.
 
 ```typescript
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -548,7 +550,7 @@ describe("org signals", () => {
 
 ## Standard Test File Structure
 
-Every web route test file should follow this structure:
+Every legacy web route test file should follow this structure:
 
 ```typescript
 import { describe, it, expect, beforeEach, vi } from "vitest";

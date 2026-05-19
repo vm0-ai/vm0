@@ -19,6 +19,7 @@ Read the testing guide and relevant reference based on context:
 | Patterns | [docs/testing.md](../../../docs/testing.md) | [patterns.md](../../../docs/testing/patterns.md) |
 | CLI (`turbo/apps/cli`) | [docs/testing.md](../../../docs/testing.md) | [cli-testing.md](../../../docs/testing/cli-testing.md) |
 | CLI E2E (`e2e/tests/`) | [docs/testing.md](../../../docs/testing.md) | [cli-e2e-testing.md](../../../docs/testing/cli-e2e-testing.md) |
+| API (`turbo/apps/api`) | [docs/testing.md](../../../docs/testing.md) | [api-testing.md](../../../docs/testing/api-testing.md) |
 | Web (`turbo/apps/web`) | [docs/testing.md](../../../docs/testing.md) | [web-testing.md](../../../docs/testing/web-testing.md) |
 | App (`turbo/apps/platform`) | [docs/testing.md](../../../docs/testing.md) | [app-testing.md](../../../docs/testing/app-testing.md) |
 | Rust (`crates/`) | [docs/testing.md](../../../docs/testing.md) | [rust-testing.md](../../../docs/testing/rust-testing.md) |

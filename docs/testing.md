@@ -2,7 +2,7 @@
 
 ## Why We Care About Testing
 
-Good tests give us confidence to ship fast. Bad tests slow us down with false failures, missed bugs, and maintenance burden. After years of writing tests, we've learned that *how* you test matters more than *how much* you test.
+Good tests give us confidence to ship fast. Bad tests slow us down with false failures, missed bugs, and maintenance burden. After years of writing tests, we've learned that _how_ you test matters more than _how much_ you test.
 
 Kent C. Dodds summarized it well: **"Write tests. Not too many. Mostly integration."**
 
@@ -85,12 +85,12 @@ Here's a quick heuristic: **if the path in `vi.mock()` starts with `../` or `../
 
 ```typescript
 // ✅ Good: External packages
-vi.mock("@clerk/nextjs")
-vi.mock("@aws-sdk/client-s3")
+vi.mock("@clerk/nextjs");
+vi.mock("@aws-sdk/client-s3");
 
 // ❌ Bad: Internal code
-vi.mock("../../services/user-service")
-vi.mock("../utils/format")
+vi.mock("../../services/user-service");
+vi.mock("../utils/format");
 ```
 
 When you mock internal code, you're not testing real behavior. You're testing that your test correctly orchestrates mocks. That's a recipe for tests that pass while production breaks.
@@ -170,7 +170,7 @@ vi.useFakeTimers();
 vi.advanceTimersByTime(1000);
 
 // ✅ Mock only what you need
-vi.spyOn(Date, 'now').mockReturnValue(fixedTimestamp);
+vi.spyOn(Date, "now").mockReturnValue(fixedTimestamp);
 ```
 
 Fake timers can mask race conditions and timing bugs. If you need deterministic time, mock `Date.now()` specifically.
@@ -197,37 +197,52 @@ it("should create a compose", async () => {
   server.use(
     http.post("http://localhost:3000/api/composes", () => {
       return HttpResponse.json({ id: "cmp-123" });
-    })
+    }),
   );
 
   await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
   expect(console.log).toHaveBeenCalledWith(
-    expect.stringContaining("Compose created")
+    expect.stringContaining("Compose created"),
   );
 });
 ```
 
 Console output and exit codes are valid assertions for CLI tests—that's the user interface.
 
-### Web Routes
+### API Routes
 
-Test route handlers directly, mock only external services:
+Test `apps/api` routes through the Hono app and the route's ts-rest contract,
+mocking only external services:
 
 ```typescript
-vi.mock("@clerk/nextjs/server");
+const context = testContext();
 
-it("should create a run", async () => {
-  mockAuth({ userId: "user-123" });
+it("should return the runner metadata", async () => {
+  mocks.clerk.session(userId, orgId);
+  const client = setupApp({ context })(zeroRunRunnerContract);
 
-  const response = await POST(request);
-  const data = await response.json();
+  const response = await accept(
+    client.getRunner({
+      params: { id: runId },
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
 
-  expect(data.status).toBe("pending");
+  expect(response.body).toStrictEqual({ sandboxReuseResult: "reused" });
 });
 ```
 
-Use real database operations for verification—if you created a run, query the database to confirm it exists.
+Use route calls, focused fixture helpers, and real database state. Do not mock
+internal API services when a route can exercise the behavior.
+
+### Web Route Compatibility
+
+For endpoints that still live in `apps/web`, test the legacy Next.js route
+handler directly. For endpoints migrated to `apps/api`, keep behavior tests in
+`apps/api` and use web tests only for rewrite, middleware, and security-header
+compatibility.
 
 ### Platform UI
 
@@ -250,20 +265,21 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 
 ### Deep Dives
 
-| Topic | Guide |
-|-------|-------|
+| Topic         | Guide                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Anti-patterns | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10) |
-| Patterns | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow |
+| Patterns      | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                        |
 
 ### App-Specific Guides
 
-| App | Guide |
-|-----|-------|
-| CLI commands | [cli-testing.md](./testing/cli-testing.md) |
-| CLI E2E (BATS) | [cli-e2e-testing.md](./testing/cli-e2e-testing.md) |
-| Web routes | [web-testing.md](./testing/web-testing.md) |
-| App UI | [app-testing.md](./testing/app-testing.md) |
-| Rust crates | [rust-testing.md](./testing/rust-testing.md) |
-| Python addon | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
+| App                                         | Guide                                                    |
+| ------------------------------------------- | -------------------------------------------------------- |
+| CLI commands                                | [cli-testing.md](./testing/cli-testing.md)               |
+| CLI E2E (BATS)                              | [cli-e2e-testing.md](./testing/cli-e2e-testing.md)       |
+| API routes                                  | [api-testing.md](./testing/api-testing.md)               |
+| Legacy web routes and rewrite compatibility | [web-testing.md](./testing/web-testing.md)               |
+| App UI                                      | [app-testing.md](./testing/app-testing.md)               |
+| Rust crates                                 | [rust-testing.md](./testing/rust-testing.md)             |
+| Python addon                                | [mitm-addon-testing.md](./testing/mitm-addon-testing.md) |
 
 For general code quality rules (no `any`, no lint suppressions, etc.), see [bad-smell.md](./bad-smell.md).

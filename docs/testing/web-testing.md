@@ -2,7 +2,12 @@
 
 ## Principle
 
-In the web app (`turbo/apps/web`), only write **Web Route Integration Tests** (`route.test.ts` files) - test API endpoints only.
+In the web app (`turbo/apps/web`), route tests are for legacy API endpoints
+that still intentionally live in `apps/web`. New or migrated endpoint behavior
+belongs in `apps/api`; see [api-testing.md](./api-testing.md).
+
+For migrated endpoints, web-side tests should cover compatibility only: exact
+API backend rewrites, middleware bypass behavior, and security headers.
 
 ## File Location
 
@@ -288,10 +293,10 @@ await completeTestRun(user.userId, runId);
 
 Only test route-level integration tests (primary) and pure functions (exception only):
 
-| Type                            | Location                | Examples                                     |
-| ------------------------------- | ----------------------- | -------------------------------------------- |
-| **Web Route Integration Tests** | `app/.../route.test.ts` | Validation, authorization, business logic    |
-| Pure function tests (exception) | `lib/.../xxx.test.ts`   | Extremely complex algorithmic functions only |
+| Type                                   | Location                | Examples                                     |
+| -------------------------------------- | ----------------------- | -------------------------------------------- |
+| **Legacy Web Route Integration Tests** | `app/.../route.test.ts` | Validation, authorization, business logic    |
+| Pure function tests (exception)        | `lib/.../xxx.test.ts`   | Extremely complex algorithmic functions only |
 
 ```typescript
 // Route-level test
@@ -322,7 +327,7 @@ Pure function tests are a **rare exception**, reserved only for:
 - **Security-critical functions** (cryptographic operations, token validation, permission checks)
 - **Extremely complex algorithms** where bugs would have severe consequences
 
-**NOT allowed** (test via Web Route Integration Tests instead): validators, parsers, formatters, simple utilities.
+**NOT allowed** (test via Legacy Web Route Integration Tests instead): validators, parsers, formatters, simple utilities.
 
 These tests should be simple and isolated - no mocks, no database operations, no external dependencies.
 
@@ -454,8 +459,8 @@ Functions only accessible internally:
 
 If the ESLint rule flags a service import in your test file:
 
-1. First verify no route exists — check `app/api/` for a handler that wraps the function
-2. If a route exists, migrate the test to use the route handler (see Web Route Integration Tests above)
+1. First verify no route exists — check `apps/web/app/api/` for a handler that wraps the function
+2. If a web route exists, migrate the test to use the route handler (see Legacy Web Route Integration Tests above)
 3. If no route exists, add an eslint-disable comment with a documented reason:
 
 ```typescript
