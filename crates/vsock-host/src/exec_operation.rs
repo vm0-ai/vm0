@@ -2183,7 +2183,6 @@ pub(crate) async fn start_supervised_exec_on_shared(
         FrameWriteObserver::default(),
     )
     .await?;
-    registration_guard.disarm();
 
     let pid = tokio::select! {
         biased;
@@ -2194,13 +2193,13 @@ pub(crate) async fn start_supervised_exec_on_shared(
             ))??
         }
         _ = tokio::time::sleep(request.start_timeout) => {
-            shared.remove_operation(seq);
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "supervised exec start acknowledgement timeout",
             ));
         }
     };
+    registration_guard.disarm();
 
     Ok(SupervisedExecHandle {
         shared: Arc::clone(shared),

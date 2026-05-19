@@ -680,3 +680,33 @@ async fn supervised_exec_start_ack_timeout_does_not_send_cancel() {
         Err(err) => panic!("unexpected read error after start timeout: {err}"),
     }
 }
+
+#[tokio::test]
+async fn supervised_exec_start_wait_cancellation_cleans_registration_without_cancel() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("cancel-start-wait"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    assert_eq!(operation_count(&host), 1);
+
+    task.abort();
+    let err = match task.await {
+        Ok(_) => panic!("cancelled start wait task should abort"),
+        Err(err) => err,
+    };
+    assert!(err.is_cancelled());
+    wait_for_operation_count(&host, 0).await;
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("cancelled start wait must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after cancelled start wait: {err}"),
+    }
+}
