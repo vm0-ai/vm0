@@ -428,9 +428,30 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
     ).toBe(false);
+  });
+
+  it("matches only UUID-shaped agent run metrics telemetry paths", () => {
     expect(
       matchesApiBackendRewritePath(
         `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/agent/runs/not-a-uuid/telemetry/metrics",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics/extra`,
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/agent/runs/${AGENT_RUN_ID}/telemetry`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network`,
       ),
     ).toBe(false);
   });

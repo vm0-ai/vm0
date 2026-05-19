@@ -428,10 +428,11 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
     ]);
 
     const client = setupApp({ context })(runMetricsContract);
+    const since = Date.parse("2026-01-15T10:29:00Z");
     const response = await accept(
       client.getMetrics({
         params: { id: fixture.runId },
-        query: { limit: 1, order: "desc" },
+        query: { limit: 1, order: "desc", since },
         headers: authHeaders(),
       }),
       [200],
@@ -450,6 +451,10 @@ describe("GET /api/agent/runs/:id telemetry routes", () => {
       ],
       hasMore: true,
     });
+    const apl = context.mocks.axiom.query.mock.calls[0]?.[0] as string;
+    expect(apl).toContain("sandbox-telemetry-metrics");
+    expect(apl).toContain(new Date(since).toISOString());
+    expect(apl).toContain("| order by _time desc");
   });
 
   it("returns network log pages with capture and firewall fields from Axiom", async () => {

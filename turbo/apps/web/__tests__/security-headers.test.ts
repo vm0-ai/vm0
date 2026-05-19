@@ -115,6 +115,7 @@ const AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS = [
   `/api/agent/runs/${AGENT_RUN_ID}/extra`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics`,
 ] as const;
 const AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs",
@@ -141,10 +142,32 @@ const AGENT_RUN_TELEMETRY_AGENT_PROXY_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/telemetry/agent",
   "/api/agent/runs/not-a-uuid/telemetry/agent",
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
-  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent/extra`,
+] as const;
+const AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE =
+  "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/telemetry/metrics";
+const AGENT_RUN_TELEMETRY_METRICS_PATH = `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics`;
+const AGENT_RUN_TELEMETRY_METRICS_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/telemetry/metrics",
+  "/api/agent/runs/not-a-uuid/telemetry/metrics",
+  `/api/agent/runs/${AGENT_RUN_ID}`,
+  `/api/agent/runs/${AGENT_RUN_ID}/cancel`,
+  `/api/agent/runs/${AGENT_RUN_ID}/events`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/agent`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics/extra`,
+] as const;
+const AGENT_RUN_TELEMETRY_METRICS_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs/queue/telemetry/metrics",
+  "/api/agent/runs/not-a-uuid/telemetry/metrics",
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/network`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
+  `/api/agent/runs/${AGENT_RUN_ID}/telemetry/metrics/extra`,
 ] as const;
 const AGENT_RUN_CANCEL_REWRITE_SOURCE =
   "/api/agent/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/cancel";
@@ -834,6 +857,11 @@ describe("API backend rewrites", () => {
           source: AGENT_RUN_TELEMETRY_AGENT_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/agent/runs/:id/telemetry/agent",
+        },
+        {
+          source: AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/agent/runs/:id/telemetry/metrics",
         },
         {
           source: AUTH_ME_REWRITE_SOURCE,
@@ -1542,6 +1570,32 @@ describe("API backend rewrites", () => {
       id: AGENT_RUN_ID,
     });
     for (const pathname of AGENT_RUN_TELEMETRY_AGENT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped agent run metrics telemetry rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/agent/runs/:id/telemetry/metrics",
+    });
+
+    const matcher = getPathMatch(AGENT_RUN_TELEMETRY_METRICS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUN_TELEMETRY_METRICS_PATH)).toStrictEqual({
+      id: AGENT_RUN_ID,
+    });
+    for (const pathname of AGENT_RUN_TELEMETRY_METRICS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3244,6 +3298,15 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of AGENT_RUN_TELEMETRY_AGENT_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped agent run metrics telemetry paths", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUN_TELEMETRY_METRICS_PATH)).toBe(
+      true,
+    );
+    for (const pathname of AGENT_RUN_TELEMETRY_METRICS_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
