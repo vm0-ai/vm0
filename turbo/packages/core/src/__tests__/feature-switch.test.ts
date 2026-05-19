@@ -111,6 +111,23 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
+  it("should reflect the current staff org rollout matrix", () => {
+    const staffOrgStates = getAllFeatureStates({
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
+
+    const otherOrgStates = getAllFeatureStates({
+      orgId: "org_nonexistent",
+    });
+    expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
+  });
+
   it("should apply overrides to enable disabled features", () => {
     const states = getAllFeatureStates({
       overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
