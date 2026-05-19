@@ -13,7 +13,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/agent/runs/route.ts",
   "app/api/connectors/[type]/authorize/route.ts",
   "app/api/connectors/[type]/callback/route.ts",
-  "app/api/cron/aggregate-insights/route.ts",
   "app/api/cron/aggregate-usage/route.ts",
   "app/api/cron/cleanup-sandboxes/route.ts",
   "app/api/cron/drain-email-outbox/route.ts",
