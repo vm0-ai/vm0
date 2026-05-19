@@ -1,20 +1,36 @@
 //! E2E timing helpers — measure durations from API start time.
 
 use crate::env;
-use guest_common::log_info;
 use guest_common::telemetry::record_sandbox_op;
+use guest_common::{log_info, log_warn};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const MIN_PLAUSIBLE_API_START_TIME_MS: u64 = 1_000_000_000_000;
+const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 /// Record an E2E duration from `VM0_API_START_TIME` to now under `op_name`.
 pub fn record_e2e_from_api(op_name: &str) {
     let now_ms = current_epoch_ms();
-    if let Some(duration) = e2e_duration_from_api_start(env::api_start_time(), now_ms) {
+    let api_start = env::api_start_time();
+    if let Some(duration) = e2e_duration_from_api_start(api_start, now_ms) {
         record_sandbox_op(op_name, duration, true, None);
         log_info!(LOG_TAG, "E2E {op_name}: {}ms", duration.as_millis());
+    } else if !api_start.is_empty() {
+        warn_invalid_api_start_time_once(op_name, api_start);
     }
+}
+
+fn warn_invalid_api_start_time_once(op_name: &str, api_start: &str) {
+    if INVALID_API_START_TIME_WARNED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    log_warn!(
+        LOG_TAG,
+        "Skipping E2E {op_name}: invalid VM0_API_START_TIME={api_start:?}; expected Unix epoch milliseconds"
+    );
 }
 
 fn current_epoch_ms() -> u64 {
@@ -31,7 +47,7 @@ fn e2e_duration_from_api_start(api_start: &str, now_ms: u64) -> Option<Duration>
 
 fn parse_api_start_time_ms(api_start: &str) -> Option<u64> {
     let api_start_ms = api_start.parse::<u64>().ok()?;
-    if api_start_ms < MIN_PLAUSIBLE_API_START_TIME_MS {
+    if api_start_ms < MIN_EPOCH_MS_TIMESTAMP {
         return None;
     }
 

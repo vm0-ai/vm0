@@ -8,11 +8,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const MIN_PLAUSIBLE_API_START_TIME_MS = 1_000_000_000_000;
-const apiStartTimeSchema = z
-  .number()
-  .int()
-  .min(MIN_PLAUSIBLE_API_START_TIME_MS);
+export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
+const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
@@ -21,7 +18,7 @@ export function elapsedSinceApiStartMs(
   if (
     apiStartTimeMs === undefined ||
     !Number.isInteger(apiStartTimeMs) ||
-    apiStartTimeMs < MIN_PLAUSIBLE_API_START_TIME_MS
+    apiStartTimeMs < MIN_EPOCH_MS_TIMESTAMP
   ) {
     return undefined;
   }

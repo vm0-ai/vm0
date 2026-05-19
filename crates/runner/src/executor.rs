@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use agent_diagnostics::{
@@ -42,7 +43,8 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
-const MIN_PLAUSIBLE_API_START_TIME_MS: u64 = 1_000_000_000_000;
+const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::RUNNER_CONCURRENCY_FACTOR_ENV;
@@ -292,12 +294,32 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
         let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
         if let Some(duration) = elapsed_since_api_start_ms(api_start_ms, now_ms) {
             telemetry.record(action_type, duration, true, None);
+        } else {
+            warn_invalid_api_start_time_once(action_type, context, api_start_ms);
         }
     }
 }
 
+fn warn_invalid_api_start_time_once(
+    action_type: &str,
+    context: &ExecutionContext,
+    api_start_ms: u64,
+) {
+    if INVALID_API_START_TIME_WARNED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    warn!(
+        run_id = %context.run_id,
+        api_start_ms,
+        min_epoch_ms_timestamp = MIN_EPOCH_MS_TIMESTAMP,
+        action_type,
+        "skipping API latency telemetry for invalid epoch-ms start timestamp"
+    );
+}
+
 fn elapsed_since_api_start_ms(api_start_ms: u64, now_ms: u64) -> Option<Duration> {
-    if api_start_ms < MIN_PLAUSIBLE_API_START_TIME_MS {
+    if api_start_ms < MIN_EPOCH_MS_TIMESTAMP {
         return None;
     }
 
