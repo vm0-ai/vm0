@@ -26,6 +26,10 @@ const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
 const ZERO_RUNS_QUEUE_REWRITE_SOURCE = "/api/zero/runs/queue";
+const ZERO_RUNS_BY_ID_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_RUNS_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const ZERO_RUNS_CANCEL_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/cancel`;
 const ZERO_RUNS_CANCEL_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/cancel$`,
@@ -520,6 +524,11 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/report-error", "/api/zero/report-error"],
   [ZERO_RUNS_QUEUE_REWRITE_SOURCE, "/api/zero/runs/queue"],
+  [
+    ZERO_RUNS_BY_ID_REWRITE_SOURCE,
+    "/api/zero/runs/:id",
+    ZERO_RUNS_BY_ID_PATH_RE,
+  ],
   [
     ZERO_RUNS_CANCEL_REWRITE_SOURCE,
     "/api/zero/runs/:id/cancel",

@@ -26,10 +26,7 @@ import type {
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import {
-  type RunStatus,
-  type GetRunResponse,
-} from "@vm0/api-contracts/contracts/runs";
+import { type RunStatus } from "@vm0/api-contracts/contracts/runs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -548,43 +545,4 @@ export async function insertRunRecord(
   }
 
   return { id: newRun.id, createdAt: newRun.createdAt, sessionId };
-}
-
-/**
- * Get a run by ID, scoped to user and org for security.
- * Returns the run response object or null if not found.
- */
-export async function getRunById(
-  runId: string,
-  userId: string,
-  orgId: string,
-): Promise<GetRunResponse | null> {
-  const [run] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        eq(agentRuns.userId, userId),
-        eq(agentRuns.orgId, orgId),
-      ),
-    )
-    .limit(1);
-
-  if (!run) return null;
-
-  return {
-    runId: run.id,
-    agentComposeVersionId: run.agentComposeVersionId,
-    status: run.status as RunStatus,
-    prompt: run.prompt,
-    appendSystemPrompt: run.appendSystemPrompt,
-    vars: run.vars as Record<string, string> | undefined,
-    sandboxId: run.sandboxId || undefined,
-    result: run.result as Record<string, unknown> | undefined,
-    error: run.error || undefined,
-    createdAt: run.createdAt.toISOString(),
-    startedAt: run.startedAt?.toISOString(),
-    completedAt: run.completedAt?.toISOString(),
-  };
 }
