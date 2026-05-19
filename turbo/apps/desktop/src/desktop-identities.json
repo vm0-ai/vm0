@@ -1,0 +1,14 @@
+{
+  "production": {
+    "displayName": "Zero",
+    "bundleId": "ai.vm0.zero.desktop",
+    "authProtocolName": "Zero Desktop Auth",
+    "authScheme": "ai.vm0.zero.desktop"
+  },
+  "development": {
+    "displayName": "Zero Dev",
+    "bundleId": "ai.vm0.zero.desktop.dev",
+    "authProtocolName": "Zero Dev Desktop Auth",
+    "authScheme": "ai.vm0.zero.desktop.dev"
+  }
+}

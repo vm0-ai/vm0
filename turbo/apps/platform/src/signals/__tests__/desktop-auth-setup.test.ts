@@ -43,9 +43,25 @@ describe("desktop auth setup", () => {
     expect(replace).toHaveBeenCalledWith("/desktop-auth/callback");
   });
 
+  it("preserves the requested desktop callback scheme from start to callback", async () => {
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    await setupSignedInDesktopAuthPage(
+      "/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop.dev",
+    );
+
+    expect(replace).toHaveBeenCalledWith(
+      "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+    );
+  });
+
   it("creates a handoff callback URL for signed-in browser sessions through the platform router", async () => {
     const callbackUrl =
-      "vm0://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
+      "ai.vm0.zero.desktop://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
     const assign = vi
       .spyOn(window.location, "assign")
       .mockImplementation(() => {
@@ -63,6 +79,31 @@ describe("desktop auth setup", () => {
     await setupSignedInDesktopAuthPage("/desktop-auth/callback");
 
     expect(authHeaders).toStrictEqual(["Bearer browser-session-token"]);
+    expect(assign).toHaveBeenCalledWith(callbackUrl);
+  });
+
+  it("requests a development handoff callback URL through the platform router", async () => {
+    const callbackUrl =
+      "ai.vm0.zero.desktop.dev://auth/callback?code=abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    server.use(
+      mockApi(desktopAuthHandoffContract.create, ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          callbackScheme: "ai.vm0.zero.desktop.dev",
+        });
+        return respond(200, { callbackUrl });
+      }),
+    );
+
+    await setupSignedInDesktopAuthPage(
+      "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+    );
+
     expect(assign).toHaveBeenCalledWith(callbackUrl);
   });
 

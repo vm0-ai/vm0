@@ -109,7 +109,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Zero"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.vm0.zero.desktop"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Zero Desktop Auth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "vm0"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.vm0.zero.desktop"
 
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/MacOS/Zero"
           unzip -l "$artifact_path" | grep -q "Zero.app/Contents/Resources/app/dist/main.js"

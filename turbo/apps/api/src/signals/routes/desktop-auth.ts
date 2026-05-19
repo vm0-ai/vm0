@@ -20,10 +20,17 @@ import {
 } from "../services/desktop-auth.service";
 import { settle } from "../utils";
 
+const createBody$ = bodyResultOf(desktopAuthHandoffContract.create);
 const consumeBody$ = bodyResultOf(desktopAuthConsumeContract.consume);
 
 const createDesktopAuthHandoff$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(createBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
     const auth = get(authContext$);
     const writeDb = set(writeDb$);
     const code = await createDesktopAuthHandoffCode(writeDb, {
@@ -34,7 +41,10 @@ const createDesktopAuthHandoff$ = command(
     return {
       status: 200 as const,
       body: {
-        callbackUrl: buildDesktopAuthCallbackUrl(code),
+        callbackUrl: buildDesktopAuthCallbackUrl(
+          code,
+          bodyResult.data?.callbackScheme,
+        ),
       },
     };
   },

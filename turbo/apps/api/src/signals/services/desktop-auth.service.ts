@@ -1,11 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
+import {
+  defaultDesktopAuthCallbackScheme,
+  type DesktopAuthCallbackScheme,
+} from "@vm0/api-contracts/contracts/desktop-auth";
 import { desktopAuthHandoffCodes } from "@vm0/db/schema/desktop-auth-handoff-code";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
-const DESKTOP_AUTH_CALLBACK_URL = "vm0://auth/callback";
+const DESKTOP_AUTH_CALLBACK_HOST = "auth";
+const DESKTOP_AUTH_CALLBACK_PATH = "/callback";
 const DESKTOP_AUTH_HANDOFF_CODE_BYTES = 32;
 const DESKTOP_AUTH_HANDOFF_CODE_TTL_MS = 60 * 1000;
 const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -38,8 +43,13 @@ function assertValidDesktopAuthCode(code: string): void {
   }
 }
 
-export function buildDesktopAuthCallbackUrl(code: string): string {
-  const callbackUrl = new URL(DESKTOP_AUTH_CALLBACK_URL);
+export function buildDesktopAuthCallbackUrl(
+  code: string,
+  callbackScheme: DesktopAuthCallbackScheme = defaultDesktopAuthCallbackScheme,
+): string {
+  const callbackUrl = new URL(
+    `${callbackScheme}://${DESKTOP_AUTH_CALLBACK_HOST}${DESKTOP_AUTH_CALLBACK_PATH}`,
+  );
   callbackUrl.searchParams.set("code", code);
   return callbackUrl.toString();
 }

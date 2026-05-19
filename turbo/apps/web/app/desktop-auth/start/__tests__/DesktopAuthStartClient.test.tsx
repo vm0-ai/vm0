@@ -10,6 +10,7 @@ const clerkState = vi.hoisted(() => {
   return {
     auth: { isLoaded: true, isSignedIn: false },
     signInProps: null as Record<string, unknown> | null,
+    searchParams: new URLSearchParams(),
   };
 });
 
@@ -21,6 +22,14 @@ vi.mock("@clerk/nextjs", () => {
     SignIn: (props: Record<string, unknown>) => {
       clerkState.signInProps = props;
       return <div data-testid="desktop-sign-in" />;
+    },
+  };
+});
+
+vi.mock("next/navigation", () => {
+  return {
+    useSearchParams: () => {
+      return clerkState.searchParams;
     },
   };
 });
@@ -79,6 +88,7 @@ describe("DesktopAuthStartClient", () => {
   beforeEach(() => {
     clerkState.auth = { isLoaded: true, isSignedIn: false };
     clerkState.signInProps = null;
+    clerkState.searchParams = new URLSearchParams();
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
     mockMatchMedia();
@@ -99,6 +109,25 @@ describe("DesktopAuthStartClient", () => {
     });
   });
 
+  it("preserves the callback scheme in Clerk redirects", () => {
+    clerkState.searchParams = new URLSearchParams({
+      callbackScheme: "ai.vm0.zero.desktop.dev",
+    });
+
+    renderStartClient();
+
+    expect(clerkState.signInProps).toMatchObject({
+      fallbackRedirectUrl:
+        "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+      forceRedirectUrl:
+        "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+      signUpFallbackRedirectUrl:
+        "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+      signUpForceRedirectUrl:
+        "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+    });
+  });
+
   it("redirects already signed-in browser sessions to the desktop callback", async () => {
     clerkState.auth = { isLoaded: true, isSignedIn: true };
     const replace = vi
@@ -112,6 +141,26 @@ describe("DesktopAuthStartClient", () => {
     expect(screen.getByText("Signing in...")).toBeTruthy();
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith("/desktop-auth/callback");
+    });
+  });
+
+  it("preserves the callback scheme when redirecting signed-in sessions", async () => {
+    clerkState.auth = { isLoaded: true, isSignedIn: true };
+    clerkState.searchParams = new URLSearchParams({
+      callbackScheme: "ai.vm0.zero.desktop.dev",
+    });
+    const replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => {
+        return undefined;
+      });
+
+    renderStartClient();
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith(
+        "/desktop-auth/callback?callbackScheme=ai.vm0.zero.desktop.dev",
+      );
     });
   });
 });

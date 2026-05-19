@@ -1,10 +1,24 @@
+import desktopIdentities from "./desktop-identities.json";
+
 const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
 
 type DesktopEnvironment = "production" | "staging" | "development";
+type DesktopIdentityKind = "production" | "development";
+
+interface DesktopIdentity {
+  readonly displayName: string;
+  readonly bundleId: string;
+  readonly authProtocolName: string;
+  readonly authScheme: string;
+}
+
+const DESKTOP_IDENTITIES: Record<DesktopIdentityKind, DesktopIdentity> =
+  desktopIdentities;
 
 interface DesktopConfig {
   readonly platformUrl: URL;
   readonly environment: DesktopEnvironment;
+  readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
   readonly allowedAppOrigins: ReadonlySet<string>;
 }
@@ -33,6 +47,15 @@ function environmentForPlatformUrl(
     return "staging";
   }
   return "development";
+}
+
+function identityForEnvironment(
+  environment: DesktopEnvironment,
+): DesktopIdentity {
+  if (environment === "production") {
+    return DESKTOP_IDENTITIES.production;
+  }
+  return DESKTOP_IDENTITIES.development;
 }
 
 function addDerivedOrigin(
@@ -75,6 +98,7 @@ export function resolveDesktopConfig(
   return {
     platformUrl,
     environment,
+    identity: identityForEnvironment(environment),
     sessionPartition: `persist:vm0-desktop-${environment}`,
     allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl),
   };

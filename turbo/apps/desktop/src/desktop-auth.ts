@@ -1,9 +1,8 @@
-export const DESKTOP_AUTH_PROTOCOL = "vm0";
-
 const DESKTOP_AUTH_HOST = "auth";
 const DESKTOP_AUTH_CALLBACK_PATH = "/callback";
 const DESKTOP_AUTH_CONSUME_PATH = "/desktop-auth/consume";
 const DESKTOP_AUTH_START_WEB_PATH = "/desktop-auth/start";
+const DESKTOP_AUTH_CALLBACK_SCHEME_PARAM = "callbackScheme";
 const DESKTOP_SIGNED_OUT_PATHS = new Set(["/sign-in", "/sign-up"]);
 const DESKTOP_AUTH_CODE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const DESKTOP_AUTH_START_RETRY_MS = 30_000;
@@ -27,6 +26,7 @@ function parseUrl(rawUrl: string): URL | null {
 
 export function parseDesktopAuthCallback(
   rawUrl: string,
+  authScheme: string,
 ): DesktopAuthCallback | null {
   const url = parseUrl(rawUrl);
   if (!url) {
@@ -35,7 +35,7 @@ export function parseDesktopAuthCallback(
 
   const code = url.searchParams.get("code");
   if (
-    url.protocol !== `${DESKTOP_AUTH_PROTOCOL}:` ||
+    url.protocol !== `${authScheme}:` ||
     url.hostname !== DESKTOP_AUTH_HOST ||
     url.pathname !== DESKTOP_AUTH_CALLBACK_PATH ||
     !code ||
@@ -49,9 +49,10 @@ export function parseDesktopAuthCallback(
 
 export function parseDesktopAuthCallbackArgv(
   argv: readonly string[],
+  authScheme: string,
 ): DesktopAuthCallback | null {
   for (const arg of argv) {
-    const callback = parseDesktopAuthCallback(arg);
+    const callback = parseDesktopAuthCallback(arg, authScheme);
     if (callback) {
       return callback;
     }
@@ -69,8 +70,13 @@ export function buildDesktopAuthConsumeUrl(
   return consumeUrl.toString();
 }
 
-export function buildDesktopAuthStartUrl(platformUrl: URL): string {
-  return new URL(DESKTOP_AUTH_START_WEB_PATH, platformUrl).toString();
+export function buildDesktopAuthStartUrl(
+  platformUrl: URL,
+  authScheme: string,
+): string {
+  const startUrl = new URL(DESKTOP_AUTH_START_WEB_PATH, platformUrl);
+  startUrl.searchParams.set(DESKTOP_AUTH_CALLBACK_SCHEME_PARAM, authScheme);
+  return startUrl.toString();
 }
 
 export function isDesktopAuthStartNavigation(

@@ -4,16 +4,33 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const desktopAuthCallbackSchemes = [
+  "ai.vm0.zero.desktop",
+  "ai.vm0.zero.desktop.dev",
+] as const;
+export const defaultDesktopAuthCallbackScheme = desktopAuthCallbackSchemes[0];
+export const desktopAuthCallbackSchemeSchema = z.enum(
+  desktopAuthCallbackSchemes,
+);
+export type DesktopAuthCallbackScheme = z.infer<
+  typeof desktopAuthCallbackSchemeSchema
+>;
+
 export const desktopAuthHandoffContract = c.router({
   create: {
     method: "POST",
     path: "/api/desktop-auth/handoff",
     headers: authHeadersSchema,
-    body: z.object({}).optional(),
+    body: z
+      .object({
+        callbackScheme: desktopAuthCallbackSchemeSchema.optional(),
+      })
+      .optional(),
     responses: {
       200: z.object({
         callbackUrl: z.string(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       500: apiErrorSchema,

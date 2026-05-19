@@ -18,6 +18,11 @@ describe("resolveDesktopConfig", () => {
 
     expect(config.platformUrl.toString()).toBe("https://app.vm0.ai/");
     expect(config.environment).toBe("production");
+    expect(config.identity).toMatchObject({
+      displayName: "Zero",
+      bundleId: "ai.vm0.zero.desktop",
+      authScheme: "ai.vm0.zero.desktop",
+    });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
       "https://api.vm0.ai",
@@ -30,6 +35,11 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("https://staging-app.vm6.ai/");
 
     expect(config.environment).toBe("staging");
+    expect(config.identity).toMatchObject({
+      displayName: "Zero Dev",
+      bundleId: "ai.vm0.zero.desktop.dev",
+      authScheme: "ai.vm0.zero.desktop.dev",
+    });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-staging");
     expect(config.allowedAppOrigins.has("https://staging-app.vm6.ai")).toBe(
       true,
@@ -46,6 +56,11 @@ describe("resolveDesktopConfig", () => {
     const config = resolveDesktopConfig("https://app.vm7.ai/");
 
     expect(config.environment).toBe("development");
+    expect(config.identity).toMatchObject({
+      displayName: "Zero Dev",
+      bundleId: "ai.vm0.zero.desktop.dev",
+      authScheme: "ai.vm0.zero.desktop.dev",
+    });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-development");
     expect(config.allowedAppOrigins.has("https://app.vm7.ai")).toBe(true);
     expect(config.allowedAppOrigins.has("https://www.vm7.ai")).toBe(true);
@@ -134,9 +149,20 @@ describe("desktop auth", () => {
   const platformUrl = new URL("https://app.vm0.ai");
   const code = "abcdefghijklmnopqrstuvwxyzABCDEF0123456789_-";
 
-  it("builds the system-browser desktop auth start URL", () => {
-    expect(buildDesktopAuthStartUrl(platformUrl)).toBe(
-      "https://app.vm0.ai/desktop-auth/start",
+  it("builds the production system-browser desktop auth start URL", () => {
+    expect(buildDesktopAuthStartUrl(platformUrl, "ai.vm0.zero.desktop")).toBe(
+      "https://app.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop",
+    );
+  });
+
+  it("builds the development system-browser desktop auth start URL", () => {
+    expect(
+      buildDesktopAuthStartUrl(
+        new URL("https://app.vm7.ai"),
+        "ai.vm0.zero.desktop.dev",
+      ),
+    ).toBe(
+      "https://app.vm7.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop.dev",
     );
   });
 
@@ -208,47 +234,91 @@ describe("desktop auth", () => {
   });
 
   it("builds a local signed-out page with an explicit auth start link", () => {
-    const pageUrl = buildSignedOutPageUrl(
-      "https://app.vm0.ai/desktop-auth/start",
+    const authStartUrl = buildDesktopAuthStartUrl(
+      platformUrl,
+      "ai.vm0.zero.desktop",
     );
+    const pageUrl = buildSignedOutPageUrl(authStartUrl);
     const html = decodeURIComponent(pageUrl.split(",")[1] ?? "");
 
     expect(pageUrl.startsWith("data:text/html;charset=utf-8,")).toBe(true);
-    expect(html).toContain('href="https://app.vm0.ai/desktop-auth/start"');
+    expect(html).toContain(
+      'href="https://app.vm0.ai/desktop-auth/start?callbackScheme=ai.vm0.zero.desktop"',
+    );
     expect(html).toContain("Sign in to Zero");
   });
 
   it("parses a valid desktop callback code", () => {
     expect(
-      parseDesktopAuthCallback(`vm0://auth/callback?code=${code}`),
+      parseDesktopAuthCallback(
+        `ai.vm0.zero.desktop://auth/callback?code=${code}`,
+        "ai.vm0.zero.desktop",
+      ),
+    ).toStrictEqual({ code });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.vm0.zero.desktop.dev://auth/callback?code=${code}`,
+        "ai.vm0.zero.desktop.dev",
+      ),
     ).toStrictEqual({ code });
   });
 
   it("parses desktop callbacks from launch arguments", () => {
     expect(
-      parseDesktopAuthCallbackArgv([
-        "/Applications/Zero.app/Contents/MacOS/Zero",
-        `vm0://auth/callback?code=${code}`,
-      ]),
+      parseDesktopAuthCallbackArgv(
+        [
+          "/Applications/Zero.app/Contents/MacOS/Zero",
+          `ai.vm0.zero.desktop://auth/callback?code=${code}`,
+        ],
+        "ai.vm0.zero.desktop",
+      ),
     ).toStrictEqual({ code });
     expect(
-      parseDesktopAuthCallbackArgv([
-        "/Applications/Zero.app/Contents/MacOS/Zero",
-        "--some-flag",
-      ]),
+      parseDesktopAuthCallbackArgv(
+        ["/Applications/Zero.app/Contents/MacOS/Zero", "--some-flag"],
+        "ai.vm0.zero.desktop",
+      ),
     ).toBe(null);
   });
 
   it("rejects unsafe desktop callbacks", () => {
-    expect(parseDesktopAuthCallback("vm0://auth/callback?token=secret")).toBe(
-      null,
-    );
-    expect(parseDesktopAuthCallback("vm0://other/callback?code=abc")).toBe(
-      null,
-    );
+    expect(
+      parseDesktopAuthCallback(
+        "ai.vm0.zero.desktop://auth/callback?token=secret",
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
+    expect(
+      parseDesktopAuthCallback(
+        `ai.vm0.zero.desktop://auth/callback?code=${code}`,
+        "ai.vm0.zero.desktop.dev",
+      ),
+    ).toBe(null);
+    expect(
+      parseDesktopAuthCallback(
+        "ai.vm0.zero.desktop://other/callback?code=abc",
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
     expect(
       parseDesktopAuthCallback(
         "https://app.vm0.ai/desktop-auth/consume?code=abc",
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
+  });
+
+  it("does not treat legacy callbacks as valid", () => {
+    expect(
+      parseDesktopAuthCallback(
+        `vm0://auth/callback?code=${code}`,
+        "ai.vm0.zero.desktop",
+      ),
+    ).toBe(null);
+    expect(
+      parseDesktopAuthCallback(
+        `vm0://auth/callback?code=${code}`,
+        "ai.vm0.zero.desktop.dev",
       ),
     ).toBe(null);
   });

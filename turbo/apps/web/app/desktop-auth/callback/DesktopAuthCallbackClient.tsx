@@ -2,13 +2,40 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 
 interface HandoffResponse {
   readonly callbackUrl?: string;
 }
 
+const DESKTOP_AUTH_START_PATH = "/desktop-auth/start";
+const DESKTOP_AUTH_CALLBACK_SCHEME_PARAM = "callbackScheme";
+const DESKTOP_AUTH_CALLBACK_SCHEMES = new Set([
+  "ai.vm0.zero.desktop",
+  "ai.vm0.zero.desktop.dev",
+]);
+
+function desktopAuthCallbackScheme(rawScheme: string | null): string | null {
+  if (!rawScheme || !DESKTOP_AUTH_CALLBACK_SCHEMES.has(rawScheme)) {
+    return null;
+  }
+  return rawScheme;
+}
+
+function desktopAuthStartPath(callbackScheme: string | null): string {
+  if (!callbackScheme) {
+    return DESKTOP_AUTH_START_PATH;
+  }
+
+  const searchParams = new URLSearchParams({
+    [DESKTOP_AUTH_CALLBACK_SCHEME_PARAM]: callbackScheme,
+  });
+  return `${DESKTOP_AUTH_START_PATH}?${searchParams.toString()}`;
+}
+
 async function createDesktopAuthHandoff(
   getToken: () => Promise<string | null>,
+  callbackScheme: string | null,
 ): Promise<string> {
   const token = await getToken();
   if (!token) {
@@ -21,7 +48,7 @@ async function createDesktopAuthHandoff(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: "{}",
+    body: JSON.stringify(callbackScheme ? { callbackScheme } : {}),
   });
   if (!response.ok) {
     throw new Error("Desktop sign-in failed.");
@@ -37,8 +64,12 @@ async function createDesktopAuthHandoff(
 
 export function DesktopAuthCallbackClient() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const didRun = useRef(false);
+  const callbackScheme = desktopAuthCallbackScheme(
+    searchParams.get(DESKTOP_AUTH_CALLBACK_SCHEME_PARAM),
+  );
 
   useEffect(() => {
     if (!isLoaded || didRun.current) {
@@ -47,11 +78,11 @@ export function DesktopAuthCallbackClient() {
     didRun.current = true;
 
     if (!isSignedIn) {
-      window.location.replace("/desktop-auth/start");
+      window.location.replace(desktopAuthStartPath(callbackScheme));
       return;
     }
 
-    createDesktopAuthHandoff(getToken)
+    createDesktopAuthHandoff(getToken, callbackScheme)
       .then((callbackUrl) => {
         window.location.href = callbackUrl;
       })
@@ -60,7 +91,7 @@ export function DesktopAuthCallbackClient() {
           err instanceof Error ? err.message : "Desktop sign-in failed.",
         );
       });
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [callbackScheme, getToken, isLoaded, isSignedIn]);
 
   if (error) {
     return (

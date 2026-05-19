@@ -2,21 +2,22 @@ import path from "node:path";
 import { app, BrowserWindow, shell } from "electron";
 import { resolveDesktopConfig } from "./config";
 import {
-  DESKTOP_AUTH_PROTOCOL,
   buildDesktopAuthConsumeUrl,
   buildDesktopAuthStartUrl,
   createDesktopAuthStartGate,
   isDesktopAuthStartNavigation,
   isDesktopSignedOutNavigation,
-  parseDesktopAuthCallbackArgv,
   parseDesktopAuthCallback,
+  parseDesktopAuthCallbackArgv,
 } from "./desktop-auth";
 import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
-const APP_NAME = "Zero";
 const config = resolveDesktopConfig();
-const desktopAuthStartUrl = buildDesktopAuthStartUrl(config.platformUrl);
+const desktopAuthStartUrl = buildDesktopAuthStartUrl(
+  config.platformUrl,
+  config.identity.authScheme,
+);
 const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
@@ -42,7 +43,7 @@ function openDesktopAuthStart(rawUrl: string): boolean {
 }
 
 function openDesktopAuthCallback(rawUrl: string): boolean {
-  const callback = parseDesktopAuthCallback(rawUrl);
+  const callback = parseDesktopAuthCallback(rawUrl, config.identity.authScheme);
   if (!callback) {
     return false;
   }
@@ -93,7 +94,7 @@ function handleAuthNavigation(
 
 function browserWindowOptions() {
   return {
-    title: APP_NAME,
+    title: config.identity.displayName,
     backgroundColor: "#19191b",
     webPreferences: {
       nodeIntegration: false,
@@ -220,7 +221,10 @@ function handleDesktopAuthCallback(rawUrl: string): void {
 }
 
 function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
-  const callback = parseDesktopAuthCallbackArgv(argv);
+  const callback = parseDesktopAuthCallbackArgv(
+    argv,
+    config.identity.authScheme,
+  );
   if (!callback) {
     return false;
   }
@@ -236,7 +240,10 @@ function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
 }
 
 function queueDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
-  const callback = parseDesktopAuthCallbackArgv(argv);
+  const callback = parseDesktopAuthCallbackArgv(
+    argv,
+    config.identity.authScheme,
+  );
   if (!callback) {
     return false;
   }
@@ -254,21 +261,23 @@ function registerDesktopAuthProtocol(): void {
   if (process.defaultApp) {
     const entryPoint = process.argv[1];
     if (entryPoint) {
-      app.setAsDefaultProtocolClient(DESKTOP_AUTH_PROTOCOL, process.execPath, [
-        path.resolve(entryPoint),
-      ]);
+      app.setAsDefaultProtocolClient(
+        config.identity.authScheme,
+        process.execPath,
+        [path.resolve(entryPoint)],
+      );
       return;
     }
   }
 
-  app.setAsDefaultProtocolClient(DESKTOP_AUTH_PROTOCOL);
+  app.setAsDefaultProtocolClient(config.identity.authScheme);
 }
 
 if (process.platform !== "darwin") {
   console.warn("Zero Desktop POC is macOS-first and only packages for darwin.");
 }
 
-app.name = APP_NAME;
+app.name = config.identity.displayName;
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 

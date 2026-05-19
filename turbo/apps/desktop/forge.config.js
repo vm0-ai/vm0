@@ -1,8 +1,30 @@
+const desktopIdentities = require("./src/desktop-identities.json");
+
+const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
+
+function platformHostname(rawUrl) {
+  if (!rawUrl || !rawUrl.trim()) {
+    return PRODUCTION_PLATFORM_HOSTNAME;
+  }
+  return new URL(rawUrl).hostname;
+}
+
+function desktopIdentityForPlatformUrl(rawUrl) {
+  if (platformHostname(rawUrl) === PRODUCTION_PLATFORM_HOSTNAME) {
+    return desktopIdentities.production;
+  }
+  return desktopIdentities.development;
+}
+
+const desktopIdentity = desktopIdentityForPlatformUrl(
+  process.env.VM0_DESKTOP_PLATFORM_URL,
+);
+
 module.exports = {
   packagerConfig: {
-    name: "Zero",
-    executableName: "Zero",
-    appBundleId: "ai.vm0.zero.desktop",
+    name: desktopIdentity.displayName,
+    executableName: desktopIdentity.displayName,
+    appBundleId: desktopIdentity.bundleId,
     asar: false,
     osxSign: {
       hardenedRuntime: false,
@@ -16,8 +38,8 @@ module.exports = {
     },
     protocols: [
       {
-        name: "Zero Desktop Auth",
-        schemes: ["vm0"],
+        name: desktopIdentity.authProtocolName,
+        schemes: [desktopIdentity.authScheme],
       },
     ],
     ignore: [

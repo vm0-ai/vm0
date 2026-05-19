@@ -41,9 +41,12 @@ function mockSession(userId: string): void {
   });
 }
 
-function codeFromCallbackUrl(callbackUrl: string): string {
+function codeFromCallbackUrl(
+  callbackUrl: string,
+  expectedProtocol = "ai.vm0.zero.desktop:",
+): string {
   const url = new URL(callbackUrl);
-  expect(url.protocol).toBe("vm0:");
+  expect(url.protocol).toBe(expectedProtocol);
   expect(url.hostname).toBe("auth");
   expect(url.pathname).toBe("/callback");
   return url.searchParams.get("code") ?? "";
@@ -95,6 +98,25 @@ describe("desktop auth routes", () => {
     const rows = await handoffRowsForUser(userId);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.codeHash).not.toBe(code);
+  });
+
+  it("creates a development callback URL when requested", async () => {
+    const userId = `user_desktop_${randomUUID()}`;
+    mockSession(userId);
+
+    const response = await accept(
+      handoffClient().create({
+        body: { callbackScheme: "ai.vm0.zero.desktop.dev" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    const code = codeFromCallbackUrl(
+      response.body.callbackUrl,
+      "ai.vm0.zero.desktop.dev:",
+    );
+    expect(code).not.toBe("");
   });
 
   it("consumes a handoff code once and returns a short-lived Clerk ticket", async () => {
