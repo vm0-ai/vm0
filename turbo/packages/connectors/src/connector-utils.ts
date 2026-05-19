@@ -345,7 +345,7 @@ export function getConnectorOAuthEnvKeys(
 export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,
 ): ConnectorType[] {
-  const configured = new Set<ConnectorType>();
+  const runtimeAvailable = new Set<ConnectorType>();
 
   for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
     const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
@@ -353,7 +353,7 @@ export function getRuntimeAvailableConnectorTypes(
       hasConfiguredOAuth(readEnv, type) ||
       defaultAuthMethod === "api-token"
     ) {
-      configured.add(type);
+      runtimeAvailable.add(type);
     }
   }
 
@@ -361,10 +361,10 @@ export function getRuntimeAvailableConnectorTypes(
     hasEnvValue(readEnv, "NGROK_API_KEY") &&
     hasEnvValue(readEnv, "NGROK_COMPUTER_CONNECTOR_DOMAIN")
   ) {
-    configured.add("computer");
+    runtimeAvailable.add("computer");
   }
 
-  return [...configured].sort();
+  return [...runtimeAvailable].sort();
 }
 
 /**
