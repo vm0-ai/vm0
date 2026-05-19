@@ -4,9 +4,12 @@ import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import {
   ensureOrgAndArtifact,
   formatTelegramUserDisplayName,
@@ -109,6 +112,73 @@ function officialLinkConflictResponse(
     { error: { message, code: "CONFLICT" } },
     { status: 409 },
   );
+}
+
+function missingOfficialAgentResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        message:
+          "Finish onboarding before connecting Telegram. Telegram needs a default agent for this workspace.",
+        code: "CONFLICT",
+      },
+    },
+    { status: 409 },
+  );
+}
+
+async function resolveOfficialConnectComposeId(
+  userId: string,
+  orgId: string,
+): Promise<string | null> {
+  const [preference] = await globalThis.services.db
+    .select({
+      selectedComposeId: telegramUserAgentPreferences.selectedComposeId,
+    })
+    .from(telegramUserAgentPreferences)
+    .where(
+      and(
+        eq(telegramUserAgentPreferences.vm0UserId, userId),
+        eq(telegramUserAgentPreferences.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  const preferredComposeId = preference?.selectedComposeId ?? null;
+  if (preferredComposeId) {
+    const [compose] = await globalThis.services.db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(
+        and(
+          eq(agentComposes.id, preferredComposeId),
+          eq(agentComposes.orgId, orgId),
+        ),
+      )
+      .limit(1);
+    if (compose) {
+      return compose.id;
+    }
+  }
+
+  const [metadata] = await globalThis.services.db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  const defaultAgentId = metadata?.defaultAgentId ?? null;
+  if (!defaultAgentId) {
+    return null;
+  }
+
+  const [compose] = await globalThis.services.db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(eq(agentComposes.id, defaultAgentId), eq(agentComposes.orgId, orgId)),
+    )
+    .limit(1);
+  return compose?.id ?? null;
 }
 
 async function linkUserOrConflict(params: {
@@ -459,6 +529,11 @@ async function linkOfficialWithTelegramAuth(
     return invalidTelegramAuthResponse();
   }
 
+  const composeId = await resolveOfficialConnectComposeId(userId, orgId);
+  if (!composeId) {
+    return missingOfficialAgentResponse();
+  }
+
   const telegramUserId = String(body.telegramAuth.id);
   const conflictResponse = await linkOfficialUserOrConflict({
     telegramUserId,
@@ -496,6 +571,11 @@ async function linkOfficialWithConnectSignature(
     )
   ) {
     return invalidConnectSignatureResponse();
+  }
+
+  const composeId = await resolveOfficialConnectComposeId(userId, orgId);
+  if (!composeId) {
+    return missingOfficialAgentResponse();
   }
 
   const telegramUserId = connectSignature.telegramUserId;

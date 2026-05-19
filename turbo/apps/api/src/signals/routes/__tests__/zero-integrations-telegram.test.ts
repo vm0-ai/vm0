@@ -26,6 +26,7 @@ import {
   deleteTelegramFixture$,
   freezeTelegramFixture,
   makeTelegramFixtureBuilder,
+  seedOrgDefaultAgent$,
   seedTelegramInstallation$,
   seedTelegramUserLink$,
   type TelegramFixture,
@@ -794,6 +795,20 @@ describe("POST /api/integrations/telegram/link", () => {
     };
   }
 
+  async function seedDefaultAgentForLink(
+    orgId: string,
+    userId: string,
+  ): Promise<void> {
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const agent = await store.set(
+      seedOrgDefaultAgent$,
+      { orgId, userId },
+      context.signal,
+    );
+    builder.composeIds.push(agent.composeId);
+    fixtures.push(freezeTelegramFixture(builder));
+  }
+
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroIntegrationsTelegramContract);
 
@@ -913,8 +928,45 @@ describe("POST /api/integrations/telegram/link", () => {
     });
   });
 
-  it("links the official bot account via Telegram Login Widget auth", async () => {
+  it("returns 409 when connecting the official bot before onboarding creates a default agent", async () => {
     const { token } = await seedLinkContext();
+    const telegramUserId = Number(newTelegramBotId());
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+    server.use(telegramOauthHead("0"));
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth: makeTelegramAuth(
+            telegramUserId,
+            "official_tg",
+            OFFICIAL_BOT_TOKEN,
+          ),
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toBe(
+      "Finish onboarding before connecting Telegram. Telegram needs a default agent for this workspace.",
+    );
+
+    const status = await accept(
+      client.getLinkStatus({
+        query: { botId: OFFICIAL_TELEGRAM_BOT_ID },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(status.body.linked).toBeFalsy();
+  });
+
+  it("links the official bot account via Telegram Login Widget auth", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    await seedDefaultAgentForLink(orgId, userId);
     const telegramUserId = Number(newTelegramBotId());
     const client = setupApp({ context })(zeroIntegrationsTelegramContract);
 
