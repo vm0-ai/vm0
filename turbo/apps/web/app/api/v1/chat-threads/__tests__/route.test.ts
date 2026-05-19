@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET as getMessages } from "../[threadId]/messages/route";
 import { POST as sendMessage } from "../messages/route";
 import {
   createTestRequest,
@@ -11,21 +10,13 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import {
-  insertTestChatThread,
-  insertTestChatMessage,
-} from "../../../../../src/__tests__/db-test-seeders/agents";
 import { createTestCliToken } from "../../../../../src/__tests__/db-test-seeders/auth";
 import { updateOrgDefaultAgent } from "../../../../../src/__tests__/db-test-seeders/org";
 import { getTestZeroAgentId } from "../../../../../src/__tests__/db-test-assertions/agents";
-import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import { randomUUID } from "crypto";
 
 const context = testContext();
 
-const GET_MESSAGES_URL = (threadId: string) => {
-  return `http://localhost:3000/api/v1/chat-threads/${threadId}/messages`;
-};
 const POST_MESSAGE_URL = "http://localhost:3000/api/v1/chat-threads/messages";
 
 function bearerHeaders(secret: string) {
@@ -38,144 +29,6 @@ function bearerHeaders(secret: string) {
 async function mintApiKey(user: UserContext): Promise<string> {
   return createTestCliToken(user.userId, undefined, user.orgId);
 }
-
-describe("GET /api/v1/chat-threads/:threadId/messages", () => {
-  let user: UserContext;
-  let threadId: string;
-  let baseTimeMs: number;
-  let firstMessageId: string;
-  let secondMessageId: string;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    user = await context.setupUser();
-    const compose = await createTestCompose(uniqueId("v1-get-msgs"));
-    const agentId = await getTestZeroAgentId(user.orgId, compose.name);
-    threadId = await insertTestChatThread(user.userId, agentId, "t");
-    baseTimeMs = Date.now() - 10_000;
-    const firstMessage = await insertTestChatMessage({
-      chatThreadId: threadId,
-      role: "user",
-      content: "hello",
-      createdAt: new Date(baseTimeMs),
-    });
-    firstMessageId = firstMessage.id;
-    const secondMessage = await insertTestChatMessage({
-      chatThreadId: threadId,
-      role: "assistant",
-      content: "world",
-      createdAt: new Date(baseTimeMs + 1000),
-    });
-    secondMessageId = secondMessage.id;
-  });
-
-  it("returns 401 without API key", async () => {
-    const res = await getMessages(
-      createTestRequest(GET_MESSAGES_URL(threadId), { method: "GET" }),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 403 for sandbox token auth", async () => {
-    const token = await generateSandboxToken(
-      user.userId,
-      randomUUID(),
-      user.orgId,
-    );
-    const res = await getMessages(
-      createTestRequest(GET_MESSAGES_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 200 with messages", async () => {
-    const token = await mintApiKey(user);
-    const res = await getMessages(
-      createTestRequest(GET_MESSAGES_URL(threadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.messages).toHaveLength(2);
-    expect(body.messages[0].role).toBe("user");
-    expect(body.messages[0].content).toBe("hello");
-    expect(body.messages[0].runId).toBeUndefined();
-    expect(body.messages[0].status).toBeUndefined();
-    expect(body.messages[1].role).toBe("assistant");
-    expect(body.messages[1].content).toBe("world");
-  });
-
-  it("paginates forward with sinceId", async () => {
-    const thirdMessage = await insertTestChatMessage({
-      chatThreadId: threadId,
-      role: "user",
-      content: "again",
-      createdAt: new Date(baseTimeMs + 2000),
-    });
-
-    const token = await mintApiKey(user);
-    const res = await getMessages(
-      createTestRequest(
-        `${GET_MESSAGES_URL(threadId)}?sinceId=${firstMessageId}`,
-        {
-          method: "GET",
-          headers: bearerHeaders(token),
-        },
-      ),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(
-      body.messages.map((message: { id: string }) => {
-        return message.id;
-      }),
-    ).toStrictEqual([secondMessageId, thirdMessage.id]);
-  });
-
-  it("paginates backward with beforeId", async () => {
-    const thirdMessage = await insertTestChatMessage({
-      chatThreadId: threadId,
-      role: "user",
-      content: "again",
-      createdAt: new Date(baseTimeMs + 2000),
-    });
-
-    const token = await mintApiKey(user);
-    const res = await getMessages(
-      createTestRequest(
-        `${GET_MESSAGES_URL(threadId)}?beforeId=${thirdMessage.id}`,
-        {
-          method: "GET",
-          headers: bearerHeaders(token),
-        },
-      ),
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(
-      body.messages.map((message: { id: string }) => {
-        return message.id;
-      }),
-    ).toStrictEqual([firstMessageId, secondMessageId]);
-  });
-
-  it("returns 404 when thread belongs to another user", async () => {
-    const token = await mintApiKey(user);
-    const otherThreadId = randomUUID();
-    const res = await getMessages(
-      createTestRequest(GET_MESSAGES_URL(otherThreadId), {
-        method: "GET",
-        headers: bearerHeaders(token),
-      }),
-    );
-    expect(res.status).toBe(404);
-  });
-});
 
 describe("POST /api/v1/chat-threads/messages", () => {
   let user: UserContext;

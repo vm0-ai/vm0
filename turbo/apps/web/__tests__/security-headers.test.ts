@@ -667,6 +667,17 @@ const V1_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS = [
   "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages",
   "/api/v1/chat-threads",
 ] as const;
+const V1_CHAT_THREAD_MESSAGES_REWRITE_SOURCE =
+  "/api/v1/chat-threads/:threadId/messages";
+const V1_CHAT_THREAD_MESSAGES_PATH =
+  "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages";
+const V1_CHAT_THREAD_MESSAGES_INVALID_UUID_PATH =
+  "/api/v1/chat-threads/not-a-uuid/messages";
+const V1_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS = [
+  "/api/v1/chat-threads/messages",
+  "/api/v1/chat-threads/550e8400-e29b-41d4-a716-446655440000/messages/extra",
+  "/api/v1/chat-threads",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -3290,6 +3301,35 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match the v1 chat thread messages rewrite without shadowing sibling routes", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === V1_CHAT_THREAD_MESSAGES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: V1_CHAT_THREAD_MESSAGES_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/v1/chat-threads/:threadId/messages",
+    });
+
+    const matcher = getPathMatch(V1_CHAT_THREAD_MESSAGES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(V1_CHAT_THREAD_MESSAGES_PATH)).toStrictEqual({
+      threadId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    expect(matcher(V1_CHAT_THREAD_MESSAGES_INVALID_UUID_PATH)).toStrictEqual({
+      threadId: "not-a-uuid",
+    });
+    for (const pathname of V1_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero chat threads collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4842,7 +4882,20 @@ describe("API backend rewrites", () => {
     expect(
       matchesApiBackendRewritePath(V1_CHAT_THREAD_DETAIL_INVALID_UUID_PATH),
     ).toBe(true);
-    for (const pathname of V1_CHAT_THREAD_DETAIL_NEXT_NEGATIVE_PATHS) {
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads/messages")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/v1/chat-threads")).toBe(false);
+  });
+
+  it("should match the v1 chat thread messages route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(V1_CHAT_THREAD_MESSAGES_PATH)).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath(V1_CHAT_THREAD_MESSAGES_INVALID_UUID_PATH),
+    ).toBe(true);
+    for (const pathname of V1_CHAT_THREAD_MESSAGES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
