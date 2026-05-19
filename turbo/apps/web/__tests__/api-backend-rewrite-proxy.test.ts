@@ -286,6 +286,21 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test Slack auth mock rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/auth.test")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/auth.test/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/auth")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/auth.tests"),
+    ).toBe(false);
+  });
+
   it("matches the cron aggregate insights rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-insights")).toBe(
       true,
@@ -909,9 +924,6 @@ describe("API backend rewrite proxy behavior", () => {
       ),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/test/slack-mock")).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/test/slack-mock/auth.test")).toBe(
-      false,
-    );
   });
 
   it("matches the test slack state rewrite path exactly", () => {
