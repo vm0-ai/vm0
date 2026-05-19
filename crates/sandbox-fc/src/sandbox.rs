@@ -2743,6 +2743,17 @@ mod tests {
         stream.write_all(&response).await.unwrap();
     }
 
+    async fn send_process_control_error(
+        stream: &mut UnixStream,
+        request: RawMessage,
+        message: &str,
+    ) {
+        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        let payload = vsock_proto::encode_error(message);
+        let response = vsock_proto::encode(vsock_proto::MSG_ERROR, request.seq, &payload).unwrap();
+        stream.write_all(&response).await.unwrap();
+    }
+
     async fn send_process_exit(stream: &mut UnixStream, spawn_seq: u32, pid: u32) {
         let payload = vsock_proto::encode_process_exit(pid, 0, b"", b"");
         let response = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &payload).unwrap();
@@ -3854,6 +3865,41 @@ mod tests {
         let error = control_task.await.unwrap().unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
         assert_eq!(error.to_string(), "guest sink timed out");
+        assert_eq!(coordinator.state(), CoordinatorState::Open);
+        assert_eq!(coordinator.active_operation_count(), 0);
+
+        send_process_exit(&mut guest, spawn_seq, pid).await;
+        handle.wait().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn process_control_guest_error_completes_gate() {
+        let ProcessControlFixture {
+            host: _host,
+            handle,
+            mut guest,
+            spawn_seq,
+            pid,
+        } = setup_process_control_fixture().await;
+        let control = handle.control_handle();
+        let coordinator = ParkCoordinator::new();
+        let (state, state_tx) = running_process_state();
+
+        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+            coordinator.clone(),
+            state,
+            state_tx,
+            control,
+            "guest-error".to_owned(),
+            b"payload".to_vec(),
+            Duration::from_secs(5),
+        ));
+        let request = read_vsock_message(&mut guest).await;
+        send_process_control_error(&mut guest, request, "guest rejected control").await;
+
+        let error = control_task.await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "guest rejected control");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
         assert_eq!(coordinator.active_operation_count(), 0);
 

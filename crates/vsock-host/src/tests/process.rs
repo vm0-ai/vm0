@@ -787,6 +787,10 @@ async fn test_spawn_process_control_with_observer_returns_typed_guest_error() {
         outcome,
         ProcessControlOutcome::GuestError("guest rejected control".to_owned())
     );
+    let err = outcome.into_ack().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest rejected control");
+
     let event = wait_spawn(handle).await.unwrap();
     assert_eq!(event.exit_code, 0);
     assert_eq!(
