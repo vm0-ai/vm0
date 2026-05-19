@@ -140,7 +140,7 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
 
-  it("dual-writes legacy AES and AWS KMS material by default when KMS env is set", async () => {
+  it("dual-writes legacy AES and reads AWS KMS material by default when KMS env is set", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = await encryptStoredSecretValue("secret-value");
@@ -154,14 +154,16 @@ describe("stored secret encryption", () => {
     await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
       "secret-value",
     );
+    expect(fakeKmsClient.calls).toHaveLength(2);
+    expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
+    expect(fakeKmsClient.calls[1]).toBeInstanceOf(DecryptCommand);
 
     await expect(
       decryptStoredSecretValue(encrypted, {
-        overrides: { [FeatureSwitchKey.StoredSecretKmsRead]: true },
+        overrides: { [FeatureSwitchKey.StoredSecretKmsRead]: false },
       }),
     ).resolves.toBe("secret-value");
     expect(fakeKmsClient.calls).toHaveLength(2);
-    expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
   });
 
   it("can write and strictly read KMS-only ciphertext", async () => {
