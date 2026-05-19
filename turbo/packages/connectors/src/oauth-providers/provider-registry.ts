@@ -1,5 +1,5 @@
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConfiguredConnectorTypes as getConfiguredConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
+import { getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
 import {
   type AuthUrlResult,
   type OAuthTokenResult,
@@ -446,14 +446,23 @@ export const PROVIDER_HANDLERS: Record<
 };
 
 /**
- * Returns connector types whose OAuth credentials (or equivalent) are
- * configured in the current environment.
+ * Returns connector types the current runtime environment can offer as
+ * connection candidates.
+ */
+export function getRuntimeAvailableConnectorTypes(
+  currentEnv: ProviderEnv,
+): ConnectorType[] {
+  return getRuntimeAvailableConnectorTypesFromEnv((name) => {
+    const value = currentEnv[name];
+    return typeof value === "string" ? value : undefined;
+  });
+}
+
+/**
+ * Compatibility wrapper for existing configuredTypes response semantics.
  */
 export function getConfiguredConnectorTypes(
   currentEnv: ProviderEnv,
 ): ConnectorType[] {
-  return getConfiguredConnectorTypesFromEnv((name) => {
-    const value = currentEnv[name];
-    return typeof value === "string" ? value : undefined;
-  });
+  return getRuntimeAvailableConnectorTypes(currentEnv);
 }
