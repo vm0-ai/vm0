@@ -1531,12 +1531,15 @@ impl Sandbox for FirecrackerSandbox {
     // memory again. Ordering: resume before deflate — the guest needs
     // running vCPUs to process the deflate.
     //
-    // Both methods propagate guest lifecycle, operation-gate, and Firecracker
-    // PATCH failures as `IdleTransition(Park|Unpark)` errors. On failure the
-    // caller (runner) destroys the sandbox and falls through to fresh-create.
-    // Firecracker's pause/resume returns 400 when the VM is already in the
-    // target state; within park/unpark this only happens after a partial retry,
-    // so 400 is treated as success (idempotent).
+    // Park first closes the sandbox policy gate, then acquires a host-side
+    // vsock normal-operation fence before guest lifecycle quiesce. Unpark
+    // resumes the guest, releases the vsock fence, then reopens the policy
+    // gate. Both methods propagate guest lifecycle, operation-gate, fence, and
+    // Firecracker PATCH failures as `IdleTransition(Park|Unpark)` errors. On
+    // failure the caller (runner) destroys the sandbox and falls through to
+    // fresh-create. Firecracker's pause/resume returns 400 when the VM is
+    // already in the target state; within park/unpark this only happens after
+    // a partial retry, so 400 is treated as success (idempotent).
     //
     // For profiles where `memory_mb <= MIN_GUEST_MIB` there is no memory
     // to reclaim (balloon is skipped), but vCPUs are still paused — timer
@@ -1979,6 +1982,7 @@ impl<Fence> Drop for ParkBoundaryGuard<Fence> {
                 let _ = self.coordinator.abort_prepare_park(&self.attempt);
             }
             ParkBoundaryGuardState::NormalOperationsFenced => {
+                drop(self.normal_operations_fence.take());
                 let _ = self.coordinator.abort_prepare_park(&self.attempt);
             }
             ParkBoundaryGuardState::GuestQuiesceStarted => {
@@ -3221,6 +3225,21 @@ mod tests {
         }
     }
 
+    struct ClosingStateFence {
+        coordinator: ParkCoordinator,
+        events: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Drop for ClosingStateFence {
+        fn drop(&mut self) {
+            assert!(matches!(
+                self.coordinator.state(),
+                CoordinatorState::ClosingForPark { .. }
+            ));
+            self.events.lock().unwrap().push("release_fence");
+        }
+    }
+
     #[test]
     fn park_noop_with_parked_gate_succeeds() {
         let coordinator = ParkCoordinator::new();
@@ -3332,6 +3351,23 @@ mod tests {
                 "release_fence"
             ]
         );
+    }
+
+    #[test]
+    fn ready_for_park_boundary_cancel_after_fence_releases_before_reopening_gate() {
+        let coordinator = ParkCoordinator::new();
+        let attempt = coordinator.begin_prepare_park().unwrap();
+        let events = event_log();
+        let mut guard = ParkBoundaryGuard::new(coordinator.clone(), attempt);
+
+        guard.mark_normal_operations_fenced(ClosingStateFence {
+            coordinator: coordinator.clone(),
+            events: Arc::clone(&events),
+        });
+        drop(guard);
+
+        assert_eq!(logged_events(&events), vec!["release_fence"]);
+        assert!(matches!(coordinator.state(), CoordinatorState::Open));
     }
 
     #[tokio::test]

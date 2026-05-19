@@ -12,8 +12,9 @@
 //! Invariants:
 //! - A `Poisoned` operation keeps the coordinator `Dirty`; dirty sandboxes are
 //!   destroy-only and cannot re-enter the park lifecycle.
-//! - `ReadyForPark` means the host gate is closed and no operation that could
-//!   write to the guest is unresolved.
+//! - `ReadyForPark` means the host policy gate is closed, guest lifecycle
+//!   quiesce has completed, and the caller owns the authoritative `vsock-host`
+//!   normal-operation fence.
 //! - Coordinator locks are never held across `.await`.
 #![cfg_attr(not(test), allow(dead_code))]
 
