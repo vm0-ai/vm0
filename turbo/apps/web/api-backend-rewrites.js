@@ -241,6 +241,8 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
+  ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
+  ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
   [
     CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
     "/api/connectors/:type/authorize",
@@ -464,6 +466,7 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
   ["/api/zero/report-error", "/api/zero/report-error"],
+  ["/api/zero/schedules", "/api/zero/schedules"],
   [
     ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
     "/api/zero/secrets/:name",

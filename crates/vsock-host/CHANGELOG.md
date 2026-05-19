@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.1...vsock-host-v0.17.2) (2026-05-19)
+
+
+### Refactoring
+
+* gate process control requests ([#13845](https://github.com/vm0-ai/vm0/issues/13845)) ([9dc1d33](https://github.com/vm0-ai/vm0/commit/9dc1d33ddb9fb1e2d479c574ebf85afd61cb45b8))
+
 ## [0.17.1](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.0...vsock-host-v0.17.1) (2026-05-18)
 
 

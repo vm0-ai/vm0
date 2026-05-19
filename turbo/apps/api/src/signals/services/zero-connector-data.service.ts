@@ -11,6 +11,7 @@ import {
   getAvailableConnectorAuthMethods,
   getConnectorOAuthEnvKeys,
   getConnectorProvidedSecretNames,
+  getConnectorSecretNames,
   getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
@@ -720,12 +721,10 @@ export const deleteZeroConnectorLocalState$ = command(
       signal.throwIfAborted();
       deleted = true;
 
-      const config = CONNECTOR_TYPES[args.type];
-      const authMethodConfig =
-        config.authMethods[existing.authMethod as ConnectorAuthMethodType];
-      const secretNames = authMethodConfig
-        ? Object.keys(authMethodConfig.secrets)
-        : [];
+      const secretNames = getConnectorSecretNames(
+        args.type,
+        existing.authMethod as ConnectorAuthMethodType,
+      );
 
       for (const name of secretNames) {
         await writeDb

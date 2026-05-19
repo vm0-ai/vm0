@@ -21,7 +21,10 @@ import {
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
 import type { LocalBrowserHost } from "@vm0/api-contracts/contracts/zero-local-browser";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorAuthMethod,
+  isGoogleOAuthConnector,
+} from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
   connectorCliAuthState$,
@@ -206,8 +209,7 @@ function ApiTokenForm({
   submit: SubmitApiTokenFn;
   submitting: boolean;
 }) {
-  const config = CONNECTOR_TYPES[type];
-  const apiTokenConfig = config.authMethods["api-token"];
+  const apiTokenConfig = getConnectorAuthMethod(type, "api-token");
   const setFormValue = useSet(setTokenFormValue$);
   const clearForm = useSet(clearTokenForm$);
   const pageSignal = useGet(pageSignal$);
@@ -285,8 +287,7 @@ function LocalAgentConnectContent({
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
 }) {
-  const config = CONNECTOR_TYPES[item.type];
-  const localAgentConfig = config.authMethods.api;
+  const localAgentConfig = getConnectorAuthMethod(item.type, "api");
   const hostListLoadable = useLastLoadable(localAgentHosts$);
   const watchHostsRef = useSet(localAgentHostsWatcherRef$);
   const [connectLoadable, connectLocalAgent] = useLoadableSet(
@@ -490,8 +491,7 @@ function LocalBrowserConnectContent({
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
 }) {
-  const config = CONNECTOR_TYPES[item.type];
-  const localBrowserConfig = config.authMethods.api;
+  const localBrowserConfig = getConnectorAuthMethod(item.type, "api");
   const hostListLoadable = useLastLoadable(localBrowserHosts$);
   const watchConnectionRef = useSet(localBrowserConnectionRef$);
   const extensionStatus = useGet(localBrowserExtensionStatus$);
@@ -767,7 +767,7 @@ function ConnectMethodHeading({
     return null;
   }
 
-  const methodConfig = CONNECTOR_TYPES[item.type].authMethods[authMethod];
+  const methodConfig = getConnectorAuthMethod(item.type, authMethod);
   if (!methodConfig) {
     return null;
   }

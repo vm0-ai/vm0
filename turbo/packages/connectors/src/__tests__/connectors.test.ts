@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
+import { connectorTypeSchema } from "../connectors";
 import {
+  getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
   hasRequiredScopes,
   getConnectorAuthMethod,
+  getConnectorCliAuthFlow,
+  getConnectorCliAuthModes,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
@@ -70,13 +73,13 @@ describe("connector auth method config", () => {
   });
 
   it("declares Stripe CLI auth as a gated connection flow with modes", () => {
-    const method = CONNECTOR_TYPES.stripe.authMethods["cli-auth"];
+    const method = getConnectorAuthMethod("stripe", "cli-auth");
 
     expect(method).toBeDefined();
     expect(method?.secrets).toStrictEqual({});
     expect(method?.featureFlag).toBe(FeatureSwitchKey.CliAuthStripe);
-    expect(CONNECTOR_TYPES.stripe.cliAuth?.flow).toBe("browser-verification");
-    expect(CONNECTOR_TYPES.stripe.cliAuth?.modes).toStrictEqual([
+    expect(getConnectorCliAuthFlow("stripe")).toBe("browser-verification");
+    expect(getConnectorCliAuthModes("stripe")).toStrictEqual([
       {
         value: "test",
         label: "Test mode",
@@ -88,6 +91,18 @@ describe("connector auth method config", () => {
         description: "Import a Stripe live mode key.",
       },
     ]);
+  });
+
+  it("returns api-token field storage types with secret default", () => {
+    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_EMAIL")).toBe(
+      "variable",
+    );
+    expect(getApiTokenFieldStorageType("zendesk", "ZENDESK_API_TOKEN")).toBe(
+      "secret",
+    );
+    expect(getApiTokenFieldStorageType("zendesk", "UNKNOWN_FIELD")).toBe(
+      "secret",
+    );
   });
 });
 

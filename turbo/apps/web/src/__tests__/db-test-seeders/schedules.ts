@@ -34,53 +34,6 @@ export async function updateTestScheduleState(
 }
 
 /**
- * Disable enabled schedules for a specific org.
- * Prevents stale schedules from other test files consuming the limit(10)
- * batch in executeDueSchedules, which can cause test flakiness.
- *
- * Scoped to orgId so dev-server schedules are not affected.
- *
- * @why-db-direct Bulk disable for test cleanup; no API exists for org-wide
- * schedule disable.
- */
-export async function disableAllSchedules(orgId: string): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set({ enabled: false })
-    .where(
-      and(
-        eq(zeroAgentSchedules.enabled, true),
-        eq(zeroAgentSchedules.orgId, orgId),
-      ),
-    );
-}
-
-/**
- * Set the consecutiveFailures count on a schedule.
- * Useful for testing auto-disable after N failures.
- *
- * @why-db-direct Sets internal failure counter to test threshold-based
- * disabling; the scheduler manages this field internally via callbacks.
- */
-export async function setScheduleConsecutiveFailures(
-  composeId: string,
-  name: string,
-  failures: number,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set({ consecutiveFailures: failures })
-    .where(
-      and(
-        eq(zeroAgentSchedules.agentId, composeId),
-        eq(zeroAgentSchedules.name, name),
-      ),
-    );
-}
-
-/**
  * Seed a schedule record directly in the database.
  *
  * @why-db-direct Creates schedules directly for bulk testing (e.g. top-100

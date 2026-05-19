@@ -1,13 +1,13 @@
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
   deleteSchedule,
+  deploySchedule,
   disableSchedule,
   enableSchedule,
   getScheduleByName,
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
-import { POST as deployScheduleRoute } from "../../../app/api/zero/schedules/route";
-import { createTestRequest, getTestAuthContext } from "./core";
+import { getTestAuthContext } from "./core";
 import {
   resolveAgentIdFromCompose,
   seedTestSchedule,
@@ -16,7 +16,7 @@ import {
 export { seedTestSchedule };
 
 /**
- * Create a test schedule via the schedule API route.
+ * Create a test schedule via the schedule service.
  * Note: vars and secrets are now managed via server-side tables (vm0 secret set, vm0 var set)
  */
 export async function createTestSchedule(
@@ -32,42 +32,28 @@ export async function createTestSchedule(
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
+  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
-  // Default to cron if no trigger specified
+  // Default to cron if no trigger specified.
   const hasTrigger =
     options?.cronExpression ||
     options?.atTime ||
     options?.intervalSeconds !== undefined;
 
-  const request = createTestRequest(
-    "http://localhost:3000/api/zero/schedules",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        agentId,
-        timezone: options?.timezone ?? "UTC",
-        prompt: options?.prompt ?? "Test schedule prompt",
-        cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
-        atTime: options?.atTime,
-        intervalSeconds: options?.intervalSeconds,
-        description: options?.description,
-        appendSystemPrompt: options?.appendSystemPrompt,
-      }),
-    },
-  );
+  const result = await deploySchedule(userId, orgId, {
+    name,
+    agentId,
+    timezone: options?.timezone ?? "UTC",
+    prompt: options?.prompt ?? "Test schedule prompt",
+    cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
+    atTime: options?.atTime,
+    intervalSeconds: options?.intervalSeconds,
+    description: options?.description,
+    appendSystemPrompt: options?.appendSystemPrompt,
+  });
 
-  const response = await deployScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  const data = await response.json();
-  return data.schedule;
+  return result.schedule;
 }
 
 /**

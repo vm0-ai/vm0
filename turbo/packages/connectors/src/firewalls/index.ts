@@ -52,9 +52,10 @@ import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
 import { attioFirewall } from "./attio.generated";
 import { atlassianFirewall } from "./atlassian.generated";
+import { atlascloudFirewall } from "./atlascloud.generated";
 import { aviationstackFirewall } from "./aviationstack.generated";
 // NOTE: aviationstack/builtwith/clado/diffbot/google-maps/hunter/mapbox/
-// mathpix/nyne/openrouter/openweather/reducto/suno were added in the same
+// mathpix/nyne/openrouter/openweather/reducto were added in the same
 // Sponge-catalog batch and are wired below.
 import { axiomFirewall } from "./axiom.generated";
 import { bentomlFirewall } from "./bentoml.generated";
@@ -214,7 +215,6 @@ import { stravaFirewall } from "./strava.generated";
 import { strapiFirewall } from "./strapi.generated";
 import { streakFirewall } from "./streak.generated";
 import { stripeFirewall } from "./stripe.generated";
-import { sunoFirewall } from "./suno.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
 import { supermemoryFirewall } from "./supermemory.generated";
@@ -280,6 +280,7 @@ const CONNECTOR_FIREWALLS = {
   asana: asanaFirewall,
   attio: attioFirewall,
   atlassian: atlassianFirewall,
+  atlascloud: atlascloudFirewall,
   axiom: axiomFirewall,
   bentoml: bentomlFirewall,
   bitrix: bitrixFirewall,
@@ -480,7 +481,6 @@ const CONNECTOR_FIREWALLS = {
   openrouter: openrouterFirewall,
   openweather: openweatherFirewall,
   reducto: reductoFirewall,
-  suno: sunoFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
 /**

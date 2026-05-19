@@ -36,6 +36,7 @@
     "generate:asana": "tsx src/index.ts asana",
     "generate:attio": "tsx src/index.ts attio",
     "generate:atlassian": "tsx src/index.ts atlassian",
+    "generate:atlascloud": "tsx src/index.ts atlascloud",
     "generate:axiom": "tsx src/index.ts axiom",
     "generate:bentoml": "tsx src/index.ts bentoml",
     "generate:bitrix": "tsx src/index.ts bitrix",
@@ -208,8 +209,7 @@
     "generate:nyne": "tsx src/index.ts nyne",
     "generate:openrouter": "tsx src/index.ts openrouter",
     "generate:openweather": "tsx src/index.ts openweather",
-    "generate:reducto": "tsx src/index.ts reducto",
-    "generate:suno": "tsx src/index.ts suno"
+    "generate:reducto": "tsx src/index.ts reducto"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

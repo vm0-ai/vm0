@@ -17,6 +17,7 @@ import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAttio } from "./attio";
 import { generate as generateAtlassian } from "./atlassian";
+import { generate as generateAtlascloud } from "./atlascloud";
 import { generate as generateAviationstack } from "./aviationstack";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBentoml } from "./bentoml";
@@ -174,7 +175,6 @@ import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
 import { generate as generateStrapi } from "./strapi";
 import { generate as generateStripe } from "./stripe";
-import { generate as generateSuno } from "./suno";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
 import { generate as generateSupermemory } from "./supermemory";
@@ -226,6 +226,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   attio: generateAttio,
   atlassian: generateAtlassian,
+  atlascloud: generateAtlascloud,
   axiom: generateAxiom,
   bentoml: generateBentoml,
   bitrix: generateBitrix,
@@ -420,7 +421,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   openrouter: generateOpenrouter,
   openweather: generateOpenweather,
   reducto: generateReducto,
-  suno: generateSuno,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),

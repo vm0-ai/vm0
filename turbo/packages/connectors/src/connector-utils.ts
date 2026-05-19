@@ -4,6 +4,8 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodType,
+  type ConnectorCliAuthConfig,
+  type ConnectorCliAuthFlow,
   type ConnectorConfig,
   type ConnectorOAuthConfig,
   type ConnectorSecretConfig,
@@ -41,6 +43,30 @@ export function getConnectorAuthMethod(
   authMethod: ConnectorAuthMethodType,
 ): ConnectorAuthMethodConfig | undefined {
   return getConnectorAuthMethods(type)[authMethod];
+}
+
+/**
+ * Get CLI auth flow config for connector types that support provider CLI auth.
+ */
+export function getConnectorCliAuthConfig(
+  type: ConnectorType,
+): ConnectorCliAuthConfig | undefined {
+  return CONNECTOR_TYPES[type].cliAuth;
+}
+
+/**
+ * Get the frontend CLI auth flow for connector types that support it.
+ */
+export function getConnectorCliAuthFlow(
+  type: ConnectorType,
+): ConnectorCliAuthFlow | undefined {
+  return getConnectorCliAuthConfig(type)?.flow;
+}
+
+export function getConnectorCliAuthModes(
+  type: ConnectorType,
+): NonNullable<ConnectorCliAuthConfig["modes"]> {
+  return getConnectorCliAuthConfig(type)?.modes ?? [];
 }
 
 /**
@@ -672,6 +698,20 @@ export function getApiTokenFieldsByType(
     }
   }
   return { secrets: secretNames, variables: variableNames };
+}
+
+/**
+ * Return the storage target for a connector API-token field.
+ *
+ * Unknown fields preserve the historical form-submit behavior and are treated
+ * as encrypted secrets.
+ */
+export function getApiTokenFieldStorageType(
+  type: ConnectorType,
+  name: string,
+): "secret" | "variable" {
+  const fieldConfig = getConnectorAuthMethod(type, "api-token")?.secrets[name];
+  return fieldConfig?.type ?? "secret";
 }
 
 /**

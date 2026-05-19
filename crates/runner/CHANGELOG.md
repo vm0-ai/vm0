@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.102.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.1...runner-rs-v0.102.2) (2026-05-19)
+
+
+### Bug Fixes
+
+* add runner failure diagnostics ([#13880](https://github.com/vm0-ai/vm0/issues/13880)) ([3fc6515](https://github.com/vm0-ai/vm0/commit/3fc6515e53564de4668ae551ce4caaebcb943d74))
+
 ## [0.102.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.0...runner-rs-v0.102.1) (2026-05-18)
 
 

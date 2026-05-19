@@ -341,6 +341,19 @@ const CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS = [
   "/api/cron/drain-email-outbox/extra",
   "/api/cron",
 ] as const;
+const CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE = "/api/cron/execute-schedules";
+const CRON_EXECUTE_SCHEDULES_PATH = "/api/cron/execute-schedules";
+const CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/execute-schedules/extra",
+  "/api/cron",
+] as const;
+const CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE =
+  "/api/cron/process-usage-events";
+const CRON_PROCESS_USAGE_EVENTS_PATH = "/api/cron/process-usage-events";
+const CRON_PROCESS_USAGE_EVENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/process-usage-events/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -668,10 +681,15 @@ const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/secrets/DELETE_ME/extra",
   "/api/zero/secret/DELETE_ME",
 ] as const;
+const ZERO_SCHEDULES_REWRITE_SOURCE = "/api/zero/schedules";
+const ZERO_SCHEDULES_PATH = "/api/zero/schedules";
+const ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/schedule",
+  "/api/zero/schedules/extra/path",
+] as const;
 const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
 const ZERO_SCHEDULES_BY_NAME_PATH = "/api/zero/schedules/nightly";
 const ZERO_SCHEDULES_BY_NAME_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/schedules",
   "/api/zero/schedules/nightly/extra",
   "/api/zero/schedule/nightly",
 ] as const;
@@ -679,14 +697,12 @@ const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
   "/api/zero/schedules/:name/disable";
 const ZERO_SCHEDULES_DISABLE_PATH = "/api/zero/schedules/nightly/disable";
 const ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/schedules",
   "/api/zero/schedules/nightly/disable/extra",
   "/api/zero/schedule/nightly/disable",
 ] as const;
 const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
 const ZERO_SCHEDULES_ENABLE_PATH = "/api/zero/schedules/nightly/enable";
 const ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/schedules",
   "/api/zero/schedules/nightly/enable/extra",
   "/api/zero/schedule/nightly/enable",
 ] as const;
@@ -1121,6 +1137,14 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/cron/drain-email-outbox",
         },
         {
+          source: CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/execute-schedules",
+        },
+        {
+          source: CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/process-usage-events",
+        },
+        {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/connectors/:type/authorize",
@@ -1336,6 +1360,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/secrets/:name",
+        },
+        {
+          source: ZERO_SCHEDULES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/schedules",
         },
         {
           source: ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE,
@@ -2281,6 +2309,52 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_DRAIN_EMAIL_OUTBOX_PATH)).toStrictEqual({});
     for (const pathname of CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron execute schedules rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/execute-schedules",
+    });
+
+    const matcher = getPathMatch(CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_EXECUTE_SCHEDULES_PATH)).toStrictEqual({});
+    for (const pathname of CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron process usage events rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/process-usage-events",
+    });
+
+    const matcher = getPathMatch(CRON_PROCESS_USAGE_EVENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_PROCESS_USAGE_EVENTS_PATH)).toStrictEqual({});
+    for (const pathname of CRON_PROCESS_USAGE_EVENTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3433,6 +3507,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero schedules rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SCHEDULES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SCHEDULES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/schedules",
+    });
+
+    const matcher = getPathMatch(ZERO_SCHEDULES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SCHEDULES_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the single-segment zero schedules by-name rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -3453,6 +3550,7 @@ describe("API backend rewrites", () => {
     expect(matcher(ZERO_SCHEDULES_BY_NAME_PATH)).toStrictEqual({
       name: "nightly",
     });
+    expect(matcher(ZERO_SCHEDULES_PATH)).toBe(false);
     for (const pathname of ZERO_SCHEDULES_BY_NAME_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
@@ -4331,6 +4429,13 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero schedules collection paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_PATH)).toBe(true);
+    for (const pathname of ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

@@ -19,6 +19,7 @@ import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
+import { atlascloudHandler } from "./providers/atlascloud-handler";
 import { aviationstackHandler } from "./providers/aviationstack-handler";
 import { bentomlHandler } from "./providers/bentoml-handler";
 import { bitrixHandler } from "./providers/bitrix-handler";
@@ -154,7 +155,6 @@ import { shortioHandler } from "./providers/shortio-handler";
 import { stabilityAiHandler } from "./providers/stability-ai-handler";
 import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
-import { sunoHandler } from "./providers/suno-handler";
 import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
 import { tldvHandler } from "./providers/tldv-handler";
@@ -246,6 +246,7 @@ export const PROVIDER_HANDLERS: Record<
   asana: asanaHandler,
   attio: attioHandler,
   atlassian: atlassianHandler,
+  atlascloud: atlascloudHandler,
   bentoml: bentomlHandler,
   bitrix: bitrixHandler,
   "brave-search": braveSearchHandler,
@@ -450,7 +451,6 @@ export const PROVIDER_HANDLERS: Record<
   openrouter: openrouterHandler,
   openweather: openweatherHandler,
   reducto: reductoHandler,
-  suno: sunoHandler,
 };
 
 /**

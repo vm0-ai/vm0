@@ -1444,9 +1444,8 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   // Terminal completion kicks processOrgUsageEvents() inside the after()
   // block so connector-kind charges drain immediately instead of waiting
-  // up to a minute for the usage-event cron. The cron itself is tested
-  // in app/api/cron/process-usage-events/__tests__; this test verifies
-  // the inline wiring from the complete webhook.
+  // up to a minute for the API usage-event cron. This test verifies the
+  // inline wiring from the complete webhook.
   describe("Usage event settlement", () => {
     it("settles pending usage_event rows inline in the after() block", async () => {
       await insertTestUsagePricing({

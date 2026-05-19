@@ -347,6 +347,64 @@ describe("POST /api/zero/schedules", () => {
     expect(body.schedule.preferPersonalProvider).toBeFalsy();
   });
 
+  it("ignores stale explicit model override values", async () => {
+    const fixture = await seedFixture();
+
+    const response = await deploySchedule({
+      agentId: fixture.composeId,
+      name: "explicit-model-override",
+      cronExpression: "0 0 * * *",
+      timezone: "UTC",
+      prompt: "Test schedule with explicit model override",
+      modelProviderId: "00000000-0000-4000-a000-000000000999",
+      selectedModel: "kimi-k2.6",
+    });
+
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.modelProviderId).toBeNull();
+    expect(body.schedule.selectedModel).toBeNull();
+    expect(body.schedule.preferPersonalProvider).toBeFalsy();
+  });
+
+  it("does not validate stale schedule model fields", async () => {
+    const fixture = await seedFixture();
+
+    const response = await deploySchedule({
+      agentId: fixture.composeId,
+      name: "stale-model-fields",
+      cronExpression: "0 0 * * *",
+      timezone: "UTC",
+      prompt: "Test with bad provider",
+      modelProviderId: "00000000-0000-0000-0000-000000000000",
+      selectedModel: "nonexistent-model",
+    });
+
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.modelProviderId).toBeNull();
+    expect(body.schedule.selectedModel).toBeNull();
+  });
+
+  it("stores null model fields when the schedule inherits the default", async () => {
+    const fixture = await seedFixture();
+
+    const response = await deploySchedule({
+      agentId: fixture.composeId,
+      name: "inherited-model-default",
+      cronExpression: "0 0 * * *",
+      timezone: "UTC",
+      prompt: "Schedule using inherited model",
+      modelProviderId: null,
+      selectedModel: null,
+    });
+
+    expect(response.status).toBe(201);
+    const body = deployScheduleResponseSchema.parse(response.body);
+    expect(body.schedule.modelProviderId).toBeNull();
+    expect(body.schedule.selectedModel).toBeNull();
+  });
+
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await deploySchedule(
       {
