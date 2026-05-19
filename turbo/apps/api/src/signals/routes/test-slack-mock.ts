@@ -217,7 +217,7 @@ const usersInfo$ = command(async ({ get }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
-  const userId = parsed.userId ?? SLACK_E2E_FIXTURES.userUserId;
+  const userId = parsed.userId || SLACK_E2E_FIXTURES.userUserId;
   return {
     status: 200 as const,
     body: {

@@ -131,6 +131,17 @@ describe("POST /api/test/slack-mock/*", () => {
     await expect(response.text()).resolves.toBe("Not found");
   });
 
+  it("returns 404 for users.info outside allowed test environments", async () => {
+    mockEnv("ENV", "production");
+
+    const response = await requestApp(`${BASE_ROUTE}/users.info`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
   it("returns fixed Slack auth.test and oauth.v2.access fixture payloads", async () => {
     mockEnv("ENV", "development");
 
@@ -214,7 +225,7 @@ describe("POST /api/test/slack-mock/*", () => {
     ).resolves.toStrictEqual({ ok: true, messages: [], has_more: false });
   });
 
-  it("reads users.info user ids from JSON and form-encoded bodies", async () => {
+  it("reads users.info user ids from JSON and form-encoded bodies with fixture fallback", async () => {
     mockEnv("ENV", "development");
 
     const jsonResponse = await requestApp(`${BASE_ROUTE}/users.info`, {
@@ -227,14 +238,30 @@ describe("POST /api/test/slack-mock/*", () => {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ user: "U_FORM_USER" }),
     });
+    const emptyJsonResponse = await requestApp(`${BASE_ROUTE}/users.info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ user: "" }),
+    });
+    const emptyFormResponse = await requestApp(`${BASE_ROUTE}/users.info`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ user: "" }),
+    });
 
     const jsonBody =
       await readJson<TestSlackMockUsersInfoResponse>(jsonResponse);
     const formBody =
       await readJson<TestSlackMockUsersInfoResponse>(formResponse);
+    const emptyJsonBody =
+      await readJson<TestSlackMockUsersInfoResponse>(emptyJsonResponse);
+    const emptyFormBody =
+      await readJson<TestSlackMockUsersInfoResponse>(emptyFormResponse);
 
     expect(jsonBody.user.id).toBe("U_JSON_USER");
     expect(formBody.user.id).toBe("U_FORM_USER");
+    expect(emptyJsonBody.user.id).toBe(SLACK_E2E_FIXTURES.userUserId);
+    expect(emptyFormBody.user.id).toBe(SLACK_E2E_FIXTURES.userUserId);
   });
 
   it("logs chat.postMessage and chat.postEphemeral calls", async () => {

@@ -360,6 +360,21 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test Slack users.info mock rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/users.info"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/users.info/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock/users")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/users.infos"),
+    ).toBe(false);
+  });
+
   it("matches the cron aggregate insights rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/cron/aggregate-insights")).toBe(
       true,

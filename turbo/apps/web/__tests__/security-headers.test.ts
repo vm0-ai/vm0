@@ -393,6 +393,14 @@ const TEST_SLACK_MOCK_OAUTH_ACCESS_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-mock/oauth.v2",
   "/api/test/slack-mock/oauth.v2.accesses",
 ] as const;
+const TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE =
+  "/api/test/slack-mock/users.info";
+const TEST_SLACK_MOCK_USERS_INFO_PATH = "/api/test/slack-mock/users.info";
+const TEST_SLACK_MOCK_USERS_INFO_NEXT_NEGATIVE_PATHS = [
+  "/api/test/slack-mock/users.info/extra",
+  "/api/test/slack-mock/users",
+  "/api/test/slack-mock/users.infos",
+] as const;
 const CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_PATH = "/api/cron/aggregate-insights";
 const CRON_AGGREGATE_INSIGHTS_NEXT_NEGATIVE_PATHS = [
@@ -1544,6 +1552,11 @@ describe("API backend rewrites", () => {
           source: TEST_SLACK_MOCK_CONVERSATIONS_REPLIES_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/test/slack-mock/conversations.replies",
+        },
+        {
+          source: TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/test/slack-mock/users.info",
         },
         {
           source: CRON_AGGREGATE_INSIGHTS_REWRITE_SOURCE,
@@ -3785,6 +3798,29 @@ describe("API backend rewrites", () => {
       {},
     );
     for (const pathname of TEST_SLACK_MOCK_CONVERSATIONS_REPLIES_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact test Slack users.info mock rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/test/slack-mock/users.info",
+    });
+
+    const matcher = getPathMatch(TEST_SLACK_MOCK_USERS_INFO_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(TEST_SLACK_MOCK_USERS_INFO_PATH)).toStrictEqual({});
+    for (const pathname of TEST_SLACK_MOCK_USERS_INFO_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
