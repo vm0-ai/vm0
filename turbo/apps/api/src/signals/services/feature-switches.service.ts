@@ -1,11 +1,12 @@
 import { command, computed, type Computed } from "ccstate";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
-export async function loadUserFeatureSwitchOverrides(
+async function loadUserFeatureSwitchOverrides(
   db: ReadonlyDb,
   orgId: string,
   userId: string,
@@ -31,6 +32,31 @@ export function userFeatureSwitchOverrides(
   return computed(async (get): Promise<Record<string, boolean>> => {
     const db = get(db$);
     return await loadUserFeatureSwitchOverrides(db, orgId, userId);
+  });
+}
+
+export async function loadUserFeatureSwitchContext(
+  db: ReadonlyDb,
+  orgId: string,
+  userId: string,
+): Promise<FeatureSwitchContext> {
+  return {
+    orgId,
+    userId,
+    overrides: await loadUserFeatureSwitchOverrides(db, orgId, userId),
+  };
+}
+
+export function userFeatureSwitchContext(
+  orgId: string,
+  userId: string,
+): Computed<Promise<FeatureSwitchContext>> {
+  return computed(async (get): Promise<FeatureSwitchContext> => {
+    return {
+      orgId,
+      userId,
+      overrides: await get(userFeatureSwitchOverrides(orgId, userId)),
+    };
   });
 }
 

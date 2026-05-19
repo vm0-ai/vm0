@@ -1,5 +1,6 @@
 import { command, type Setter } from "ccstate";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
@@ -23,6 +24,7 @@ import {
   encryptSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import {
   parseStripeCliAuthConfig,
   parseStripeCliAuthStartOutput as parseStripeCliAuthStartOutputText,
@@ -1127,11 +1129,15 @@ async function importCliAuthStripeConnector(args: {
   readonly userId: string;
   readonly mode: StripeCliAuthMode;
   readonly apiKey: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
   args.signal.throwIfAborted();
 
-  const encryptedValue = await encryptStoredSecretValue(args.apiKey);
+  const encryptedValue = await encryptStoredSecretValue(
+    args.apiKey,
+    args.featureSwitchContext,
+  );
   const updatedAt = nowDate();
   const writeDb = args.set(writeDb$);
   const description = `Stripe CLI ${args.mode} mode API key`;
@@ -1614,6 +1620,7 @@ async function completeClaimedCliAuthStripe(args: {
   readonly sandbox: SandboxHandle;
   readonly orgId: string;
   readonly userId: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<CliAuthStripeCompleteResult> {
   const claimedAt = args.session.updatedAt;
@@ -1681,6 +1688,7 @@ async function completeClaimedCliAuthStripe(args: {
       userId: args.userId,
       mode: args.providerState.mode,
       apiKey: apiKeyResult.apiKey,
+      featureSwitchContext: args.featureSwitchContext,
       signal: args.signal,
     }),
   );
@@ -1721,7 +1729,7 @@ async function completeClaimedCliAuthStripe(args: {
 
 export const completeCliAuthStripe$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -1731,6 +1739,11 @@ export const completeCliAuthStripe$ = command(
     signal: AbortSignal,
   ): Promise<CliAuthStripeCompleteResult> => {
     const writeDb = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
     const client = getVercelSandboxClient();
     const prepared = await prepareCliAuthStripeCompletion({
       writeDb,
@@ -1750,6 +1763,7 @@ export const completeCliAuthStripe$ = command(
       client,
       orgId: args.orgId,
       userId: args.userId,
+      featureSwitchContext,
       session: prepared.session,
       providerState: prepared.providerState,
       sandbox: prepared.sandbox,

@@ -48,7 +48,10 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import {
+  userFeatureSwitchContext,
+  userFeatureSwitchOverrides,
+} from "./feature-switches.service";
 import { invalidateActiveCliAuthSessionsForConnectorType } from "./cli-auth-invalidation.service";
 
 type StoredConnectorRow = {
@@ -765,9 +768,13 @@ async function upsertConnectorSecret(
     readonly name: string;
     readonly value: string;
     readonly description: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(
+    args.value,
+    args.featureSwitchContext,
+  );
   await db
     .insert(secrets)
     .values({
@@ -806,7 +813,7 @@ function connectorTokenExpiresAt(args: {
 
 export const upsertOAuthConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -839,12 +846,18 @@ export const upsertOAuthConnector$ = command(
     });
     signal.throwIfAborted();
 
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
     await upsertConnectorSecret(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
       name: getSecretNameForConnector(args.type),
       value: args.accessToken,
       description: `OAuth token for ${args.type} connector`,
+      featureSwitchContext,
     });
     signal.throwIfAborted();
 
@@ -855,6 +868,7 @@ export const upsertOAuthConnector$ = command(
         name: args.refreshSecretName,
         value: args.refreshToken,
         description: `OAuth refresh token for ${args.type} connector`,
+        featureSwitchContext,
       });
       signal.throwIfAborted();
     }

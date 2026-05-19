@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ComputerConnectorCreateResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq } from "drizzle-orm";
@@ -23,6 +24,7 @@ import {
 } from "../external/ngrok-client";
 import { settle } from "../utils";
 import { encryptStoredSecretValue } from "./crypto.utils";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const log = logger("service:computer-connector");
 
@@ -58,6 +60,7 @@ interface ProvisionContext {
   readonly args: CreateComputerConnectorArgs;
   readonly apiKey: string;
   readonly refs: ProvisionedRefs;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 function connectorSlug(orgId: string): string {
@@ -99,10 +102,14 @@ function buildTrafficPolicy(
 async function upsertConnectorSecret(
   db: Db,
   args: CreateComputerConnectorArgs,
+  featureSwitchContext: FeatureSwitchContext,
   name: (typeof COMPUTER_CONNECTOR_SECRET_NAMES)[number],
   value: string,
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(value);
+  const encryptedValue = await encryptStoredSecretValue(
+    value,
+    featureSwitchContext,
+  );
   await db
     .insert(secrets)
     .values({
@@ -276,6 +283,7 @@ async function provisionAndPersistConnector(
   await upsertConnectorSecret(
     db,
     args,
+    ctx.featureSwitchContext,
     "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
     bridgeToken,
   );
@@ -283,11 +291,18 @@ async function provisionAndPersistConnector(
   await upsertConnectorSecret(
     db,
     args,
+    ctx.featureSwitchContext,
     "COMPUTER_CONNECTOR_DOMAIN_ID",
     refs.domainId,
   );
   signal.throwIfAborted();
-  await upsertConnectorSecret(db, args, "COMPUTER_CONNECTOR_DOMAIN", domain);
+  await upsertConnectorSecret(
+    db,
+    args,
+    ctx.featureSwitchContext,
+    "COMPUTER_CONNECTOR_DOMAIN",
+    domain,
+  );
   signal.throwIfAborted();
 
   log.debug("Computer connector created", {
@@ -307,11 +322,15 @@ async function provisionAndPersistConnector(
 
 export const createComputerConnector$ = command(
   async (
-    { set },
+    { get, set },
     args: CreateComputerConnectorArgs,
     signal: AbortSignal,
   ): Promise<CreateComputerConnectorResult> => {
     const db = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
 
     const [existing] = await db
       .select({ id: connectors.id })
@@ -333,7 +352,10 @@ export const createComputerConnector$ = command(
 
     const refs: ProvisionedRefs = {};
     const result = await settle(
-      provisionAndPersistConnector({ db, args, apiKey, refs }, signal),
+      provisionAndPersistConnector(
+        { db, args, apiKey, refs, featureSwitchContext },
+        signal,
+      ),
     );
     signal.throwIfAborted();
 

@@ -26,7 +26,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { loadUserFeatureSwitchOverrides } from "./feature-switches.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
@@ -286,9 +286,13 @@ async function upsertSecretValue(
     readonly name: string;
     readonly value: string;
     readonly type: SecretType;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(args.value);
+  const encryptedValue = await encryptStoredSecretValue(
+    args.value,
+    args.featureSwitchContext,
+  );
   await db
     .insert(secretsTable)
     .values({
@@ -578,6 +582,7 @@ async function markRefreshSuccess(
     name: context.accessTokenSecret,
     value: result.accessToken,
     type: args.sourceType,
+    featureSwitchContext: args.featureSwitchContext,
   });
   if (result.refreshToken) {
     await upsertSecretValue(args.db, {
@@ -586,6 +591,7 @@ async function markRefreshSuccess(
       name: context.refreshTokenSecret,
       value: result.refreshToken,
       type: args.sourceType,
+      featureSwitchContext: args.featureSwitchContext,
     });
   }
 
@@ -965,16 +971,11 @@ async function refreshExpiredTokens(
     return emptyRefreshResult;
   }
 
-  const featureSwitchOverrides = await loadUserFeatureSwitchOverrides(
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
     args.db,
     orgId,
     args.auth.userId,
   );
-  const featureSwitchContext = {
-    orgId,
-    userId: args.auth.userId,
-    overrides: featureSwitchOverrides,
-  } satisfies FeatureSwitchContext;
 
   const connectorTypes = [...new Set(refreshable.values())];
   const metadataByConnector = buildMetadataByConnector(
