@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 // Reusing run-seeding helpers from the usage-insight test module — same
 // fixture shape, same precedent as zero-runs-queue.test.ts (PR #12402)
@@ -116,6 +119,51 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
       events: [],
       hasMore: false,
       framework: "claude-code",
+    });
+  });
+
+  it("returns the framework from legacy agent compose content", async () => {
+    context.mocks.axiom.query.mockResolvedValue([]);
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const compose = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: compose.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+    await store
+      .set(writeDb$)
+      .update(agentComposeVersions)
+      .set({ content: { agent: { framework: "codex" } } })
+      .where(eq(agentComposeVersions.composeId, compose.composeId));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroRunAgentEventsContract);
+
+    const response = await accept(
+      client.getAgentEvents({
+        params: { id: runId },
+        query: { limit: 10, order: "desc" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      events: [],
+      hasMore: false,
+      framework: "codex",
     });
   });
 

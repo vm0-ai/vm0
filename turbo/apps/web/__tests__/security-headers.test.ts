@@ -888,6 +888,22 @@ const ZERO_RUNS_RUNNER_PROXY_NEGATIVE_PATHS = [
   "/api/zero/runs/not-a-uuid/runner",
   `/api/zero/runs/${ZERO_RUN_ID}/runner/extra`,
 ] as const;
+const ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE =
+  "/api/zero/runs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/telemetry/agent";
+const ZERO_RUNS_AGENT_EVENTS_PATH = `/api/zero/runs/${ZERO_RUN_ID}/telemetry/agent`;
+const ZERO_RUNS_AGENT_EVENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/runs/queue/telemetry/agent",
+  "/api/zero/runs/not-a-uuid/telemetry/agent",
+  `/api/zero/runs/${ZERO_RUN_ID}`,
+  `/api/zero/runs/${ZERO_RUN_ID}/telemetry`,
+  `/api/zero/runs/${ZERO_RUN_ID}/telemetry/agent/extra`,
+] as const;
+const ZERO_RUNS_AGENT_EVENTS_PROXY_NEGATIVE_PATHS = [
+  "/api/zero/runs/queue/telemetry/agent",
+  "/api/zero/runs/not-a-uuid/telemetry/agent",
+  `/api/zero/runs/${ZERO_RUN_ID}/telemetry`,
+  `/api/zero/runs/${ZERO_RUN_ID}/telemetry/agent/extra`,
+] as const;
 const ZERO_SCHEDULES_REWRITE_SOURCE = "/api/zero/schedules";
 const ZERO_SCHEDULES_PATH = "/api/zero/schedules";
 const ZERO_SCHEDULES_NEXT_NEGATIVE_PATHS = [
@@ -1645,6 +1661,11 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_RUNS_RUNNER_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/runs/:id/runner",
+        },
+        {
+          source: ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/runs/:id/telemetry/agent",
         },
         {
           source: ZERO_SCHEDULES_REWRITE_SOURCE,
@@ -4299,6 +4320,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only UUID-shaped zero runs agent events rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/runs/:id/telemetry/agent",
+    });
+
+    const matcher = getPathMatch(ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_RUNS_AGENT_EVENTS_PATH)).toStrictEqual({
+      id: ZERO_RUN_ID,
+    });
+    for (const pathname of ZERO_RUNS_AGENT_EVENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero schedules run rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -5353,6 +5399,15 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for UUID-shaped zero runs runner paths", () => {
     expect(matchesApiBackendRewritePath(ZERO_RUNS_RUNNER_PATH)).toBe(true);
     for (const pathname of ZERO_RUNS_RUNNER_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for UUID-shaped zero runs agent events paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_RUNS_AGENT_EVENTS_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_RUNS_AGENT_EVENTS_PROXY_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

@@ -1386,6 +1386,28 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero runs agent events rewrite path only for UUID run IDs", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/runs/${ZERO_RUN_ID}/telemetry/agent`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/runs/queue/telemetry/agent"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/runs/not-a-uuid/telemetry/agent"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/runs/${ZERO_RUN_ID}/telemetry`),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/runs/${ZERO_RUN_ID}/telemetry/agent/extra`,
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero schedules run rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/schedules/run")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/schedules/run/extra")).toBe(

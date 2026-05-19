@@ -24,14 +24,19 @@ type UnknownRecord = Record<string, unknown>;
 type NetworkPolicyValue = "allow" | "deny" | "ask";
 
 interface AgentComposeContent {
-  agents: Record<string, { framework: string }>;
+  agent?: { framework?: string };
+  agents?: Record<string, { framework?: string } | undefined>;
 }
 
 function extractFramework(composeContent: unknown): string {
-  const content = composeContent as AgentComposeContent | null;
-  const agentNames = content?.agents ? Object.keys(content.agents) : [];
-  const firstAgent =
-    agentNames.length > 0 ? content?.agents[agentNames[0]!] : null;
+  const content = composeContent as AgentComposeContent | null | undefined;
+  if (content?.agent?.framework) {
+    return content.agent.framework;
+  }
+
+  const agents = content?.agents;
+  const agentNames = agents ? Object.keys(agents) : [];
+  const firstAgent = agentNames.length > 0 ? agents?.[agentNames[0]!] : null;
   return firstAgent?.framework ?? "claude-code";
 }
 
@@ -376,7 +381,7 @@ interface AxiomAgentEvent {
 }
 
 // Decide whether the page read needs to wait for Axiom indexing and which
-// sequence to wait for. Mirrors apps/web/src/lib/infra/run/run-telemetry-service.ts.
+// sequence to wait for.
 function getAgentEventsVisibilityTarget(
   lastEventSequence: number | null,
   since: number | undefined,

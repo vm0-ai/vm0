@@ -46,6 +46,10 @@ const ZERO_RUNS_RUNNER_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_
 const ZERO_RUNS_RUNNER_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/runner$`,
 );
+const ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/agent`;
+const ZERO_RUNS_AGENT_EVENTS_PATH_RE = new RegExp(
+  `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/agent$`,
+);
 const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
 const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
 const ZERO_SCHEDULES_RUN_REWRITE_SOURCE = "/api/zero/schedules/run";
@@ -554,6 +558,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_RUNS_RUNNER_REWRITE_SOURCE,
     "/api/zero/runs/:id/runner",
     ZERO_RUNS_RUNNER_PATH_RE,
+  ],
+  [
+    ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE,
+    "/api/zero/runs/:id/telemetry/agent",
+    ZERO_RUNS_AGENT_EVENTS_PATH_RE,
   ],
   ["/api/zero/schedules", "/api/zero/schedules"],
   [ZERO_SCHEDULES_RUN_REWRITE_SOURCE, "/api/zero/schedules/run"],
