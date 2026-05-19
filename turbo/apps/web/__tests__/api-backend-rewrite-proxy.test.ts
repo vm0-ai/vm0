@@ -237,7 +237,7 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
-      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+      matchesApiBackendRewritePath("/api/test/oauth-provider/profile"),
     ).toBe(false);
   });
 
@@ -252,7 +252,7 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
-      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+      matchesApiBackendRewritePath("/api/test/oauth-provider/profile"),
     ).toBe(false);
   });
 
@@ -267,7 +267,22 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/profile"),
+    ).toBe(false);
+  });
+
+  it("matches the test OAuth provider userinfo rewrite path exactly", () => {
+    expect(
       matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/userinfo/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/oauth-provider")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/test/oauth-provider/profile"),
     ).toBe(false);
   });
 

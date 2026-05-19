@@ -129,6 +129,35 @@ describe("/api/test/oauth-provider/*", () => {
     expect(allowedViaInternalProxyHeader.status).toBe(302);
   });
 
+  it("requires the preview bypass secret for userinfo when ENV is preview", async () => {
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    mockNow(new Date("2026-05-12T00:00:00.000Z"));
+    const token = mintAccessToken(3600);
+
+    const denied = await requestApp(USERINFO_ROUTE, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-vercel-protection-bypass": "wrong-secret",
+      },
+    });
+    const allowed = await requestApp(USERINFO_ROUTE, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-vm0-test-endpoint-bypass": "preview-secret",
+      },
+    });
+
+    expect(denied.status).toBe(404);
+    await expect(denied.text()).resolves.toBe("Not found");
+    expect(allowed.status).toBe(200);
+    await expect(readJson<UserinfoBody>(allowed)).resolves.toStrictEqual({
+      id: "testoauth-user-1",
+      username: "testoauth",
+      email: "testoauth@example.com",
+    });
+  });
+
   describe("authorize", () => {
     it("returns 302 with code and state appended to redirect_uri", async () => {
       mockEnv("ENV", "development");
