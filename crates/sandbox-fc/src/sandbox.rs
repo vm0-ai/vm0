@@ -3215,6 +3215,7 @@ mod tests {
         events.lock().unwrap().clone()
     }
 
+    #[derive(Debug)]
     struct RecordedFence {
         events: Arc<Mutex<Vec<&'static str>>>,
     }
@@ -3689,13 +3690,23 @@ mod tests {
     #[tokio::test]
     async fn ready_for_park_boundary_cancel_during_guest_quiesce_marks_dirty() {
         let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
         let (quiesce_started_tx, quiesce_started_rx) = tokio::sync::oneshot::channel();
 
         {
-            let park = park_with_ready_for_park(
+            let park = super::park_with_ready_for_park(
                 "test-sandbox",
                 &coordinator,
                 || async move {
+                    fence_events.lock().unwrap().push("fence");
+                    Ok(RecordedFence {
+                        events: Arc::clone(&fence_events),
+                    })
+                },
+                || async move {
+                    quiesce_events.lock().unwrap().push("guest_quiesce");
                     let _ = quiesce_started_tx.send(());
                     std::future::pending::<io::Result<()>>().await
                 },
@@ -3709,6 +3720,10 @@ mod tests {
             }
         }
 
+        assert_eq!(
+            logged_events(&events),
+            vec!["fence", "guest_quiesce", "release_fence"]
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
@@ -3718,14 +3733,28 @@ mod tests {
     #[tokio::test]
     async fn ready_for_park_boundary_cancel_after_ready_for_park_marks_dirty() {
         let coordinator = ParkCoordinator::new();
+        let events = event_log();
+        let fence_events = Arc::clone(&events);
+        let quiesce_events = Arc::clone(&events);
+        let park_events = Arc::clone(&events);
         let (park_started_tx, park_started_rx) = tokio::sync::oneshot::channel();
 
         {
-            let park = park_with_ready_for_park(
+            let park = super::park_with_ready_for_park(
                 "test-sandbox",
                 &coordinator,
-                || async { Ok(()) },
                 || async move {
+                    fence_events.lock().unwrap().push("fence");
+                    Ok(RecordedFence {
+                        events: Arc::clone(&fence_events),
+                    })
+                },
+                || async move {
+                    quiesce_events.lock().unwrap().push("guest_quiesce");
+                    Ok(())
+                },
+                || async move {
+                    park_events.lock().unwrap().push("firecracker_park");
                     let _ = park_started_tx.send(());
                     std::future::pending::<sandbox::Result<()>>().await
                 },
@@ -3742,6 +3771,15 @@ mod tests {
             ));
         }
 
+        assert_eq!(
+            logged_events(&events),
+            vec![
+                "fence",
+                "guest_quiesce",
+                "firecracker_park",
+                "release_fence"
+            ]
+        );
         assert!(matches!(
             coordinator.state(),
             CoordinatorState::Dirty { .. }
@@ -3827,10 +3865,13 @@ mod tests {
         let coordinator = ParkCoordinator::new();
         mark_coordinator_parked(&coordinator);
         let events = event_log();
+        let mut fence = Some(RecordedFence {
+            events: Arc::clone(&events),
+        });
         let firecracker_events = Arc::clone(&events);
         let resume_events = Arc::clone(&events);
 
-        let result = unpark_with_ready_for_operations(
+        let result = super::unpark_with_ready_for_operations(
             "test-sandbox",
             &coordinator,
             || async move {
@@ -3847,10 +3888,14 @@ mod tests {
                 resume_events.lock().unwrap().push("guest_resume");
                 Ok(())
             },
+            || {
+                drop(fence.take());
+            },
         )
         .await;
 
         assert_idle_transition(result, SandboxIdleTransition::Unpark);
+        assert!(fence.is_some());
         assert_eq!(logged_events(&events), vec!["firecracker_unpark"]);
         assert!(matches!(coordinator.state(), CoordinatorState::Parked));
     }

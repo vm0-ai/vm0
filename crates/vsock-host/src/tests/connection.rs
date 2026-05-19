@@ -148,6 +148,10 @@ async fn normal_operation_fence_rejects_new_normal_operations_until_dropped() {
     let fence = host
         .try_fence_normal_operations()
         .expect("idle host should fence normal operations");
+    assert_eq!(
+        host.try_fence_normal_operations().unwrap_err(),
+        NormalOperationFenceRejection::AlreadyFenced
+    );
 
     let err = host.exec("blocked", 5000, &[], false).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
