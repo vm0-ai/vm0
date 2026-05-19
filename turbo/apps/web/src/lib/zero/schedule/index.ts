@@ -6,6 +6,5 @@ export {
   deleteSchedule,
   enableSchedule,
   disableSchedule,
-  executeDueSchedules,
   executeSchedule,
 } from "./schedule-service";

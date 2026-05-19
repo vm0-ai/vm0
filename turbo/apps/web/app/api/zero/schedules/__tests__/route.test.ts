@@ -361,7 +361,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
   it("should preserve enabled state and nextRunAt when update omits enabled for enabled loop", async () => {
     // Regression: an enabled loop schedule updated without the `enabled` field
     // (e.g. CLI shortening intervalSeconds) used to get nextRunAt wiped to null
-    // while staying enabled=true — stranding it from executeDueSchedules.
+    // while staying enabled=true, stranding it from the cron executor.
     await createTestSchedule(testComposeId, "loop-shorten", {
       intervalSeconds: 300,
       prompt: "Loop",

@@ -1,4 +1,4 @@
-import { eq, and, lte, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -6,12 +6,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
-import {
-  notFound,
-  badRequest,
-  schedulePast,
-  isInsufficientCredits,
-} from "@vm0/api-services/errors";
+import { notFound, badRequest, schedulePast } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { buildSchedulePrompt } from "../integration-prompt";
@@ -20,9 +15,6 @@ import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
 import { visibleJoinedZeroAgentCondition } from "../agent-visibility";
 
 const log = logger("service:schedule");
-
-// Auto-disable after this many consecutive pre-run failures
-const MAX_CONSECUTIVE_FAILURES = 3;
 
 /**
  * Schedule data for API responses
@@ -444,7 +436,7 @@ export async function deploySchedule(
   // request omits `enabled`, inherit the current persisted value. Without
   // this, a loop schedule's nextRunAt gets wiped to null (resolveTrigger
   // maps falsy enabled → null), leaving enabled=true but nextRunAt=null —
-  // a stuck state executeDueSchedules can never pick up.
+  // a stuck state the cron executor can never pick up.
   if (existing && request.enabled === undefined) {
     request = { ...request, enabled: existing.enabled };
   }
@@ -730,158 +722,6 @@ export async function disableSchedule(
 }
 
 /**
- * Execute due schedules
- * Called by cron job every minute
- */
-export async function executeDueSchedules(): Promise<{
-  executed: number;
-  skipped: number;
-}> {
-  const now = new Date();
-  log.debug(`Checking for due schedules at ${now.toISOString()}`);
-
-  // Find enabled schedules where nextRunAt <= now
-  const dueSchedules = await globalThis.services.db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(
-      and(
-        eq(zeroAgentSchedules.enabled, true),
-        lte(zeroAgentSchedules.nextRunAt, now),
-      ),
-    )
-    .limit(10); // Process in batches
-
-  let executed = 0;
-  let skipped = 0;
-
-  for (const schedule of dueSchedules) {
-    // Skip if previous run is still active
-    if (schedule.lastRunId) {
-      const [lastRun] = await globalThis.services.db
-        .select()
-        .from(agentRuns)
-        .where(eq(agentRuns.id, schedule.lastRunId))
-        .limit(1);
-
-      if (
-        lastRun &&
-        (lastRun.status === "pending" || lastRun.status === "running")
-      ) {
-        log.debug(
-          `Skipping schedule ${schedule.name}: previous run still active`,
-        );
-        skipped++;
-        continue;
-      }
-    }
-
-    // Atomic CAS claim: advance schedule state to prevent duplicate execution.
-    // If another invocation already claimed this schedule (changed nextRunAt),
-    // the WHERE condition won't match and we skip it.
-    const [claimed] = await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({
-        nextRunAt: null,
-        lastRunAt: now,
-        retryStartedAt: null,
-        ...(schedule.triggerType === "once" && { enabled: false }),
-      })
-      .where(
-        and(
-          eq(zeroAgentSchedules.id, schedule.id),
-          eq(zeroAgentSchedules.nextRunAt, schedule.nextRunAt!),
-        ),
-      )
-      .returning();
-
-    if (!claimed) {
-      log.debug(
-        `Skipping schedule ${schedule.name}: already claimed by another invocation`,
-      );
-      skipped++;
-      continue;
-    }
-
-    try {
-      await executeSchedule(schedule, Date.now());
-      executed++;
-    } catch (error) {
-      // InsufficientCredits is an expected user-state rejection (HTTP 402),
-      // not a system bug — log it at `warn` so it doesn't trip Axiom's
-      // error-level alerts. All other failures stay at `error`. Both paths
-      // share the consecutive-failures + auto-disable book-keeping below,
-      // which eventually stops the per-tick log on a persistently empty org.
-      const isCreditError = isInsufficientCredits(error);
-      const failureContext = {
-        scheduleId: schedule.id,
-        scheduleName: schedule.name,
-        orgId: schedule.orgId,
-        userId: schedule.userId,
-        error: error instanceof Error ? error.message : String(error),
-        // Include stack on the error path so Axiom retains it for diagnosis
-        // of real system failures. Credit rejections don't need a stack —
-        // they're a deterministic user state, not a bug.
-        stack: error instanceof Error ? error.stack : undefined,
-      };
-      if (isCreditError) {
-        log.warn("Schedule skipped: insufficient credits", failureContext);
-      } else {
-        log.error("Schedule pre-run failed", failureContext);
-      }
-
-      // Pre-run failure: increment consecutive failures and schedule next attempt
-      // (mirrors callback failure handling from #8430)
-      const now = new Date();
-      const newFailureCount = schedule.consecutiveFailures + 1;
-      const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
-
-      let nextRunAt: Date | null = null;
-      if (!shouldDisable) {
-        if (schedule.triggerType === "cron" && schedule.cronExpression) {
-          nextRunAt = calculateNextRun(
-            schedule.cronExpression,
-            schedule.timezone,
-          );
-        } else if (
-          schedule.triggerType === "loop" &&
-          schedule.intervalSeconds
-        ) {
-          nextRunAt = new Date(now.getTime() + schedule.intervalSeconds * 1000);
-        }
-        // "once" triggers: CAS claim already set enabled=false, no recovery needed
-      }
-
-      await globalThis.services.db
-        .update(zeroAgentSchedules)
-        .set({
-          consecutiveFailures: newFailureCount,
-          ...(shouldDisable && { enabled: false }),
-          nextRunAt,
-          updatedAt: now,
-        })
-        .where(eq(zeroAgentSchedules.id, schedule.id));
-
-      if (shouldDisable) {
-        log.warn("Schedule auto-disabled after consecutive pre-run failures", {
-          scheduleId: schedule.id,
-          scheduleName: schedule.name,
-          orgId: schedule.orgId,
-          userId: schedule.userId,
-          consecutiveFailures: newFailureCount,
-          reason: isCreditError ? "insufficient_credits" : "pre_run_failure",
-        });
-      }
-
-      skipped++;
-    }
-  }
-
-  log.debug(`Executed ${executed} schedules, skipped ${skipped}`);
-  return { executed, skipped };
-}
-
-/**
  * Execute a single schedule and return the created run ID.
  */
 export async function executeSchedule(
@@ -924,7 +764,7 @@ export async function executeSchedule(
 
   // Delegate run creation, validation, and dispatch to createZeroRun()
   // Note: schedule state (nextRunAt, lastRunAt, enabled) is already advanced
-  // by the atomic CAS claim in executeDueSchedules(). We only need to persist
+  // by the cron executor's atomic CAS claim. We only need to persist
   // lastRunId after successful run creation.
   const result = await createZeroRun(
     adaptScheduleTrigger({
@@ -940,7 +780,7 @@ export async function executeSchedule(
     }),
   );
 
-  // Persist lastRunId so the active-run check in executeDueSchedules works
+  // Persist lastRunId so the cron executor's active-run check works.
   await globalThis.services.db
     .update(zeroAgentSchedules)
     .set({ lastRunId: result.runId })

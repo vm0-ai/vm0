@@ -265,6 +265,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
   });
 
+  it("matches the cron execute schedules rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/cron/execute-schedules")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/cron/execute-schedules/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/cron")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

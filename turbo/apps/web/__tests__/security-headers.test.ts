@@ -341,6 +341,12 @@ const CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS = [
   "/api/cron/drain-email-outbox/extra",
   "/api/cron",
 ] as const;
+const CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE = "/api/cron/execute-schedules";
+const CRON_EXECUTE_SCHEDULES_PATH = "/api/cron/execute-schedules";
+const CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS = [
+  "/api/cron/execute-schedules/extra",
+  "/api/cron",
+] as const;
 const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
 const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
 const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
@@ -1119,6 +1125,10 @@ describe("API backend rewrites", () => {
         {
           source: CRON_DRAIN_EMAIL_OUTBOX_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/drain-email-outbox",
+        },
+        {
+          source: CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/cron/execute-schedules",
         },
         {
           source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -2281,6 +2291,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(CRON_DRAIN_EMAIL_OUTBOX_PATH)).toStrictEqual({});
     for (const pathname of CRON_DRAIN_EMAIL_OUTBOX_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact cron execute schedules rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/cron/execute-schedules",
+    });
+
+    const matcher = getPathMatch(CRON_EXECUTE_SCHEDULES_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(CRON_EXECUTE_SCHEDULES_PATH)).toStrictEqual({});
+    for (const pathname of CRON_EXECUTE_SCHEDULES_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
