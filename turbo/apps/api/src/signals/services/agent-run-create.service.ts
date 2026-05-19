@@ -839,19 +839,6 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
-function modelProviderHandlerKey(
-  providerType: ModelProviderType,
-): keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS | undefined {
-  switch (providerType) {
-    case "codex-oauth-token": {
-      return "codex-oauth-token";
-    }
-    default: {
-      return undefined;
-    }
-  }
-}
-
 function modelProviderRefreshMaps(
   providerType: ModelProviderType,
   sourceUserId: string,
@@ -864,24 +851,26 @@ function modelProviderRefreshMaps(
       >;
     }
   | undefined {
-  const handlerKey = modelProviderHandlerKey(providerType);
-  if (!handlerKey) {
+  if (!Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, providerType)) {
     return undefined;
   }
 
-  const handler = MODEL_PROVIDER_OAUTH_HANDLERS[handlerKey];
+  const handler =
+    MODEL_PROVIDER_OAUTH_HANDLERS[
+      providerType as keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS
+    ];
   if (!handler.refreshToken) {
     return undefined;
   }
 
   const accessSecretName = handler.getSecretName();
   const secretConnectorMap: Record<string, string> = {
-    [accessSecretName]: handlerKey,
+    [accessSecretName]: providerType,
   };
   const mapping = getEnvironmentMapping(providerType);
   for (const [envName, valueRef] of Object.entries(mapping ?? {})) {
     if (valueRef === `$secrets.${accessSecretName}`) {
-      secretConnectorMap[envName] = handlerKey;
+      secretConnectorMap[envName] = providerType;
     }
   }
 
