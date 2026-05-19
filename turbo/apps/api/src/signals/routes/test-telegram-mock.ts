@@ -35,7 +35,7 @@ function parseJsonValue(rawBody: string): unknown | null {
   }
 
   const parsed = safeJsonParse(rawBody);
-  return parsed;
+  return parsed === undefined ? null : parsed;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
