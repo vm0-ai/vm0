@@ -91,7 +91,6 @@ async fn supervised_exec_returns_handle_after_exec_started() {
     assert_eq!(decoded.timeout, ExecTimeoutPolicy::None);
     assert_eq!(decoded.control, ExecControlPolicy::Disabled);
 
-    tokio::task::yield_now().await;
     assert!(
         !task.is_finished(),
         "supervised start must wait for exec_started"
@@ -703,7 +702,7 @@ async fn supervised_exec_start_wait_cancellation_cleans_registration_without_can
         Err(err) => err,
     };
     assert!(err.is_cancelled());
-    wait_for_operation_count(&host, 0).await;
+    assert_eq!(operation_count(&host), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("cancelled start wait must not send exec cancel; read {n} bytes"),
