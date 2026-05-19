@@ -12,7 +12,7 @@ import { waitForRunEventWatermarkVisible } from "./agent-event-visibility";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface RunOutput {
+interface RunOutput {
   /** Raw output text from the agent */
   result: string | null;
   /** Run error message (if failed) */

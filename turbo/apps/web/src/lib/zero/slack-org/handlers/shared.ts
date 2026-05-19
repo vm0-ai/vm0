@@ -195,57 +195,6 @@ async function lookupThreadSession(
 }
 
 /**
- * Save or update a thread session mapping after agent execution.
- */
-export async function saveThreadSession(opts: {
-  connectionId: string;
-  channelId: string;
-  threadTs: string;
-  existingSessionId: string | undefined;
-  newSessionId: string | undefined;
-  runStatus: string;
-}): Promise<void> {
-  const {
-    connectionId,
-    channelId,
-    threadTs,
-    existingSessionId,
-    newSessionId,
-    runStatus,
-  } = opts;
-
-  const agentSessionId = newSessionId ?? existingSessionId;
-
-  // Skip update on failed runs — allows retry with same context
-  if (runStatus === "failed") {
-    return;
-  }
-
-  if (!existingSessionId && agentSessionId) {
-    // Create new mapping
-    await globalThis.services.db
-      .insert(slackOrgThreadSessions)
-      .values({
-        connectionId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        agentSessionId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          slackOrgThreadSessions.connectionId,
-          slackOrgThreadSessions.slackChannelId,
-          slackOrgThreadSessions.slackThreadTs,
-        ],
-        set: {
-          agentSessionId,
-          updatedAt: new Date(),
-        },
-      });
-  }
-}
-
-/**
  * Build the org connect URL for Slack users.
  */
 export function buildOrgConnectUrl(

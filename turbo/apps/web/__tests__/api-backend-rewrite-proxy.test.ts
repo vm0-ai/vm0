@@ -568,6 +568,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
+  it("matches the internal Slack org callback rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/slack/org"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/internal/callbacks/slack/org/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks/slack")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
+  });
+
   it("matches the connector authorize rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),

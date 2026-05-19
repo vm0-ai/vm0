@@ -213,6 +213,20 @@ function completedOutput(text = "SLACK_CALLBACK_OUTPUT"): void {
   ]);
 }
 
+function completedAgentMessageOutput(text: string): void {
+  context.mocks.axiom.query.mockResolvedValueOnce([
+    {
+      eventType: "item.completed",
+      eventData: {
+        item: {
+          type: "agent_message",
+          text,
+        },
+      },
+    },
+  ]);
+}
+
 async function enableAuditLink(
   fixture: SlackOrgCallbackFixture,
 ): Promise<void> {
@@ -414,6 +428,26 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       thread_ts: fixture.payload.threadTs,
       status: "",
     });
+  });
+
+  it("posts Codex agent messages instead of fallback text and omits audit when disabled", async () => {
+    const fixture = await track(seedFixture());
+    completedAgentMessageOutput("final codex answer");
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: fixture.payload,
+    });
+
+    expect(response.status).toBe(200);
+    const call = firstPostMessageCall();
+    expect(call.text).toBe("final codex answer");
+    expect(call.text).not.toBe("Task completed successfully.");
+    const blocks = JSON.stringify(call.blocks);
+    expect(blocks).toContain("final codex answer");
+    expect(blocks).not.toContain("Audit");
   });
 
   it("renders audit, responded-by, reply-to, and selected-model footer text", async () => {
