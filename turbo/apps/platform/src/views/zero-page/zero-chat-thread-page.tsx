@@ -1501,9 +1501,13 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-function ChatThread({ thread }: { thread: ChatThreadSignals }) {
-  const onKeyDown = useChatThreadKeyDown(thread);
-
+function ChatThread({
+  thread,
+  onKeyDown,
+}: {
+  thread: ChatThreadSignals;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void;
+}) {
   return (
     <section
       aria-label="Chat thread"
@@ -1524,6 +1528,12 @@ export function ZeroChatThreadPage() {
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
+  // Lifted from ChatThread so the keyboard handler's sidebarChatThreads$
+  // snapshot survives keyed ChatThread remounts during thread navigation.
+  // Otherwise a second mod+shift+arrow press lands on a freshly mounted
+  // ChatThread whose useLastResolved has no cached value yet, leading to an
+  // empty threads list and a silently dropped keypress.
+  const makeChatThreadKeyDown = useChatThreadKeyDownFactory();
 
   return (
     <>
@@ -1532,12 +1542,20 @@ export function ZeroChatThreadPage() {
         className="flex flex-1 min-h-0 bg-transparent"
       >
         {leftThread && (
-          <ChatThread key={leftThread.threadId} thread={leftThread} />
+          <ChatThread
+            key={leftThread.threadId}
+            thread={leftThread}
+            onKeyDown={makeChatThreadKeyDown(leftThread)}
+          />
         )}
         {rightThread && (
           <>
             <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-            <ChatThread key={rightThread.threadId} thread={rightThread} />
+            <ChatThread
+              key={rightThread.threadId}
+              thread={rightThread}
+              onKeyDown={makeChatThreadKeyDown(rightThread)}
+            />
           </>
         )}
       </div>
@@ -1584,7 +1602,9 @@ function resolveSessionError(
   return null;
 }
 
-function useChatThreadKeyDown(thread: ChatThreadSignals) {
+// Lifted to ZeroChatThreadPage so the useLastResolved(sidebarChatThreads$)
+// snapshot survives keyed ChatThread remounts during thread navigation.
+function useChatThreadKeyDownFactory() {
   const pageSignal = useGet(pageSignal$);
   const scrollCurrentThread = useSet(scrollCurrentThread$);
   const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
@@ -1595,50 +1615,52 @@ function useChatThreadKeyDown(thread: ChatThreadSignals) {
   // (e.g. an IDB miss + remote refetch).
   const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
 
-  return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.defaultPrevented) {
-      return;
-    }
-    if (matchShortcut("mod+arrowup", event)) {
-      event.preventDefault();
-      scrollCurrentThread(thread, "top");
-      return;
-    }
-    if (matchShortcut("mod+arrowdown", event)) {
-      event.preventDefault();
-      scrollCurrentThread(thread, "bottom");
-      return;
-    }
-    if (matchShortcut("mod+shift+arrowup", event)) {
-      event.preventDefault();
-      await navigateToAdjacentThread(
-        {
-          currentThreadId: thread.threadId,
-          direction: "prev",
-          threads: sidebarThreads,
-        },
-        pageSignal,
-      );
-      return;
-    }
-    if (matchShortcut("mod+shift+arrowdown", event)) {
-      event.preventDefault();
-      await navigateToAdjacentThread(
-        {
-          currentThreadId: thread.threadId,
-          direction: "next",
-          threads: sidebarThreads,
-        },
-        pageSignal,
-      );
-      return;
-    }
+  return (thread: ChatThreadSignals) => {
+    return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (matchShortcut("mod+arrowup", event)) {
+        event.preventDefault();
+        scrollCurrentThread(thread, "top");
+        return;
+      }
+      if (matchShortcut("mod+arrowdown", event)) {
+        event.preventDefault();
+        scrollCurrentThread(thread, "bottom");
+        return;
+      }
+      if (matchShortcut("mod+shift+arrowup", event)) {
+        event.preventDefault();
+        await navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "prev",
+            threads: sidebarThreads,
+          },
+          pageSignal,
+        );
+        return;
+      }
+      if (matchShortcut("mod+shift+arrowdown", event)) {
+        event.preventDefault();
+        await navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "next",
+            threads: sidebarThreads,
+          },
+          pageSignal,
+        );
+        return;
+      }
 
-    if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
-      event.preventDefault();
-      setShortcutHelpOpen(true);
-    }
-  });
+      if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        setShortcutHelpOpen(true);
+      }
+    });
+  };
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
