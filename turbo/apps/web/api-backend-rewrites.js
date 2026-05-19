@@ -25,6 +25,10 @@ const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
+const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
+  "/api/zero/schedules/:name/disable";
+const ZERO_SCHEDULES_DISABLE_PATH_RE =
+  /^\/api\/zero\/schedules\/[^/]+\/disable$/;
 const ZERO_SKILLS_BY_NAME_REWRITE_SOURCE = "/api/zero/skills/:name";
 const ZERO_SKILLS_BY_NAME_PATH_RE = /^\/api\/zero\/skills\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
@@ -436,6 +440,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
+  ],
+  [
+    ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
+    "/api/zero/schedules/:name/disable",
+    ZERO_SCHEDULES_DISABLE_PATH_RE,
   ],
   ["/api/zero/skills", "/api/zero/skills"],
   [

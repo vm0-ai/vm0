@@ -1,12 +1,12 @@
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
+  disableSchedule,
   getScheduleByName,
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
 import { POST as deployScheduleRoute } from "../../../app/api/zero/schedules/route";
 import { DELETE as deleteScheduleRoute } from "../../../app/api/zero/schedules/[name]/route";
 import { POST as enableScheduleRoute } from "../../../app/api/zero/schedules/[name]/enable/route";
-import { POST as disableScheduleRoute } from "../../../app/api/zero/schedules/[name]/disable/route";
 import { createTestRequest, getTestAuthContext } from "./core";
 import {
   resolveAgentIdFromCompose,
@@ -121,7 +121,7 @@ export async function enableTestSchedule(
 }
 
 /**
- * Disable a test schedule via the disable API route.
+ * Disable a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -131,27 +131,10 @@ export async function disableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
+  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
-  const request = createTestRequest(
-    `http://localhost:3000/api/zero/schedules/${name}/disable`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId }),
-    },
-  );
-
-  const response = await disableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to disable schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  return disableSchedule(userId, orgId, agentId, name);
 }
 
 /**

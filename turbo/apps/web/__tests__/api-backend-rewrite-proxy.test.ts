@@ -962,6 +962,21 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero schedules disable rewrite path with one dynamic segment", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/disable"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/disable/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedule/nightly/disable"),
+    ).toBe(false);
+  });
+
   it("matches the zero agents collection rewrite path", () => {
     expect(matchesApiBackendRewritePath("/api/zero/agents")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/agent")).toBe(false);
