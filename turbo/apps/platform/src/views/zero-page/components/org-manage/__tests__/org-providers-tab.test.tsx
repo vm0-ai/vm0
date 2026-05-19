@@ -161,14 +161,18 @@ function clickRouteChoice(dialog: HTMLElement, label: string): void {
   click(button!);
 }
 
-function clickDialogButton(dialog: HTMLElement, label: string): void {
+function getDialogButton(dialog: HTMLElement, label: string): HTMLElement {
   const button = within(dialog)
     .getAllByRole("button")
     .find((item) => {
       return item.textContent?.trim() === label;
     });
   expect(button).toBeDefined();
-  click(button!);
+  return button!;
+}
+
+function clickDialogButton(dialog: HTMLElement, label: string): void {
+  click(getDialogButton(dialog, label));
 }
 
 describe("org-providers-tab — stale banner reconnect", () => {
@@ -270,6 +274,28 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
   it("closes the add model dialog after inline API key save succeeds", async () => {
     setMockFeatureSwitches({});
+    let submittedSecret: string | undefined;
+    const upsertControl: { resolve?: () => void } = {};
+    server.use(
+      mockApi(
+        zeroModelProvidersMainContract.upsert,
+        async ({ body, deferred, respond }) => {
+          submittedSecret = body.secret;
+          const upsertGate = deferred<void>();
+          upsertControl.resolve = () => {
+            upsertGate.resolve();
+          };
+          await upsertGate.promise;
+          const provider = {
+            ...makeAnthropicProvider(),
+            id: "00000000-0000-4000-a000-0000000000b2",
+            isDefault: false,
+          };
+          setMockOrgModelProviders([provider]);
+          return respond(201, { provider, created: true });
+        },
+      ),
+    );
 
     await openProvidersPage();
 
@@ -277,8 +303,23 @@ describe("org-providers-tab — stale banner reconnect", () => {
     const dialog = getModelPolicyDialog();
     clickRouteChoice(dialog, "API key");
     const input = within(dialog).getByPlaceholderText("Enter your API key");
-    fireEvent.change(input, { target: { value: "sk-ant-test" } });
+    fireEvent.change(input, { target: { value: " sk-ant\n test " } });
     clickDialogButton(dialog, "Add model");
+    const cancelButton = getDialogButton(dialog, "Cancel");
+
+    await waitFor(() => {
+      expect(submittedSecret).toBe("sk-anttest");
+      expect(cancelButton).toBeDisabled();
+    });
+    click(cancelButton);
+    expect(
+      screen.getByText(/Decide how members access this model/i),
+    ).toBeInTheDocument();
+    const resolveUpsert = upsertControl.resolve;
+    if (!resolveUpsert) {
+      throw new Error("Expected inline API key request to start");
+    }
+    resolveUpsert();
 
     await waitFor(() => {
       expect(

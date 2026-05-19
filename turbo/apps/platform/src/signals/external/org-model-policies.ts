@@ -40,6 +40,24 @@ export const orgModelPolicies$ = computed(async (get) => {
   return result.body;
 });
 
+export const refreshOrgModelPolicies$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(internalOrgModelPoliciesSnapshot$, null);
+    set(internalReloadOrgModelPolicies$, (value) => {
+      return value + 1;
+    });
+    const response = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    const org = await get(currentOrgInfo$);
+    signal.throwIfAborted();
+    set(internalOrgModelPoliciesSnapshot$, {
+      orgId: org?.id ?? null,
+      response,
+    });
+    return response;
+  },
+);
+
 export const updateOrgModelPolicies$ = command(
   async (
     { get, set },

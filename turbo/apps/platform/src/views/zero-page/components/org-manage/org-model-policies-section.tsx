@@ -50,7 +50,6 @@ import {
   updateOrgModelPolicies$,
 } from "../../../../signals/external/org-model-policies.ts";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { createOrgModelProvider$ } from "../../../../signals/external/org-model-providers.ts";
 import {
   closeModelPolicyDialog$,
   modelPolicyApiKey$,
@@ -62,11 +61,16 @@ import {
   openEditModelPolicyDialog$,
   setModelPolicyApiKey$,
   setModelPolicyApiKeyError$,
+  submitModelPolicyApiKeyRoute$,
   updateModelPolicyDialogModel$,
   updateModelPolicyDialogRoute$,
   type ModelPolicyDialogMode,
   type ModelPolicyRouteKind,
 } from "../../../../signals/zero-page/settings/org-model-policy-dialog.ts";
+import {
+  hasTokenInputValue,
+  sanitizeTokenInput,
+} from "../../../../signals/zero-page/settings/token-input.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {
@@ -771,48 +775,17 @@ function getDialogPrimaryLabel(params: {
 function isSubmitDisabled(params: {
   selectedModel: SupportedRunModel | null;
   saving: boolean;
-  creatingProvider: boolean;
+  inlineSaving: boolean;
   routeKind: ModelPolicyRouteKind;
   selectedProviderType: ModelProviderType | null;
 }): boolean {
-  if (!params.selectedModel || params.saving || params.creatingProvider) {
+  if (!params.selectedModel || params.saving || params.inlineSaving) {
     return true;
   }
   if (params.routeKind === "built-in") {
     return false;
   }
   return params.selectedProviderType === null;
-}
-
-async function runInlineApiKeySave(params: {
-  selectedModel: SupportedRunModel;
-  selectedProviderType: ModelProviderType;
-  apiKey: string;
-  policies: OrgModelPolicy[];
-  pageSignal: AbortSignal;
-  createProvider: (
-    request: { type: ModelProviderType; secret: string },
-    signal: AbortSignal,
-  ) => Promise<{ provider: ModelProviderResponse }>;
-  onSubmit: (next: UpdateOrgModelPolicy[]) => void;
-  close: () => void;
-}) {
-  const result = await params.createProvider(
-    { type: params.selectedProviderType, secret: params.apiKey },
-    params.pageSignal,
-  );
-  const update = buildPolicyUpdate({
-    policies: params.policies,
-    model: params.selectedModel,
-    routeKind: "api-key",
-    providerType: params.selectedProviderType,
-    provider: result.provider,
-  });
-  if (!update) {
-    return;
-  }
-  params.onSubmit(upsertPolicy(params.policies, update));
-  params.close();
 }
 
 function getDefaultProviderTypeForRoute(params: {
@@ -884,10 +857,11 @@ function ModelPolicyRouteDialog({
   const setApiKeyError = useSet(setModelPolicyApiKeyError$);
   const markApiKeyTouched = useSet(markModelPolicyApiKeyTouched$);
   const pageSignal = useGet(pageSignal$);
-  const [createLoadable, createProvider] = useLoadableSet(
-    createOrgModelProvider$,
+  const [inlineSaveLoadable, submitInlineApiKeyRoute] = useLoadableSet(
+    submitModelPolicyApiKeyRoute$,
   );
-  const creatingProvider = createLoadable.state === "loading";
+  const inlineSaving = inlineSaveLoadable.state === "loading";
+  const busy = saving || inlineSaving;
   const selectedModel = dialog.model ?? addableModels[0] ?? null;
   const apiTypes = selectedModel ? getApiProviderTypes(selectedModel) : [];
   const oauthTypes = selectedModel ? getOAuthProviderTypes(selectedModel) : [];
@@ -923,7 +897,7 @@ function ModelPolicyRouteDialog({
   };
 
   const handleSubmit = () => {
-    if (!selectedModel || saving || creatingProvider) {
+    if (!selectedModel || busy) {
       return;
     }
 
@@ -932,24 +906,21 @@ function ModelPolicyRouteDialog({
       selectedProviderType &&
       (needsFreshKey || isReplacingKey)
     ) {
-      const trimmed = apiKeyValue.trim();
-      if (!trimmed) {
+      if (!hasTokenInputValue(apiKeyValue)) {
         setApiKeyError(
           `${getProviderSecretLabel(selectedProviderType)} is required`,
         );
         return;
       }
       detach(
-        runInlineApiKeySave({
-          selectedModel,
-          selectedProviderType,
-          apiKey: trimmed,
-          policies,
+        submitInlineApiKeyRoute(
+          {
+            model: selectedModel,
+            providerType: selectedProviderType,
+            apiKey: sanitizeTokenInput(apiKeyValue),
+          },
           pageSignal,
-          createProvider,
-          onSubmit,
-          close,
-        }),
+        ),
         Reason.DomCallback,
       );
       return;
@@ -973,7 +944,7 @@ function ModelPolicyRouteDialog({
   const submitDisabled = isSubmitDisabled({
     selectedModel,
     saving,
-    creatingProvider,
+    inlineSaving,
     routeKind: dialog.routeKind,
     selectedProviderType,
   });
@@ -982,7 +953,7 @@ function ModelPolicyRouteDialog({
     <Dialog
       open={dialog.open}
       onOpenChange={(open) => {
-        if (!open) {
+        if (!open && !busy) {
           close();
         }
       }}
@@ -1092,7 +1063,7 @@ function ModelPolicyRouteDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={saving}>
+          <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={submitDisabled}>
