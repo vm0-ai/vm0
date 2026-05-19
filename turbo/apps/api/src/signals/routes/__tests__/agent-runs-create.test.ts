@@ -6,14 +6,18 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+import { connectors } from "@vm0/db/schema/connector";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore, command } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -38,6 +42,7 @@ import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
 } from "./helpers/zero-model-providers";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -468,6 +473,213 @@ describe("POST /api/agent/runs", () => {
     });
   });
 
+  it("stores the user timezone in the runner context", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(orgMembersMetadata).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      timezone: "Asia/Tokyo",
+    });
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use timezone",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly userTimezone?: string;
+    };
+    expect(executionContext.userTimezone).toBe("Asia/Tokyo");
+  });
+
+  it("uses explicit volume version overrides when building the storage manifest", async () => {
+    const fx = await fixture();
+    const overrideVersion = await seedStorage({
+      fixture: fx,
+      type: "volume",
+      name: "docs",
+      versionId: "2222222222222222",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        volumes: ["docs:/mnt/docs"],
+      },
+      volumes: {
+        docs: {
+          name: "docs",
+          version: "1111111111111111",
+        },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use volume",
+          volumeVersions: { docs: overrideVersion },
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly storageManifest: {
+        readonly storages: readonly {
+          readonly name: string;
+          readonly mountPath: string;
+          readonly vasVersionId: string;
+        }[];
+      };
+    };
+    expect(executionContext.storageManifest.storages).toMatchObject([
+      {
+        name: "docs",
+        mountPath: "/mnt/docs",
+        vasVersionId: overrideVersion,
+      },
+    ]);
+  });
+
+  it("expands api-token connector firewall vars and masks connector env secrets with placeholders", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_SUBDOMAIN",
+      value: "acme",
+    });
+    await db.insert(variables).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_EMAIL",
+      value: "agent@example.com",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "ZENDESK_API_TOKEN",
+      encryptedValue: encryptSecretForTests("zendesk-real-token"),
+      type: "user",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          ZENDESK_API_TOKEN: vm0Template("{{ secrets.ZENDESK_API_TOKEN }}"),
+        },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use zendesk",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly firewalls: readonly {
+        readonly name: string;
+        readonly apis: readonly { readonly base: string }[];
+      }[];
+    };
+    expect(executionContext.environment.ZENDESK_API_TOKEN).toBe(
+      "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      ZENDESK_API_TOKEN: "zendesk-real-token",
+    });
+    const zendesk = executionContext.firewalls.find((firewall) => {
+      return firewall.name === "zendesk";
+    });
+    expect(zendesk?.apis[0]?.base).toBe("https://acme.zendesk.com");
+  });
+
+  it("accepts OAuth connector-provided env secrets during compose validation", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "github",
+      authMethod: "oauth",
+    });
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("github-real-token"),
+      type: "connector",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          GITHUB_TOKEN: vm0Template("{{ secrets.GITHUB_TOKEN }}"),
+        },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use GitHub",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment.GITHUB_TOKEN).toBe(
+      "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",
+    );
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      GITHUB_TOKEN: "github-real-token",
+    });
+  });
+
   it("injects an org model provider when the compose omits a framework API key", async () => {
     const fx = await fixture();
     await store.set(
@@ -738,6 +950,29 @@ describe("POST /api/agent/runs", () => {
     expect(response.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
   });
 
+  it("treats CONCURRENT_RUN_LIMIT_CAP=0 as unlimited", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
+
+    await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "second" },
+      }),
+      [201],
+    );
+
+    expect(response.body.status).toBe("pending");
+  });
+
   it("does not count stale pending runs toward the concurrency limit", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
@@ -893,11 +1128,23 @@ describe("POST /api/agent/runs", () => {
 
   it("continues an existing session and reuses its session id", async () => {
     const fx = await fixture();
-    const compose = await createCompose({ fixture: fx });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          TEST_VAR: vm0Template("{{ vars.testVar }}"),
+        },
+      },
+    });
     const first = await accept(
       runsClient().create({
         headers: { authorization: "Bearer clerk-session" },
-        body: { agentComposeId: compose.composeId, prompt: "first" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "first",
+          vars: { testVar: "from-first-run" },
+        },
       }),
       [201],
     );
@@ -936,10 +1183,12 @@ describe("POST /api/agent/runs", () => {
     expect(job).toBeDefined();
     const executionContext = job!.executionContext as {
       readonly resumeSession: { readonly sessionId: string };
+      readonly environment: Record<string, string>;
     };
     expect(executionContext.resumeSession.sessionId).toBe(
       `session-${first.body.runId}`,
     );
+    expect(executionContext.environment.TEST_VAR).toBe("from-first-run");
     expect(runContextSnapshot(continued.body.runId)).toMatchObject({
       runId: continued.body.runId,
       userId: fx.userId,

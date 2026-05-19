@@ -1026,7 +1026,7 @@ describe("POST /api/zero/runs", () => {
     ).toBeUndefined();
   });
 
-  it("forwards approved API-token connector secrets", async () => {
+  it("masks approved API-token connector env secrets with placeholders", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -1069,7 +1069,9 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
     };
-    expect(executionContext.environment.AXIOM_TOKEN).toBe("xaat-approved");
+    expect(executionContext.environment.AXIOM_TOKEN).toBe(
+      "xaat-c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0",
+    );
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       AXIOM_TOKEN: "xaat-approved",
     });

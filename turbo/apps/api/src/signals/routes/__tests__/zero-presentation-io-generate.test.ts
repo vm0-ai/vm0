@@ -595,6 +595,8 @@ function presentationDeckJson(): string {
     slides: [
       {
         layout: "cover",
+        themeRole: "hero_light",
+        visualSlot: "hero_16x9",
         kicker: "Migration",
         title: "API Migration Plan",
         body: "A practical path to move clients without disrupting live traffic.",
@@ -605,7 +607,9 @@ function presentationDeckJson(): string {
           "A confident abstract bridge made of clean blue modular blocks over a quiet production grid",
       },
       {
-        layout: "bullets",
+        layout: "data_hero",
+        themeRole: "body_light",
+        visualSlot: "concept_16x9",
         kicker: "Risk",
         title: "Where migrations fail",
         body: "Most failures happen at contract edges and rollout timing.",
@@ -620,7 +624,9 @@ function presentationDeckJson(): string {
           "Three clean control gates arranged along a precise migration path with subtle risk markers",
       },
       {
-        layout: "two_column",
+        layout: "comparison",
+        themeRole: "body_dark",
+        visualSlot: "concept_16x9",
         kicker: "Plan",
         title: "Rollout model",
         body: "Ship adapters first, then move traffic by cohort.",
@@ -636,6 +642,8 @@ function presentationDeckJson(): string {
       },
       {
         layout: "closing",
+        themeRole: "hero_dark",
+        visualSlot: "none",
         kicker: "Next",
         title: "Decision path",
         body: "Approve adapter work and schedule the first cohort.",
@@ -868,6 +876,9 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(observedBody).toMatchObject({
       model: PRESENTATION_IO_MODEL,
       input: expect.stringContaining("API migration plan"),
+      instructions: expect.stringContaining(
+        "silently plan the audience, narrative arc",
+      ),
       reasoning: { effort: "medium" },
       text: {
         verbosity: "medium",
@@ -876,6 +887,41 @@ describe("POST /api/zero/presentation-io/generate", () => {
           name: "presentation_deck",
           strict: true,
         }),
+      },
+    });
+    expect(observedBody).toMatchObject({
+      input: expect.stringContaining("Deck-planning workflow"),
+      text: {
+        format: {
+          schema: {
+            properties: {
+              slides: {
+                items: {
+                  required: expect.arrayContaining(["themeRole", "visualSlot"]),
+                  properties: {
+                    layout: {
+                      enum: expect.arrayContaining([
+                        "data_hero",
+                        "comparison",
+                        "image_hero",
+                      ]),
+                    },
+                    themeRole: {
+                      enum: expect.arrayContaining(["hero_light", "body_dark"]),
+                    },
+                    visualSlot: {
+                      enum: expect.arrayContaining([
+                        "hero_16x9",
+                        "side_16x10",
+                        "none",
+                      ]),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     expect(observedImageAuthorization).toBe("Key test-fal-key");
@@ -889,6 +935,12 @@ describe("POST /api/zero/presentation-io/generate", () => {
     });
     expect(observedImageBody).toMatchObject({
       prompt: expect.stringContaining("API Migration Plan"),
+    });
+    expect(observedImageBody).toMatchObject({
+      prompt: expect.stringContaining("Visual slot: hero_16x9"),
+    });
+    expect(observedImageBody).toMatchObject({
+      prompt: expect.stringContaining("Use this deck palette only: background"),
     });
 
     if (
@@ -952,7 +1004,15 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(html).toContain("<title>API Migration Plan</title>");
     expect(html).toContain("<img");
     expect(html).toContain(imageUrl);
+    expect(html).toContain("slide-data-hero");
+    expect(html).toContain("slide-comparison");
+    expect(html).toContain("slide-theme-hero-light");
+    expect(html).toContain('data-visual-slot="hero_16x9"');
     expect(html).toContain("Presentation controls");
+    expect(html).toContain("footer {");
+    expect(html).toContain("border-top: 4px solid var(--accent);");
+    expect(html).not.toContain(".slide::after");
+    expect(html).toContain("scrollbar-gutter: stable;");
     expect(html).toContain("overflow-x: hidden;");
     expect(html).toContain("overflow-y: auto;");
     expect(Number(body.size)).toBe(putBody.byteLength);

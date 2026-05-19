@@ -77,7 +77,7 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
  * partial results (e.g. 201 with status=failed) that still satisfy the
  * required-sessionId response contract.
  */
-export interface RunDispatchError extends Error {
+interface RunDispatchError extends Error {
   runId?: string;
   sessionId?: string;
 }

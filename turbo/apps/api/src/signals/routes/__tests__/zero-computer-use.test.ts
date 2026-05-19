@@ -613,6 +613,11 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
   const track = createFixtureTracker<ComputerUseScenarioFixture>((fixture) => {
     return store.set(deleteComputerUseScenario$, fixture, context.signal);
   });
+  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
+    (fixture) => {
+      return store.set(deleteOrgMembership$, fixture, context.signal);
+    },
+  );
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroComputerUseUnregisterContract);
@@ -669,6 +674,90 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Computer-use host not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("unregisters a host for a ZERO_TOKEN with computer-use write capability", async () => {
+    const fixture = await track(
+      store.set(
+        seedComputerUseScenario$,
+        {
+          computerUseEnabled: true,
+          host: {
+            domain: "zero-token-unregister.ngrok-free.app",
+            token: "zero_token_unregister_secret",
+          },
+        },
+        context.signal,
+      ),
+    );
+    await trackOrgMembership(
+      store.set(
+        seedOrgMembership$,
+        { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: ["computer-use:write"],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const unregisterClient = setupApp({ context })(
+      zeroComputerUseUnregisterContract,
+    );
+    const response = await accept(
+      unregisterClient.unregister({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [204],
+    );
+    expect(response.body).toBeUndefined();
+
+    const getClient = setupApp({ context })(zeroComputerUseHostContract);
+    const getResponse = await accept(
+      getClient.getHost({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [404],
+    );
+    expect(getResponse.body).toStrictEqual({
+      error: { message: "No active computer-use host", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 403 for a ZERO_TOKEN without computer-use write capability", async () => {
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroComputerUseUnregisterContract);
+
+    const response = await accept(
+      client.unregister({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Missing required capability: computer-use:write",
+        code: "FORBIDDEN",
+      },
     });
   });
 

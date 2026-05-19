@@ -9,9 +9,9 @@ import {
   deriveApiTokenConnectedTypes,
   getApiTokenFieldsByType,
   getAvailableConnectorAuthMethods,
-  getConfiguredConnectorTypes,
   getConnectorOAuthEnvKeys,
   getConnectorProvidedSecretNames,
+  getRuntimeAvailableConnectorTypes,
   getScopeDiff,
   isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
@@ -245,7 +245,7 @@ export function zeroConnectorList(args: {
     const connectorList = [...dbConnectors, ...derivedConnectors];
     return {
       connectors: connectorList,
-      configuredTypes: getConfiguredConnectorTypes((name) => {
+      configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
         return optionalEnv(name);
       }),
       connectorProvidedSecretNames: [

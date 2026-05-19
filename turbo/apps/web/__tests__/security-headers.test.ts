@@ -97,11 +97,21 @@ const AGENT_COMPOSES_VERSIONS_NEXT_NEGATIVE_PATHS = [
   "/api/agent/composes/version",
   "/api/agent/composes",
 ] as const;
+const AGENT_RUNS_REWRITE_SOURCE = "/api/agent/runs";
+const AGENT_RUNS_PATH = "/api/agent/runs";
+const AGENT_RUNS_NEXT_NEGATIVE_PATHS = [
+  "/api/agent/runs/extra",
+  "/api/agent/run",
+  "/api/agent/runs/queue",
+] as const;
+const AGENT_RUNS_PROXY_NEGATIVE_PATHS = [
+  "/api/agent/runs/extra",
+  "/api/agent/run",
+] as const;
 const AGENT_RUNS_QUEUE_REWRITE_SOURCE = "/api/agent/runs/queue";
 const AGENT_RUNS_QUEUE_PATH = "/api/agent/runs/queue";
 const AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS = [
   "/api/agent/runs/queue/extra",
-  "/api/agent/runs",
   "/api/agent/runs/queues",
 ] as const;
 const AGENT_RUN_BY_ID_REWRITE_SOURCE =
@@ -121,7 +131,6 @@ const AGENT_RUN_BY_ID_NEXT_NEGATIVE_PATHS = [
   `/api/agent/runs/${AGENT_RUN_ID}/telemetry/system-log`,
 ] as const;
 const AGENT_RUN_BY_ID_PROXY_NEGATIVE_PATHS = [
-  "/api/agent/runs",
   "/api/agent/runs/not-a-uuid",
   `/api/agent/runs/${AGENT_RUN_ID}/extra`,
 ] as const;
@@ -566,6 +575,13 @@ const ZERO_COMPUTER_USE_REGISTER_NEXT_NEGATIVE_PATHS = [
   "/api/zero/computer-use/register/extra",
   "/api/zero/computer-use",
 ] as const;
+const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
+  "/api/zero/computer-use/unregister";
+const ZERO_COMPUTER_USE_UNREGISTER_PATH = "/api/zero/computer-use/unregister";
+const ZERO_COMPUTER_USE_UNREGISTER_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/computer-use/unregister/extra",
+  "/api/zero/computer-use",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -652,12 +668,18 @@ const ZERO_SECRETS_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/secrets/DELETE_ME/extra",
   "/api/zero/secret/DELETE_ME",
 ] as const;
+const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
+const ZERO_SCHEDULES_BY_NAME_PATH = "/api/zero/schedules/nightly";
+const ZERO_SCHEDULES_BY_NAME_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/schedules",
+  "/api/zero/schedules/nightly/extra",
+  "/api/zero/schedule/nightly",
+] as const;
 const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
   "/api/zero/schedules/:name/disable";
 const ZERO_SCHEDULES_DISABLE_PATH = "/api/zero/schedules/nightly/disable";
 const ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/schedules",
-  "/api/zero/schedules/nightly",
   "/api/zero/schedules/nightly/disable/extra",
   "/api/zero/schedule/nightly/disable",
 ] as const;
@@ -665,7 +687,6 @@ const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
 const ZERO_SCHEDULES_ENABLE_PATH = "/api/zero/schedules/nightly/enable";
 const ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/schedules",
-  "/api/zero/schedules/nightly",
   "/api/zero/schedules/nightly/enable/extra",
   "/api/zero/schedule/nightly/enable",
 ] as const;
@@ -1003,6 +1024,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/agent/composes/versions",
         },
         {
+          source: AGENT_RUNS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/agent/runs",
+        },
+        {
           source: AGENT_RUNS_QUEUE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/agent/runs/queue",
         },
@@ -1313,6 +1338,10 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/secrets/:name",
         },
         {
+          source: ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/schedules/:name",
+        },
+        {
           source: ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/schedules/:name/disable",
@@ -1387,6 +1416,11 @@ describe("API backend rewrites", () => {
           source: ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/computer-use/register",
+        },
+        {
+          source: ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/computer-use/unregister",
         },
         {
           source: ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -1691,6 +1725,29 @@ describe("API backend rewrites", () => {
       id: AGENT_COMPOSE_ID,
     });
     for (const pathname of AGENT_COMPOSES_INSTRUCTIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent runs collection rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_RUNS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_RUNS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/agent/runs",
+    });
+
+    const matcher = getPathMatch(AGENT_RUNS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_RUNS_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_RUNS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -2774,6 +2831,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero computer-use unregister rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/computer-use/unregister",
+    });
+
+    const matcher = getPathMatch(ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_COMPUTER_USE_UNREGISTER_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_COMPUTER_USE_UNREGISTER_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero chat threads collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -3349,6 +3429,31 @@ describe("API backend rewrites", () => {
       name: "nightly",
     });
     for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment zero schedules by-name rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/schedules/:name",
+    });
+
+    const matcher = getPathMatch(ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SCHEDULES_BY_NAME_PATH)).toStrictEqual({
+      name: "nightly",
+    });
+    for (const pathname of ZERO_SCHEDULES_BY_NAME_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -3951,6 +4056,13 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should bypass web middleware only for the exact agent runs collection path", () => {
+    expect(matchesApiBackendRewritePath(AGENT_RUNS_PATH)).toBe(true);
+    for (const pathname of AGENT_RUNS_PROXY_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
   it("should bypass web middleware only for the exact agent runs queue path", () => {
     expect(matchesApiBackendRewritePath(AGENT_RUNS_QUEUE_PATH)).toBe(true);
     for (const pathname of AGENT_RUNS_QUEUE_NEXT_NEGATIVE_PATHS) {
@@ -4112,6 +4224,15 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match the zero computer-use unregister route for middleware pass-through", async () => {
+    expect(
+      matchesApiBackendRewritePath(ZERO_COMPUTER_USE_UNREGISTER_PATH),
+    ).toBe(true);
+    for (const pathname of ZERO_COMPUTER_USE_UNREGISTER_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
   it("should match the zero chat threads collection route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_CHAT_THREADS_PATH)).toBe(true);
     for (const pathname of ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS) {
@@ -4210,6 +4331,15 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero schedules by-name paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_BY_NAME_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_SCHEDULES_BY_NAME_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

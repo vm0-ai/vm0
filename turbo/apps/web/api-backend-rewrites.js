@@ -25,6 +25,8 @@ const AGENT_SESSION_ID_REWRITE_SOURCE = "/api/agent/sessions/:id";
 const AGENT_SESSION_ID_PATH_RE = /^\/api\/agent\/sessions\/[^/]+$/;
 const ZERO_SECRETS_BY_NAME_REWRITE_SOURCE = "/api/zero/secrets/:name";
 const ZERO_SECRETS_BY_NAME_PATH_RE = /^\/api\/zero\/secrets\/[^/]+$/;
+const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
+const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
 const ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE =
   "/api/zero/schedules/:name/disable";
 const ZERO_SCHEDULES_DISABLE_PATH_RE =
@@ -113,6 +115,8 @@ const ZERO_CHAT_MESSAGES_PATH_RE = /^\/api\/zero\/chat\/messages$/;
 const ZERO_COMPUTER_USE_HOST_REWRITE_SOURCE = "/api/zero/computer-use/host";
 const ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE =
   "/api/zero/computer-use/register";
+const ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE =
+  "/api/zero/computer-use/unregister";
 const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
   "/api/zero/connectors/:type/authorize";
 const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
@@ -215,6 +219,7 @@ export const API_BACKEND_REWRITES = [
     "/api/agent/runs/:id/telemetry/system-log",
     AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE,
   ],
+  ["/api/agent/runs", "/api/agent/runs"],
   ["/api/agent/runs/queue", "/api/agent/runs/queue"],
   [
     AGENT_SESSION_ID_REWRITE_SOURCE,
@@ -374,6 +379,10 @@ export const API_BACKEND_REWRITES = [
     ZERO_COMPUTER_USE_REGISTER_REWRITE_SOURCE,
     "/api/zero/computer-use/register",
   ],
+  [
+    ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
+    "/api/zero/computer-use/unregister",
+  ],
   ["/api/zero/chat/search", "/api/zero/chat/search"],
   [
     ZERO_CHAT_THREADS_REWRITE_SOURCE,
@@ -459,6 +468,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_SECRETS_BY_NAME_REWRITE_SOURCE,
     "/api/zero/secrets/:name",
     ZERO_SECRETS_BY_NAME_PATH_RE,
+  ],
+  [
+    ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE,
+    "/api/zero/schedules/:name",
+    ZERO_SCHEDULES_BY_NAME_PATH_RE,
   ],
   [
     ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,

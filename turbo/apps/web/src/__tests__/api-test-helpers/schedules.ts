@@ -1,12 +1,12 @@
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
+  deleteSchedule,
   disableSchedule,
   enableSchedule,
   getScheduleByName,
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
 import { POST as deployScheduleRoute } from "../../../app/api/zero/schedules/route";
-import { DELETE as deleteScheduleRoute } from "../../../app/api/zero/schedules/[name]/route";
 import { createTestRequest, getTestAuthContext } from "./core";
 import {
   resolveAgentIdFromCompose,
@@ -121,7 +121,7 @@ export async function disableTestSchedule(
 }
 
 /**
- * Delete a test schedule via the delete API route.
+ * Delete a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -130,22 +130,10 @@ export async function deleteTestSchedule(
   composeId: string,
   name: string,
 ): Promise<void> {
+  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
-  const request = createTestRequest(
-    `http://localhost:3000/api/zero/schedules/${name}?agentId=${agentId}`,
-    {
-      method: "DELETE",
-    },
-  );
-
-  const response = await deleteScheduleRoute(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to delete schedule: ${error.error?.message || response.status}`,
-    );
-  }
+  await deleteSchedule(userId, orgId, agentId, name);
 }
 
 /**

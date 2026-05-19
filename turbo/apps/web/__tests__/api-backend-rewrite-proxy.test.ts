@@ -332,8 +332,13 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/agent/runs/queue/extra")).toBe(
       false,
     );
-    expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/agent/runs/queues")).toBe(false);
+  });
+
+  it("matches the agent runs collection rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/agent/runs")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/agent/runs/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/agent/run")).toBe(false);
   });
 
   it("matches the agent composes collection rewrite path exactly", () => {
@@ -842,6 +847,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
   });
 
+  it("matches the zero computer-use unregister rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/unregister"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/computer-use/unregister/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/computer-use")).toBe(false);
+  });
+
   it("matches the zero chat threads collection rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/chat-threads-extra")).toBe(
@@ -1024,12 +1039,22 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/schedules/nightly/disable/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/schedule/nightly/disable"),
     ).toBe(false);
+  });
+
+  it("matches the zero schedules by-name rewrite path with one dynamic segment", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/schedules/nightly/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/schedules")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/schedule/nightly")).toBe(
+      false,
+    );
   });
 
   it("matches the zero schedules enable rewrite path with one dynamic segment", () => {
@@ -1039,9 +1064,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/schedules/nightly/enable/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/schedules/nightly")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/schedule/nightly/enable"),
     ).toBe(false);

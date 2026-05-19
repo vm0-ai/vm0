@@ -82,6 +82,7 @@ const SCHEMA = {
   GCP_WORKLOAD_IDENTITY_POOL_ID: z.string().min(1).optional(),
   GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
+  CONCURRENT_RUN_LIMIT_CAP: z.coerce.number().int().min(0).optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

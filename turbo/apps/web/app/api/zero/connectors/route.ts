@@ -9,8 +9,8 @@ import {
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import {
-  getConfiguredConnectorTypes,
   providerEnvFromObject,
+  getRuntimeAvailableConnectorTypes,
 } from "@vm0/connectors/oauth-providers";
 
 function unauthenticatedResponse() {
@@ -35,7 +35,7 @@ const router = tsr.router(zeroConnectorsMainContract, {
 
     const { org } = await resolveOrg(authCtx);
     const connectorList = await listConnectors(org.orgId, userId);
-    const configuredTypes = getConfiguredConnectorTypes(
+    const configuredTypes = getRuntimeAvailableConnectorTypes(
       providerEnvFromObject(globalThis.services.env),
     );
     const connectorProvidedSecretNames = [
