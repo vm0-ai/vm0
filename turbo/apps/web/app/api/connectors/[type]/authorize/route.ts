@@ -16,6 +16,7 @@ import {
 import {
   getConnectorOAuthCredentials,
   getConnectorOAuthStorage,
+  isConnectorOAuthAuthorizeType,
 } from "@vm0/connectors/connector-utils";
 import { deleteConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -38,8 +39,6 @@ const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
-
-type ConnectorOAuthAuthorizeType = Exclude<ConnectorType, "computer">;
 
 /**
  * Generate a random state string for CSRF protection
@@ -71,27 +70,6 @@ function buildCookieHeader(
     parts.push("Secure");
   }
   return parts.join("; ");
-}
-
-function rejectUnsupportedConnectorOAuth(
-  connectorType: ConnectorOAuthAuthorizeType,
-): NextResponse | undefined {
-  const oauthStorage = getConnectorOAuthStorage(connectorType);
-  if (!oauthStorage) {
-    return NextResponse.json(
-      { error: `${connectorType} connector does not use OAuth` },
-      { status: 400 },
-    );
-  }
-
-  if (oauthStorage !== "connector") {
-    return NextResponse.json(
-      { error: `${connectorType} does not use connector OAuth authorization` },
-      { status: 400 },
-    );
-  }
-
-  return undefined;
 }
 
 export async function GET(
@@ -135,10 +113,19 @@ export async function GET(
     );
   }
 
-  const unsupportedOAuthResponse =
-    rejectUnsupportedConnectorOAuth(connectorType);
-  if (unsupportedOAuthResponse) {
-    return unsupportedOAuthResponse;
+  const oauthStorage = getConnectorOAuthStorage(connectorType);
+  if (!oauthStorage) {
+    return NextResponse.json(
+      { error: `${connectorType} connector does not use OAuth` },
+      { status: 400 },
+    );
+  }
+
+  if (!isConnectorOAuthAuthorizeType(connectorType)) {
+    return NextResponse.json(
+      { error: `${connectorType} does not use connector OAuth authorization` },
+      { status: 400 },
+    );
   }
 
   // Auto-disconnect existing connector before re-authorizing.

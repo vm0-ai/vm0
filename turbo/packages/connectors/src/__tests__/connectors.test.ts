@@ -14,6 +14,7 @@ import {
   getConnectorOAuthStorage,
   getConfiguredConnectorTypes,
   isGoogleOAuthConnector,
+  isConnectorOAuthAuthorizeType,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
@@ -373,6 +374,12 @@ describe("getConfiguredConnectorTypes", () => {
   it("derives OAuth storage from connector config", () => {
     expect(getConnectorOAuthStorage("github")).toBe("connector");
     expect(getConnectorOAuthStorage("codex-oauth")).toBe("model-provider");
+  });
+
+  it("identifies connector OAuth authorize types", () => {
+    expect(isConnectorOAuthAuthorizeType("github")).toBe(true);
+    expect(isConnectorOAuthAuthorizeType("codex-oauth")).toBe(false);
+    expect(isConnectorOAuthAuthorizeType("computer")).toBe(false);
   });
 
   it("includes all connectors that share a configured OAuth app", () => {

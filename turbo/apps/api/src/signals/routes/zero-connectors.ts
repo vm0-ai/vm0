@@ -19,9 +19,11 @@ import {
   getConnectorOAuthConfig,
   getConnectorOAuthStorage,
   isGoogleOAuthConnector,
+  isConnectorOAuthAuthorizeType,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
+  type ConnectorOAuthAuthorizeType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -75,8 +77,6 @@ type ConnectorAuthorizeRoute = AppRoute & {
   readonly pathParams: z.ZodType<{ readonly type: string }>;
   readonly query: z.ZodType<{ readonly session?: string }>;
 };
-
-type ConnectorOAuthAuthorizeType = Exclude<ConnectorType, "computer">;
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -615,7 +615,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         400,
       );
     }
-    if (oauthStorage !== "connector") {
+    if (!isConnectorOAuthAuthorizeType(type)) {
       return jsonResponse(
         { error: `${type} does not use connector OAuth authorization` },
         400,

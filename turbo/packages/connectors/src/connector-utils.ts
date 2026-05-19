@@ -7,6 +7,7 @@ import {
   type ConnectorConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
+  type ConnectorOAuthAuthorizeType,
   type ConnectorOAuthStorage,
   type ConnectorSecretConfig,
   type ConnectorType,
@@ -139,6 +140,12 @@ export function getConnectorOAuthStorage(
     return undefined;
   }
   return oauthConfig.storage ?? "connector";
+}
+
+export function isConnectorOAuthAuthorizeType(
+  type: ConnectorType,
+): type is ConnectorOAuthAuthorizeType {
+  return getConnectorOAuthStorage(type) === "connector";
 }
 
 export function getConnectorOAuthCredentials(
