@@ -28,6 +28,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
+const WEB_ORIGIN = "https://www.vm0.ai";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -86,6 +87,8 @@ function callbackHeaders(args: {
   readonly sessionId?: string;
   readonly codeVerifier?: string;
   readonly oauthContext?: string;
+  readonly forwardedHost?: string;
+  readonly forwardedProto?: string;
 }): HeadersInit {
   const cookies = ["__session=opaque"];
   if (args.stateCookie) {
@@ -108,7 +111,14 @@ function callbackHeaders(args: {
       `connector_oauth_context=${encodeURIComponent(args.oauthContext)}`,
     );
   }
-  return { cookie: cookies.join("; ") };
+  const headers: Record<string, string> = { cookie: cookies.join("; ") };
+  if (args.forwardedHost) {
+    headers["x-forwarded-host"] = args.forwardedHost;
+  }
+  if (args.forwardedProto) {
+    headers["x-forwarded-proto"] = args.forwardedProto;
+  }
+  return headers;
 }
 
 function authenticate(args: {
@@ -1327,6 +1337,34 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
+  it("uses the forwarded web origin for callback error redirects", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "returned-state" },
+      headers: callbackHeaders({
+        stateCookie: "saved-state",
+        forwardedHost: "www.vm0.ai",
+        forwardedProto: "https",
+      }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.origin).toBe(WEB_ORIGIN);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("type")).toBe("github");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid state - please try again",
+    );
+  });
+
   it("marks CLI sessions as error when user info fetch fails", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -1493,6 +1531,41 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(decryptSecretValue(secret!.encryptedValue)).toBe(
       "dynamic-access-token",
     );
+  });
+
+  it("uses the forwarded web origin for token exchange and success redirects", async () => {
+    const dynamicOAuth = useDynamicTestOAuthExchange();
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const { exchanges } = dynamicOAuth;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({
+        stateCookie: "state-123",
+        codeVerifier: "pkce-verifier",
+        oauthContext: "dynamic-oauth-context; tenant=example",
+        forwardedHost: "www.vm0.ai",
+        forwardedProto: "https",
+      }),
+    });
+
+    expect(response.status).toBe(307);
+    expect(exchanges).toHaveLength(1);
+    expect(exchanges[0]?.redirectUri).toBe(
+      `${WEB_ORIGIN}/api/connectors/test-oauth/callback`,
+    );
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.origin).toBe(WEB_ORIGIN);
+    expect(url.pathname).toBe("/connector/success");
+    expect(url.searchParams.get("type")).toBe("test-oauth");
+    expect(url.searchParams.get("username")).toBe("dynamic-user");
   });
 
   it("stores a Slack user OAuth token without an expiry", async () => {

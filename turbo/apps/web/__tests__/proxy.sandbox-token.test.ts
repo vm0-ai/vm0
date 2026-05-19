@@ -278,4 +278,31 @@ describe("proxy middleware: sandbox token handling", () => {
       "https",
     );
   });
+
+  it("should preserve web origin headers for API backend OAuth callback routes", async () => {
+    const request = new NextRequest(
+      "https://www.vm0.ai/api/connectors/google-calendar/callback?code=code-123&state=state-123",
+      {
+        headers: {
+          cookie: "__session=opaque; connector_oauth_state=state-123",
+        },
+      },
+    );
+
+    const response = await middleware(request, createMockEvent());
+    if (!response) {
+      throw new Error("Expected middleware response");
+    }
+
+    expect(capturedClerkRequest).toBeUndefined();
+    expect(response.headers.get("x-middleware-request-cookie")).toBe(
+      "__session=opaque; connector_oauth_state=state-123",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-host")).toBe(
+      "www.vm0.ai",
+    );
+    expect(response.headers.get("x-middleware-request-x-forwarded-proto")).toBe(
+      "https",
+    );
+  });
 });
