@@ -953,6 +953,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-mock")).toBe(false);
   });
 
+  it("matches the test slack mock chat.postEphemeral rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/chat.postEphemeral"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/chat.postEphemeral/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/test/slack-mock")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/chat.postEphemerals"),
+    ).toBe(false);
+  });
+
   it("matches the test slack state rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-state")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/test/slack-state/extra")).toBe(
