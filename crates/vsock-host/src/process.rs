@@ -38,19 +38,29 @@ pub struct ProcessControlAck {
 /// Guest-side terminal status for a process-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessControlGuestStatus {
+    /// Status returned by the guest process-control sink.
     pub status: ProcessControlStatus,
+    /// Optional diagnostic supplied by the guest.
     pub diagnostic: String,
 }
 
-/// Typed process-control outcome.
+/// Terminal guest response for a process-control request.
+///
+/// Transport errors and host-side timeouts are still returned as
+/// [`io::Error`]. This type only represents responses that came back from the
+/// guest and therefore prove the request reached a terminal guest-side state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessControlOutcome {
+    /// The control payload was delivered to the guest process sink.
     Delivered(ProcessControlAck),
+    /// The guest returned a non-delivered process-control status.
     GuestStatus(ProcessControlGuestStatus),
+    /// The guest returned a protocol-level error frame for this request.
     GuestError(String),
 }
 
 impl ProcessControlOutcome {
+    /// Convert the typed guest response into the legacy acknowledgement API.
     pub fn into_ack(self) -> io::Result<ProcessControlAck> {
         match self {
             Self::Delivered(ack) => Ok(ack),
@@ -381,6 +391,11 @@ impl GuestProcessControlHandle {
         .into_ack()
     }
 
+    /// Send a control payload and report the exact guest terminal outcome.
+    ///
+    /// The `write_observer` fires immediately before the request frame is
+    /// written. Callers that gate sandbox reuse use this boundary to distinguish
+    /// pre-write validation failures from post-write uncertainty.
     pub async fn control_with_write_observer(
         &self,
         message_id: &str,
