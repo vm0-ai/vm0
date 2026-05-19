@@ -641,6 +641,14 @@ const ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/schedules/nightly/disable/extra",
   "/api/zero/schedule/nightly/disable",
 ] as const;
+const ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE = "/api/zero/schedules/:name/enable";
+const ZERO_SCHEDULES_ENABLE_PATH = "/api/zero/schedules/nightly/enable";
+const ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/schedules",
+  "/api/zero/schedules/nightly",
+  "/api/zero/schedules/nightly/enable/extra",
+  "/api/zero/schedule/nightly/enable",
+] as const;
 const ZERO_ORG_REWRITE_SOURCE = "/api/zero/org";
 const ZERO_ORG_PATH = "/api/zero/org";
 const ZERO_ORG_NEXT_NEGATIVE_PATHS = [
@@ -1280,6 +1288,11 @@ describe("API backend rewrites", () => {
           source: ZERO_SCHEDULES_DISABLE_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/schedules/:name/disable",
+        },
+        {
+          source: ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/schedules/:name/enable",
         },
         {
           source: ZERO_SKILLS_REWRITE_SOURCE,
@@ -3236,6 +3249,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the single-segment zero schedules enable rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/schedules/:name/enable",
+    });
+
+    const matcher = getPathMatch(ZERO_SCHEDULES_ENABLE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SCHEDULES_ENABLE_PATH)).toStrictEqual({
+      name: "nightly",
+    });
+    for (const pathname of ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero org membership requests rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4059,6 +4097,13 @@ describe("API backend rewrites", () => {
       true,
     );
     for (const pathname of ZERO_SCHEDULES_DISABLE_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for zero schedules enable paths", () => {
+    expect(matchesApiBackendRewritePath(ZERO_SCHEDULES_ENABLE_PATH)).toBe(true);
+    for (const pathname of ZERO_SCHEDULES_ENABLE_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

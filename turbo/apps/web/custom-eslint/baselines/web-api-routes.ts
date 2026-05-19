@@ -125,7 +125,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/runs/[id]/telemetry/agent/route.ts",
   "app/api/zero/runs/queue/route.ts",
   "app/api/zero/runs/route.ts",
-  "app/api/zero/schedules/[name]/enable/route.ts",
   "app/api/zero/schedules/[name]/route.ts",
   "app/api/zero/schedules/route.ts",
   "app/api/zero/schedules/run/route.ts",

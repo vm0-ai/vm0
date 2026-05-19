@@ -1,12 +1,12 @@
 import type { ScheduleResponse } from "../../lib/zero/schedule/schedule-service";
 import {
   disableSchedule,
+  enableSchedule,
   getScheduleByName,
   getScheduleRecentRuns,
 } from "../../lib/zero/schedule";
 import { POST as deployScheduleRoute } from "../../../app/api/zero/schedules/route";
 import { DELETE as deleteScheduleRoute } from "../../../app/api/zero/schedules/[name]/route";
-import { POST as enableScheduleRoute } from "../../../app/api/zero/schedules/[name]/enable/route";
 import { createTestRequest, getTestAuthContext } from "./core";
 import {
   resolveAgentIdFromCompose,
@@ -87,7 +87,7 @@ export async function getTestSchedule(
 }
 
 /**
- * Enable a test schedule via the enable API route.
+ * Enable a test schedule via the schedule service.
  *
  * @param composeId - The compose ID
  * @param name - The schedule name
@@ -97,27 +97,10 @@ export async function enableTestSchedule(
   composeId: string,
   name: string,
 ): Promise<ScheduleResponse> {
+  const { userId, orgId } = await getTestAuthContext();
   const agentId = await resolveAgentIdFromCompose(composeId);
 
-  const request = createTestRequest(
-    `http://localhost:3000/api/zero/schedules/${name}/enable`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId }),
-    },
-  );
-
-  const response = await enableScheduleRoute(request, {
-    params: Promise.resolve({ name }),
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to enable schedule: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  return enableSchedule(userId, orgId, agentId, name);
 }
 
 /**
