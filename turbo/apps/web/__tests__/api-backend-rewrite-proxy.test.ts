@@ -807,6 +807,14 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the test slack state rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/test/slack-state")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/test/slack-state/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/test/slack-states")).toBe(false);
+  });
+
   it("matches the internal event consumer axiom rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/internal/event-consumers/axiom"),

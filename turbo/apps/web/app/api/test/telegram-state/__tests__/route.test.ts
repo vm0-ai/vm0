@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { POST as slackPOST } from "../../slack-state/route";
 import { POST as telegramPOST } from "../route";
 import {
   createTestRequest,
@@ -30,16 +29,6 @@ vi.mock("@clerk/nextjs/server", () => {
 });
 
 const context = testContext();
-
-function postSlackState(body: Record<string, unknown>) {
-  return slackPOST(
-    createTestRequest("http://localhost:3000/api/test/slack-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
-}
 
 function postTelegramState(body: Record<string, unknown>) {
   return telegramPOST(
@@ -88,20 +77,10 @@ describe("/api/test/telegram-state", () => {
     await ensureOrgRow(orgId);
   });
 
-  it("seeds the shared default agent when Slack and Telegram preflights race", async () => {
-    const teamId = uniqueId("T_TELEGRAM_RACE");
+  it("seeds the shared default agent when Telegram preflights race", async () => {
     const botId = uniqueId("123456_TELEGRAM_RACE");
     const responses = await Promise.all(
-      Array.from({ length: 8 }, (_, index) => {
-        if (index % 2 === 0) {
-          return postSlackState({
-            team_id: teamId,
-            slack_user_id: "U_TELEGRAM_RACE",
-            email,
-            seed_connection: true,
-            seed_default_agent: true,
-          });
-        }
+      Array.from({ length: 8 }, () => {
         return postTelegramState({
           bot_id: botId,
           telegram_user_id: "99001",

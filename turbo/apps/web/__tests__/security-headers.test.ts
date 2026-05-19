@@ -485,6 +485,12 @@ const TEST_SLACK_DISPATCH_PROBE_NEXT_NEGATIVE_PATHS = [
   "/api/test/slack-dispatch-probe/extra",
   "/api/test/slack-dispatch",
 ] as const;
+const TEST_SLACK_STATE_REWRITE_SOURCE = "/api/test/slack-state";
+const TEST_SLACK_STATE_PATH = "/api/test/slack-state";
+const TEST_SLACK_STATE_NEXT_NEGATIVE_PATHS = [
+  "/api/test/slack-state/extra",
+  "/api/test/slack-states",
+] as const;
 const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
@@ -1332,6 +1338,10 @@ describe("API backend rewrites", () => {
         {
           source: TEST_SLACK_DISPATCH_PROBE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/test/slack-dispatch-probe",
+        },
+        {
+          source: TEST_SLACK_STATE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/test/slack-state",
         },
         {
           source: "/api/agentphone/:path*",
@@ -2989,6 +2999,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(TEST_SLACK_DISPATCH_PROBE_PATH)).toStrictEqual({});
     for (const pathname of TEST_SLACK_DISPATCH_PROBE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact test slack state rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TEST_SLACK_STATE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TEST_SLACK_STATE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/test/slack-state",
+    });
+
+    const matcher = getPathMatch(TEST_SLACK_STATE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(TEST_SLACK_STATE_PATH)).toStrictEqual({});
+    for (const pathname of TEST_SLACK_STATE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

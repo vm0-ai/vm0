@@ -21,9 +21,8 @@ interface UpsertSlackInstallationInput {
  * Upsert a Slack org installation row with an encrypted bot token and
  * return the resulting row.
  *
- * Shared between the Vitest seeder (`src/__tests__/db-test-seeders/slack.ts`)
- * and the e2e HTTP seeder (`app/api/test/slack-state/route.ts`) so the
- * schema-aware write lives in one place.
+ * Shared with the Vitest seeder (`src/__tests__/db-test-seeders/slack.ts`) so
+ * the schema-aware write lives in one place.
  */
 export async function upsertSlackInstallation(
   services: Services,

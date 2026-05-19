@@ -12,6 +12,8 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
@@ -40,6 +42,10 @@ interface SeededTelegramPostState {
   readonly botId: string;
   readonly orgId: string;
   readonly composeId: string;
+}
+
+interface SeededSlackPostState {
+  readonly teamId: string;
 }
 
 interface TelegramStateResponse {
@@ -211,8 +217,21 @@ async function cleanupTelegramPostState(
     .where(eq(agentComposes.id, state.composeId));
 }
 
+async function cleanupSlackPostState(
+  state: SeededSlackPostState,
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, state.teamId));
+  await writeDb
+    .delete(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, state.teamId));
+}
+
 const trackTelegramState = createFixtureTracker(cleanupTelegramState);
 const trackTelegramPostState = createFixtureTracker(cleanupTelegramPostState);
+const trackSlackPostState = createFixtureTracker(cleanupSlackPostState);
 
 function mockClerkTestUser(args: {
   readonly userId: string;
@@ -237,6 +256,14 @@ function mockClerkTestUser(args: {
 
 function postTelegramState(body: Record<string, unknown>): Promise<Response> {
   return requestApp("/api/test/telegram-state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function postSlackState(body: Record<string, unknown>): Promise<Response> {
+  return requestApp("/api/test/slack-state", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -572,6 +599,59 @@ describe("POST /api/test/telegram-state", () => {
       .where(eq(telegramUserLinks.installationId, botId));
     expect(links).toHaveLength(1);
     expect(links[0]?.id).toBe(firstBody.user_link_id);
+  });
+
+  it("reuses the shared default agent when Slack and Telegram preflights race", async () => {
+    mockEnv("ENV", "development");
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const teamId = `T_${randomUUID().replaceAll("-", "")}`;
+    const botId = `bot_${randomUUID()}`;
+    const email = `${randomUUID()}@example.test`;
+    mockClerkTestUser({ userId, orgId });
+
+    const responses = await Promise.all([
+      postSlackState({
+        team_id: teamId,
+        slack_user_id: "U_TELEGRAM_RACE",
+        email,
+        seed_connection: true,
+        seed_default_agent: true,
+      }),
+      postTelegramState({
+        bot_id: botId,
+        telegram_user_id: "99001",
+        email,
+        seed_link: true,
+      }),
+    ]);
+
+    const bodies = await Promise.all(
+      responses.map(async (response) => {
+        if (response.status !== 200) {
+          throw new Error(
+            `Expected 200, got ${response.status}: ${await response.text()}`,
+          );
+        }
+        return (await response.json()) as {
+          readonly default_agent_id: string | null;
+        };
+      }),
+    );
+    const defaultAgentIds = bodies.map((body) => {
+      return body.default_agent_id;
+    });
+    const defaultAgentId = defaultAgentIds[0];
+    if (!defaultAgentId) {
+      throw new Error("Expected seeded default agent id");
+    }
+    await trackSlackPostState(Promise.resolve({ teamId }));
+    await trackTelegramPostState(
+      Promise.resolve({ botId, orgId, composeId: defaultAgentId }),
+    );
+
+    expect(new Set(defaultAgentIds).size).toBe(1);
+    expect(defaultAgentIds).not.toContain(null);
   });
 });
 
