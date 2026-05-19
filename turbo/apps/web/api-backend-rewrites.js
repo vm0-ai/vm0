@@ -375,6 +375,10 @@ export const API_BACKEND_REWRITES = [
     "/api/test/slack-mock/conversations.history",
     "/api/test/slack-mock/conversations.history",
   ],
+  [
+    "/api/test/slack-mock/conversations.open",
+    "/api/test/slack-mock/conversations.open",
+  ],
   ["/api/test/slack-state", "/api/test/slack-state"],
   ["/api/test/telegram-dispatch-probe", "/api/test/telegram-dispatch-probe"],
   ["/api/user/export", "/api/user/export"],

@@ -1019,6 +1019,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the test slack mock conversations.open rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/conversations.open"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/test/slack-mock/conversations.open/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/conversations"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/test/slack-mock/conversations.opens"),
+    ).toBe(false);
+  });
+
   it("matches the test slack state rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-state")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/test/slack-state/extra")).toBe(
