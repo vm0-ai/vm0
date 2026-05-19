@@ -81,7 +81,11 @@ pub(crate) enum GuestOperationStartError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::pin_mut;
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicU8, Ordering};
+    use std::task::{Context, Poll};
 
     fn gate_without_guest() -> (GuestOperationStartGate, ParkCoordinator) {
         let coordinator = ParkCoordinator::new();
@@ -102,17 +106,10 @@ mod tests {
         }
     }
 
-    fn signaled_state_reader(
-        state: Arc<AtomicU8>,
-        first_read: tokio::sync::oneshot::Sender<()>,
-    ) -> impl Fn() -> SandboxState + Send + 'static {
-        let first_read = std::sync::Mutex::new(Some(first_read));
-        move || {
-            if let Some(first_read) = first_read.lock().unwrap().take() {
-                let _ = first_read.send(());
-            }
-            state_from_atomic(&state)
-        }
+    fn assert_pending<F: Future>(future: Pin<&mut F>) {
+        let waker = futures_util::task::noop_waker_ref();
+        let mut cx = Context::from_waker(waker);
+        assert!(matches!(future.poll(&mut cx), Poll::Pending));
     }
 
     #[tokio::test]
@@ -165,22 +162,14 @@ mod tests {
         let gate = GuestOperationStartGate::new(Arc::clone(&guest), coordinator.clone());
         let locked_guest = guest.lock().await;
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
-        let (first_read_tx, first_read_rx) = tokio::sync::oneshot::channel();
 
-        let operation = {
-            let state = Arc::clone(&state);
-            tokio::spawn(async move {
-                gate.begin_sandbox_operation(signaled_state_reader(state, first_read_tx))
-                    .await
-            })
-        };
-        first_read_rx
-            .await
-            .expect("operation should pass the first state check");
+        let operation = gate.begin_sandbox_operation(|| state_from_atomic(&state));
+        pin_mut!(operation);
+        assert_pending(operation.as_mut());
         state.store(SandboxState::Crashed as u8, Ordering::Release);
         drop(locked_guest);
 
-        let result = operation.await.expect("operation task should complete");
+        let result = operation.await;
         assert_eq!(result.err(), Some(GuestOperationStartError::BackendCrashed));
         assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
@@ -192,19 +181,14 @@ mod tests {
         let gate = GuestOperationStartGate::new(Arc::clone(&guest), coordinator.clone());
         let locked_guest = guest.lock().await;
         let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
-        let (first_read_tx, first_read_rx) = tokio::sync::oneshot::channel();
 
-        let operation = tokio::spawn(async move {
-            gate.begin_sandbox_operation(signaled_state_reader(state, first_read_tx))
-                .await
-        });
-        first_read_rx
-            .await
-            .expect("operation should pass the first policy check");
+        let operation = gate.begin_sandbox_operation(|| state_from_atomic(&state));
+        pin_mut!(operation);
+        assert_pending(operation.as_mut());
         let attempt = coordinator.begin_prepare_park().expect("begin prepare");
         drop(locked_guest);
 
-        let result = operation.await.expect("operation task should complete");
+        let result = operation.await;
         assert!(matches!(
             result,
             Err(GuestOperationStartError::GateClosed {
@@ -222,6 +206,29 @@ mod tests {
 
         assert_eq!(result.err(), Some(GuestOperationStartError::NoGuest));
         assert_eq!(coordinator.state(), CoordinatorState::Open);
+    }
+
+    #[tokio::test]
+    async fn control_operation_rechecks_policy_after_guest_lock_wait() {
+        let coordinator = ParkCoordinator::new();
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let gate = GuestOperationStartGate::new(Arc::clone(&guest), coordinator.clone());
+        let locked_guest = guest.lock().await;
+
+        let operation = gate.begin_control_operation();
+        pin_mut!(operation);
+        assert_pending(operation.as_mut());
+        let attempt = coordinator.begin_prepare_park().expect("begin prepare");
+        drop(locked_guest);
+
+        let result = operation.await;
+        assert!(matches!(
+            result,
+            Err(GuestOperationStartError::GateClosed {
+                state: CoordinatorState::ClosingForPark { .. }
+            })
+        ));
+        coordinator.abort_prepare_park(&attempt).unwrap();
     }
 
     #[tokio::test]
