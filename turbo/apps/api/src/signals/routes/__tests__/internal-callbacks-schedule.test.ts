@@ -281,6 +281,76 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     });
   });
 
+  it("rejects invalid loop payloads", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "loop" });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: LOOP_PATH,
+      scheduleId,
+      payload: { scheduleId },
+    });
+
+    const response = await postSignedCallback(LOOP_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {},
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid or missing payload",
+    });
+  });
+
+  it("verifies loop callbacks by callbackId when a run has multiple callbacks", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "loop" });
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.composeId,
+        triggerSource: "schedule",
+        scheduleId,
+        prompt: "Scheduled task",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedAgentRunCallback$,
+      {
+        runId,
+        url: "http://localhost/api/internal/callbacks/slack",
+        payload: { workspaceId: "T123" },
+        secret: "different-callback-secret",
+      },
+      context.signal,
+    );
+    const { callbackId } = await store.set(
+      seedAgentRunCallback$,
+      {
+        runId,
+        url: `http://localhost${LOOP_PATH}`,
+        payload: { scheduleId },
+      },
+      context.signal,
+    );
+
+    const response = await postSignedCallback(LOOP_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: { scheduleId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    const updated = await scheduleById(scheduleId);
+    expect(updated?.nextRunAt).not.toBeNull();
+  });
+
   it("skips loop progress callbacks without mutating schedules", async () => {
     const fixture = await track(seedFixture());
     const scheduleId = await seedSchedule(fixture, {
@@ -355,6 +425,20 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
       scheduleId,
       payload: { scheduleId },
     });
+    context.mocks.axiom.query.mockResolvedValueOnce([
+      {
+        eventType: "result",
+        eventData: { result: "Loop completed." },
+      },
+    ]);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Loop produced an update." } }],
+        });
+      }),
+    );
 
     const response = await postSignedCallback(LOOP_PATH, {
       callbackId,
@@ -369,6 +453,62 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
     expect(updated?.consecutiveFailures).toBe(0);
     expect(updated?.enabled).toBeTruthy();
     expect(updated?.nextRunAt?.toISOString()).toBe("2026-05-13T04:10:00.000Z");
+    await expect(runSummary(runId)).resolves.toBe("Loop produced an update.");
+  });
+
+  it("increments loop failure counters before the auto-disable threshold", async () => {
+    const failedAt = new Date("2026-05-13T04:00:00.000Z");
+    mockNow(failedAt);
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "loop" });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: LOOP_PATH,
+      scheduleId,
+      payload: { scheduleId },
+    });
+
+    const response = await postSignedCallback(LOOP_PATH, {
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: { scheduleId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    const updated = await scheduleById(scheduleId);
+    expect(updated?.consecutiveFailures).toBe(1);
+    expect(updated?.enabled).toBeTruthy();
+    expect(updated?.nextRunAt?.toISOString()).toBe("2026-05-13T04:05:00.000Z");
+  });
+
+  it("auto-disables loop schedules after the third consecutive failure", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, {
+      kind: "loop",
+      consecutiveFailures: 2,
+    });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: LOOP_PATH,
+      scheduleId,
+      payload: { scheduleId },
+    });
+
+    const response = await postSignedCallback(LOOP_PATH, {
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: { scheduleId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    const updated = await scheduleById(scheduleId);
+    expect(updated?.consecutiveFailures).toBe(3);
+    expect(updated?.enabled).toBeFalsy();
+    expect(updated?.nextRunAt).toBeNull();
   });
 
   it("advances cron callbacks and persists completed-run summaries", async () => {
@@ -542,6 +682,31 @@ describe("POST /api/internal/callbacks/schedule/*", () => {
       scheduleId,
       payload: { scheduleId },
     });
+
+    const response = await postSignedCallback(LOOP_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: { scheduleId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({
+      success: true,
+      skipped: true,
+    });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("skips completed callbacks for deleted loop schedules", async () => {
+    const fixture = await track(seedFixture());
+    const scheduleId = await seedSchedule(fixture, { kind: "loop" });
+    const { runId, callbackId } = await seedRunAndCallback(fixture, {
+      path: LOOP_PATH,
+      scheduleId,
+      payload: { scheduleId },
+    });
+    await deleteSchedule(scheduleId);
 
     const response = await postSignedCallback(LOOP_PATH, {
       callbackId,

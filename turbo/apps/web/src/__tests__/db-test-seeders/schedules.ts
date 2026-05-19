@@ -10,30 +10,6 @@ import { uniqueId } from "../test-helpers";
 // ============================================================================
 
 /**
- * Update internal schedule state for testing edge cases.
- *
- * @why-db-direct Sets internal scheduling fields (consecutiveFailures, enabled,
- * nextRunAt, lastRunId, intervalSeconds) that are managed by the scheduler
- * callback system, not exposed via any user-facing API.
- */
-export async function updateTestScheduleState(
-  scheduleId: string,
-  state: {
-    consecutiveFailures?: number;
-    enabled?: boolean;
-    nextRunAt?: Date | null;
-    lastRunId?: string;
-    intervalSeconds?: number;
-  },
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set(state)
-    .where(eq(zeroAgentSchedules.id, scheduleId));
-}
-
-/**
  * Seed a schedule record directly in the database.
  *
  * @why-db-direct Creates schedules directly for bulk testing (e.g. top-100

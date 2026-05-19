@@ -8,6 +8,7 @@ interface SeedAgentRunCallbackOptions {
   readonly runId: string;
   readonly url: string;
   readonly payload: Record<string, unknown>;
+  readonly secret?: string;
   readonly status?: "pending" | "delivered" | "failed";
 }
 
@@ -23,7 +24,9 @@ export const seedAgentRunCallback$ = command(
       .values({
         runId: options.runId,
         url: options.url,
-        encryptedSecret: encryptSecretForTests("test-callback-secret"),
+        encryptedSecret: encryptSecretForTests(
+          options.secret ?? "test-callback-secret",
+        ),
         payload: options.payload,
         status: options.status ?? "pending",
       })

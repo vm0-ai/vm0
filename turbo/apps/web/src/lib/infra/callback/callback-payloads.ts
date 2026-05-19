@@ -52,10 +52,6 @@ export interface EmailReplyCallbackPayload {
   replyRecipientCc?: string[];
 }
 
-export interface ScheduleLoopCallbackPayload {
-  scheduleId: string;
-}
-
 export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;
