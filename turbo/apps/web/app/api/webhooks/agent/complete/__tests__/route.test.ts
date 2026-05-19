@@ -1148,7 +1148,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { runId } = await createTestRun(composeId, "Scheduled task");
       await linkRunToSchedule(runId, schedule.id);
 
-      // Register callbacks (as executeSchedule now does)
+      // Register callbacks for schedule-linked runs.
       await createTestCallback({
         runId,
         url: "http://localhost/api/zero/email/callbacks/schedule",

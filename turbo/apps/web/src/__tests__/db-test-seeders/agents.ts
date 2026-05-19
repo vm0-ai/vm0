@@ -170,7 +170,7 @@ export async function seedApiCompatibleCompose(opts: {
 
 /**
  * @why-db-direct Sets HEAD to null — API never creates a versionless compose.
- * Tests pre-run failure when no version exists (e.g., executeSchedule).
+ * Tests pre-run failure paths that require a versionless compose.
  */
 export async function clearComposeHeadVersion(
   composeId: string,

@@ -5,5 +5,4 @@ export {
   deleteSchedule,
   enableSchedule,
   disableSchedule,
-  executeSchedule,
 } from "./schedule-service";

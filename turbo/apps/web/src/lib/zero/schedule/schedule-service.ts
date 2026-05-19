@@ -8,10 +8,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { decryptSecretsMap } from "../../shared/crypto";
 import { notFound, badRequest, schedulePast } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
-import { createZeroRun } from "../zero-run-service";
-import { buildSchedulePrompt } from "../integration-prompt";
 import { generateScheduleDescription } from "../ai/lightweight-model";
-import { adaptScheduleTrigger } from "./adapt-schedule-trigger";
 import { visibleJoinedZeroAgentCondition } from "../agent-visibility";
 
 const log = logger("service:schedule");
@@ -659,73 +656,4 @@ export async function disableSchedule(
   log.debug(`Disabled schedule ${name}`);
 
   return toResponse(updated, displayName);
-}
-
-/**
- * Execute a single schedule and return the created run ID.
- */
-export async function executeSchedule(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-  apiStartTime: number,
-): Promise<string> {
-  log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
-
-  // Resolve compose directly — schedule.agentId IS the composeId
-  const [compose] = await globalThis.services.db
-    .select()
-    .from(agentComposes)
-    .where(eq(agentComposes.id, schedule.agentId))
-    .limit(1);
-
-  if (!compose) {
-    log.error(`Agent or compose for schedule ${schedule.name} not found`);
-    await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({ enabled: false })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-    throw new Error(`Agent or compose for schedule ${schedule.name} not found`);
-  }
-
-  if (!compose.headVersionId) {
-    log.error(`Compose ${compose.name} has no versions`);
-    throw new Error(`Compose ${compose.name} has no versions`);
-  }
-
-  // Build schedule integration context for the agent
-  // (User info is injected centrally by createZeroRunRecord)
-  const integrationContext = buildSchedulePrompt({
-    triggerType: schedule.triggerType,
-  });
-
-  const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
-  const appendSystemPrompt = baseAppendPrompt
-    ? `${integrationContext}\n\n${baseAppendPrompt}`
-    : integrationContext;
-
-  // Delegate run creation, validation, and dispatch to createZeroRun()
-  // Note: schedule state (nextRunAt, lastRunAt, enabled) is already advanced
-  // by the cron executor's atomic CAS claim. We only need to persist
-  // lastRunId after successful run creation.
-  const result = await createZeroRun(
-    adaptScheduleTrigger({
-      userId: schedule.userId,
-      agentId: schedule.agentId,
-      scheduleId: schedule.id,
-      prompt: schedule.prompt,
-      appendSystemPrompt,
-      triggerType: schedule.triggerType,
-      cronExpression: schedule.cronExpression ?? undefined,
-      timezone: schedule.timezone,
-      apiStartTime,
-    }),
-  );
-
-  // Persist lastRunId so the cron executor's active-run check works.
-  await globalThis.services.db
-    .update(zeroAgentSchedules)
-    .set({ lastRunId: result.runId })
-    .where(eq(zeroAgentSchedules.id, schedule.id));
-
-  log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) executed`);
-  return result.runId;
 }
