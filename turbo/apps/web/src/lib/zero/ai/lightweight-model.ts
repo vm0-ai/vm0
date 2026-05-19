@@ -96,7 +96,7 @@ function stripMarkdown(text: string): string {
 /**
  * A single turn in the conversation history used for title generation.
  */
-export interface TitleContextMessage {
+interface TitleContextMessage {
   role: "user" | "assistant";
   content: string;
 }
@@ -168,31 +168,6 @@ export async function generateChatTitle(
       content: sections.join("\n\n"),
     },
   ]);
-}
-
-/**
- * Generate a short notification summary for a completed chat run.
- *
- * Returns null if the lightweight model is unavailable.
- */
-export async function generateChatNotificationSummary(
-  prompt: string,
-  resultText: string,
-): Promise<string | null> {
-  return generateText(
-    [
-      {
-        role: "system",
-        content:
-          "Summarize this AI assistant's response in one sentence (max 100 chars). Return only the summary as plain text. Do not use any markdown syntax.",
-      },
-      {
-        role: "user",
-        content: `User asked: ${prompt.slice(0, 200)}\n\nAssistant responded: ${resultText.slice(0, 500)}`,
-      },
-    ],
-    60,
-  );
 }
 
 /**

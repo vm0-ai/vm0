@@ -504,8 +504,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // Without body.error, stored error is the fallback string. The frontend's
-      // formatChatRunErrorMessage handles UI rendering; the column is debug-only.
+      // Without body.error, stored error is the fallback string. The chat
+      // callback path handles UI rendering; the column is debug-only.
       const run = await findTestRunRecord(runId);
       expect(run!.error).toBe("Run failed without error message");
     });
@@ -541,10 +541,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // body.error must be stored verbatim — frontend transforms it for UI
-      // display via formatChatRunErrorMessage, so the column itself is the
-      // debuggable underlying error. Without this, engineers cannot diagnose
-      // production failures from agent_runs alone.
+      // body.error must be stored verbatim so the column itself is the
+      // debuggable underlying error. The chat callback path transforms the
+      // raw value for UI display.
       const run = await findTestRunRecord(runId);
       expect(run!.error).toBe(
         "unable to load auth.json: refresh_token cannot be empty",

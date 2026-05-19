@@ -432,6 +432,12 @@ const INTERNAL_CALLBACKS_AGENT_NEXT_NEGATIVE_PATHS = [
   "/api/internal/callbacks/agent/extra",
   "/api/internal/callbacks",
 ] as const;
+const INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE = "/api/internal/callbacks/chat";
+const INTERNAL_CALLBACKS_CHAT_PATH = "/api/internal/callbacks/chat";
+const INTERNAL_CALLBACKS_CHAT_NEXT_NEGATIVE_PATHS = [
+  "/api/internal/callbacks/chat/extra",
+  "/api/internal/callbacks",
+] as const;
 const EMAIL_UNSUBSCRIBE_REWRITE_SOURCE = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_PATH = "/api/email/unsubscribe";
 const EMAIL_UNSUBSCRIBE_NEXT_NEGATIVE_PATHS = [
@@ -1437,6 +1443,10 @@ describe("API backend rewrites", () => {
         {
           source: INTERNAL_CALLBACKS_AGENT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/internal/callbacks/agent",
+        },
+        {
+          source: INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/internal/callbacks/chat",
         },
         {
           source: "/api/internal/callbacks/agentphone",
@@ -2791,6 +2801,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(INTERNAL_CALLBACKS_AGENT_PATH)).toStrictEqual({});
     for (const pathname of INTERNAL_CALLBACKS_AGENT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact internal chat callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/internal/callbacks/chat",
+    });
+
+    const matcher = getPathMatch(INTERNAL_CALLBACKS_CHAT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(INTERNAL_CALLBACKS_CHAT_PATH)).toStrictEqual({});
+    for (const pathname of INTERNAL_CALLBACKS_CHAT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

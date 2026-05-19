@@ -2,22 +2,11 @@ import { eq, and } from "drizzle-orm";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { notFound } from "@vm0/api-services/errors";
+import { publishThreadListChanged } from "./chat-message-service";
 import {
-  getMessagesByThreadId,
-  getLatestSessionIdForThread,
-  publishThreadListChanged,
-} from "./chat-message-service";
-import { formatChatRunErrorMessage } from "./chat-run-error-message";
-import {
-  type ChatThreadDetail,
   type PersistedAttachment,
-  type ResolvedAttachFile,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { listS3Objects } from "../../infra/s3/s3-client";
-import { env } from "../../../env";
-import { EXT_MIMETYPE_MAP } from "../../shared/mimetype";
-import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
@@ -147,121 +136,4 @@ export async function updateChatThreadTitle(
     .set({ title })
     .where(eq(chatThreads.id, threadId));
   await publishThreadListChanged(userId);
-}
-
-type ChatMessage = ChatThreadDetail["chatMessages"][number];
-
-function chatMessageStatus(row: {
-  role: string;
-  runStatus: string | null;
-}): string | undefined {
-  if (row.role !== "assistant") {
-    return undefined;
-  }
-  return row.runStatus ?? undefined;
-}
-
-/**
- * Resolve file IDs to permanent file URLs with metadata for the frontend.
- *
- * Lists S3 objects at each file's prefix to recover filename and size, then
- * constructs the permanent `${APP_URL}/f/{publicUserId}/{id}/{filename}` URL.
- * The short-lived presigned signature is materialized per-request inside the
- * /f route, not here — the value returned to the frontend is stable and safe
- * to persist in markdown or share over external channels.
- */
-export async function resolveAttachFileUrls(
-  userId: string,
-  fileIds: string[],
-): Promise<ResolvedAttachFile[]> {
-  const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  const results = await Promise.all(
-    fileIds.map(async (fileId) => {
-      const prefix = `uploads/${userId}/${fileId}/`;
-      const objects = await listS3Objects(bucket, prefix);
-      if (objects.length === 0) {
-        return null;
-      }
-      const obj = objects[0]!;
-      const filename = obj.key.split("/").pop() ?? fileId;
-      const ext = filename.split(".").pop()?.toLowerCase();
-      const contentType =
-        (ext ? EXT_MIMETYPE_MAP[ext] : undefined) ?? "application/octet-stream";
-      const url = buildFileUrl(userId, fileId, filename);
-      return { id: fileId, filename, contentType, size: obj.size, url };
-    }),
-  );
-  return results.filter((r): r is ResolvedAttachFile => {
-    return r !== null;
-  });
-}
-
-export async function getChatThreadMessages(
-  threadId: string,
-  userId: string,
-): Promise<{
-  chatMessages: ChatMessage[];
-  latestSessionId: string | null;
-}> {
-  const [rows, latestSessionId] = await Promise.all([
-    getMessagesByThreadId(threadId),
-    getLatestSessionIdForThread(threadId),
-  ]);
-
-  const chatMessages: ChatMessage[] = await Promise.all(
-    rows.map(async (row) => {
-      // Event-backed rows (sequence_number set) carry their own valid assistant
-      // text — they must never inherit the run-level error via the leftJoin,
-      // or a timed-out run would mask every intermediate message as "failed".
-      // The placeholder row (sequence_number IS NULL) is the only row that
-      // falls back to agent_runs.error, covering the case where the terminal
-      // callback failed to deliver and chat_messages.error was never written.
-      const isPlaceholder = row.sequenceNumber === null;
-      const rawEffectiveError = isPlaceholder
-        ? (row.error ?? row.runError ?? undefined)
-        : (row.error ?? undefined);
-      const effectiveError =
-        rawEffectiveError && isPlaceholder && !row.error && row.runId
-          ? await formatChatRunErrorMessage({
-              chatThreadId: threadId,
-              runId: row.runId,
-              errorMessage: rawEffectiveError,
-            })
-          : rawEffectiveError;
-
-      const attachFiles =
-        row.attachFiles && row.attachFiles.length > 0
-          ? await resolveAttachFileUrls(userId, row.attachFiles)
-          : undefined;
-
-      const role = row.role as "user" | "assistant";
-      const message = {
-        id: row.id,
-        role,
-        content: row.content,
-        runId: row.runId ?? undefined,
-        revokesMessageId: row.revokesMessageId ?? undefined,
-        interruptsRunId: row.interruptsRunId ?? undefined,
-        error: effectiveError,
-        attachFiles,
-        createdAt: row.createdAt.toISOString(),
-      };
-      if (role !== "assistant") {
-        return {
-          ...message,
-          role: "user" as const,
-        };
-      }
-      return {
-        ...message,
-        role: "assistant" as const,
-        status: chatMessageStatus(row),
-      };
-    }),
-  );
-
-  return {
-    chatMessages,
-    latestSessionId: latestSessionId ?? null,
-  };
 }

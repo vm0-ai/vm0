@@ -267,13 +267,11 @@ const router = tsr.router(webhookCompleteContract, {
       log.debug(`Run ${body.runId} completed successfully`);
     } else {
       // Failure: store the runner's real error (e.g., codex CLI stderr)
-      // verbatim in agent_runs.error. The frontend's formatChatRunErrorMessage
-      // (chat-thread/chat-run-error-message.ts) decides what the user sees:
-      // known actionable errors get product copy or the underlying error;
-      // otherwise → polished generic UI ("Oops..." / "Report this issue"
-      // with streak logic). Preserving the raw error here keeps the DB
-      // column debug-useful and lets future actionable mappings light up
-      // automatically without a migration.
+      // verbatim in agent_runs.error. The chat callback path decides what
+      // users see: known actionable errors get product copy or the underlying
+      // error, while generic failures use polished fallback UI. Preserving the
+      // raw error keeps the DB column debug-useful and lets future actionable
+      // mappings light up automatically without a migration.
       errorMessage = body.error?.trim() || "Run failed without error message";
 
       // Also accept "timeout" so the sandbox's own exit-code-based error

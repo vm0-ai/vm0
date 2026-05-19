@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
+import { WebPushError } from "web-push";
 import {
   agentComposes,
   agentComposeVersions,
@@ -12,11 +13,13 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -24,6 +27,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { clearAllDetached } from "../../utils";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
@@ -206,6 +210,9 @@ async function deleteFixture(fixture: ChatCallbackFixture): Promise<void> {
   await db
     .delete(modelProviders)
     .where(eq(modelProviders.orgId, fixture.orgId));
+  await db
+    .delete(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, fixture.userId));
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
   await db
@@ -250,13 +257,309 @@ function completedAssistantOutput(text: string): void {
     ]);
 }
 
+function completedOutputEvents(
+  events: readonly Record<string, unknown>[],
+): void {
+  context.mocks.axiom.query
+    .mockResolvedValueOnce([{ sequenceNumber: 0 }, { sequenceNumber: 1 }])
+    .mockResolvedValueOnce(events);
+}
+
+function completedNoOutputEvents(): void {
+  completedOutputEvents([]);
+}
+
 async function listMessages(threadId: string) {
   return await store
     .set(writeDb$)
     .select()
     .from(chatMessages)
     .where(eq(chatMessages.chatThreadId, threadId))
-    .orderBy(chatMessages.createdAt);
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
+}
+
+async function seedAdditionalRun(
+  fixture: ChatCallbackFixture,
+  args: {
+    readonly prompt?: string;
+    readonly status?: string;
+    readonly createdAt?: Date;
+    readonly completedAt?: Date | null;
+    readonly error?: string | null;
+    readonly result?: unknown;
+    readonly lastEventSequence?: number | null;
+  } = {},
+): Promise<{ readonly runId: string; readonly callbackId: string }> {
+  const db = store.set(writeDb$);
+  const [run] = await db
+    .insert(agentRuns)
+    .values({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      agentComposeVersionId: fixture.versionId,
+      sessionId: fixture.sessionId,
+      status: args.status ?? "completed",
+      prompt: args.prompt ?? "follow-up prompt",
+      completedAt: args.completedAt ?? new Date("2026-01-01T00:01:10.000Z"),
+      lastEventSequence: args.lastEventSequence ?? 1,
+      result: args.result,
+      error: args.error,
+      vars: { ZERO_AGENT_ID: fixture.agentId },
+      createdAt: args.createdAt,
+    })
+    .returning({ id: agentRuns.id });
+  if (!run) {
+    throw new Error("additional run insert returned no row");
+  }
+  await db.insert(zeroRuns).values({
+    id: run.id,
+    triggerSource: "web",
+    chatThreadId: fixture.threadId,
+  });
+  await db.insert(chatMessages).values({
+    chatThreadId: fixture.threadId,
+    role: "user",
+    content: args.prompt ?? "follow-up prompt",
+    runId: run.id,
+  });
+  const { callbackId } = await store.set(
+    seedAgentRunCallback$,
+    {
+      runId: run.id,
+      url: `http://localhost${PATH}`,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    },
+    context.signal,
+  );
+  return { runId: run.id, callbackId };
+}
+
+async function setRunResult(runId: string, result: unknown): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentRuns)
+    .set({ result })
+    .where(eq(agentRuns.id, runId));
+}
+
+async function setRunStatus(
+  runId: string,
+  status: string,
+  error?: string,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentRuns)
+    .set({ status, error })
+    .where(eq(agentRuns.id, runId));
+}
+
+async function insertAssistantEventMessages(
+  fixture: ChatCallbackFixture,
+  runId: string,
+  items: readonly {
+    readonly sequenceNumber: number;
+    readonly content: string;
+  }[],
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+  await store
+    .set(writeDb$)
+    .insert(chatMessages)
+    .values(
+      items.map((item) => {
+        return {
+          chatThreadId: fixture.threadId,
+          role: "assistant",
+          content: item.content,
+          runId,
+          sequenceNumber: item.sequenceNumber,
+        };
+      }),
+    );
+}
+
+async function insertQueuedMessage(
+  fixture: ChatCallbackFixture,
+  args: {
+    readonly content: string | null;
+    readonly attachFiles?: readonly string[];
+    readonly interruptsRunId?: string;
+    readonly goalRemainingTurns?: number;
+    readonly goalOriginMessageId?: string;
+  },
+): Promise<string> {
+  const [message] = await store
+    .set(writeDb$)
+    .insert(chatMessages)
+    .values({
+      chatThreadId: fixture.threadId,
+      role: "user",
+      content: args.content,
+      runId: null,
+      attachFiles: args.attachFiles ? [...args.attachFiles] : null,
+      interruptsRunId: args.interruptsRunId,
+      goalRemainingTurns: args.goalRemainingTurns,
+      goalOriginMessageId: args.goalOriginMessageId,
+    })
+    .returning({ id: chatMessages.id });
+  if (!message) {
+    throw new Error("queued message insert returned no row");
+  }
+  return message.id;
+}
+
+async function firstUserMessageForRun(
+  fixture: ChatCallbackFixture,
+  runId: string,
+): Promise<{ readonly id: string; readonly content: string | null }> {
+  const [message] = await store
+    .set(writeDb$)
+    .select({ id: chatMessages.id, content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, fixture.threadId),
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "user"),
+      ),
+    )
+    .limit(1);
+  if (!message) {
+    throw new Error("expected user message for run");
+  }
+  return message;
+}
+
+async function markRunMessageAsGoal(
+  fixture: ChatCallbackFixture,
+  args: { readonly remainingTurns: number; readonly prompt?: string },
+): Promise<string> {
+  const message = await firstUserMessageForRun(fixture, fixture.runId);
+  const content = args.prompt ?? message.content;
+  await store
+    .set(writeDb$)
+    .update(chatMessages)
+    .set({
+      content,
+      goalRemainingTurns: args.remainingTurns,
+      goalOriginMessageId: message.id,
+    })
+    .where(eq(chatMessages.id, message.id));
+  if (args.prompt) {
+    await store
+      .set(writeDb$)
+      .update(agentRuns)
+      .set({ prompt: args.prompt })
+      .where(eq(agentRuns.id, fixture.runId));
+  }
+  return message.id;
+}
+
+async function seedOrgDefaultModelProvider(
+  fixture: ChatCallbackFixture,
+): Promise<{
+  readonly providerId: string;
+  readonly selectedModel: string;
+}> {
+  const db = store.set(writeDb$);
+  const selectedModel = "claude-sonnet-4-6";
+  const [secret] = await db
+    .insert(secrets)
+    .values({
+      name: "ANTHROPIC_API_KEY",
+      encryptedValue: encryptSecretForTests("queued-byok-key"),
+      type: "model-provider",
+      userId: ORG_SENTINEL_USER_ID,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: secrets.id });
+  const [provider] = await db
+    .insert(modelProviders)
+    .values({
+      type: "anthropic-api-key",
+      secretId: secret!.id,
+      isDefault: false,
+      selectedModel,
+      userId: ORG_SENTINEL_USER_ID,
+      orgId: fixture.orgId,
+    })
+    .returning({ id: modelProviders.id });
+  await db.insert(orgModelPolicies).values({
+    orgId: fixture.orgId,
+    model: selectedModel,
+    isDefault: true,
+    defaultProviderType: "anthropic-api-key",
+    credentialScope: "org",
+    modelProviderId: provider!.id,
+    createdByUserId: fixture.userId,
+    updatedByUserId: fixture.userId,
+  });
+  await db
+    .update(chatThreads)
+    .set({
+      modelProviderId: "00000000-0000-4000-8000-000000000000",
+      modelProviderType: "vm0",
+      modelProviderCredentialScope: "org",
+      selectedModel,
+    })
+    .where(eq(chatThreads.id, fixture.threadId));
+  return { providerId: provider!.id, selectedModel };
+}
+
+async function createPushSubscription(
+  fixture: ChatCallbackFixture,
+): Promise<string> {
+  const endpoint = `https://fcm.googleapis.com/fcm/send/${randomUUID()}`;
+  await store.set(writeDb$).insert(pushSubscriptions).values({
+    userId: fixture.userId,
+    endpoint,
+    p256dh: "test-p256dh",
+    auth: "test-auth",
+  });
+  return endpoint;
+}
+
+async function listPushSubscriptions(userId: string) {
+  return await store
+    .set(writeDb$)
+    .select({ endpoint: pushSubscriptions.endpoint })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, userId))
+    .orderBy(pushSubscriptions.endpoint);
+}
+
+function enableVapid(): void {
+  mockOptionalEnv("VAPID_PUBLIC_KEY", "test-vapid-public-key");
+  mockOptionalEnv("VAPID_PRIVATE_KEY", "test-vapid-private-key");
+}
+
+function mockOpenRouter(
+  handler: (body: {
+    readonly messages: readonly {
+      readonly role: string;
+      readonly content: string;
+    }[];
+  }) => string,
+): void {
+  server.use(
+    http.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      async ({ request }) => {
+        const body = (await request.json()) as {
+          messages: readonly {
+            readonly role: string;
+            readonly content: string;
+          }[];
+        };
+        return HttpResponse.json({
+          choices: [{ message: { content: handler(body) } }],
+        });
+      },
+    ),
+  );
 }
 
 describe("POST /api/internal/callbacks/chat", () => {
@@ -273,6 +576,68 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ success: true });
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for invalid callback payloads", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid or missing payload",
+    });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("returns success without side effects when the run has no chat thread mapping", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await store
+      .set(writeDb$)
+      .update(zeroRuns)
+      .set({ chatThreadId: null })
+      .where(eq(zeroRuns.id, fixture.runId));
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^chatThreadRunUpdated:/),
+      null,
+    );
+  });
+
+  it("returns success without side effects after the chat thread was deleted", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await store
+      .set(writeDb$)
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId));
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("inserts assistant output on completed callbacks", async () => {
@@ -307,6 +672,258 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
+  it("uses the run's database thread mapping when the payload thread is stale", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedAssistantOutput("mapped thread answer");
+    const staleThreadId = randomUUID();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: staleThreadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    expect(
+      messages.some((message) => {
+        return (
+          message.role === "assistant" &&
+          message.content === "mapped thread answer"
+        );
+      }),
+    ).toBeTruthy();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadRunUpdated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
+  });
+
+  it("inserts the latest result event when no assistant event exists", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 0,
+        eventData: { result: "draft answer" },
+      },
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "final fallback answer" },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    const assistantMessages = messages.filter((message) => {
+      return message.role === "assistant";
+    });
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]).toMatchObject({
+      runId: fixture.runId,
+      sequenceNumber: 1,
+      content: "final fallback answer",
+    });
+    await clearAllDetached();
+  });
+
+  it("inserts Codex agent_message item.completed events", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "item.completed",
+        sequenceNumber: 1,
+        eventData: {
+          item: { type: "agent_message", text: "Codex answer" },
+        },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    expect(
+      messages.some((message) => {
+        return (
+          message.role === "assistant" &&
+          message.sequenceNumber === 1 &&
+          message.content === "Codex answer"
+        );
+      }),
+    ).toBeTruthy();
+    await clearAllDetached();
+  });
+
+  it("ignores non-agent_message item.completed events", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "item.completed",
+        sequenceNumber: 1,
+        eventData: {
+          item: { type: "tool_call", text: "internal tool text" },
+        },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    expect(
+      messages.filter((message) => {
+        return message.role === "assistant";
+      }),
+    ).toHaveLength(0);
+    await clearAllDetached();
+  });
+
+  it("uses eventData.sequenceNumber for result fallback events", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "result",
+        eventData: { sequenceNumber: 1, result: "sequence from eventData" },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    expect(
+      messages.find((message) => {
+        return message.role === "assistant";
+      }),
+    ).toMatchObject({
+      sequenceNumber: 1,
+      content: "sequence from eventData",
+    });
+    await clearAllDetached();
+  });
+
+  it("does not insert a result fallback when assistant output already exists", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "Already streamed." },
+    ]);
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Unknown command: /aaa" },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const assistantMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "assistant";
+      },
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]?.content).toBe("Already streamed.");
+    await clearAllDetached();
+  });
+
+  it("deduplicates assistant events across concurrent completed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        eventType: "assistant",
+        sequenceNumber: 0,
+        eventData: {
+          message: { content: [{ type: "text", text: "First event" }] },
+        },
+      },
+      {
+        eventType: "assistant",
+        sequenceNumber: 1,
+        eventData: {
+          message: { content: [{ type: "text", text: "Second event" }] },
+        },
+      },
+    ]);
+
+    const makeRequest = () => {
+      return postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "completed",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+    };
+    const [first, second] = await Promise.all([makeRequest(), makeRequest()]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const eventMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "assistant" && message.sequenceNumber !== null;
+      },
+    );
+    expect(
+      eventMessages.map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(["First event", "Second event"]);
+    await clearAllDetached();
+  });
+
+  it("does not insert assistant output when Axiom has no assistant or result events", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    expect(
+      messages.filter((message) => {
+        return message.role === "assistant";
+      }),
+    ).toHaveLength(0);
+    await clearAllDetached();
+  });
+
   it("inserts assistant error messages on failed callbacks", async () => {
     const fixture = await track(seedChatCallbackFixture());
 
@@ -332,6 +949,77 @@ describe("POST /api/internal/callbacks/chat", () => {
       }),
     ).toBeTruthy();
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("shows a report link after consecutive generic failed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await setRunStatus(fixture.runId, "failed", "First runner failure");
+    await store
+      .set(writeDb$)
+      .update(agentRuns)
+      .set({ createdAt: new Date("2026-01-01T00:00:00.000Z") })
+      .where(eq(agentRuns.id, fixture.runId));
+
+    const first = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "First runner failure",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+    expect(first.status).toBe(200);
+
+    const secondRun = await seedAdditionalRun(fixture, {
+      prompt: "try again",
+      status: "failed",
+      error: "Second runner failure",
+      createdAt: new Date("2026-01-01T00:01:00.000Z"),
+      completedAt: new Date("2026-01-01T00:01:10.000Z"),
+    });
+    const second = await postSignedCallback({
+      callbackId: secondRun.callbackId,
+      runId: secondRun.runId,
+      status: "failed",
+      error: "Second runner failure",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(second.status).toBe(200);
+    const errorMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "assistant" && message.error !== null;
+      },
+    );
+    expect(errorMessages).toHaveLength(2);
+    expect(errorMessages[0]?.error).toBe(
+      "Oops, something went wrong. Please try again later.",
+    );
+    expect(errorMessages[1]?.error).toBe(
+      `An unexpected error occurred. [Report this issue](/runs/${secondRun.runId}/report-error)`,
+    );
+  });
+
+  it("preserves actionable failed run errors", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const actionableError =
+      "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.";
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: actionableError,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const errorMessage = (await listMessages(fixture.threadId)).find(
+      (message) => {
+        return message.role === "assistant" && message.runId === fixture.runId;
+      },
+    );
+    expect(errorMessage?.error).toBe(actionableError);
+    expect(errorMessage?.content).toBe(actionableError);
   });
 
   it("preserves non-Codex usage limit errors on failed callbacks", async () => {
@@ -388,6 +1076,59 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(errorMessage?.content).toBe(expectedDisplayError);
     expect(errorMessage?.error).not.toBe(codexUsageLimitError);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("preserves user-cancelled failed run errors", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "Run cancelled",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const errorMessage = (await listMessages(fixture.threadId)).find(
+      (message) => {
+        return message.role === "assistant" && message.runId === fixture.runId;
+      },
+    );
+    expect(errorMessage?.error).toBe("Run cancelled");
+    expect(errorMessage?.content).toBe("Run cancelled");
+  });
+
+  it("publishes run-updated signals only for terminal callbacks with a mapped thread", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedNoOutputEvents();
+
+    const completed = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+    expect(completed.status).toBe(200);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadRunUpdated:${fixture.threadId}`,
+      null,
+    );
+
+    context.mocks.ably.publish.mockClear();
+    const progress = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "progress",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(progress.status).toBe(200);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadRunUpdated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
   });
 
   it("auto-sends the oldest queued user message after a terminal callback", async () => {
@@ -513,6 +1254,502 @@ describe("POST /api/internal/callbacks/chat", () => {
       modelProviderCredentialScope: "org",
       selectedModel,
     });
+    await clearAllDetached();
+  });
+
+  it("auto-sends a queued user message after failed callbacks too", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    await setRunStatus(fixture.runId, "failed", "boom");
+    const queuedId = await insertQueuedMessage(fixture, {
+      content: "queued after failure",
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "boom",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const claimed = (await listMessages(fixture.threadId)).find((message) => {
+      return (
+        message.role === "user" &&
+        message.revokesMessageId === queuedId &&
+        message.runId !== null
+      );
+    });
+    expect(claimed?.content).toBe("queued after failure");
+    expect(claimed?.runId).not.toBe(fixture.runId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadRunCreated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
+  });
+
+  it("continues the latest chat session when auto-sending queued messages", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    const continuedSessionId = randomUUID();
+    await store.set(writeDb$).insert(agentSessions).values({
+      id: continuedSessionId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      agentComposeId: fixture.agentId,
+    });
+    await setRunResult(fixture.runId, { agentSessionId: continuedSessionId });
+    const queuedId = await insertQueuedMessage(fixture, {
+      content: "queued in same session",
+    });
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const claimed = (await listMessages(fixture.threadId)).find((message) => {
+      return message.revokesMessageId === queuedId && message.runId !== null;
+    });
+    expect(claimed?.runId).toBeTruthy();
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, claimed!.runId!))
+      .limit(1);
+    expect(run).toStrictEqual({
+      sessionId: continuedSessionId,
+      continuedFromSessionId: continuedSessionId,
+    });
+    await clearAllDetached();
+  });
+
+  it("preserves queued message attachments when auto-sending", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    const queuedId = await insertQueuedMessage(fixture, {
+      content: "queued with files",
+      attachFiles: ["file-1"],
+    });
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const claimed = (await listMessages(fixture.threadId)).find((message) => {
+      return message.revokesMessageId === queuedId && message.runId !== null;
+    });
+    expect(claimed?.attachFiles).toStrictEqual(["file-1"]);
+    expect(claimed?.runId).not.toBe(fixture.runId);
+    await clearAllDetached();
+  });
+
+  it("does not auto-send when no queued user message exists", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const userMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "user";
+      },
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadRunCreated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
+  });
+
+  it("generates a chat thread title from the completed callback exchange", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Use --inspect for debugging." },
+      },
+    ]);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    let capturedTitlePrompt: string | null = null;
+    mockOpenRouter((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        capturedTitlePrompt = body.messages[1]?.content ?? null;
+        return "Debugging Node Apps";
+      }
+      return "Generated summary";
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId))
+      .limit(1);
+    expect(thread?.title).toBe("Debugging Node Apps");
+    const titlePrompt = capturedTitlePrompt ?? "";
+    expect(titlePrompt).toContain("Most recent user message:\ntest prompt");
+    expect(titlePrompt).toContain(
+      "Most recent assistant reply:\nUse --inspect for debugging.",
+    );
+    await clearAllDetached();
+  });
+
+  it("feeds prior rounds into the callback title prompt without duplicating the current run", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const prior = await seedAdditionalRun(fixture, {
+      prompt: "How do I parse JSON?",
+      status: "completed",
+      result: { agentSessionId: fixture.sessionId },
+      createdAt: new Date("2025-12-31T23:59:00.000Z"),
+      completedAt: new Date("2025-12-31T23:59:10.000Z"),
+    });
+    await insertAssistantEventMessages(fixture, prior.runId, [
+      { sequenceNumber: 0, content: "Use JSON.parse(str)." },
+    ]);
+    completedAssistantOutput("Use JSON.stringify(value).");
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    let capturedTitlePrompt: string | null = null;
+    mockOpenRouter((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        capturedTitlePrompt = body.messages[1]?.content ?? null;
+        return "Working with JSON";
+      }
+      return "Generated summary";
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const titlePrompt = capturedTitlePrompt ?? "";
+    expect(titlePrompt).toContain("Previous conversation");
+    expect(titlePrompt).toContain("How do I parse JSON?");
+    expect(titlePrompt).toContain("Use JSON.parse(str).");
+    const priorSection =
+      titlePrompt.split("Most recent user message:")[0] ?? "";
+    expect(priorSection).not.toContain("test prompt");
+    await clearAllDetached();
+  });
+
+  it("does not fail completed callbacks when title generation returns an upstream error", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Some result" },
+      },
+    ]);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    server.use(
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return new HttpResponse("Internal Server Error", { status: 500 });
+      }),
+    );
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const [thread] = await store
+      .set(writeDb$)
+      .select({ title: chatThreads.title })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, fixture.threadId))
+      .limit(1);
+    expect(thread?.title).toBe("Test thread");
+    await clearAllDetached();
+  });
+
+  it("sends a push notification on completed callbacks when subscriptions and VAPID are configured", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await createPushSubscription(fixture);
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Files created successfully." },
+      },
+    ]);
+    enableVapid();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(
+      context.mocks.webpush.sendNotification.mock.calls[0]?.[1] as string,
+    ) as {
+      readonly title: string;
+      readonly body: string;
+      readonly url: string;
+    };
+    expect(payload.title).toBe("test prompt");
+    expect(payload.body).toBe("Your task is complete");
+    expect(payload.url).toBe(`/chats/${fixture.threadId}`);
+    await clearAllDetached();
+  });
+
+  it("sends a push notification on failed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await createPushSubscription(fixture);
+    enableVapid();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(
+      context.mocks.webpush.sendNotification.mock.calls[0]?.[1] as string,
+    ) as {
+      readonly title: string;
+      readonly body: string;
+      readonly url: string;
+    };
+    expect(payload.title).toBe("test prompt");
+    expect(payload.body).toContain(
+      "Oops, something went wrong. Please try again later.",
+    );
+    expect(payload.url).toBe(`/chats/${fixture.threadId}`);
+  });
+
+  it("does not send push notifications when VAPID keys are absent", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await createPushSubscription(fixture);
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+    await clearAllDetached();
+  });
+
+  it("deletes stale push subscriptions after gone responses", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const endpoint = await createPushSubscription(fixture);
+    completedNoOutputEvents();
+    enableVapid();
+    context.mocks.webpush.sendNotification.mockRejectedValueOnce(
+      new WebPushError("Gone", 410, {}, "", endpoint),
+    );
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(listPushSubscriptions(fixture.userId)).resolves.toStrictEqual(
+      [],
+    );
+    await clearAllDetached();
+  });
+
+  it("inserts a goal continuation row when a goal-driven run completes", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    const originMessageId = await markRunMessageAsGoal(fixture, {
+      remainingTurns: 5,
+      prompt: "Run a long-horizon refactor",
+    });
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const continuation = (await listMessages(fixture.threadId)).find(
+      (message) => {
+        return (
+          message.role === "user" &&
+          message.runId === null &&
+          message.goalRemainingTurns === 4
+        );
+      },
+    );
+    expect(continuation).toMatchObject({
+      content: "Run a long-horizon refactor",
+      goalOriginMessageId: originMessageId,
+    });
+    await clearAllDetached();
+  });
+
+  it("does not continue a goal chain when the assistant emitted GOAL_DONE", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await markRunMessageAsGoal(fixture, { remainingTurns: 5 });
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "Done. [GOAL_DONE]" },
+    ]);
+    completedNoOutputEvents();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const continuations = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return (
+          message.role === "user" &&
+          message.runId === null &&
+          message.goalRemainingTurns === 4
+        );
+      },
+    );
+    expect(continuations).toHaveLength(0);
+    await clearAllDetached();
+  });
+
+  it("does not continue a goal chain after failed callbacks or interrupt rows", async () => {
+    const failedFixture = await track(seedChatCallbackFixture());
+    await markRunMessageAsGoal(failedFixture, { remainingTurns: 5 });
+    await setRunStatus(failedFixture.runId, "failed", "boom");
+
+    const failed = await postSignedCallback({
+      callbackId: failedFixture.callbackId,
+      runId: failedFixture.runId,
+      status: "failed",
+      error: "boom",
+      payload: {
+        threadId: failedFixture.threadId,
+        agentId: failedFixture.agentId,
+      },
+    });
+    expect(failed.status).toBe(200);
+
+    const interruptedFixture = await track(seedChatCallbackFixture());
+    await markRunMessageAsGoal(interruptedFixture, { remainingTurns: 5 });
+    await insertQueuedMessage(interruptedFixture, {
+      content: null,
+      interruptsRunId: interruptedFixture.runId,
+    });
+    completedNoOutputEvents();
+    const interrupted = await postSignedCallback({
+      callbackId: interruptedFixture.callbackId,
+      runId: interruptedFixture.runId,
+      status: "completed",
+      payload: {
+        threadId: interruptedFixture.threadId,
+        agentId: interruptedFixture.agentId,
+      },
+    });
+
+    expect(interrupted.status).toBe(200);
+    for (const fixture of [failedFixture, interruptedFixture]) {
+      const continuations = (await listMessages(fixture.threadId)).filter(
+        (message) => {
+          return (
+            message.role === "user" &&
+            message.runId === null &&
+            message.goalRemainingTurns === 4
+          );
+        },
+      );
+      expect(continuations).toHaveLength(0);
+    }
+    await clearAllDetached();
+  });
+
+  it("deduplicates goal continuation rows across duplicate callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await seedOrgDefaultModelProvider(fixture);
+    await markRunMessageAsGoal(fixture, { remainingTurns: 5 });
+    context.mocks.axiom.query.mockResolvedValue([
+      { sequenceNumber: 0 },
+      { sequenceNumber: 1 },
+    ]);
+
+    const makeRequest = () => {
+      return postSignedCallback({
+        callbackId: fixture.callbackId,
+        runId: fixture.runId,
+        status: "completed",
+        payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+      });
+    };
+    const [first, second] = await Promise.all([makeRequest(), makeRequest()]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const continuations = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return (
+          message.role === "user" &&
+          message.runId === null &&
+          message.goalRemainingTurns === 4
+        );
+      },
+    );
+    expect(continuations).toHaveLength(1);
     await clearAllDetached();
   });
 

@@ -64,7 +64,6 @@
     "stripe": "^20.4.1",
     "svix": "^1.84.1",
     "tar": "^7.5.11",
-    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -79,7 +78,6 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@types/web-push": "^3.6.4",
     "@typescript-eslint/rule-tester": "^8.59.3",
     "@typescript-eslint/utils": "^8.59.3",
     "@vm0/eslint-config": "workspace:*",

@@ -1,5 +1,1 @@
-export {
-  getChatThread,
-  getChatThreadMessages,
-  updateChatThreadTitle,
-} from "./chat-thread-service";
+export { updateChatThreadTitle } from "./chat-thread-service";
