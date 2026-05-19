@@ -452,12 +452,12 @@ fn generate_veth_ip_pair(pool_idx: u32, ns_idx: u32) -> (String, String) {
 /// Parse a Firecracker network namespace name.
 ///
 /// Returns `None` if the name doesn't match the expected format
-/// `vm0-ns-{XX}-{XX}` where each index is exactly 2 hex characters, or if
-/// either index is outside the supported bounds.
+/// `vm0-ns-{xx}-{xx}` where each index is exactly 2 lowercase hex
+/// characters, or if either index is outside the supported bounds.
 pub fn parse_netns_name(name: &str) -> Option<ParsedNetnsName> {
     let suffix = name.strip_prefix(NS_PREFIX)?;
     let (pool_hex, namespace_hex) = suffix.split_once('-')?;
-    if !is_hex2(pool_hex) || !is_hex2(namespace_hex) {
+    if !is_lower_hex2(pool_hex) || !is_lower_hex2(namespace_hex) {
         return None;
     }
 
@@ -473,9 +473,11 @@ pub fn parse_netns_name(name: &str) -> Option<ParsedNetnsName> {
     })
 }
 
-/// Check that a string is exactly 2 ASCII hex characters.
-fn is_hex2(s: &str) -> bool {
-    s.len() == 2 && s.bytes().all(|b| b.is_ascii_hexdigit())
+/// Check that a string is exactly 2 lowercase hex characters.
+fn is_lower_hex2(s: &str) -> bool {
+    s.len() == 2
+        && s.bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 // ---------------------------------------------------------------------------
@@ -2309,6 +2311,8 @@ mod tests {
     fn parse_netns_name_invalid_hex() {
         assert_eq!(parse_netns_name("vm0-ns-zz-00"), None);
         assert_eq!(parse_netns_name("vm0-ns-00-zz"), None);
+        assert_eq!(parse_netns_name("vm0-ns-0A-00"), None);
+        assert_eq!(parse_netns_name("vm0-ns-00-0A"), None);
     }
 
     #[test]

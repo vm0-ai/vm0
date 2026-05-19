@@ -1264,6 +1264,7 @@ mod tests {
         assert_eq!(parse_netns_list_line("vm0-ns-00-extra"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-zz"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-00-0a-extra"), None);
+        assert_eq!(parse_netns_list_line("vm0-ns-00-0A"), None);
         assert_eq!(parse_netns_list_line("vm0-ns-40-00"), None);
     }
 
