@@ -14,11 +14,13 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { authContext$ } from "../auth/auth-context";
+import { request$ } from "../context/hono";
 import { db$, writeDb$ } from "../external/db";
 import { tapError } from "../utils";
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -36,12 +38,13 @@ function errorResponse(
 function githubInstallUrl(
   userId: string,
   composeId: string | null,
+  origin: string,
 ): string | null {
   if (!optionalEnv("GITHUB_APP_SLUG")) {
     return null;
   }
 
-  const url = new URL("/api/github/oauth/install", env("VM0_API_URL"));
+  const url = new URL("/api/github/oauth/install", origin);
   url.searchParams.set("vm0UserId", userId);
   if (composeId) {
     url.searchParams.set("composeId", composeId);
@@ -297,6 +300,7 @@ export const updateGithubInstallation$ = command(
 
 export const getGithubInstallation$ = computed(async (get) => {
   const auth = get(authContext$);
+  const origin = getOAuthWebOrigin(get(request$).raw);
   const db = get(db$);
 
   const [result] = await db
@@ -337,7 +341,7 @@ export const getGithubInstallation$ = computed(async (get) => {
           message: "No GitHub installation found",
           code: "NOT_FOUND",
         },
-        installUrl: githubInstallUrl(auth.userId, defaultComposeId),
+        installUrl: githubInstallUrl(auth.userId, defaultComposeId, origin),
       },
     };
   }

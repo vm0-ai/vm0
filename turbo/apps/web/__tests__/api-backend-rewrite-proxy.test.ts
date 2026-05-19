@@ -8,7 +8,10 @@ import { createRequire } from "node:module";
 import { parse, type UrlWithParsedQuery } from "node:url";
 import { http as mswHttp, passthrough } from "msw";
 import { describe, expect, it } from "vitest";
-import { matchesApiBackendRewritePath } from "../api-backend-rewrites";
+import {
+  matchesApiBackendRewritePath,
+  matchesGithubOAuthRewritePath,
+} from "../api-backend-rewrites";
 import { server } from "../src/mocks/server";
 
 type ProxyRequest = (
@@ -1043,6 +1046,24 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/github/oauth/install/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/github/oauth")).toBe(false);
+  });
+
+  it("matches GitHub OAuth web-origin rewrite paths exactly", () => {
+    expect(matchesGithubOAuthRewritePath("/api/github/oauth/callback")).toBe(
+      true,
+    );
+    expect(matchesGithubOAuthRewritePath("/api/github/oauth/install")).toBe(
+      true,
+    );
+    expect(matchesGithubOAuthRewritePath("/api/integrations/github")).toBe(
+      true,
+    );
+    expect(
+      matchesGithubOAuthRewritePath("/api/github/oauth/callback/extra"),
+    ).toBe(false);
+    expect(
+      matchesGithubOAuthRewritePath("/api/integrations/github/extra"),
+    ).toBe(false);
   });
 
   it("matches the logs search rewrite path exactly", () => {

@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { githubOauthContract } from "@vm0/api-contracts/contracts/github-oauth";
 
 import { queryOf } from "../context/request";
+import { request$ } from "../context/hono";
 import { writeDb$ } from "../external/db";
 import { env, optionalEnv } from "../../lib/env";
 import {
@@ -19,6 +20,10 @@ import {
 } from "../services/github-oauth.service";
 import { encryptSecretValue } from "../services/crypto.utils";
 import type { RouteEntry } from "../route";
+import {
+  getOAuthCanonicalRedirectUrl,
+  getOAuthWebOrigin,
+} from "./oauth-web-origin";
 
 const REDIRECT_STATUS = 307;
 
@@ -26,6 +31,13 @@ function redirectResponse(url: string): Response {
   return new Response(null, {
     status: REDIRECT_STATUS,
     headers: { location: url },
+  });
+}
+
+function noStoreRedirect(url: string): Response {
+  return new Response(null, {
+    status: REDIRECT_STATUS,
+    headers: { location: url, "Cache-Control": "no-store" },
   });
 }
 
@@ -40,8 +52,8 @@ function appUrl(path: string): string {
   return `${env("VM0_WEB_URL")}${path}`;
 }
 
-function callbackRedirectUri(): string {
-  return `${env("VM0_API_URL")}/api/github/oauth/callback`;
+function callbackRedirectUri(origin: string): string {
+  return `${origin}/api/github/oauth/callback`;
 }
 
 function worksErrorRedirect(message: string): Response {
@@ -52,6 +64,12 @@ function worksErrorRedirect(message: string): Response {
 
 const installGithubOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$).raw;
+    const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return noStoreRedirect(canonicalRedirectUrl);
+    }
+    const origin = getOAuthWebOrigin(request);
     const appSlug = optionalEnv("GITHUB_APP_SLUG");
     if (!appSlug) {
       return jsonErrorResponse("GitHub App integration is not configured", 503);
@@ -102,14 +120,20 @@ const installGithubOauth$ = command(
     if (state) {
       installUrl.searchParams.set("state", state);
     }
-    installUrl.searchParams.set("redirect_uri", callbackRedirectUri());
+    installUrl.searchParams.set("redirect_uri", callbackRedirectUri(origin));
 
-    return redirectResponse(installUrl.toString());
+    return noStoreRedirect(installUrl.toString());
   },
 );
 
 const callbackGithubOauth$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$).raw;
+    const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
+    if (canonicalRedirectUrl) {
+      return noStoreRedirect(canonicalRedirectUrl);
+    }
+
     const appId = optionalEnv("GITHUB_APP_ID");
     const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
 

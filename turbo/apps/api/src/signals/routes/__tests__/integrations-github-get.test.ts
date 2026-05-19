@@ -16,12 +16,13 @@ import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 
 const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
+const WEB_ORIGIN = "https://www.vm0.ai";
 
 interface GithubFixture {
   readonly orgId: string;
@@ -290,24 +291,44 @@ describe("GET /api/integrations/github", () => {
     const fixture = await seedDefaultAgentFixture();
     defaultAgentFixtures.push(fixture);
     mockSession(fixture.userId, fixture.orgId);
-    mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("GITHUB_APP_SLUG", "vm0-test");
     const client = setupApp({ context })(integrationsGithubContract);
+    const headers: Record<string, string> = {
+      ...authHeaders(),
+      "x-vm0-web-origin": WEB_ORIGIN,
+    };
 
-    const response = await accept(
-      client.getInstallation({ headers: authHeaders() }),
-      [404],
-    );
+    const response = await accept(client.getInstallation({ headers }), [404]);
 
     expect(response.body).toStrictEqual({
       error: {
         message: "No GitHub installation found",
         code: "NOT_FOUND",
       },
-      installUrl: `https://api.vm0.test/api/github/oauth/install?vm0UserId=${encodeURIComponent(
+      installUrl: `${WEB_ORIGIN}/api/github/oauth/install?vm0UserId=${encodeURIComponent(
         fixture.userId,
       )}&composeId=${fixture.composeId}`,
     });
+  });
+
+  it("ignores untrusted web origins when building installUrl", async () => {
+    const fixture = await seedDefaultAgentFixture();
+    defaultAgentFixtures.push(fixture);
+    mockSession(fixture.userId, fixture.orgId);
+    mockOptionalEnv("GITHUB_APP_SLUG", "vm0-test");
+    const client = setupApp({ context })(integrationsGithubContract);
+    const headers: Record<string, string> = {
+      ...authHeaders(),
+      "x-vm0-web-origin": "https://evil.example",
+    };
+
+    const response = await accept(client.getInstallation({ headers }), [404]);
+
+    expect(response.body.installUrl).toBe(
+      `http://api.test/api/github/oauth/install?vm0UserId=${encodeURIComponent(
+        fixture.userId,
+      )}&composeId=${fixture.composeId}`,
+    );
   });
 
   it("returns linked installation data and agent data", async () => {

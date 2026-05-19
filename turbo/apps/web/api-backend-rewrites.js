@@ -135,6 +135,10 @@ const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
 const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
+const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
+const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
+const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
+const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
 const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
 const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
@@ -354,9 +358,9 @@ export const API_BACKEND_REWRITES = [
   [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/generate-image", "/api/generate-image"],
-  ["/api/github/oauth/callback", "/api/github/oauth/callback"],
-  ["/api/github/oauth/install", "/api/github/oauth/install"],
-  ["/api/integrations/github", "/api/integrations/github"],
+  [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
+  [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
+  [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
   [
     TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE,
     "/api/integrations/telegram/auth-callback",
@@ -827,9 +831,17 @@ export function matchesConnectorOAuthRewritePath(pathname) {
   );
 }
 
+export function matchesGithubOAuthRewritePath(pathname) {
+  return (
+    GITHUB_OAUTH_PATH_RE.test(pathname) ||
+    pathname === INTEGRATIONS_GITHUB_REWRITE_SOURCE
+  );
+}
+
 export function matchesOAuthWebOriginRewritePath(pathname) {
   return (
     matchesConnectorOAuthRewritePath(pathname) ||
-    ZERO_SLACK_OAUTH_PATH_RE.test(pathname)
+    ZERO_SLACK_OAUTH_PATH_RE.test(pathname) ||
+    matchesGithubOAuthRewritePath(pathname)
   );
 }

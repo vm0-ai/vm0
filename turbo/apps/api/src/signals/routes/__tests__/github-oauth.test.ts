@@ -29,6 +29,8 @@ const context = testContext();
 const store = createStore();
 const APP_ID = "123456";
 const APP_SLUG = "vm0-test";
+const API_ORIGIN = "https://api.vm0.ai";
+const WEB_ORIGIN = "https://www.vm0.ai";
 const TARGET_LOGIN = "test-org";
 const TARGET_TYPE = "Organization";
 
@@ -86,9 +88,21 @@ function newGithubUserId(): string {
   return String(randomInt(1_000_000_000, 9_999_999_999));
 }
 
-async function appRequest(path: string): Promise<Response> {
+async function appRequest(
+  path: string,
+  options: {
+    readonly origin?: string;
+    readonly headers?: HeadersInit;
+  } = {},
+): Promise<Response> {
   const app = createApp({ signal: context.signal });
-  return await app.request(`http://api.test${path}`, { method: "GET" });
+  return await app.request(
+    `${options.origin ?? "http://localhost:3000"}${path}`,
+    {
+      method: "GET",
+      headers: options.headers,
+    },
+  );
 }
 
 async function seedComposeFixture(
@@ -300,6 +314,54 @@ describe("GitHub OAuth API routes", () => {
     );
   });
 
+  it("uses the trusted web origin for GitHub callback redirect_uri", async () => {
+    mockGithubAppEnv({ credentials: false });
+
+    const response = await appRequest(
+      "/api/github/oauth/install?vm0UserId=user-1&composeId=compose-1",
+      {
+        origin: API_ORIGIN,
+        headers: {
+          "x-vm0-web-origin": WEB_ORIGIN,
+        },
+      },
+    );
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/github/oauth/callback`,
+    );
+  });
+
+  it("ignores untrusted web origins for GitHub callback redirect_uri", async () => {
+    mockGithubAppEnv({ credentials: false });
+
+    const response = await appRequest("/api/github/oauth/install", {
+      headers: {
+        "x-vm0-web-origin": "https://evil.example",
+      },
+    });
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:3000/api/github/oauth/callback",
+    );
+  });
+
+  it("redirects direct API host install requests to the canonical web route", async () => {
+    mockGithubAppEnv({ credentials: false });
+
+    const path =
+      "/api/github/oauth/install?vm0UserId=user-1&composeId=compose-1";
+    const response = await appRequest(path, { origin: API_ORIGIN });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${WEB_ORIGIN}${path}`);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("redirects install requests to GitHub without state when no query is provided", async () => {
     const response = await appRequest("/api/github/oauth/install");
 
@@ -417,6 +479,16 @@ describe("GitHub OAuth API routes", () => {
     const location = response.headers.get("location");
     expect(location).toContain("/works");
     expect(location).not.toContain("error=");
+  });
+
+  it("redirects direct API host callback requests to the canonical web route", async () => {
+    const path =
+      "/api/github/oauth/callback?installation_id=12345&setup_action=update";
+    const response = await appRequest(path, { origin: API_ORIGIN });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(`${WEB_ORIGIN}${path}`);
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("redirects callback with an error for invalid JSON state", async () => {

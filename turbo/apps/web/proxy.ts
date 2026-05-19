@@ -77,7 +77,7 @@ const isPublicRoute = createRouteMatcher([
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
-const CONNECTOR_OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
+const OAUTH_WEB_ORIGIN_HEADER = "x-vm0-web-origin";
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
@@ -87,10 +87,7 @@ function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
     request.nextUrl.protocol.slice(0, -1),
   );
   if (matchesOAuthWebOriginRewritePath(request.nextUrl.pathname)) {
-    requestHeaders.set(
-      CONNECTOR_OAUTH_WEB_ORIGIN_HEADER,
-      request.nextUrl.origin,
-    );
+    requestHeaders.set(OAUTH_WEB_ORIGIN_HEADER, request.nextUrl.origin);
   }
   const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypass) {
