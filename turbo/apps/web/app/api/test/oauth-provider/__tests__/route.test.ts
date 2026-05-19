@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET as authorizeGet } from "../authorize/route";
 import { POST as tokenPost } from "../token/route";
 import { GET as userinfoGet } from "../userinfo/route";
-import { GET as echoGet } from "../echo/route";
 import { reloadEnv } from "../../../../../src/env";
 import { mintAccessToken, mintExpiredAccessToken } from "../_lib/token-helpers";
 
@@ -79,15 +78,6 @@ describe("/api/test/oauth-provider", () => {
       reloadEnv();
       const response = await userinfoGet(
         new Request(`${APP_URL}/api/test/oauth-provider/userinfo`),
-      );
-      expect(response.status).toBe(404);
-    });
-
-    it("echo returns 404 in production", async () => {
-      vi.stubEnv("VERCEL_ENV", "production");
-      reloadEnv();
-      const response = await echoGet(
-        new Request(`${APP_URL}/api/test/oauth-provider/echo`),
       );
       expect(response.status).toBe(404);
     });
@@ -344,38 +334,6 @@ describe("/api/test/oauth-provider", () => {
       );
       expect(response.status).toBe(401);
       expect(await response.json()).toEqual({ error: "expired_token" });
-    });
-  });
-
-  describe("echo", () => {
-    it("echoes back a valid Bearer token", async () => {
-      const token = mintAccessToken(3600);
-      const response = await echoGet(
-        new Request(`${APP_URL}/api/test/oauth-provider/echo`, {
-          headers: { authorization: `Bearer ${token}` },
-        }),
-      );
-      expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body.authorization).toBe(`Bearer ${token}`);
-      expect(body.receivedAt).toBeTruthy();
-    });
-
-    it("returns 401 without Bearer token", async () => {
-      const response = await echoGet(
-        new Request(`${APP_URL}/api/test/oauth-provider/echo`),
-      );
-      expect(response.status).toBe(401);
-    });
-
-    it("returns 401 for expired access token", async () => {
-      const token = mintExpiredAccessToken();
-      const response = await echoGet(
-        new Request(`${APP_URL}/api/test/oauth-provider/echo`, {
-          headers: { authorization: `Bearer ${token}` },
-        }),
-      );
-      expect(response.status).toBe(401);
     });
   });
 });

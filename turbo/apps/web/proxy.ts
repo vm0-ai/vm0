@@ -73,12 +73,16 @@ const isPublicRoute = createRouteMatcher([
  */
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
+const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 
 function apiBackendProxyPassThrough(request: NextRequest): NextResponse {
   const requestHeaders = new Headers(request.headers);
   const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
   if (bypass) {
     requestHeaders.set("x-vercel-protection-bypass", bypass);
+    if (request.nextUrl.pathname.startsWith("/api/test/")) {
+      requestHeaders.set(TEST_ENDPOINT_BYPASS_HEADER, bypass);
+    }
   }
 
   return applyCorsHeaders(

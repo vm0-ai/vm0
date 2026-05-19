@@ -39,6 +39,7 @@ setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-test-oauth-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-test-oauth-artifact-${UNIQUE_ID}"
+    export TEST_OAUTH_PROVIDER_URL="${VM0_API_URL/-www./-api.}"
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
@@ -176,11 +177,12 @@ EOF
     # Agent curls the echo endpoint. The proxy should intercept, refresh
     # the expired token, and inject a fresh Bearer. Echo validates the
     # token's baked-in expiry and returns 200 only if it's fresh.
-    # The x-vercel-protection-bypass header is interpolated by bash before
-    # the command reaches the sandbox; it's required to get past Vercel's
-    # preview deployment protection (same env guard as test-token).
+    # The echo route is API-authoritative. Hit the API preview alias directly
+    # so this test continues to exercise sandbox firewall/mitm token refresh
+    # without depending on Next external rewrites to preserve preview guard
+    # headers. The web-to-api rewrite is covered by web rewrite tests.
     run $ZERO_CLI run "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success
@@ -250,7 +252,7 @@ EOF
     assert_success
 
     run $ZERO_CLI run "$COMPOSE_ID" \
-        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${VM0_API_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
+        "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
     assert_success

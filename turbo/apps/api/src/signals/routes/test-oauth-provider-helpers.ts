@@ -19,6 +19,7 @@ const TOKEN_PREFIX = "testoauth_";
 const ACCESS_PREFIX = `${TOKEN_PREFIX}at_`;
 const REFRESH_PREFIX = `${TOKEN_PREFIX}rt_`;
 const CODE_PREFIX = `${TOKEN_PREFIX}code_`;
+const TEST_ENDPOINT_BYPASS_HEADER = "x-vm0-test-endpoint-bypass";
 
 interface HeaderReader {
   readonly header: (name: string) => string | undefined;
@@ -36,9 +37,14 @@ export function isTestEndpointAllowed(request: HeaderReader): boolean {
   }
 
   if (deployEnv === "preview") {
-    const bypassHeader = request.header("x-vercel-protection-bypass");
+    const vercelBypassHeader = request.header("x-vercel-protection-bypass");
+    const internalBypassHeader = request.header(TEST_ENDPOINT_BYPASS_HEADER);
     const expectedSecret = optionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET");
-    return !!expectedSecret && bypassHeader === expectedSecret;
+    return (
+      !!expectedSecret &&
+      (vercelBypassHeader === expectedSecret ||
+        internalBypassHeader === expectedSecret)
+    );
   }
 
   return false;
@@ -77,6 +83,12 @@ export function mintExpiredAccessToken(): string {
 
 export function isTestOAuthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_PREFIX);
+}
+
+export function isPreviewTestOAuthAccessToken(
+  value: string | undefined,
+): boolean {
+  return env("ENV") === "preview" && !!value && isTestOAuthAccessToken(value);
 }
 
 export function isTestOAuthRefreshToken(value: string): boolean {

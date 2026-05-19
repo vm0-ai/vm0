@@ -117,9 +117,16 @@ describe("/api/test/oauth-provider/*", () => {
     const allowed = await requestApp(validAuthorizePath(), {
       headers: { "x-vercel-protection-bypass": "preview-secret" },
     });
+    const allowedViaInternalProxyHeader = await requestApp(
+      validAuthorizePath(),
+      {
+        headers: { "x-vm0-test-endpoint-bypass": "preview-secret" },
+      },
+    );
 
     expect(denied.status).toBe(404);
     expect(allowed.status).toBe(302);
+    expect(allowedViaInternalProxyHeader.status).toBe(302);
   });
 
   describe("authorize", () => {
@@ -506,6 +513,38 @@ describe("/api/test/oauth-provider/*", () => {
   });
 
   describe("echo", () => {
+    it("allows preview echo when the firewall injects a test-oauth Bearer token", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      mockNow(new Date("2026-05-12T00:00:00.000Z"));
+      const token = mintAccessToken(3600);
+
+      const response = await requestApp(ECHO_ROUTE, {
+        headers: bearerHeaders(token),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson<EchoBody>(response)).resolves.toStrictEqual({
+        authorization: `Bearer ${token}`,
+        receivedAt: "2026-05-12T00:00:00.000Z",
+      });
+    });
+
+    it("hides preview echo without bypass or a test-oauth Bearer token", async () => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+
+      const missingToken = await requestApp(ECHO_ROUTE);
+      const invalidToken = await requestApp(ECHO_ROUTE, {
+        headers: bearerHeaders("not-a-testoauth-token"),
+      });
+
+      expect(missingToken.status).toBe(404);
+      await expect(missingToken.text()).resolves.toBe("Not found");
+      expect(invalidToken.status).toBe(404);
+      await expect(invalidToken.text()).resolves.toBe("Not found");
+    });
+
     it("echoes a valid Bearer token with deterministic receivedAt", async () => {
       mockEnv("ENV", "development");
       mockNow(new Date("2026-05-12T00:00:00.000Z"));
