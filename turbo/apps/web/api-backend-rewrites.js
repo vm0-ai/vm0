@@ -432,6 +432,7 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_UNPIN_PATH_RE,
   ],
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
+  ["/api/zero/insights", "/api/zero/insights"],
   ["/api/zero/insights/range", "/api/zero/insights/range"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],

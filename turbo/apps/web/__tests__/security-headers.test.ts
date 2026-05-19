@@ -609,6 +609,12 @@ const ZERO_INSIGHTS_RANGE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/insights/range/extra",
   "/api/zero/insights",
 ] as const;
+const ZERO_INSIGHTS_REWRITE_SOURCE = "/api/zero/insights";
+const ZERO_INSIGHTS_PATH = "/api/zero/insights";
+const ZERO_INSIGHTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/insights/extra",
+  "/api/zero/insights/range",
+] as const;
 const ZERO_CHAT_THREADS_REWRITE_SOURCE = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_PATH = "/api/zero/chat-threads";
 const ZERO_CHAT_THREADS_NEXT_NEGATIVE_PATHS = [
@@ -1478,6 +1484,10 @@ describe("API backend rewrites", () => {
           source: ZERO_COMPUTER_USE_UNREGISTER_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/computer-use/unregister",
+        },
+        {
+          source: ZERO_INSIGHTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/insights",
         },
         {
           source: ZERO_INSIGHTS_RANGE_REWRITE_SOURCE,
@@ -3013,6 +3023,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero insights rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_INSIGHTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_INSIGHTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/insights",
+    });
+
+    const matcher = getPathMatch(ZERO_INSIGHTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_INSIGHTS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_INSIGHTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero chat threads collection rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4457,9 +4490,16 @@ describe("API backend rewrites", () => {
 
   it("should match the zero insights range route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath(ZERO_INSIGHTS_RANGE_PATH)).toBe(true);
-    for (const pathname of ZERO_INSIGHTS_RANGE_NEXT_NEGATIVE_PATHS) {
-      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
-    }
+    expect(matchesApiBackendRewritePath("/api/zero/insights/range/extra")).toBe(
+      false,
+    );
+  });
+
+  it("should match the zero insights route for middleware pass-through", async () => {
+    expect(matchesApiBackendRewritePath(ZERO_INSIGHTS_PATH)).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/insights/extra")).toBe(
+      false,
+    );
   });
 
   it("should match the zero chat threads collection route for middleware pass-through", async () => {
