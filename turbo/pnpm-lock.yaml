@@ -760,9 +760,6 @@ importers:
       stripe:
         specifier: ^20.4.1
         version: 20.4.1(@types/node@24.3.0)
-      svix:
-        specifier: ^1.84.1
-        version: 1.89.0
       tar:
         specifier: '>=7.5.7'
         version: 7.5.13

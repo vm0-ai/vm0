@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Webhook } from "svix";
 import { createStore, command } from "ccstate";
 import { describe, expect, it, beforeEach } from "vitest";
+import { http, HttpResponse } from "msw";
 import {
   agentComposes,
   agentComposeVersions,
@@ -27,6 +28,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
@@ -417,6 +419,12 @@ function mockReceivedEmail(args: {
   readonly html?: string;
   readonly headers?: Record<string, string>;
 }): void {
+  const headers =
+    args.headers ??
+    ({
+      "Authentication-Results": "mx.example; dmarc=pass",
+      "Message-ID": "<inbound@example.com>",
+    } satisfies Record<string, string>);
   resendMocks.receivingGet.mockResolvedValue({
     data: {
       from: args.from,
@@ -426,17 +434,57 @@ function mockReceivedEmail(args: {
       subject: args.subject ?? "Email subject",
       text: args.text ?? "Email body",
       html: args.html ?? "",
-      headers: {
-        "Authentication-Results": "mx.example; dmarc=pass",
-        "Message-ID": "<inbound@example.com>",
-        ...args.headers,
-      },
+      headers,
     },
   });
 }
 
 function mockNoAttachments(): void {
   resendMocks.attachmentsList.mockResolvedValue({ data: { data: [] } });
+}
+
+interface MockEmailAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly size: number;
+  readonly contentType: string;
+  readonly contentDisposition: string;
+  readonly downloadUrl: string;
+}
+
+function mockEmailAttachments(
+  attachments: readonly MockEmailAttachment[],
+): void {
+  resendMocks.attachmentsList.mockResolvedValue({
+    data: {
+      data: attachments.map((attachment) => {
+        return {
+          id: attachment.id,
+          filename: attachment.filename,
+          size: attachment.size,
+          content_type: attachment.contentType,
+          content_disposition: attachment.contentDisposition,
+          download_url: attachment.downloadUrl,
+        };
+      }),
+    },
+  });
+}
+
+function mockAttachmentDownload(args: {
+  readonly url: string;
+  readonly body?: BodyInit | null;
+  readonly status?: number;
+  readonly contentType?: string;
+}): void {
+  server.use(
+    http.get(args.url, () => {
+      return new HttpResponse(args.body ?? Buffer.from("attachment bytes"), {
+        status: args.status ?? 200,
+        headers: { "content-type": args.contentType ?? "application/pdf" },
+      });
+    }),
+  );
 }
 
 function mockRunOutput(text: string): void {
@@ -1297,5 +1345,504 @@ describe("POST /api/zero/email/inbound", () => {
         ),
       },
     });
+  });
+
+  it("rejects invalid Svix signatures", async () => {
+    const rawBody = JSON.stringify({ type: "email.received" });
+    const response = await createApp({ signal: context.signal }).request(
+      INBOUND_PATH,
+      {
+        method: "POST",
+        headers: {
+          ...svixHeaders(rawBody),
+          "svix-signature": "v1,bad-signature",
+        },
+        body: rawBody,
+      },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid signature",
+    });
+  });
+
+  it("acknowledges non-received events without background work", async () => {
+    const response = await postInbound({
+      type: "email.sent",
+      data: { email_id: "email_sent" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ received: true });
+    await clearAllDetached();
+    expect(resendMocks.receivingGet).not.toHaveBeenCalled();
+    expect(resendMocks.send).not.toHaveBeenCalled();
+  });
+
+  it("sends an error reply when a continuation reply has empty content", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const thread = await seedThread({ fixture: fx, agentSessionId });
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`reply+${thread.replyToken}@mail.example.com`],
+      subject: "Re: Empty",
+      text: "   ",
+      html: "",
+    });
+    mockNoAttachments();
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_empty_reply",
+        from: fx.userEmail,
+        to: [`reply+${thread.replyToken}@mail.example.com`],
+        subject: "Re: Empty",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const runs = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(runs).toHaveLength(0);
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.subject).toBe("Re: Empty");
+    expect(email.html).toContain("reply was empty");
+  });
+
+  it("sends an error reply when a reply sender is not the thread owner", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const thread = await seedThread({ fixture: fx, agentSessionId });
+    const senderEmail = `other-${fx.orgSlug}@example.com`;
+    const otherUserId = `user_${randomUUID()}`;
+    const db = store.set(writeDb$);
+    await db.insert(userCache).values({
+      userId: otherUserId,
+      email: senderEmail,
+      name: "Other User",
+      cachedAt: nowDate(),
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_wrong_owner",
+        from: senderEmail,
+        to: [`reply+${thread.replyToken}@mail.example.com`],
+        subject: "Re: Wrong owner",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    expect(resendMocks.receivingGet).not.toHaveBeenCalled();
+    const email = lastSentEmail();
+    expect(email.to).toBe(senderEmail);
+    expect(email.html).toContain("Only the original sender can continue");
+  });
+
+  it("sends an error reply when reply sender authentication fails", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const thread = await seedThread({ fixture: fx, agentSessionId });
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`reply+${thread.replyToken}@mail.example.com`],
+      subject: "Re: Spoofed",
+      text: "Reply body",
+      headers: {
+        "Authentication-Results": "mx.example; dkim=pass; spf=pass; dmarc=fail",
+      },
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_reply_dmarc_fail",
+        from: fx.userEmail,
+        to: [`reply+${thread.replyToken}@mail.example.com`],
+        subject: "Re: Spoofed",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.html).toContain("DMARC verification failed");
+  });
+
+  it("sends an error reply when a trigger sender is not a workspace member", async () => {
+    const fx = await fixture();
+    const senderEmail = `nonmember-${fx.orgSlug}@example.com`;
+    const senderUserId = `user_${randomUUID()}`;
+    const db = store.set(writeDb$);
+    await db.insert(userCache).values({
+      userId: senderUserId,
+      email: senderEmail,
+      name: "Non Member",
+      cachedAt: nowDate(),
+    });
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValueOnce(
+      { data: [] },
+    );
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_not_member",
+        from: senderEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Forbidden",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    expect(resendMocks.receivingGet).not.toHaveBeenCalled();
+    const email = lastSentEmail();
+    expect(email.to).toBe(senderEmail);
+    expect(email.subject).toBe("Re: Forbidden");
+    expect(email.html).toContain("not a member");
+  });
+
+  it("sends an error reply when the workspace has no default agent", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fx.orgId));
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_no_default_agent",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "No default",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    expect(resendMocks.receivingGet).not.toHaveBeenCalled();
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.html).toContain("does not have a default agent");
+  });
+
+  it("rejects trigger emails that fail DMARC before creating a run", async () => {
+    const fx = await fixture();
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`${fx.orgSlug}@mail.example.com`],
+      subject: "Spoofed",
+      text: "spoofed body",
+      headers: {
+        "Authentication-Results": "mx.example; dkim=fail; spf=fail; dmarc=none",
+      },
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_trigger_dmarc_fail",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Spoofed",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const runs = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(runs).toHaveLength(0);
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.html).toContain("DMARC verification failed");
+  });
+
+  it("extracts trigger prompt content from HTML when text is empty", async () => {
+    const fx = await fixture();
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`${fx.orgSlug}@mail.example.com`],
+      subject: "Newsletter",
+      text: "",
+      html: "<p>Rich content from newsletter</p>",
+    });
+    mockNoAttachments();
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_html_trigger",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Newsletter",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ prompt: agentRuns.prompt })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(run?.prompt).toContain("Newsletter\n\nRich content from newsletter");
+  });
+
+  it("adds mixed attachment results to trigger prompts", async () => {
+    const fx = await fixture();
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`${fx.orgSlug}@mail.example.com`],
+      subject: "Files",
+      text: "Several attachments",
+    });
+    mockEmailAttachments([
+      {
+        id: "att-good",
+        filename: "report.pdf",
+        size: 5000,
+        contentType: "application/pdf",
+        contentDisposition: "attachment",
+        downloadUrl: "https://download.resend.test/report.pdf",
+      },
+      {
+        id: "att-huge",
+        filename: "video.mp4",
+        size: 15 * 1024 * 1024,
+        contentType: "video/mp4",
+        contentDisposition: "attachment",
+        downloadUrl: "https://download.resend.test/video.mp4",
+      },
+      {
+        id: "att-broken",
+        filename: "missing.docx",
+        size: 3000,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        contentDisposition: "attachment",
+        downloadUrl: "https://download.resend.test/missing.docx",
+      },
+    ]);
+    mockAttachmentDownload({
+      url: "https://download.resend.test/report.pdf",
+      body: Buffer.from("pdf-content"),
+    });
+    mockAttachmentDownload({
+      url: "https://download.resend.test/missing.docx",
+      status: 404,
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_trigger_attachments",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Files",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ prompt: agentRuns.prompt })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(run?.prompt).toContain("[attachment]: report.pdf");
+    expect(run?.prompt).toContain("https://r2.example.com/upload?sig=test");
+    expect(run?.prompt).toContain("video.mp4");
+    expect(run?.prompt).toContain("skipped: exceeds size limit");
+    expect(run?.prompt).toContain("missing.docx");
+    expect(run?.prompt).toContain("skipped: download failed");
+    expect(context.mocks.s3.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Bucket: "test-user-storages",
+          Key: "email-attachments/email_trigger_attachments/att-good-report.pdf",
+          Body: expect.any(Buffer),
+          ContentType: "application/pdf",
+        }),
+      }),
+    );
+  });
+
+  it("replaces inline image data URIs and processes inline attachments", async () => {
+    const fx = await fixture();
+    const inlineBase64 = "A".repeat(1000);
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`${fx.orgSlug}@mail.example.com`],
+      subject: "Photo",
+      text: "",
+      html: `<p>Look at this</p><img src="data:image/jpeg;base64,${inlineBase64}" alt="photo.jpg">`,
+    });
+    mockEmailAttachments([
+      {
+        id: "inline-1",
+        filename: "photo.jpg",
+        size: 750,
+        contentType: "image/jpeg",
+        contentDisposition: "inline",
+        downloadUrl: "https://download.resend.test/photo.jpg",
+      },
+    ]);
+    mockAttachmentDownload({
+      url: "https://download.resend.test/photo.jpg",
+      body: Buffer.from("jpeg-content"),
+      contentType: "image/jpeg",
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_inline_image",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Photo",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ prompt: agentRuns.prompt })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(run?.prompt).toContain("Look at this");
+    expect(run?.prompt).toContain("[inline image: photo.jpg]");
+    expect(run?.prompt).not.toContain("data:image/jpeg;base64");
+    expect(run?.prompt).toContain("[attachment]: photo.jpg");
+  });
+
+  it("adds attachment results to reply continuation prompts", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const thread = await seedThread({ fixture: fx, agentSessionId });
+    mockReceivedEmail({
+      from: fx.userEmail,
+      to: [`reply+${thread.replyToken}@mail.example.com`],
+      subject: "Re: File",
+      text: "Here is the file",
+    });
+    mockEmailAttachments([
+      {
+        id: "reply-att",
+        filename: "data.csv",
+        size: 200,
+        contentType: "text/csv",
+        contentDisposition: "attachment",
+        downloadUrl: "https://download.resend.test/data.csv",
+      },
+    ]);
+    mockAttachmentDownload({
+      url: "https://download.resend.test/data.csv",
+      body: Buffer.from("col1,col2\nval1,val2"),
+      contentType: "text/csv",
+    });
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_reply_attachment",
+        from: fx.userEmail,
+        to: [`reply+${thread.replyToken}@mail.example.com`],
+        subject: "Re: File",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ prompt: agentRuns.prompt, sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(
+        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
+      );
+    expect(run?.sessionId).toBe(agentSessionId);
+    expect(run?.prompt).toContain("Here is the file");
+    expect(run?.prompt).toContain("[attachment]: data.csv");
+    expect(run?.prompt).toContain("https://r2.example.com/upload?sig=test");
+  });
+
+  it("rejects old trigger address formats before fetching email contents", async () => {
+    const fx = await fixture();
+
+    for (const address of [
+      `${fx.orgSlug}+${fx.agentName}@mail.example.com`,
+      `${fx.orgSlug}/${fx.agentName}@mail.example.com`,
+      "+invalid@mail.example.com",
+    ]) {
+      resendMocks.send.mockClear();
+      resendMocks.receivingGet.mockClear();
+
+      const response = await postInbound({
+        type: "email.received",
+        data: {
+          email_id: `email_bad_address_${randomUUID()}`,
+          from: fx.userEmail,
+          to: [address],
+          subject: "Bad Address",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await clearAllDetached();
+      expect(resendMocks.receivingGet).not.toHaveBeenCalled();
+      const email = lastSentEmail();
+      expect(email.to).toBe(fx.userEmail);
+      expect(email.subject).toBe("Re: Bad Address");
+    }
+  });
+
+  it("sends an error reply when inbound processing throws unexpectedly", async () => {
+    const fx = await fixture();
+    resendMocks.receivingGet.mockRejectedValueOnce(
+      new Error("Resend API unavailable"),
+    );
+
+    const response = await postInbound({
+      type: "email.received",
+      data: {
+        email_id: "email_unexpected_failure",
+        from: fx.userEmail,
+        to: [`${fx.orgSlug}@mail.example.com`],
+        subject: "Crash",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.subject).toBe("Re: Crash");
+    expect(email.html).toContain("internal error occurred");
   });
 });
