@@ -138,7 +138,16 @@ describe("Slack OAuth API routes", () => {
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
         "http://api.test/api/zero/slack/oauth/callback",
       );
-      expect(redirectUrl.searchParams.get("scope")).toContain("chat:write");
+      const scopes = redirectUrl.searchParams.get("scope")?.split(",") ?? [];
+      expect(scopes).toContain("app_mentions:read");
+      expect(scopes).toContain("chat:write");
+      expect(scopes).not.toContain("assistant:write");
+      expect(scopes).toContain("channels:history");
+      expect(scopes).toContain("im:history");
+      expect(scopes).toContain("commands");
+      expect(scopes).toContain("users:read");
+      expect(scopes).toContain("files:read");
+      expect(scopes).toContain("files:write");
       expect(redirectUrl.searchParams.get("state")).toBeNull();
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
@@ -160,6 +169,56 @@ describe("Slack OAuth API routes", () => {
       expect(state.vm0UserId).toBe("user_1");
       expect(state.reinstall).toBeTruthy();
       expect([...state.prompt]).toHaveLength(500);
+      for (const char of state.prompt) {
+        expect(char).toBe("\u{1F600}");
+      }
+    });
+
+    it("includes the pending prompt in install state when provided", async () => {
+      const response = await appRequest(
+        `/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1&prompt=${encodeURIComponent("summarize my inbox")}`,
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+        readonly orgId: string;
+        readonly prompt: string;
+        readonly vm0UserId: string;
+      };
+      expect(state).toStrictEqual({
+        orgId: "org_1",
+        prompt: "summarize my inbox",
+        vm0UserId: "user_1",
+      });
+    });
+
+    it("truncates long install prompts to protect OAuth state length", async () => {
+      const prompt = "x".repeat(1200);
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/install?prompt=${encodeURIComponent(prompt)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+        readonly prompt: string;
+      };
+      expect(state.prompt).toBe("x".repeat(500));
+    });
+
+    it("omits prompt from install state when absent", async () => {
+      const response = await appRequest(
+        "/api/zero/slack/oauth/install?orgId=org_1&vm0UserId=user_1",
+      );
+
+      expect(response.status).toBe(307);
+      const redirectUrl = new URL(response.headers.get("location")!);
+      const state = JSON.parse(redirectUrl.searchParams.get("state")!) as {
+        readonly prompt?: string;
+      };
+      expect(state.prompt).toBeUndefined();
     });
 
     it("uses the web rewrite origin for Slack callback URLs", async () => {
