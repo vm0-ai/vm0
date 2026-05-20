@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.160.0](https://github.com/vm0-ai/vm0/compare/cli-v9.159.1...cli-v9.160.0) (2026-05-20)
+
+
+### Features
+
+* add generated images to built-in websites ([#14250](https://github.com/vm0-ai/vm0/issues/14250)) ([fd87b33](https://github.com/vm0-ai/vm0/commit/fd87b3305d6bd0f2e463a9810012d51012ea56d3))
+* add zero maps cli and server billing ([#13943](https://github.com/vm0-ai/vm0/issues/13943)) ([236b38d](https://github.com/vm0-ai/vm0/commit/236b38dc51012e7b62e3714eea6681b127689cb1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.35.0
+    * @vm0/connectors bumped to 1.24.0
+    * @vm0/core bumped to 8.286.0
+
 ## [9.159.1](https://github.com/vm0-ai/vm0/compare/cli-v9.159.0...cli-v9.159.1) (2026-05-20)
 
 

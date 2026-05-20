@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.13](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.12...ably-subscriber-v0.7.13) (2026-05-20)
+
+
+### Bug Fixes
+
+* preserve disconnected event for reattach reconnects ([#14301](https://github.com/vm0-ai/vm0/issues/14301)) ([e49afd8](https://github.com/vm0-ai/vm0/commit/e49afd85b9152d6da44f967a240b3d8c9fe108e1))
+
 ## [0.7.12](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.11...ably-subscriber-v0.7.12) (2026-05-19)
 
 

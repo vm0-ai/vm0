@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.371.0](https://github.com/vm0-ai/vm0/compare/app-v0.370.1...app-v0.371.0) (2026-05-20)
+
+
+### Features
+
+* enable google ads connector for staff ([#14259](https://github.com/vm0-ai/vm0/issues/14259)) ([2a6b740](https://github.com/vm0-ai/vm0/commit/2a6b74054d7ea80f6168545f3057d9e059a19cca))
+* make computer use host connection manual ([#14283](https://github.com/vm0-ai/vm0/issues/14283)) ([ec1588d](https://github.com/vm0-ai/vm0/commit/ec1588daf5e39a582c96dd3c6bc9fc89ac73ceca))
+* record hosted site artifacts ([#14203](https://github.com/vm0-ai/vm0/issues/14203)) ([6a21f72](https://github.com/vm0-ai/vm0/commit/6a21f72d49b60c1edf70b0dec9cf1cf91dd23151))
+
+
+### Bug Fixes
+
+* copy legacy artifact links as cdn urls ([#14247](https://github.com/vm0-ai/vm0/issues/14247)) ([d9b2caf](https://github.com/vm0-ai/vm0/commit/d9b2caf5183879554f8a59f45827fda7c6887c36))
+* polish desktop sidebar titlebar ([#14279](https://github.com/vm0-ai/vm0/issues/14279)) ([33cb402](https://github.com/vm0-ai/vm0/commit/33cb4022f1e67e43c7a8d78d3393fddccf5bdd7f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.0
+    * @vm0/connectors bumped to 1.24.0
+    * @vm0/core bumped to 8.286.0
+
 ## [0.370.1](https://github.com/vm0-ai/vm0/compare/app-v0.370.0...app-v0.370.1) (2026-05-20)
 
 

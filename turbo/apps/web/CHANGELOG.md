@@ -1,5 +1,58 @@
 # Changelog
 
+## [12.381.0](https://github.com/vm0-ai/vm0/compare/web-v12.380.1...web-v12.381.0) (2026-05-20)
+
+
+### Features
+
+* add zero maps cli and server billing ([#13943](https://github.com/vm0-ai/vm0/issues/13943)) ([236b38d](https://github.com/vm0-ai/vm0/commit/236b38dc51012e7b62e3714eea6681b127689cb1))
+
+
+### Bug Fixes
+
+* copy legacy artifact links as cdn urls ([#14247](https://github.com/vm0-ai/vm0/issues/14247)) ([d9b2caf](https://github.com/vm0-ai/vm0/commit/d9b2caf5183879554f8a59f45827fda7c6887c36))
+* migrate persistent secrets to kms envelopes ([#14225](https://github.com/vm0-ai/vm0/issues/14225)) ([d012b83](https://github.com/vm0-ai/vm0/commit/d012b8316bb6295ce8ff6bc5cf1204104f9b1a39))
+
+
+### Refactoring
+
+* cut over agent events webhook ([#14245](https://github.com/vm0-ai/vm0/issues/14245)) ([a6c7b42](https://github.com/vm0-ai/vm0/commit/a6c7b427f0dda537102d3273c1ddf4e4ff514ac5))
+* cut over agent firewall auth webhook ([#14282](https://github.com/vm0-ai/vm0/issues/14282)) ([f03200d](https://github.com/vm0-ai/vm0/commit/f03200d6a4e1afa9acc85ec65b3bff14969308b7))
+* cut over agent heartbeat webhook ([#14298](https://github.com/vm0-ai/vm0/issues/14298)) ([df5d3c2](https://github.com/vm0-ai/vm0/commit/df5d3c26e4aaf888f3fd1df661e5652798cc160b))
+* cut over agent storage commit webhook ([#14304](https://github.com/vm0-ai/vm0/issues/14304)) ([feccb10](https://github.com/vm0-ai/vm0/commit/feccb1074b1451b94ce0a3c7187a8da3f5956003))
+* cut over agent storage prepare webhook ([#14309](https://github.com/vm0-ai/vm0/issues/14309)) ([a5060fd](https://github.com/vm0-ai/vm0/commit/a5060fdcf3366ed1317f2e5d3539603eb48d34ce))
+* cut over agent telemetry webhook route ([#14318](https://github.com/vm0-ai/vm0/issues/14318)) ([4382997](https://github.com/vm0-ai/vm0/commit/43829972ec40fd1700a9da5b24fbdcfe9b7ef527))
+* cut over runners job claim route ([#14258](https://github.com/vm0-ai/vm0/issues/14258)) ([54539e4](https://github.com/vm0-ai/vm0/commit/54539e4144e2f7d4441a38eb00bba94d660f49d6))
+* cut over runners realtime token route ([#14243](https://github.com/vm0-ai/vm0/issues/14243)) ([59460e9](https://github.com/vm0-ai/vm0/commit/59460e9e6f4d3dadf2914494a33ea1e503c73307))
+* cut over telegram avatar route ([#14271](https://github.com/vm0-ai/vm0/issues/14271)) ([f0c190b](https://github.com/vm0-ai/vm0/commit/f0c190b261ac577ba690826616f40b4212f5daa3))
+* cut over telegram bot route ([#14285](https://github.com/vm0-ai/vm0/issues/14285)) ([6afc8f5](https://github.com/vm0-ai/vm0/commit/6afc8f55185f6fb366a9c8f10b0222774e5c7950))
+* cut over telegram link route to api backend ([#14242](https://github.com/vm0-ai/vm0/issues/14242)) ([43f6576](https://github.com/vm0-ai/vm0/commit/43f65764694f179658308a81c3d6efd758397649))
+* cut over zero integrations slack connect route ([#14314](https://github.com/vm0-ai/vm0/issues/14314)) ([6b2c9f9](https://github.com/vm0-ai/vm0/commit/6b2c9f97dbe7b5afbf53ed665b66a73536f9ecd2))
+* cut over zero integrations slack download-file route ([#14322](https://github.com/vm0-ai/vm0/issues/14322)) ([81c3fcf](https://github.com/vm0-ai/vm0/commit/81c3fcf55724a46056578e1657497dbdfad093a4))
+* cut over zero integrations telegram bots route ([#14280](https://github.com/vm0-ai/vm0/issues/14280)) ([29fd974](https://github.com/vm0-ai/vm0/commit/29fd974266d5e1cc0a3b2eb14cccbf58504eedec))
+* cut over zero integrations telegram download route ([#14288](https://github.com/vm0-ai/vm0/issues/14288)) ([c17187e](https://github.com/vm0-ai/vm0/commit/c17187e79ae57b79bba7d0d8eb6069dc8a6ceea6))
+* cut over zero integrations telegram message route ([#14227](https://github.com/vm0-ai/vm0/issues/14227)) ([7761257](https://github.com/vm0-ai/vm0/commit/776125745630868a5e15d5ba484678839a83d528))
+* cut over zero integrations telegram upload complete route ([#14297](https://github.com/vm0-ai/vm0/issues/14297)) ([8706a0a](https://github.com/vm0-ai/vm0/commit/8706a0ab83927dfd798bf00a9abe951cbb90a8a9))
+* cut over zero integrations telegram upload init route ([#14292](https://github.com/vm0-ai/vm0/issues/14292)) ([7d5d12a](https://github.com/vm0-ai/vm0/commit/7d5d12aa73bb3bca373c55ea1bd22efcdf36b708))
+* cut over zero slack events route ([#14262](https://github.com/vm0-ai/vm0/issues/14262)) ([81398f1](https://github.com/vm0-ai/vm0/commit/81398f1733300b0723a05b8731397349c06713a1))
+* cut over zero slack interactive route ([#14290](https://github.com/vm0-ai/vm0/issues/14290)) ([794d6b6](https://github.com/vm0-ai/vm0/commit/794d6b61d0d06c7c04d5d3ddb971d588a0911928))
+* cut over zero slack oauth callback route ([#14294](https://github.com/vm0-ai/vm0/issues/14294)) ([3064307](https://github.com/vm0-ai/vm0/commit/306430774f7a9f2a5e2392937cf2f49dd16fa1a2))
+* cut over zero slack oauth connect route ([#14300](https://github.com/vm0-ai/vm0/issues/14300)) ([d67c733](https://github.com/vm0-ai/vm0/commit/d67c7332b5af7ebb034a9902b1e91e071adcb659))
+* cut over zero slack oauth install route ([#14307](https://github.com/vm0-ai/vm0/issues/14307)) ([653ac7a](https://github.com/vm0-ai/vm0/commit/653ac7a985d9a90c5fe67c1f4f4f606f80bcdee5))
+* proxy zero computer connector route to api ([#14252](https://github.com/vm0-ai/vm0/issues/14252)) ([6e6decd](https://github.com/vm0-ai/vm0/commit/6e6decdccec969100dfda2a1604b5a9809f1ad21))
+* proxy zero connector by type route to api ([#14275](https://github.com/vm0-ai/vm0/issues/14275)) ([5a266ab](https://github.com/vm0-ai/vm0/commit/5a266ab0aa2bea358e62eea474bdb542dd43b880))
+* split oauth provider capabilities ([#14272](https://github.com/vm0-ai/vm0/issues/14272)) ([eb30ffa](https://github.com/vm0-ai/vm0/commit/eb30ffa6c3e5323cfddc64ad55bb45b4f985d3f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.0
+    * @vm0/connectors bumped to 1.24.0
+    * @vm0/core bumped to 8.286.0
+    * @vm0/db bumped to 1.17.0
+
 ## [12.380.1](https://github.com/vm0-ai/vm0/compare/web-v12.380.0...web-v12.380.1) (2026-05-20)
 
 

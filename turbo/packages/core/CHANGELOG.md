@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.286.0](https://github.com/vm0-ai/vm0/compare/core-v8.285.2...core-v8.286.0) (2026-05-20)
+
+
+### Features
+
+* add zero maps cli and server billing ([#13943](https://github.com/vm0-ai/vm0/issues/13943)) ([236b38d](https://github.com/vm0-ai/vm0/commit/236b38dc51012e7b62e3714eea6681b127689cb1))
+* enable google ads connector for staff ([#14259](https://github.com/vm0-ai/vm0/issues/14259)) ([2a6b740](https://github.com/vm0-ai/vm0/commit/2a6b74054d7ea80f6168545f3057d9e059a19cca))
+
+
+### Bug Fixes
+
+* GA the WeRead connector ([#14319](https://github.com/vm0-ai/vm0/issues/14319)) ([8766689](https://github.com/vm0-ai/vm0/commit/87666893fd2a320e619e6a97b7d97a5420b4da9b))
+* migrate persistent secrets to kms envelopes ([#14225](https://github.com/vm0-ai/vm0/issues/14225)) ([d012b83](https://github.com/vm0-ai/vm0/commit/d012b8316bb6295ce8ff6bc5cf1204104f9b1a39))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.0
+    * @vm0/connectors bumped to 1.24.0
+
 ## [8.285.2](https://github.com/vm0-ai/vm0/compare/core-v8.285.1...core-v8.285.2) (2026-05-20)
 
 

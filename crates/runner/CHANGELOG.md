@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.103.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.1...runner-rs-v0.103.2) (2026-05-20)
+
+
+### Documentation
+
+* document json selective extractor contract ([#14311](https://github.com/vm0-ai/vm0/issues/14311)) ([89c8588](https://github.com/vm0-ai/vm0/commit/89c8588f23be33263c606e4c0b11fb45a43a4d80))
+
+
+### Refactoring
+
+* consolidate mitm auth state ([#14303](https://github.com/vm0-ai/vm0/issues/14303)) ([35a122a](https://github.com/vm0-ai/vm0/commit/35a122ab580b09a524b2c9586bfaa682db0be287))
+* deduplicate storage cache entry handling ([#14261](https://github.com/vm0-ai/vm0/issues/14261)) ([86ceff4](https://github.com/vm0-ai/vm0/commit/86ceff473517c20f5b8dd509eabec1b4f546da78))
+* migrate sandbox runner processes to supervised exec ([#14231](https://github.com/vm0-ai/vm0/issues/14231)) ([7781715](https://github.com/vm0-ai/vm0/commit/77817154bd0b4aad08d58fc6f41dc2643f07c76c))
+* unify guest binary chmod finalization ([#14269](https://github.com/vm0-ai/vm0/issues/14269)) ([c86c879](https://github.com/vm0-ai/vm0/commit/c86c879111835f6f7a9fbe432a678ff95c78e44a))
+* use template cache policy for remote resolution ([#14267](https://github.com/vm0-ai/vm0/issues/14267)) ([6142bb5](https://github.com/vm0-ai/vm0/commit/6142bb53f1f7eab538af77fe9150029e315bc9cb))
+
+
+### Performance Improvements
+
+* **mitm-addon:** compile firewall matcher artifacts ([#14305](https://github.com/vm0-ai/vm0/issues/14305)) ([0e53812](https://github.com/vm0-ai/vm0/commit/0e53812a9ec6acd180e6e798e1fb9135e7d86b4f))
+
 ## [0.103.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.0...runner-rs-v0.103.1) (2026-05-20)
 
 

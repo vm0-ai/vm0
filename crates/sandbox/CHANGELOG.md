@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.0...sandbox-v0.17.1) (2026-05-20)
+
+
+### Refactoring
+
+* migrate sandbox runner processes to supervised exec ([#14231](https://github.com/vm0-ai/vm0/issues/14231)) ([7781715](https://github.com/vm0-ai/vm0/commit/77817154bd0b4aad08d58fc6f41dc2643f07c76c))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.16.1...sandbox-v0.17.0) (2026-05-20)
 
 
