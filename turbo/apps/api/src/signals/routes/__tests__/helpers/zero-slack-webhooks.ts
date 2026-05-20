@@ -276,6 +276,7 @@ export const seedSlackThreadSession$ = command(
       readonly fixture: SlackWebhookFixture;
       readonly channelId: string;
       readonly threadTs: string;
+      readonly modelProvider?: string | null;
       readonly selectedModel: string;
     },
     signal: AbortSignal,
@@ -335,7 +336,7 @@ export const seedSlackThreadSession$ = command(
     await db.insert(zeroRuns).values({
       id: run.id,
       triggerSource: "slack",
-      modelProvider: "vm0",
+      modelProvider: args.modelProvider ?? "vm0",
       selectedModel: args.selectedModel,
     });
     signal.throwIfAborted();

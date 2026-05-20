@@ -422,6 +422,167 @@ describe("POST /api/zero/slack/events", () => {
     expect(run?.sessionId).not.toBe(previousSessionId);
   });
 
+  it("starts a new Slack session when the selected model provider changed", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    expect(fixture.defaultAgentId).toBeTruthy();
+    const db = store.set(writeDb$);
+    await db.insert(vm0ApiKeys).values({
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: "vm0-key-claude-sonnet-4-6",
+    });
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const channelId = "D-provider";
+    const threadTs = "2450.001";
+    const previousSessionId = await store.set(
+      seedSlackThreadSession$,
+      {
+        fixture,
+        channelId,
+        threadTs,
+        modelProvider: "openrouter-api-key",
+        selectedModel: "claude-sonnet-4-6",
+      },
+      context.signal,
+    );
+    await store.set(
+      setSlackWebhookUserSelectedModel$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        selectedModel: "claude-sonnet-4-6",
+      },
+      context.signal,
+    );
+
+    const prompt = "provider changed in Slack thread";
+    const response = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: prompt,
+        ts: "2450.002",
+        thread_ts: threadTs,
+        channel: channelId,
+      },
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run).toMatchObject({
+      continuedFromSessionId: null,
+      modelProvider: "vm0",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    expect(run?.sessionId).not.toBe(previousSessionId);
+  });
+
+  it("starts a new Slack session when the default model provider changed", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    expect(fixture.defaultAgentId).toBeTruthy();
+    const db = store.set(writeDb$);
+    await db.insert(vm0ApiKeys).values({
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: "vm0-key-claude-sonnet-4-6",
+    });
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const channelId = "D-default-provider";
+    const threadTs = "2451.001";
+    const previousSessionId = await store.set(
+      seedSlackThreadSession$,
+      {
+        fixture,
+        channelId,
+        threadTs,
+        modelProvider: "openrouter-api-key",
+        selectedModel: "claude-sonnet-4-6",
+      },
+      context.signal,
+    );
+
+    const prompt = "default provider changed in Slack thread";
+    const response = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: prompt,
+        ts: "2451.002",
+        thread_ts: threadTs,
+        channel: channelId,
+      },
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run).toMatchObject({
+      continuedFromSessionId: null,
+      modelProvider: "vm0",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    expect(run?.sessionId).not.toBe(previousSessionId);
+  });
+
   it("routes Slack selected GPT models through the model policy provider", async () => {
     const fixture = await track(
       store.set(

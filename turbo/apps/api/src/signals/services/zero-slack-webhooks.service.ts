@@ -13,16 +13,13 @@ import {
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { conversations } from "@vm0/db/schema/conversation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
@@ -69,6 +66,11 @@ import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptSecretValue } from "./crypto.utils";
+import {
+  resolveIntegrationModelRouteForUser,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
+import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { zeroComposeList } from "./zero-compose-data.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
@@ -219,13 +221,6 @@ interface RunAgentParams {
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
-
-interface SlackModelPin {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
-  readonly selectedModel: string | null;
-}
 
 interface SlackAgentMessageArgs {
   readonly get: ComputedGetter;
@@ -614,65 +609,6 @@ async function slackModelPickerState(
       };
     }),
     currentSelectedModel: preference.selectedModel,
-  };
-}
-
-function parseModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null || value === "org" || value === "member") {
-    return value;
-  }
-  throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
-async function resolveSlackSelectedModelPin(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly selectedModel: string | null;
-}): Promise<SlackModelPin> {
-  if (!args.selectedModel) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: null,
-    };
-  }
-
-  const [policy] = await args.db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, args.orgId),
-        eq(orgModelPolicies.model, args.selectedModel),
-      ),
-    )
-    .limit(1);
-
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: args.selectedModel,
-    };
-  }
-
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
   };
 }
 
@@ -1109,7 +1045,7 @@ async function resolveCompatibleThreadSession(args: {
   readonly connectionId: string;
   readonly userId: string;
   readonly agentComposeId: string;
-  readonly selectedModelOverride?: string;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
 }): Promise<string | undefined> {
   const [session] = await args.db
     .select({
@@ -1130,7 +1066,6 @@ async function resolveCompatibleThreadSession(args: {
   const [agentSession] = await args.db
     .select({
       agentComposeId: agentSessions.agentComposeId,
-      conversationId: agentSessions.conversationId,
     })
     .from(agentSessions)
     .where(
@@ -1144,17 +1079,13 @@ async function resolveCompatibleThreadSession(args: {
     return undefined;
   }
 
-  if (args.selectedModelOverride && agentSession.conversationId) {
-    const [previousRun] = await args.db
-      .select({ selectedModel: zeroRuns.selectedModel })
-      .from(conversations)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, conversations.runId))
-      .where(eq(conversations.id, agentSession.conversationId))
-      .limit(1);
-    if (
-      previousRun?.selectedModel &&
-      previousRun.selectedModel !== args.selectedModelOverride
-    ) {
+  if (args.modelRoute) {
+    const canReuseSession = await canReuseIntegrationSessionForModelRoute({
+      db: args.db,
+      sessionId: session.agentSessionId,
+      modelRoute: args.modelRoute,
+    });
+    if (!canReuseSession) {
       return undefined;
     }
   }
@@ -1323,19 +1254,12 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const selectedModelOverride = (
-    await args.get(
-      userModelPreference({
-        orgId: resolved.installation.orgId,
-        userId: resolved.connection.vm0UserId,
-      }),
-    )
-  ).selectedModel;
-  const modelPin = await resolveSlackSelectedModelPin({
-    db: args.db,
+  const modelRoute = await resolveIntegrationModelRouteForUser({
+    get: args.get,
+    set: args.set,
     orgId: resolved.installation.orgId,
     userId: resolved.connection.vm0UserId,
-    selectedModel: selectedModelOverride,
+    signal: args.signal,
   });
   const existingSessionId = await resolveCompatibleThreadSession({
     db: args.db,
@@ -1344,7 +1268,7 @@ async function buildRunAgentParams(
     connectionId: resolved.connection.id,
     userId: resolved.connection.vm0UserId,
     agentComposeId: resolved.composeId,
-    selectedModelOverride: modelPin.selectedModel ?? undefined,
+    modelRoute,
   });
   const { executionContext } = await fetchConversationContexts(
     resolved.client,
@@ -1377,11 +1301,11 @@ async function buildRunAgentParams(
     threadTs: resolved.threadTs,
     callbackContext,
     apiStartTime: args.apiStartTime,
-    modelProviderId: modelPin.modelProviderId ?? undefined,
+    modelProviderId: modelRoute?.modelProviderId ?? undefined,
     modelProviderCredentialScope:
-      modelPin.modelProviderCredentialScope ?? undefined,
-    modelProviderType: modelPin.modelProviderType ?? undefined,
-    selectedModelOverride: modelPin.selectedModel ?? undefined,
+      modelRoute?.modelProviderCredentialScope ?? undefined,
+    modelProviderType: modelRoute?.modelProviderType ?? undefined,
+    selectedModelOverride: modelRoute?.selectedModel ?? undefined,
   };
 }
 

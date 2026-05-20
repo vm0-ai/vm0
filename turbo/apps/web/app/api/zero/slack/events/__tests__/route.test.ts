@@ -13,6 +13,7 @@ import {
   findTestZeroRun,
   insertOrgModelPolicy,
   insertUserModelPreference,
+  insertVm0ApiKeys,
   setOrgCredits,
   setTestRunModelProvider,
   setTestRunSelectedModel,
@@ -839,6 +840,187 @@ describe("POST /api/zero/slack/events", () => {
         }),
       );
       expect(callbacks[0]?.payload).not.toHaveProperty("existingSessionId");
+    });
+
+    it("starts a new thread session when the selected model provider changed", async () => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+      await setOrgCredits(user.orgId, 100_000);
+
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("D-provider");
+      const threadTs = "2401.001";
+      const { composeId, agentId } = await createTestCompose(uniqueId("agent"));
+      await updateOrgDefaultAgent(user.orgId, agentId);
+      await insertVm0ApiKeys([
+        {
+          vendor: "anthropic",
+          model: "claude-sonnet-4-6",
+          apiKey: "vm0-key-claude-sonnet-4-6",
+        },
+      ]);
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+      });
+      await insertUserModelPreference({
+        orgId: user.orgId,
+        userId: user.userId,
+        model: "claude-sonnet-4-6",
+      });
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      const { connectionId } = await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const previous = await seedTestRun(user.userId, composeId, {
+        prompt: "previous slack provider session",
+        triggerSource: "slack",
+      });
+      const { agentSessionId } = await completeTestRun(
+        user.userId,
+        previous.runId,
+      );
+      await setTestRunModelProvider(previous.runId, "openrouter-api-key");
+      await setTestRunSelectedModel(previous.runId, "claude-sonnet-4-6");
+      await insertTestSlackOrgThreadSession({
+        connectionId,
+        agentSessionId,
+        slackChannelId: channelId,
+        slackThreadTs: threadTs,
+      });
+
+      const prompt = `provider changed ${uniqueId("slack")}`;
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: prompt,
+          ts: "2401.002",
+          thread_ts: threadTs,
+          channel: channelId,
+          event_ts: "2401.002",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        prompt,
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.continuedFromSessionId).toBeNull();
+      expect(runs[0]?.sessionId).not.toBe(agentSessionId);
+      await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+        expect.objectContaining({
+          modelProvider: "vm0",
+          selectedModel: "claude-sonnet-4-6",
+          triggerSource: "slack",
+        }),
+      );
+    });
+
+    it("starts a new thread session when the default model provider changed", async () => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+      await setOrgCredits(user.orgId, 100_000);
+
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("D-default-provider");
+      const threadTs = "2402.001";
+      const { composeId, agentId } = await createTestCompose(uniqueId("agent"));
+      await updateOrgDefaultAgent(user.orgId, agentId);
+      await insertVm0ApiKeys([
+        {
+          vendor: "anthropic",
+          model: "claude-sonnet-4-6",
+          apiKey: "vm0-key-default-claude-sonnet-4-6",
+        },
+      ]);
+      await insertOrgModelPolicy({
+        orgId: user.orgId,
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+      });
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      const { connectionId } = await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const previous = await seedTestRun(user.userId, composeId, {
+        prompt: "previous slack default provider session",
+        triggerSource: "slack",
+      });
+      const { agentSessionId } = await completeTestRun(
+        user.userId,
+        previous.runId,
+      );
+      await setTestRunModelProvider(previous.runId, "openrouter-api-key");
+      await setTestRunSelectedModel(previous.runId, "claude-sonnet-4-6");
+      await insertTestSlackOrgThreadSession({
+        connectionId,
+        agentSessionId,
+        slackChannelId: channelId,
+        slackThreadTs: threadTs,
+      });
+
+      const prompt = `default provider changed ${uniqueId("slack")}`;
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: prompt,
+          ts: "2402.002",
+          thread_ts: threadTs,
+          channel: channelId,
+          event_ts: "2402.002",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        prompt,
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.continuedFromSessionId).toBeNull();
+      expect(runs[0]?.sessionId).not.toBe(agentSessionId);
+      await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+        expect.objectContaining({
+          modelProvider: "vm0",
+          selectedModel: "claude-sonnet-4-6",
+          triggerSource: "slack",
+        }),
+      );
     });
   });
 

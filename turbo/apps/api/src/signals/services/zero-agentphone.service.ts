@@ -15,7 +15,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { conversations } from "@vm0/db/schema/conversation";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
@@ -39,6 +38,11 @@ import {
   sendAgentPhoneTypingIndicator,
 } from "../external/agentphone-client";
 import { safeUrlParse, settle } from "../utils";
+import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import {
+  resolveIntegrationModelRouteForUser,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
@@ -113,12 +117,7 @@ interface RunAgentResult {
   readonly runId?: string;
 }
 
-interface ModelRoutePin {
-  readonly modelProviderType: string;
-  readonly modelProviderId: string | null;
-  readonly modelProviderCredentialScope: "org" | "member";
-  readonly selectedModel: string;
-}
+type ModelRoutePin = IntegrationModelRoutePin;
 
 type ComputedGetter = Getter;
 type ComputedSetter = Setter;
@@ -775,7 +774,7 @@ async function resolveCompatibleAgentPhoneThreadSession(args: {
   readonly userLinkId: string;
   readonly userId: string;
   readonly agentComposeId: string;
-  readonly selectedModelOverride?: string;
+  readonly modelRoute: ModelRoutePin | undefined;
 }): Promise<ThreadSessionLookup> {
   const session = await lookupAgentPhoneThreadSession(args.db, args.userLinkId);
   if (!session.existingSessionId) {
@@ -785,7 +784,6 @@ async function resolveCompatibleAgentPhoneThreadSession(args: {
   const [agentSession] = await args.db
     .select({
       agentComposeId: agentSessions.agentComposeId,
-      conversationId: agentSessions.conversationId,
     })
     .from(agentSessions)
     .where(
@@ -799,17 +797,13 @@ async function resolveCompatibleAgentPhoneThreadSession(args: {
     return { existingSessionId: undefined, lastProcessedMessageId: undefined };
   }
 
-  if (args.selectedModelOverride && agentSession.conversationId) {
-    const [previousRun] = await args.db
-      .select({ selectedModel: zeroRuns.selectedModel })
-      .from(conversations)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, conversations.runId))
-      .where(eq(conversations.id, agentSession.conversationId))
-      .limit(1);
-    if (
-      previousRun?.selectedModel &&
-      previousRun.selectedModel !== args.selectedModelOverride
-    ) {
+  if (args.modelRoute) {
+    const canReuseSession = await canReuseIntegrationSessionForModelRoute({
+      db: args.db,
+      sessionId: session.existingSessionId,
+      modelRoute: args.modelRoute,
+    });
+    if (!canReuseSession) {
       return {
         existingSessionId: undefined,
         lastProcessedMessageId: undefined,
@@ -1514,33 +1508,6 @@ async function dispatchAgentPhoneCommand(args: {
   }
 }
 
-async function resolveModelRouteForUser(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  orgId: string,
-  userId: string,
-  signal: AbortSignal,
-): Promise<ModelRoutePin | undefined> {
-  const selectedModel = (await get(userModelPreference({ orgId, userId })))
-    .selectedModel;
-  if (!selectedModel) {
-    return undefined;
-  }
-  const policies = await set(listOrgModelPolicies$, { orgId, userId }, signal);
-  const policy = policies.policies.find((candidate) => {
-    return candidate.model === selectedModel;
-  });
-  if (!policy) {
-    return undefined;
-  }
-  return {
-    modelProviderType: policy.defaultProviderType,
-    modelProviderId: policy.modelProviderId,
-    modelProviderCredentialScope: policy.credentialScope,
-    selectedModel: policy.model,
-  };
-}
-
 async function runAgentForAgentPhone(
   set: ComputedSetter,
   args: {
@@ -1721,13 +1688,13 @@ export const handleAgentPhoneMessage$ = command(
     await refreshTypingIfSupported(params.event, signal);
     signal.throwIfAborted();
 
-    const modelRoute = await resolveModelRouteForUser(
+    const modelRoute = await resolveIntegrationModelRouteForUser({
       get,
       set,
-      params.userLink.orgId,
-      params.userLink.vm0UserId,
+      orgId: params.userLink.orgId,
+      userId: params.userLink.vm0UserId,
       signal,
-    );
+    });
     signal.throwIfAborted();
 
     const session = await resolveCompatibleAgentPhoneThreadSession({
@@ -1735,7 +1702,7 @@ export const handleAgentPhoneMessage$ = command(
       userLinkId: params.userLink.id,
       userId: params.userLink.vm0UserId,
       agentComposeId: agent.composeId,
-      selectedModelOverride: modelRoute?.selectedModel,
+      modelRoute,
     });
     signal.throwIfAborted();
 

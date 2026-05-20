@@ -10,11 +10,21 @@ import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
+import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -51,6 +61,9 @@ interface RunFixture {
   readonly runId: string;
   readonly sessionId: string;
   readonly composeId: string;
+  readonly versionId?: string;
+  readonly orgId: string;
+  readonly userId: string;
 }
 
 const AGENTPHONE_WEBHOOK_SECRET = ["agentphone", "webhook", "secret"].join("-");
@@ -107,19 +120,64 @@ const trackStorageOwner = createFixtureTracker(
 );
 
 const trackRun = createFixtureTracker(async (fixture: RunFixture) => {
-  await writeDb
-    .delete(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, fixture.runId));
-  await writeDb
-    .delete(runUploadedFiles)
-    .where(eq(runUploadedFiles.runId, fixture.runId));
-  await writeDb.delete(agentRuns).where(eq(agentRuns.id, fixture.runId));
+  const runRows = await writeDb
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.orgId, fixture.orgId),
+        eq(agentRuns.userId, fixture.userId),
+      ),
+    );
+  const runIds = runRows.map((row) => {
+    return row.id;
+  });
+  if (runIds.length > 0) {
+    await writeDb
+      .delete(agentRunCallbacks)
+      .where(inArray(agentRunCallbacks.runId, runIds));
+    await writeDb
+      .delete(runUploadedFiles)
+      .where(inArray(runUploadedFiles.runId, runIds));
+    await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+    await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+  }
   await writeDb
     .delete(agentSessions)
-    .where(eq(agentSessions.id, fixture.sessionId));
+    .where(
+      and(
+        eq(agentSessions.orgId, fixture.orgId),
+        eq(agentSessions.userId, fixture.userId),
+      ),
+    );
+  const composeRows = await writeDb
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, fixture.orgId),
+        eq(agentComposes.userId, fixture.userId),
+      ),
+    );
+  const composeIds = composeRows.map((row) => {
+    return row.id;
+  });
+  if (composeIds.length > 0) {
+    await writeDb.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
+    await writeDb
+      .delete(agentComposeVersions)
+      .where(inArray(agentComposeVersions.composeId, composeIds));
+    await writeDb
+      .delete(agentComposes)
+      .where(inArray(agentComposes.id, composeIds));
+  }
   await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, fixture.composeId));
+    .delete(orgModelPolicies)
+    .where(eq(orgModelPolicies.orgId, fixture.orgId));
+  await writeDb
+    .delete(orgMembersMetadata)
+    .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
 });
 
 function currentSecond(): number {
@@ -284,7 +342,134 @@ async function seedRun(args: {
     status: "failed",
     prompt: "test prompt",
   });
-  return trackRun(Promise.resolve({ runId, sessionId, composeId }));
+  return trackRun(
+    Promise.resolve({
+      runId,
+      sessionId,
+      composeId,
+      orgId: args.orgId,
+      userId: args.userId,
+    }),
+  );
+}
+
+async function seedAgentPhoneModelReuseFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly phoneHandle: string;
+  readonly selectedModel: string;
+  readonly previousModelProvider: string;
+}): Promise<{
+  readonly composeId: string;
+  readonly previousSessionId: string;
+  readonly userLinkId: string;
+}> {
+  const composeId = randomUUID();
+  const versionId = randomUUID();
+  const previousSessionId = randomUUID();
+  const previousRunId = randomUUID();
+  await writeDb.insert(agentComposes).values({
+    id: composeId,
+    userId: args.userId,
+    orgId: args.orgId,
+    name: "agentphone-model-agent",
+  });
+  await writeDb.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId,
+    createdBy: args.userId,
+    content: {
+      version: "1.0",
+      agents: {
+        "agentphone-model-agent": {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "test-key" },
+        },
+      },
+    },
+  });
+  await writeDb
+    .update(agentComposes)
+    .set({ headVersionId: versionId })
+    .where(eq(agentComposes.id, composeId));
+  await writeDb.insert(zeroAgents).values({
+    id: composeId,
+    orgId: args.orgId,
+    owner: args.userId,
+    name: "agentphone-model-agent",
+    displayName: "AgentPhone Model Agent",
+    visibility: "public",
+    customSkills: [],
+  });
+  await writeDb.insert(orgMetadata).values({
+    orgId: args.orgId,
+    defaultAgentId: composeId,
+    credits: 100_000,
+  });
+  await writeDb.insert(orgMembersMetadata).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    timezone: "UTC",
+    selectedModel: args.selectedModel,
+  });
+  await writeDb.insert(vm0ApiKeys).values({
+    vendor: "anthropic",
+    model: args.selectedModel,
+    apiKey: `vm0-key-${args.selectedModel}`,
+  });
+  await writeDb.insert(orgModelPolicies).values({
+    orgId: args.orgId,
+    model: args.selectedModel,
+    isDefault: true,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    createdByUserId: args.userId,
+    updatedByUserId: args.userId,
+  });
+
+  const userLinkId = await seedAgentPhoneLink({
+    phoneHandle: args.phoneHandle,
+    userId: args.userId,
+    orgId: args.orgId,
+  });
+  await writeDb.insert(agentSessions).values({
+    id: previousSessionId,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeId: composeId,
+  });
+  await writeDb.insert(agentRuns).values({
+    id: previousRunId,
+    userId: args.userId,
+    orgId: args.orgId,
+    sessionId: previousSessionId,
+    status: "completed",
+    prompt: "previous AgentPhone session",
+  });
+  await writeDb.insert(zeroRuns).values({
+    id: previousRunId,
+    triggerSource: "agentphone",
+    modelProvider: args.previousModelProvider,
+    selectedModel: args.selectedModel,
+  });
+  await writeDb.insert(agentphoneThreadSessions).values({
+    agentphoneUserLinkId: userLinkId,
+    rootMessageId: "dm",
+    agentSessionId: previousSessionId,
+    lastProcessedMessageId: "ap-previous-message",
+  });
+  await trackRun(
+    Promise.resolve({
+      runId: previousRunId,
+      sessionId: previousSessionId,
+      composeId,
+      versionId,
+      orgId: args.orgId,
+      userId: args.userId,
+    }),
+  );
+
+  return { composeId, previousSessionId, userLinkId };
 }
 
 function callbackHeaders(rawBody: string) {
@@ -393,6 +578,137 @@ describe("AgentPhone migrated API routes", () => {
       direction: "inbound",
     });
     expect(sendCalls[0]?.body).toContain("/agentphone/connect?");
+  });
+
+  it("starts a new AgentPhone session when the selected model provider changed", async () => {
+    configureAgentPhoneEnv();
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const phoneHandle = uniquePhone();
+    const { previousSessionId } = await seedAgentPhoneModelReuseFixture({
+      userId,
+      orgId,
+      phoneHandle,
+      selectedModel: "claude-sonnet-4-6",
+      previousModelProvider: "openrouter-api-key",
+    });
+    const sendCalls = agentPhoneSendMessage();
+    const app = createApp({ signal: context.signal });
+    const prompt = "provider changed AgentPhone session";
+    const body = {
+      event: "agent.message",
+      channel: "sms",
+      data: {
+        id: "ap-provider-change",
+        agentId: "agt-agentphone",
+        from: phoneHandle,
+        to: "+19039853128",
+        body: prompt,
+      },
+    };
+    const rawBody = JSON.stringify(body);
+    const timestamp = String(currentSecond());
+
+    const response = await app.request("/api/agentphone/webhook", {
+      method: "POST",
+      headers: {
+        "x-webhook-timestamp": timestamp,
+        "x-webhook-signature": signAgentPhoneWebhook(rawBody, timestamp),
+        "x-webhook-id": "webhook-provider-change",
+      },
+      body: rawBody,
+    });
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+
+    expect(sendCalls).toStrictEqual([]);
+    const [run] = await writeDb
+      .select({
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run).toMatchObject({
+      continuedFromSessionId: null,
+      modelProvider: "vm0",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    expect(run?.sessionId).not.toBe(previousSessionId);
+  });
+
+  it("starts a new AgentPhone session when the default model provider changed", async () => {
+    configureAgentPhoneEnv();
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const phoneHandle = uniquePhone();
+    const { previousSessionId } = await seedAgentPhoneModelReuseFixture({
+      userId,
+      orgId,
+      phoneHandle,
+      selectedModel: "claude-sonnet-4-6",
+      previousModelProvider: "openrouter-api-key",
+    });
+    await writeDb
+      .update(orgMembersMetadata)
+      .set({ selectedModel: null })
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, orgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      );
+    const sendCalls = agentPhoneSendMessage();
+    const app = createApp({ signal: context.signal });
+    const prompt = "default provider changed AgentPhone session";
+    const body = {
+      event: "agent.message",
+      channel: "sms",
+      data: {
+        id: "ap-default-provider-change",
+        agentId: "agt-agentphone",
+        from: phoneHandle,
+        to: "+19039853128",
+        body: prompt,
+      },
+    };
+    const rawBody = JSON.stringify(body);
+    const timestamp = String(currentSecond());
+
+    const response = await app.request("/api/agentphone/webhook", {
+      method: "POST",
+      headers: {
+        "x-webhook-timestamp": timestamp,
+        "x-webhook-signature": signAgentPhoneWebhook(rawBody, timestamp),
+        "x-webhook-id": "webhook-default-provider-change",
+      },
+      body: rawBody,
+    });
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+
+    expect(sendCalls).toStrictEqual([]);
+    const [run] = await writeDb
+      .select({
+        sessionId: agentRuns.sessionId,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run).toMatchObject({
+      continuedFromSessionId: null,
+      modelProvider: "vm0",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    expect(run?.sessionId).not.toBe(previousSessionId);
   });
 
   it.each([

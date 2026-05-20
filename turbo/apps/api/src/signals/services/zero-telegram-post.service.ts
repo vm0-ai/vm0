@@ -14,7 +14,6 @@ import {
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
@@ -27,7 +26,6 @@ import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq } from "drizzle-orm";
 
 import {
@@ -58,6 +56,11 @@ import {
 import { now, nowDate } from "../external/time";
 import { safeUrlParse, settle, tapError } from "../utils";
 import { encryptSecretValue, decryptSecretValue } from "./crypto.utils";
+import {
+  resolveIntegrationModelRouteForUser,
+  type IntegrationModelRoutePin,
+} from "./integration-model-route.service";
+import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
@@ -233,12 +236,7 @@ interface RunAgentParams {
   readonly modelRoute: ModelRoutePin | undefined;
 }
 
-interface ModelRoutePin {
-  readonly modelProviderType: string;
-  readonly modelProviderId: string | null;
-  readonly modelProviderCredentialScope: "org" | "member";
-  readonly selectedModel: string;
-}
+type ModelRoutePin = IntegrationModelRoutePin;
 
 interface TelegramCallbackPayload {
   readonly installationId: string;
@@ -1449,7 +1447,7 @@ async function lookupTelegramThreadSession(args: {
   readonly userLinkKind: "custom" | "official";
   readonly userId: string;
   readonly composeId: string;
-  readonly selectedModel: string | undefined;
+  readonly modelRoute: ModelRoutePin | undefined;
 }): Promise<{
   readonly existingSessionId: string | undefined;
   readonly lastProcessedMessageId: string | undefined;
@@ -1492,18 +1490,13 @@ async function lookupTelegramThreadSession(args: {
     return { existingSessionId: undefined, lastProcessedMessageId: undefined };
   }
 
-  if (args.selectedModel) {
-    const [previousRun] = await args.db
-      .select({ selectedModel: zeroRuns.selectedModel })
-      .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(eq(agentRuns.sessionId, thread.agentSessionId))
-      .orderBy(desc(agentRuns.createdAt))
-      .limit(1);
-    if (
-      previousRun?.selectedModel &&
-      previousRun.selectedModel !== args.selectedModel
-    ) {
+  if (args.modelRoute) {
+    const canReuseSession = await canReuseIntegrationSessionForModelRoute({
+      db: args.db,
+      sessionId: thread.agentSessionId,
+      modelRoute: args.modelRoute,
+    });
+    if (!canReuseSession) {
       return {
         existingSessionId: undefined,
         lastProcessedMessageId: undefined,
@@ -1698,33 +1691,6 @@ function buildTelegramPrompt(
   return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
 }
 
-async function resolveModelRouteForUser(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  orgId: string,
-  userId: string,
-  signal: AbortSignal,
-): Promise<ModelRoutePin | undefined> {
-  const selectedModel = (await get(userModelPreference({ orgId, userId })))
-    .selectedModel;
-  if (!selectedModel) {
-    return undefined;
-  }
-  const policies = await set(listOrgModelPolicies$, { orgId, userId }, signal);
-  const policy = policies.policies.find((candidate) => {
-    return candidate.model === selectedModel;
-  });
-  if (!policy) {
-    return undefined;
-  }
-  return {
-    modelProviderType: policy.defaultProviderType,
-    modelProviderId: policy.modelProviderId,
-    modelProviderCredentialScope: policy.credentialScope,
-    selectedModel: policy.model,
-  };
-}
-
 async function runAgentForTelegram(
   set: ComputedSetter,
   args: RunAgentParams,
@@ -1830,7 +1796,7 @@ async function lookupAgentThreadSession(args: {
   readonly userLinkKind: "custom" | "official";
   readonly userId: string;
   readonly composeId: string;
-  readonly selectedModel: string | undefined;
+  readonly modelRoute: ModelRoutePin | undefined;
 }): Promise<TelegramThreadLookupResult> {
   if (args.rootMessageId === undefined) {
     return { existingSessionId: undefined, lastProcessedMessageId: undefined };
@@ -1843,7 +1809,7 @@ async function lookupAgentThreadSession(args: {
     userLinkKind: args.userLinkKind,
     userId: args.userId,
     composeId: args.composeId,
-    selectedModel: args.selectedModel,
+    modelRoute: args.modelRoute,
   });
 }
 
@@ -1971,13 +1937,13 @@ async function handleTelegramAgentMessage(args: {
   args.signal.throwIfAborted();
 
   const rootMessageId = rootMessageIdForAgentMessage(args);
-  const modelRoute = await resolveModelRouteForUser(
-    args.get,
-    args.set,
-    args.orgId,
-    args.userLink.vm0UserId,
-    args.signal,
-  );
+  const modelRoute = await resolveIntegrationModelRouteForUser({
+    get: args.get,
+    set: args.set,
+    orgId: args.orgId,
+    userId: args.userLink.vm0UserId,
+    signal: args.signal,
+  });
   args.signal.throwIfAborted();
   const session = await lookupAgentThreadSession({
     db: args.db,
@@ -1987,7 +1953,7 @@ async function handleTelegramAgentMessage(args: {
     userLinkKind: args.userLinkKind,
     userId: args.userLink.vm0UserId,
     composeId: args.composeId,
-    selectedModel: modelRoute?.selectedModel,
+    modelRoute,
   });
   args.signal.throwIfAborted();
 

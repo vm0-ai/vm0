@@ -212,13 +212,20 @@ const seedTelegramPostFixture$ = command(
     if (args.seedDefaultAgent ?? true) {
       await db
         .insert(orgMetadata)
-        .values({ orgId, defaultAgentId: composeId })
+        .values({ orgId, defaultAgentId: composeId, credits: 100_000 })
         .onConflictDoUpdate({
           target: orgMetadata.orgId,
-          set: { defaultAgentId: composeId },
+          set: { defaultAgentId: composeId, credits: 100_000 },
         });
       signal.throwIfAborted();
     }
+    await db.insert(vm0ApiKeys).values({
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: `vm0-key-${composeId}`,
+      label: composeId,
+    });
+    signal.throwIfAborted();
 
     if (args.installBot ?? true) {
       await db.insert(telegramInstallations).values({
@@ -454,6 +461,7 @@ async function latestZeroRunForFixture(fixture: TelegramPostFixture) {
   const [run] = await db
     .select({
       id: zeroRuns.id,
+      modelProvider: zeroRuns.modelProvider,
       selectedModel: zeroRuns.selectedModel,
     })
     .from(zeroRuns)
@@ -584,6 +592,7 @@ async function seedRunningRun(fixture: TelegramPostFixture): Promise<void> {
 
 async function seedCompletedRun(args: {
   readonly fixture: TelegramPostFixture;
+  readonly modelProvider?: string | null;
   readonly selectedModel: string;
 }): Promise<string> {
   const db = store.set(writeDb$);
@@ -608,6 +617,7 @@ async function seedCompletedRun(args: {
   await db.insert(zeroRuns).values({
     id: run.id,
     triggerSource: "telegram",
+    modelProvider: args.modelProvider ?? null,
     selectedModel: args.selectedModel,
   });
   return sessionId;
@@ -2099,6 +2109,132 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         selectedModel: "claude-opus-4-7",
+      }),
+    );
+  });
+
+  it("starts a new custom DM session when the selected model provider changed", async () => {
+    const fixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        { linkTelegramUser: true },
+        context.signal,
+      ),
+    );
+    await seedModelPolicies({
+      fixture,
+      selectedModel: "claude-sonnet-4-6",
+    });
+    await seedOrgCredits(fixture, 100_000);
+    const previousSessionId = await seedCompletedRun({
+      fixture,
+      modelProvider: "openrouter-api-key",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    await seedTelegramThreadSession({
+      telegramUserLinkId: await linkedTelegramUserLinkId(fixture),
+      chatId: fixture.telegramUserId!,
+      rootMessageId: "dm",
+      agentSessionId: previousSessionId,
+    });
+    const telegramMocks = telegramApiMocks();
+
+    const response = await postWebhook({
+      telegramBotId: fixture.telegramBotId,
+      secret: fixture.webhookSecret,
+      body: {
+        update_id: 132,
+        message: {
+          message_id: 1321,
+          chat: { id: Number(fixture.telegramUserId), type: "private" },
+          from: {
+            id: Number(fixture.telegramUserId),
+            username: "alice",
+            first_name: "Alice",
+          },
+          text: "provider changed telegram session",
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    expect(telegramMocks.sentMessages).toStrictEqual([]);
+
+    const run = await runForFixturePrompt(
+      fixture,
+      "provider changed telegram session",
+    );
+    expect(run?.prompt).toBe("provider changed telegram session");
+    expect(run?.continuedFromSessionId).toBeNull();
+    expect(run?.sessionId).not.toBe(previousSessionId);
+    await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
+      expect.objectContaining({
+        modelProvider: "vm0",
+        selectedModel: "claude-sonnet-4-6",
+      }),
+    );
+  });
+
+  it("starts a new custom DM session when the default model provider changed", async () => {
+    const fixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        { linkTelegramUser: true },
+        context.signal,
+      ),
+    );
+    await seedModelPolicies({
+      fixture,
+      selectedModel: null,
+    });
+    await seedOrgCredits(fixture, 100_000);
+    const previousSessionId = await seedCompletedRun({
+      fixture,
+      modelProvider: "openrouter-api-key",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    await seedTelegramThreadSession({
+      telegramUserLinkId: await linkedTelegramUserLinkId(fixture),
+      chatId: fixture.telegramUserId!,
+      rootMessageId: "dm",
+      agentSessionId: previousSessionId,
+    });
+    const telegramMocks = telegramApiMocks();
+
+    const response = await postWebhook({
+      telegramBotId: fixture.telegramBotId,
+      secret: fixture.webhookSecret,
+      body: {
+        update_id: 133,
+        message: {
+          message_id: 1331,
+          chat: { id: Number(fixture.telegramUserId), type: "private" },
+          from: {
+            id: Number(fixture.telegramUserId),
+            username: "alice",
+            first_name: "Alice",
+          },
+          text: "default provider changed telegram session",
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await clearAllDetached();
+    expect(telegramMocks.sentMessages).toStrictEqual([]);
+
+    const run = await runForFixturePrompt(
+      fixture,
+      "default provider changed telegram session",
+    );
+    expect(run?.prompt).toBe("default provider changed telegram session");
+    expect(run?.continuedFromSessionId).toBeNull();
+    expect(run?.sessionId).not.toBe(previousSessionId);
+    await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
+      expect.objectContaining({
+        modelProvider: "vm0",
+        selectedModel: "claude-sonnet-4-6",
       }),
     );
   });
