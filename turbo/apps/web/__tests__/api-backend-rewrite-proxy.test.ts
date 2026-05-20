@@ -1206,6 +1206,17 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/usages")).toBe(false);
   });
 
+  it("matches the zero billing status rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/checkout")).toBe(
+      false,
+    );
+  });
+
   it("matches the test slack dispatch probe rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/test/slack-dispatch-probe")).toBe(
       true,
