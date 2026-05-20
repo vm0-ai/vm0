@@ -1075,6 +1075,10 @@ async fn supervised_exec_terminal_wait_timeout_does_not_send_cancel() {
     let err = handle.wait(Duration::ZERO).await.unwrap_err();
     assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("terminal wait timeout must not send exec cancel; read {n} bytes"),

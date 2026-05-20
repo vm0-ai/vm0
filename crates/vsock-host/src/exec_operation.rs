@@ -164,6 +164,10 @@ pub struct SupervisedExecRequest<'a> {
     /// If that cancel frame cannot be written within the bounded fallback
     /// window, the connection is poisoned because the guest process state is
     /// no longer known.
+    ///
+    /// A successful start-timeout cancellation still abandons terminal proof
+    /// for this operation, so the connection should not be reused for later
+    /// normal operations.
     pub start_timeout: Duration,
 }
 
@@ -862,7 +866,9 @@ impl SupervisedExecHandle {
     /// Wait for the terminal exec result.
     ///
     /// On timeout, this abandons the host-side operation registration but does
-    /// not send `MSG_EXEC_CANCEL`.
+    /// not send `MSG_EXEC_CANCEL`. Because the terminal proof is abandoned
+    /// after a guest write, the connection should not be reused for later
+    /// normal operations.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
