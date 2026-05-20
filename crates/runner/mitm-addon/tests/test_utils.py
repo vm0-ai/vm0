@@ -2,18 +2,27 @@
 
 import json
 
+import pytest
+
 from logging_utils import log_proxy_entry
 from url_utils import get_original_url
 
 
 class TestGetOriginalUrl:
-    def test_https_default_port(self, real_flow):
-        flow = real_flow(host="example.com", port=443)
-        assert get_original_url(flow) == "https://example.com/"
-
-    def test_http_default_port(self, real_flow):
-        flow = real_flow(host="example.com", port=80, scheme="http")
-        assert get_original_url(flow) == "http://example.com/"
+    @pytest.mark.parametrize(
+        ("scheme", "port", "expected_url"),
+        [
+            ("https", 443, "https://example.com/"),
+            ("http", 80, "http://example.com/"),
+            ("https", 8443, "https://example.com:8443/"),
+            ("http", 8080, "http://example.com:8080/"),
+            ("https", 80, "https://example.com:80/"),
+            ("http", 443, "http://example.com:443/"),
+        ],
+    )
+    def test_omits_only_scheme_default_ports(self, real_flow, scheme, port, expected_url):
+        flow = real_flow(host="example.com", port=port, scheme=scheme)
+        assert get_original_url(flow) == expected_url
 
     def test_https_non_standard_port(self, real_flow):
         # Pins two invariants at once for the #10082 regression:
