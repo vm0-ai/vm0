@@ -1,5 +1,33 @@
 # Changelog
 
+## [12.379.1](https://github.com/vm0-ai/vm0/compare/web-v12.379.0...web-v12.379.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* add connector oauth handoff flow ([#14138](https://github.com/vm0-ai/vm0/issues/14138)) ([43da171](https://github.com/vm0-ai/vm0/commit/43da1713912134ca23a609760cd6bf27c614510f))
+
+
+### Refactoring
+
+* cut over telegram register route ([#14125](https://github.com/vm0-ai/vm0/issues/14125)) ([9f37f12](https://github.com/vm0-ai/vm0/commit/9f37f12ee8bf6ac32a0aa1973edffb36fd18e79c))
+* cut over telegram webhook route ([#14139](https://github.com/vm0-ai/vm0/issues/14139)) ([0e05e2b](https://github.com/vm0-ai/vm0/commit/0e05e2bf23f638ee1102766c091f362c5e3654d2))
+* cut over zero email inbound route ([#14137](https://github.com/vm0-ai/vm0/issues/14137)) ([3d0a011](https://github.com/vm0-ai/vm0/commit/3d0a011f790395472f09aa1ba7e4536afb56397d))
+* cut over zero email trigger callback route ([#14124](https://github.com/vm0-ai/vm0/issues/14124)) ([5432bff](https://github.com/vm0-ai/vm0/commit/5432bffc1bc517f6927a73bd75046cd744921bba))
+* proxy zero billing auto-recharge to api ([#14122](https://github.com/vm0-ai/vm0/issues/14122)) ([6ec47cf](https://github.com/vm0-ai/vm0/commit/6ec47cfab6c698dce83060134e5f781f967f8e6d))
+* proxy zero billing checkout to api ([#14136](https://github.com/vm0-ai/vm0/issues/14136)) ([92c3dc5](https://github.com/vm0-ai/vm0/commit/92c3dc5561069c855d0fa20f668299e57147d81e))
+* proxy zero billing downgrade to api ([#14141](https://github.com/vm0-ai/vm0/issues/14141)) ([fa04e9a](https://github.com/vm0-ai/vm0/commit/fa04e9a48bb60ede26b1c6f43b6c13fced728403))
+* proxy zero logs detail to api ([#14128](https://github.com/vm0-ai/vm0/issues/14128)) ([6e69c28](https://github.com/vm0-ai/vm0/commit/6e69c28b56f73e43dc0dff1c5bcfacc9ec8e1d2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.33.1
+    * @vm0/core bumped to 8.285.1
+    * @vm0/db bumped to 1.16.1
+
 ## [12.379.0](https://github.com/vm0-ai/vm0/compare/web-v12.378.1...web-v12.379.0) (2026-05-20)
 
 

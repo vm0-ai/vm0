@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.369.1](https://github.com/vm0-ai/vm0/compare/app-v0.369.0...app-v0.369.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* add connector oauth handoff flow ([#14138](https://github.com/vm0-ai/vm0/issues/14138)) ([43da171](https://github.com/vm0-ai/vm0/commit/43da1713912134ca23a609760cd6bf27c614510f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.33.1
+    * @vm0/core bumped to 8.285.1
+
 ## [0.369.0](https://github.com/vm0-ai/vm0/compare/app-v0.368.0...app-v0.369.0) (2026-05-20)
 
 
