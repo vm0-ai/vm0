@@ -760,6 +760,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero connector sessions rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/sessions"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/sessions")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/session"),
+    ).toBe(false);
+  });
+
   it("matches the zero connector OAuth start rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/oauth/start"),

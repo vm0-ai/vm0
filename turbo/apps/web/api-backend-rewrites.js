@@ -242,6 +242,10 @@ const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
 const ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/scope-diff$/;
+const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/sessions";
+const ZERO_CONNECTORS_SESSIONS_PATH_RE =
+  /^\/api\/zero\/connectors\/[^/]+\/sessions$/;
 const ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/start";
 const ZERO_CONNECTORS_OAUTH_START_PATH_RE =
@@ -591,6 +595,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE,
     "/api/zero/connectors/:type/scope-diff",
     ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE,
+  ],
+  [
+    ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/sessions",
+    ZERO_CONNECTORS_SESSIONS_PATH_RE,
   ],
   [
     ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,

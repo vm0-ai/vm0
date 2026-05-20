@@ -1489,6 +1489,14 @@ const ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/scope-diff",
   "/api/zero/connectors/github/scope",
 ] as const;
+const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/sessions";
+const ZERO_CONNECTORS_SESSIONS_PATH = "/api/zero/connectors/github/sessions";
+const ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
+  "/api/zero/connectors/sessions",
+  "/api/zero/connectors/github/session",
+] as const;
 const ZERO_SLACK_CHANNELS_REWRITE_SOURCE = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_PATH = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_NEXT_NEGATIVE_PATHS = [
@@ -3832,6 +3840,32 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the zero connector sessions rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/sessions",
+    });
+
+    const matcher = getPathMatch(ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CONNECTORS_SESSIONS_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
