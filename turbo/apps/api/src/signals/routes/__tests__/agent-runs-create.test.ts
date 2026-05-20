@@ -671,14 +671,14 @@ describe("POST /api/agent/runs", () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     // WeRead's credential is consumed by the firewall auth header template
-    // (Authorization: Bearer ${{ secrets.WEREAD_API_KEY }}), so the compose
+    // (Authorization: Bearer ${{ secrets.WEREAD_TOKEN }}), so the compose
     // environment never references it. Regression: loadReferencedSecrets used
     // to drop any user secret not named in the compose environment, leaving
     // the weread firewall to fail with 424 CONNECTOR_NOT_CONFIGURED.
     await db.insert(secretsTable).values({
       orgId: fx.orgId,
       userId: fx.userId,
-      name: "WEREAD_API_KEY",
+      name: "WEREAD_TOKEN",
       encryptedValue: encryptSecretForTests("weread-real-token"),
       type: "user",
     });
@@ -720,7 +720,7 @@ describe("POST /api/agent/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
-      WEREAD_API_KEY: "weread-real-token",
+      WEREAD_TOKEN: "weread-real-token",
       DECLARED_SECRET: "declared-value",
     });
   });
