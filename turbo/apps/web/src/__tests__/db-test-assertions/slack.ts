@@ -13,22 +13,6 @@ export async function findTestSlackOrgInstallation(workspaceId: string) {
   return row;
 }
 
-export async function findTestSlackOrgConnections(
-  slackUserId: string,
-  workspaceId: string,
-) {
-  initServices();
-  return globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, slackUserId),
-        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
-      ),
-    );
-}
-
 export async function findTestSlackOrgConnection(
   slackUserId: string,
   workspaceId: string,

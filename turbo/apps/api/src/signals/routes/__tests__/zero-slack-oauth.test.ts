@@ -8,7 +8,9 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../external/time";
 import { writeDb$ } from "../../external/db";
+import { clearAllDetached } from "../../utils";
 import {
+  countSlackOrgConnections$,
   deleteSlackConnectOrg$,
   findSlackOrgConnection$,
   findSlackOrgInstallation$,
@@ -63,6 +65,22 @@ function mockOAuthSuccess(
     authed_user: { id: overrides.authedUserId ?? "U_TEST" },
     scope: overrides.scope,
   });
+}
+
+function slackPostMessageContaining(text: string): boolean {
+  return context.mocks.slack.chat.postMessage.mock.calls.some((call) => {
+    const [message] = call;
+    return hasTextField(message) && message.text.includes(text);
+  });
+}
+
+function hasTextField(value: unknown): value is { readonly text: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "text" in value &&
+    typeof value.text === "string"
+  );
 }
 
 async function seedMembership(
@@ -412,6 +430,34 @@ describe("Slack OAuth API routes", () => {
       expect(decodeURIComponent(location ?? "")).toContain("Only org admins");
     });
 
+    it("returns a framework error when the platform installer is not an org member", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
+      mockOAuthSuccess({ teamId: fixture.slackWorkspaceId });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+      });
+      context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
+        { data: [] },
+      );
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Internal server error",
+      });
+    });
+
     it("creates an unbound installation for Slack-initiated installs", async () => {
       const fixture = await track(
         store.set(
@@ -443,6 +489,224 @@ describe("Slack OAuth API routes", () => {
         context.signal,
       );
       expect(installation?.orgId).toBeNull();
+    });
+
+    it("redirects to the failed page when the install OAuth exchange fails", async () => {
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: false,
+        error: "invalid_code",
+      });
+
+      const response = await appRequest(
+        "/api/zero/slack/oauth/callback?code=expired-code",
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/slack/failed");
+      expect(decodeURIComponent(location ?? "")).toContain(
+        "Failed to complete Slack installation",
+      );
+    });
+
+    it("rejects a platform install when the workspace belongs to another org", async () => {
+      const originalOrgId = `org_original_${now()}`;
+      const requestingOrgId = `org_requesting_${now()}`;
+      const requestingUserId = `user_requesting_${now()}`;
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          {
+            orgId: originalOrgId,
+            slackWorkspaceId: "T_REJECTED",
+          },
+          context.signal,
+        ),
+      );
+      await seedMembership(requestingOrgId, requestingUserId, "admin");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        accessToken: "xoxb-requesting-token",
+        authedUserId: "U_REQUESTING",
+      });
+      const state = JSON.stringify({
+        orgId: requestingOrgId,
+        vm0UserId: requestingUserId,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/settings/slack?error=");
+      expect(decodeURIComponent(location ?? "")).toContain(
+        "already installed by another organization",
+      );
+
+      const installation = await store.set(
+        findSlackOrgInstallation$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      );
+      expect(installation).toMatchObject({ orgId: originalOrgId });
+      expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
+        "xoxb-test-bot-token",
+      );
+      const connection = await store.set(
+        findSlackOrgConnection$,
+        {
+          slackWorkspaceId: fixture.slackWorkspaceId,
+          slackUserId: "U_REQUESTING",
+        },
+        context.signal,
+      );
+      expect(connection).toBeUndefined();
+    });
+
+    it("updates token and scopes for a same-org platform reinstall", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        teamName: "Renamed Workspace",
+        accessToken: "xoxb-refreshed-token",
+        botUserId: "B_REFRESHED",
+        authedUserId: fixture.slackUserId,
+        scope: "chat:write,channels:read,users:read",
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/settings/slack?status=connected",
+      );
+      const installation = await store.set(
+        findSlackOrgInstallation$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      );
+      expect(installation).toMatchObject({
+        orgId: fixture.orgId,
+        slackWorkspaceName: "Renamed Workspace",
+        botUserId: "B_REFRESHED",
+        botScopes: JSON.stringify([
+          "chat:write",
+          "channels:read",
+          "users:read",
+        ]),
+      });
+      expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
+        "xoxb-refreshed-token",
+      );
+    });
+
+    it("creates a single connection across duplicate platform installs", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+      });
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+      await appRequest(
+        `/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+      );
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=second-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const count = await store.set(
+        countSlackOrgConnections$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      );
+      expect(count).toBe(1);
+    });
+
+    it("sends the pending prompt DM for platform installs when state includes a prompt", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+        prompt: "summarize my inbox",
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      await clearAllDetached();
+      expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
+    });
+
+    it("does not send a pending prompt DM for platform installs without a prompt", async () => {
+      const fixture = await track(
+        store.set(
+          seedSlackConnectOrg$,
+          { installationOrgId: null },
+          context.signal,
+        ),
+      );
+      await store.set(deleteSlackConnectOrg$, fixture, context.signal);
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      await clearAllDetached();
+      expect(
+        slackPostMessageContaining("would you like me to run"),
+      ).toBeFalsy();
     });
 
     it("connects an existing installed workspace through the connect flow", async () => {
@@ -479,6 +743,146 @@ describe("Slack OAuth API routes", () => {
         context.signal,
       );
       expect(connection).toMatchObject({ vm0UserId: fixture.userId });
+
+      await clearAllDetached();
+      expect(slackPostMessageContaining("summarize my inbox")).toBeTruthy();
+    });
+
+    it("does not send a pending prompt DM in the connect flow without a prompt", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      await seedMembership(fixture.orgId, fixture.userId, "member");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+        flow: "connect",
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/settings/slack?status=connected",
+      );
+      await clearAllDetached();
+      expect(
+        slackPostMessageContaining("would you like me to run"),
+      ).toBeFalsy();
+    });
+
+    it("redirects invalid connect state to the Slack settings error path", async () => {
+      const state = JSON.stringify({ flow: "connect" });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/settings/slack?error=",
+      );
+      expect(context.mocks.slack.oauth.v2.access).not.toHaveBeenCalled();
+    });
+
+    it("redirects connect flow OAuth exchange failures to the Slack settings error path", async () => {
+      const state = JSON.stringify({
+        orgId: "org_exchange_failure",
+        vm0UserId: "user_exchange_failure",
+        flow: "connect",
+      });
+      context.mocks.slack.oauth.v2.access.mockResolvedValueOnce({
+        ok: false,
+        error: "invalid_code",
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=expired-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/settings/slack?error=");
+      expect(decodeURIComponent(location ?? "")).toContain(
+        "Failed to connect Slack account",
+      );
+    });
+
+    it("redirects connect flow when no installation exists for the org", async () => {
+      const state = JSON.stringify({
+        orgId: "org_missing_installation",
+        vm0UserId: "user_missing_installation",
+        flow: "connect",
+      });
+      mockOAuthSuccess({ teamId: "T_MISSING", authedUserId: "U_MISSING" });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/settings/slack?error=");
+      expect(decodeURIComponent(location ?? "")).toContain(
+        "No Slack workspace installed for this organization",
+      );
+    });
+
+    it("redirects connect flow when Slack returns a different workspace", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      mockOAuthSuccess({
+        teamId: "T_DIFFERENT",
+        authedUserId: fixture.slackUserId,
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+        flow: "connect",
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=connect-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      const location = response.headers.get("location");
+      expect(location).toContain("/settings/slack?error=");
+      expect(decodeURIComponent(location ?? "")).toContain(
+        "different Slack workspace",
+      );
+    });
+
+    it("redirects explicit platform reinstalls back to the Works page", async () => {
+      const fixture = await track(
+        store.set(seedSlackConnectOrg$, {}, context.signal),
+      );
+      await seedMembership(fixture.orgId, fixture.userId, "admin");
+      mockOAuthSuccess({
+        teamId: fixture.slackWorkspaceId,
+        authedUserId: fixture.slackUserId,
+      });
+      const state = JSON.stringify({
+        orgId: fixture.orgId,
+        vm0UserId: fixture.userId,
+        reinstall: true,
+      });
+
+      const response = await appRequest(
+        `/api/zero/slack/oauth/callback?code=reinstall-code&state=${encodeURIComponent(state)}`,
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toContain(
+        "/?tab=works&updated=1",
+      );
     });
 
     it("returns 400 for missing callback code and redirects Slack errors", async () => {
