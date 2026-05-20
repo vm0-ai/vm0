@@ -507,6 +507,13 @@ const RUNNERS_POLL_NEXT_NEGATIVE_PATHS = [
   "/api/runners/poll/extra",
   "/api/runners",
 ] as const;
+const RUNNERS_REALTIME_TOKEN_REWRITE_SOURCE = "/api/runners/realtime/token";
+const RUNNERS_REALTIME_TOKEN_PATH = "/api/runners/realtime/token";
+const RUNNERS_REALTIME_TOKEN_NEXT_NEGATIVE_PATHS = [
+  "/api/runners/realtime/token/extra",
+  "/api/runners/realtime",
+  "/api/runners",
+] as const;
 const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_CONNECT_PATH = "/api/agentphone/connect";
 const AGENTPHONE_CONNECT_NEXT_NEGATIVE_PATHS = [
@@ -1943,6 +1950,10 @@ describe("API backend rewrites", () => {
         {
           source: RUNNERS_POLL_REWRITE_SOURCE,
           destination: "https://api.example.test/api/runners/poll",
+        },
+        {
+          source: RUNNERS_REALTIME_TOKEN_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/runners/realtime/token",
         },
         {
           source: "/api/device-token",
@@ -3585,6 +3596,7 @@ describe("API backend rewrites", () => {
 
     expect(matcher(RUNNERS_HEARTBEAT_PATH)).toStrictEqual({});
     expect(matcher(RUNNERS_POLL_PATH)).toBe(false);
+    expect(matcher(RUNNERS_REALTIME_TOKEN_PATH)).toBe(false);
     for (const pathname of RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
@@ -3609,7 +3621,33 @@ describe("API backend rewrites", () => {
 
     expect(matcher(RUNNERS_POLL_PATH)).toStrictEqual({});
     expect(matcher(RUNNERS_HEARTBEAT_PATH)).toBe(false);
+    expect(matcher(RUNNERS_REALTIME_TOKEN_PATH)).toBe(false);
     for (const pathname of RUNNERS_POLL_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact runners realtime token rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === RUNNERS_REALTIME_TOKEN_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: RUNNERS_REALTIME_TOKEN_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/runners/realtime/token",
+    });
+
+    const matcher = getPathMatch(RUNNERS_REALTIME_TOKEN_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(RUNNERS_REALTIME_TOKEN_PATH)).toStrictEqual({});
+    expect(matcher(RUNNERS_HEARTBEAT_PATH)).toBe(false);
+    expect(matcher(RUNNERS_POLL_PATH)).toBe(false);
+    for (const pathname of RUNNERS_REALTIME_TOKEN_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -7900,6 +7938,15 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact runners poll path", () => {
     expect(matchesApiBackendRewritePath(RUNNERS_POLL_PATH)).toBe(true);
     for (const pathname of RUNNERS_POLL_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact runners realtime token path", () => {
+    expect(matchesApiBackendRewritePath(RUNNERS_REALTIME_TOKEN_PATH)).toBe(
+      true,
+    );
+    for (const pathname of RUNNERS_REALTIME_TOKEN_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

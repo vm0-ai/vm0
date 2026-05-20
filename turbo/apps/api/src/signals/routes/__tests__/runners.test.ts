@@ -108,6 +108,32 @@ async function seedPatFixture(args: {
   return { token, tokenId, userId: args.userId, orgId: args.orgId };
 }
 
+async function seedExpiredPatFixture(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Promise<PatFixture> {
+  const tokenId = randomUUID();
+  const seconds = currentSecond();
+  const token = signPatJwtForTests({
+    scope: "cli",
+    userId: args.userId,
+    orgId: args.orgId,
+    tokenId,
+    iat: seconds - 120,
+    exp: seconds - 60,
+  });
+  const db = store.set(writeDb$);
+  await db.insert(cliTokens).values({
+    id: tokenId,
+    token,
+    userId: args.userId,
+    name: "expired runner token",
+    expiresAt: new Date(now() - 60_000),
+  });
+
+  return { token, tokenId, userId: args.userId, orgId: args.orgId };
+}
+
 async function seedQueuedRun(args: {
   readonly fixture: UsageInsightFixture;
   readonly runnerGroup?: string;
@@ -515,6 +541,115 @@ describe("POST /api/runners/*", () => {
     });
   });
 
+  it("generates a realtime token for a user runner", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const tokenRequest = {
+      keyName: "test-key",
+      timestamp: 1_700_000_000_000,
+      capability: '{"runner-group:vm0/production":["subscribe"]}',
+      nonce: "test-nonce",
+      mac: "test-mac",
+    };
+    context.mocks.ably.createTokenRequest.mockResolvedValue(tokenRequest);
+
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/production" },
+        headers: { authorization: `Bearer ${pat.token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual(tokenRequest);
+    expect(context.mocks.ably.createTokenRequest).toHaveBeenCalledWith({
+      capability: {
+        "runner-group:vm0/production": ["subscribe"],
+      },
+      ttl: 3_600_000,
+    });
+  });
+
+  it("rejects realtime token requests with no authorization", async () => {
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/test" },
+        headers: {},
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Authentication required", code: "UNAUTHORIZED" },
+    });
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects realtime token requests with non-Bearer authorization", async () => {
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/test" },
+        headers: { authorization: "Basic sometoken" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Authentication required", code: "UNAUTHORIZED" },
+    });
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects realtime token requests with an invalid CLI token", async () => {
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/test" },
+        headers: { authorization: "Bearer invalid_nonexistent_token" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Authentication required", code: "UNAUTHORIZED" },
+    });
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects realtime token requests with an expired CLI token", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedExpiredPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/test" },
+        headers: { authorization: `Bearer ${pat.token}` },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Authentication required", code: "UNAUTHORIZED" },
+    });
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
   it("rejects realtime token requests for non-vm0 runner groups", async () => {
     const client = setupApp({ context })(runnerRealtimeTokenContract);
     const response = await accept(
@@ -532,5 +667,50 @@ describe("POST /api/runners/*", () => {
       },
     });
     expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects user realtime token requests for non-vm0 runner groups", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "wrong-org/default" },
+        headers: { authorization: `Bearer ${pat.token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only vm0/* runner groups are supported",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(context.mocks.ably.createTokenRequest).not.toHaveBeenCalled();
+  });
+
+  it("returns an internal error when realtime token generation fails", async () => {
+    const error = new Error("Token gen failed");
+    context.mocks.ably.createTokenRequest.mockRejectedValueOnce(error);
+
+    const client = setupApp({ context })(runnerRealtimeTokenContract);
+    const response = await accept(
+      client.create({
+        body: { group: "vm0/test" },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [500],
+    );
+
+    expect(response.status).toBe(500);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 });

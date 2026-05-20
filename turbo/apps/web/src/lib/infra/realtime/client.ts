@@ -45,24 +45,6 @@ export async function publishUserSignal(
 }
 
 /**
- * Generate an Ably token for a specific runner group channel (subscribe only).
- * Used by runners to authenticate and subscribe to job notifications.
- */
-export async function generateRunnerGroupToken(
-  group: string,
-): Promise<Ably.TokenRequest> {
-  const channelName = getRunnerGroupChannelName(group);
-  const tokenRequest = await getAblyClient().auth.createTokenRequest({
-    capability: {
-      [channelName]: ["subscribe"],
-    },
-    ttl: 3600000, // 1 hour
-  });
-  log.debug(`Generated token for runner-group:${group}`);
-  return tokenRequest;
-}
-
-/**
  * Publish job notification to a runner group's Ably channel.
  * Sends runId + profile so runner can pre-check resource budget before claiming.
  * Non-blocking — logs errors but doesn't throw, because the job is already

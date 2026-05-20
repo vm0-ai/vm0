@@ -2444,6 +2444,17 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/runners")).toBe(false);
   });
 
+  it("matches the runners realtime token rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/runners/realtime/token")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/runners/realtime/token/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/runners/realtime")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/runners")).toBe(false);
+  });
+
   it("matches the zero secrets by-name rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME")).toBe(
       true,
