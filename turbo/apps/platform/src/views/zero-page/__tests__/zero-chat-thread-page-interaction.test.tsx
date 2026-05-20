@@ -147,10 +147,6 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
   it("clicking html platform file url preview opens the shared attachment lightbox", async () => {
     const htmlUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
-    const cdnUrl =
-      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
-    const previousBaseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
-    vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
     const writeTextSpy = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);
@@ -203,8 +199,7 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
     });
 
     await userEvent.click(screen.getByLabelText("Copy link"));
-    expect(writeTextSpy).toHaveBeenCalledWith(cdnUrl);
-    vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", previousBaseUrl ?? "");
+    expect(writeTextSpy).toHaveBeenCalledWith(htmlUrl);
   });
 });
 

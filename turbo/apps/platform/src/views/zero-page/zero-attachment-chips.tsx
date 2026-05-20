@@ -47,7 +47,6 @@ import {
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 
 const log = logger("zero-attachment-chips");
-const CLERK_USER_ID_PREFIX = "user_";
 
 type DocumentAttachmentPreviewKind =
   | "markdown"
@@ -88,73 +87,8 @@ function filenameFromUrl(url: string): string {
   return last && last.length > 0 ? last : "image";
 }
 
-function storageUserIdFromFileUrlSegment(userIdSegment: string): string {
-  if (
-    userIdSegment === "user" ||
-    userIdSegment.startsWith(CLERK_USER_ID_PREFIX) ||
-    userIdSegment.startsWith("user-")
-  ) {
-    return userIdSegment;
-  }
-  return `${CLERK_USER_ID_PREFIX}${userIdSegment}`;
-}
-
-function isPlatformFileUrlHost(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "vm0.ai" ||
-    hostname.endsWith(".vm0.ai") ||
-    hostname === "vm6.ai" ||
-    hostname.endsWith(".vm6.ai") ||
-    hostname === "vm7.ai" ||
-    hostname.endsWith(".vm7.ai")
-  );
-}
-
-function publicArtifactsBaseUrl(): string | null {
-  const baseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return null;
-  }
-  return baseUrl.replace(/\/+$/, "");
-}
-
-function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
-  const baseUrl = publicArtifactsBaseUrl();
-  if (!baseUrl) {
-    return null;
-  }
-
-  if (!URL.canParse(url, window.location.origin)) {
-    return null;
-  }
-
-  const parsed = new URL(url, window.location.origin);
-  if (
-    !["http:", "https:"].includes(parsed.protocol) ||
-    !isPlatformFileUrlHost(parsed.hostname)
-  ) {
-    return null;
-  }
-
-  const segments = parsed.pathname.split("/");
-  const [, route, userIdSegment, id, filename] = segments;
-  if (
-    route !== "f" ||
-    segments.length !== 5 ||
-    !userIdSegment ||
-    !id ||
-    !filename
-  ) {
-    return null;
-  }
-
-  const storageUserId = storageUserIdFromFileUrlSegment(userIdSegment);
-  return `${baseUrl}/artifacts/${encodeURIComponent(storageUserId)}/${id}/${filename}`;
-}
-
 export function publicAttachmentUrl(url: string): string {
-  return legacyFileUrlToArtifactCdnUrl(url) ?? url;
+  return url;
 }
 
 export function getAttachmentRawUrl(url: string): string {

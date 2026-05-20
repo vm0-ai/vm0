@@ -1395,12 +1395,8 @@ describe("zero chat thread page display - artifacts drawer", () => {
     const user = userEvent.setup();
     const fileUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
-    const copiedFileUrl =
-      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
-    const previousBaseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
     let artifactsRequests = 0;
     const syncBodies: unknown[] = [];
-    vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
     mockChatLifecycle({
       chatMessages: [
         {
@@ -1502,7 +1498,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
       ).toBeInTheDocument();
     });
     await user.click(screen.getByLabelText("Copy link for chart.png"));
-    expect(writeTextSpy).toHaveBeenCalledWith(copiedFileUrl);
+    expect(writeTextSpy).toHaveBeenCalledWith(fileUrl);
 
     await user.click(screen.getByLabelText("Sync chart.png to Google Drive"));
 
@@ -1535,7 +1531,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
         },
       ]);
     });
-    vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", previousBaseUrl ?? "");
   });
 
   it("syncs bulk Google Drive artifacts sequentially", async () => {
