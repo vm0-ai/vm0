@@ -4673,6 +4673,12 @@ mod tests {
             process_timeout_policy(Duration::from_millis(2500)),
             ExecTimeoutPolicy::Duration { timeout_ms: 2500 }
         );
+        assert_eq!(
+            process_timeout_policy(Duration::from_millis(u64::from(u32::MAX) + 1)),
+            ExecTimeoutPolicy::Duration {
+                timeout_ms: u32::MAX
+            }
+        );
     }
 
     #[test]
@@ -4737,6 +4743,49 @@ mod tests {
         assert!(!exit.stderr_truncated);
         assert_eq!(exit.diagnostic, "wait failed");
         assert!(exit.stream_overflowed);
+    }
+
+    #[test]
+    fn supervised_exec_result_to_process_exit_maps_terminal_edge_states() {
+        for (termination, diagnostic, expected_code, expected_stderr) in [
+            (
+                ExecTermination::TimedOut,
+                "",
+                EXEC_TIMEOUT_EXIT_CODE,
+                "Timeout",
+            ),
+            (
+                ExecTermination::Cancelled,
+                "cancel diagnostic",
+                1,
+                "Cancelled\ncancel diagnostic",
+            ),
+            (
+                ExecTermination::StartFailed,
+                "spawn failed",
+                1,
+                "spawn failed",
+            ),
+        ] {
+            let exit = supervised_exec_result_to_process_exit(
+                42,
+                vsock_host::ExecOperationResult {
+                    termination,
+                    duration_ms: 10,
+                    stdout: ExecOwnedCapturedOutput::Discarded,
+                    stderr: ExecOwnedCapturedOutput::Captured {
+                        bytes: Vec::new(),
+                        truncated: false,
+                    },
+                    diagnostic: diagnostic.to_string(),
+                    stream_overflowed: false,
+                },
+            );
+
+            assert_eq!(exit.exit_code, expected_code);
+            assert_eq!(String::from_utf8(exit.stderr).unwrap(), expected_stderr);
+            assert_eq!(exit.diagnostic, diagnostic);
+        }
     }
 
     #[tokio::test]
