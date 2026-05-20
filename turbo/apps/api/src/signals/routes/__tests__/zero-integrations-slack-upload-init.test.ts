@@ -39,6 +39,22 @@ function zeroToken(args: {
   });
 }
 
+function sandboxToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "sandbox",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: args.runId,
+    iat: seconds,
+    exp: seconds + 60,
+  });
+}
+
 describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
   const memberships: OrgMembershipFixture[] = [];
@@ -103,6 +119,70 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 403 when sandbox token lacks slack:write", async () => {
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const runId = `run_${randomUUID()}`;
+    const token = sandboxToken({ userId, orgId, runId });
+
+    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const response = await accept(
+      client.init({
+        body: { filename: "report.pdf", length: 100 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+    expect(response.body.error.message).toContain("slack:write");
+    expect(
+      context.mocks.slack.files.getUploadURLExternal,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when no Slack installation exists for org", async () => {
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, role: "admin" },
+      context.signal,
+    );
+    memberships.push(membership);
+    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+
+    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const response = await accept(
+      client.init({
+        body: { filename: "report.pdf", length: 100 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [404],
+    );
+    expect(response.body.error.message).toContain("No Slack installation");
+    expect(
+      context.mocks.slack.files.getUploadURLExternal,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for invalid request bodies", async () => {
+    const { orgId, userId } = await seedWithInstallation();
+    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+
+    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const response = await accept(
+      client.init({
+        body: { filename: "", length: 0 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(
+      context.mocks.slack.files.getUploadURLExternal,
+    ).not.toHaveBeenCalled();
+  });
+
   it("returns a Slack-issued upload URL and file id on the happy path", async () => {
     const { orgId, userId } = await seedWithInstallation();
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
@@ -123,6 +203,50 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
     expect(
       context.mocks.slack.files.getUploadURLExternal,
     ).toHaveBeenLastCalledWith({ filename: "quarterly.csv", length: 4096 });
+  });
+
+  it("forwards Slack non-ok upload URL responses as 400 SLACK_ERROR", async () => {
+    const { orgId, userId } = await seedWithInstallation();
+    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+
+    context.mocks.slack.files.getUploadURLExternal.mockResolvedValueOnce({
+      ok: false,
+      error: "invalid_length",
+    });
+
+    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const response = await accept(
+      client.init({
+        body: { filename: "bad.csv", length: 1 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("SLACK_ERROR");
+    expect(response.body.error.message).toContain("invalid_length");
+  });
+
+  it("forwards malformed Slack upload URL responses as 400 SLACK_ERROR", async () => {
+    const { orgId, userId } = await seedWithInstallation();
+    const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
+
+    context.mocks.slack.files.getUploadURLExternal.mockResolvedValueOnce({
+      ok: true,
+      file_id: "F-missing-upload-url",
+    });
+
+    const client = setupApp({ context })(integrationsSlackUploadInitContract);
+    const response = await accept(
+      client.init({
+        body: { filename: "missing-url.csv", length: 1 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("SLACK_ERROR");
+    expect(response.body.error.message).toContain("unknown error");
   });
 
   it("forwards Slack platform errors as 400 SLACK_ERROR", async () => {

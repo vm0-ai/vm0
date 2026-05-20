@@ -918,6 +918,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/slack/upload-file/complete",
   ],
   [
+    "/api/zero/integrations/slack/upload-file/init",
+    "/api/zero/integrations/slack/upload-file/init",
+  ],
+  [
     "/api/zero/integrations/slack/message",
     "/api/zero/integrations/slack/message",
   ],
