@@ -14,7 +14,7 @@ import {
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import type { Getter } from "ccstate";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
@@ -82,6 +82,20 @@ interface StorageLookup {
   readonly name: string;
   readonly type: StorageType;
 }
+
+interface StorageIndexEntry {
+  readonly storageId: string;
+  readonly headVersionId: string | null;
+  readonly headVersion: { readonly id: string; readonly s3Key: string } | null;
+}
+
+/**
+ * Pre-fetched (orgId, userId, name, type) -> storage row map. A single run
+ * resolves dozens to hundreds of volumes/artifacts; looking each up with its
+ * own `SELECT storages` round-trip saturates the connection pool, so all rows
+ * for the relevant orgs are loaded once and resolved from memory instead.
+ */
+type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
 const EMPTY_TAR_GZ = gzipSync(Buffer.alloc(1024, 0));
 const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
@@ -241,6 +255,49 @@ async function findStorage(
   return storage;
 }
 
+function storageIndexKey(
+  orgId: string,
+  userId: string,
+  name: string,
+  type: string,
+): string {
+  return JSON.stringify([orgId, userId, name, type]);
+}
+
+async function loadStorageIndex(
+  db: Db,
+  orgIds: readonly string[],
+): Promise<StorageIndex> {
+  const uniqueOrgIds = [...new Set(orgIds)];
+  const rows = await db
+    .select({
+      orgId: storages.orgId,
+      userId: storages.userId,
+      name: storages.name,
+      type: storages.type,
+      storageId: storages.id,
+      headVersionId: storages.headVersionId,
+      versionId: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+    })
+    .from(storages)
+    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
+    .where(inArray(storages.orgId, uniqueOrgIds));
+
+  const index = new Map<string, StorageIndexEntry>();
+  for (const row of rows) {
+    index.set(storageIndexKey(row.orgId, row.userId, row.name, row.type), {
+      storageId: row.storageId,
+      headVersionId: row.headVersionId,
+      headVersion:
+        row.versionId && row.s3Key
+          ? { id: row.versionId, s3Key: row.s3Key }
+          : null,
+    });
+  }
+  return index;
+}
+
 async function ensureArtifactStorage(args: {
   readonly get: ComputedGetter;
   readonly db: Db;
@@ -340,52 +397,40 @@ export async function ensureUserArtifactStorage(args: {
   await ensureArtifactStorage(args);
 }
 
-async function resolveLatestVersion(
-  db: Db,
+function resolveLatestVersion(
+  index: StorageIndex,
   lookup: StorageLookup,
-): Promise<StorageResolution> {
-  const [row] = await db
-    .select({
-      storageId: storages.id,
-      headVersionId: storages.headVersionId,
-      versionId: storageVersions.id,
-      s3Key: storageVersions.s3Key,
-    })
-    .from(storages)
-    .leftJoin(storageVersions, eq(storages.headVersionId, storageVersions.id))
-    .where(
-      and(
-        eq(storages.orgId, lookup.orgId),
-        eq(storages.userId, lookup.userId),
-        eq(storages.name, lookup.name),
-        eq(storages.type, lookup.type),
-      ),
-    )
-    .limit(1);
+): StorageResolution {
+  const entry = index.get(
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+  );
 
-  if (!row) {
+  if (!entry) {
     throw new Error(`Storage "${lookup.name}" not found in database`);
   }
-  if (!row.headVersionId) {
+  if (!entry.headVersionId) {
     throw new Error(`Storage "${lookup.name}" has no HEAD version`);
   }
-  if (!row.versionId || !row.s3Key) {
+  if (!entry.headVersion) {
     throw new Error(`Storage "${lookup.name}" HEAD version not found`);
   }
 
   return {
-    storageId: row.storageId,
-    versionId: row.versionId,
-    s3Key: row.s3Key,
+    storageId: entry.storageId,
+    versionId: entry.headVersion.id,
+    s3Key: entry.headVersion.s3Key,
   };
 }
 
 async function resolvePinnedVersion(
   db: Db,
+  index: StorageIndex,
   lookup: StorageLookup,
   version: string,
 ): Promise<StorageResolution> {
-  const storage = await findStorage(db, lookup);
+  const storage = index.get(
+    storageIndexKey(lookup.orgId, lookup.userId, lookup.name, lookup.type),
+  );
   if (!storage) {
     throw new Error(`Storage "${lookup.name}" not found in database`);
   }
@@ -395,14 +440,14 @@ async function resolvePinnedVersion(
     .from(storageVersions)
     .where(
       and(
-        eq(storageVersions.storageId, storage.id),
+        eq(storageVersions.storageId, storage.storageId),
         eq(storageVersions.id, version),
       ),
     )
     .limit(1);
   if (exactMatch) {
     return {
-      storageId: storage.id,
+      storageId: storage.storageId,
       versionId: exactMatch.id,
       s3Key: exactMatch.s3Key,
     };
@@ -422,7 +467,7 @@ async function resolvePinnedVersion(
     .from(storageVersions)
     .where(
       and(
-        eq(storageVersions.storageId, storage.id),
+        eq(storageVersions.storageId, storage.storageId),
         like(storageVersions.id, `${version}%`),
       ),
     )
@@ -440,17 +485,22 @@ async function resolvePinnedVersion(
   if (!match) {
     throw new Error(`Storage "${lookup.name}" version "${version}" not found`);
   }
-  return { storageId: storage.id, versionId: match.id, s3Key: match.s3Key };
+  return {
+    storageId: storage.storageId,
+    versionId: match.id,
+    s3Key: match.s3Key,
+  };
 }
 
-function resolveStorageVersion(
+async function resolveStorageVersion(
   db: Db,
+  index: StorageIndex,
   lookup: StorageLookup,
   version: string | undefined,
 ): Promise<StorageResolution> {
   return version === undefined || version === "latest"
-    ? resolveLatestVersion(db, lookup)
-    : resolvePinnedVersion(db, lookup, version);
+    ? resolveLatestVersion(index, lookup)
+    : resolvePinnedVersion(db, index, lookup, version);
 }
 
 function isMissingStorageError(error: unknown): boolean {
@@ -473,6 +523,7 @@ function volumeVersion(
 
 async function resolveVolumeStorage(args: {
   readonly db: Db;
+  readonly index: StorageIndex;
   readonly volume: ResolvedVolume | AdditionalVolume;
   readonly primaryOrgId: string;
   readonly allowSystemFallback: boolean;
@@ -481,6 +532,7 @@ async function resolveVolumeStorage(args: {
     const systemResult = await settle(
       resolveStorageVersion(
         args.db,
+        args.index,
         {
           orgId: SYSTEM_ORG_ID,
           userId: VOLUME_ORG_USER_ID,
@@ -500,6 +552,7 @@ async function resolveVolumeStorage(args: {
 
   return await resolveStorageVersion(
     args.db,
+    args.index,
     {
       orgId: args.primaryOrgId,
       userId: VOLUME_ORG_USER_ID,
@@ -543,6 +596,7 @@ async function buildStorageEntry(args: {
 async function buildComposeStorageEntry(args: {
   readonly get: ComputedGetter;
   readonly db: Db;
+  readonly index: StorageIndex;
   readonly bucket: string;
   readonly agentOrgId: string;
   readonly volume: ResolvedVolume;
@@ -550,6 +604,7 @@ async function buildComposeStorageEntry(args: {
   const resolvedResult = await settle(
     resolveVolumeStorage({
       db: args.db,
+      index: args.index,
       volume: args.volume,
       primaryOrgId: args.agentOrgId,
       allowSystemFallback: true,
@@ -578,6 +633,7 @@ async function buildComposeStorageEntry(args: {
 async function buildAdditionalStorageEntry(args: {
   readonly get: ComputedGetter;
   readonly db: Db;
+  readonly index: StorageIndex;
   readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
@@ -585,6 +641,7 @@ async function buildAdditionalStorageEntry(args: {
   const resolvedResult = await settle(
     resolveVolumeStorage({
       db: args.db,
+      index: args.index,
       volume: args.volume,
       primaryOrgId: args.runtimeOrgId,
       allowSystemFallback: true,
@@ -612,6 +669,7 @@ async function buildAdditionalStorageEntry(args: {
 async function buildArtifactEntry(args: {
   readonly get: ComputedGetter;
   readonly db: Db;
+  readonly index: StorageIndex;
   readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly userId: string;
@@ -619,6 +677,7 @@ async function buildArtifactEntry(args: {
 }): Promise<ManifestArtifact> {
   const resolved = await resolveStorageVersion(
     args.db,
+    args.index,
     {
       orgId: args.runtimeOrgId,
       userId: args.userId,
@@ -710,6 +769,15 @@ export async function prepareAgentRunStorageManifest(args: {
     }),
   );
 
+  // Resolve every volume/artifact from one pre-fetched snapshot instead of a
+  // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
+  // so freshly created artifact rows are included.
+  const storageIndex = await loadStorageIndex(args.db, [
+    args.agentOrgId,
+    args.runtimeOrgId,
+    SYSTEM_ORG_ID,
+  ]);
+
   const [composeEntries, additionalEntries, artifactEntries] =
     await Promise.all([
       Promise.all(
@@ -717,6 +785,7 @@ export async function prepareAgentRunStorageManifest(args: {
           return buildComposeStorageEntry({
             get: args.get,
             db: args.db,
+            index: storageIndex,
             bucket,
             agentOrgId: args.agentOrgId,
             volume,
@@ -728,6 +797,7 @@ export async function prepareAgentRunStorageManifest(args: {
           return buildAdditionalStorageEntry({
             get: args.get,
             db: args.db,
+            index: storageIndex,
             bucket,
             runtimeOrgId: args.runtimeOrgId,
             volume,
@@ -739,6 +809,7 @@ export async function prepareAgentRunStorageManifest(args: {
           return buildArtifactEntry({
             get: args.get,
             db: args.db,
+            index: storageIndex,
             bucket,
             runtimeOrgId: args.runtimeOrgId,
             userId: args.userId,
