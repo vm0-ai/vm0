@@ -1583,12 +1583,16 @@ class TestResponseHandler:
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         cache_key = ("run-conn-cd", "run-conn-cd:0")
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
         # Simulate: a forced refresh JUST completed a moment ago
         set_last_force_refresh_at(cache_key, time.time())
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
+        # The stale cached headers must still be cleared even when the
+        # cooldown suppresses another forced refresh marker.
+        assert cached_headers(cache_key) is None
         # Marker was suppressed by the cooldown
         assert not force_refresh_pending(cache_key)
 
