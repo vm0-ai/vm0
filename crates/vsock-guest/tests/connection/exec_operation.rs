@@ -1410,16 +1410,23 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
 fn exec_operation_captures_grandchild_output_before_drain_deadline() {
     use std::time::Instant;
 
+    let fifo_path = unique_tmp_path("exec-operation-grandchild-output", ".fifo");
     let (handle, mut host_stream) = start_guest_connection();
     host_stream
         .set_read_timeout(Some(Duration::from_secs(8)))
         .unwrap();
 
+    let command = format!(
+        "mkfifo '{}'; {{ cat '{}' >/dev/null; echo stdout-late; echo stderr-late >&2; }} & exec 3>'{}'; echo stdout-early; echo stderr-early >&2",
+        fifo_path.as_str(),
+        fifo_path.as_str(),
+        fifo_path.as_str()
+    );
     let start = Instant::now();
     send_exec_start(
         &mut host_stream,
         123,
-        "echo stdout-early; echo stderr-early >&2; { sleep 1; echo stdout-late; echo stderr-late >&2; } &",
+        &command,
         LONG_RUNNING_EXEC_TIMEOUT_MS,
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
         ExecOutputPolicy::Capture { limit_bytes: 1024 },
