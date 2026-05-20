@@ -294,6 +294,31 @@ describe("POST /api/zero/maps/*", () => {
     expect(response.body.creditsCharged).toBe(39);
   });
 
+  it("rejects requests below the operation price before calling Google Maps", async () => {
+    const fixture = await track(seedMapsFixture(6));
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    let googleCalled = false;
+    server.use(
+      http.post(GOOGLE_PLACES_SEARCH_TEXT_URL, () => {
+        googleCalled = true;
+        return HttpResponse.json({ places: [] });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroMapsContract);
+    const response = await accept(
+      client.placesSearch({
+        headers: authHeaders(),
+        body: { query: "coffee", limit: 5 },
+      }),
+      [402],
+    );
+
+    expect(googleCalled).toBeFalsy();
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(6);
+  });
+
   it("fetches Pro place details and charges the marked-up details price", async () => {
     const fixture = await track(seedMapsFixture());
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");

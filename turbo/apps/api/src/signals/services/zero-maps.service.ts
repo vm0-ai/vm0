@@ -48,6 +48,8 @@ interface CreditCheckRow extends Record<string, unknown> {
   readonly credit_enabled: boolean | null;
   readonly credits: string | null;
   readonly unsettled_expired: string | null;
+  readonly unit_price: string | null;
+  readonly unit_size: string | null;
 }
 
 type ErrorStatus = 400 | 402 | 502 | 503;
@@ -265,15 +267,30 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
+function estimatedCredits(unitPrice: string, unitSize: string): number {
+  return Math.ceil(Number(unitPrice) / Number(unitSize));
+}
+
 const checkMapsCredits$ = command(
   async (
     { set },
-    args: { readonly orgId: string; readonly userId: string },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly category: string;
+    },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<MapsErrorResponse | null> => {
     const writeDb = set(writeDb$);
     const { rows } = await writeDb.execute<CreditCheckRow>(sql`
-      WITH member AS (
+      WITH pricing AS (
+        SELECT unit_price, unit_size FROM usage_pricing
+        WHERE kind = ${USAGE_KIND}
+          AND provider = ${PROVIDER}
+          AND category = ${args.category}
+        LIMIT 1
+      ),
+      member AS (
         SELECT credit_enabled FROM org_members_metadata
         WHERE org_id = ${args.orgId} AND user_id = ${args.userId}
         LIMIT 1
@@ -293,18 +310,30 @@ const checkMapsCredits$ = command(
       SELECT
         (SELECT credit_enabled FROM member) AS credit_enabled,
         (SELECT credits FROM org) AS credits,
-        (SELECT total FROM expired) AS unsettled_expired
+        (SELECT total FROM expired) AS unsettled_expired,
+        (SELECT unit_price FROM pricing) AS unit_price,
+        (SELECT unit_size FROM pricing) AS unit_size
     `);
     signal.throwIfAborted();
 
     const row = rows[0];
+    if (row?.unit_price === null || row?.unit_size === null) {
+      return serviceUnavailable(
+        "Zero Maps pricing is not configured",
+        "PRICING_NOT_CONFIGURED",
+      );
+    }
+
     if (!row || row.credit_enabled === false || row.credits === null) {
-      return false;
+      return insufficientCredits();
     }
 
     const credits = Number(row.credits);
     const unsettledExpired = Number(row.unsettled_expired ?? 0);
-    return credits - unsettledExpired > 0;
+    return credits - unsettledExpired >=
+      estimatedCredits(row.unit_price, row.unit_size)
+      ? null
+      : insufficientCredits();
   },
 );
 
@@ -374,13 +403,17 @@ export const zeroMapsGeocode$ = command(
       );
     }
 
-    const hasCredits = await set(
+    const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        category: GEOCODING_CATEGORY,
+      },
       signal,
     );
-    if (!hasCredits) {
-      return insufficientCredits();
+    if (creditError) {
+      return creditError;
     }
 
     const url = withApiKey(GOOGLE_GEOCODING_URL, apiKey);
@@ -432,13 +465,17 @@ export const zeroMapsReverseGeocode$ = command(
       );
     }
 
-    const hasCredits = await set(
+    const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        category: GEOCODING_CATEGORY,
+      },
       signal,
     );
-    if (!hasCredits) {
-      return insufficientCredits();
+    if (creditError) {
+      return creditError;
     }
 
     const url = withApiKey(GOOGLE_GEOCODING_URL, apiKey);
@@ -489,13 +526,21 @@ export const zeroMapsDirections$ = command(
       );
     }
 
-    const hasCredits = await set(
+    const billingCategory =
+      args.body.departureTime === undefined
+        ? DIRECTIONS_CATEGORY
+        : DIRECTIONS_ADVANCED_CATEGORY;
+    const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        category: billingCategory,
+      },
       signal,
     );
-    if (!hasCredits) {
-      return insufficientCredits();
+    if (creditError) {
+      return creditError;
     }
 
     const url = withApiKey(GOOGLE_DIRECTIONS_URL, apiKey);
@@ -518,10 +563,6 @@ export const zeroMapsDirections$ = command(
       return failure;
     }
 
-    const billingCategory =
-      args.body.departureTime === undefined
-        ? DIRECTIONS_CATEGORY
-        : DIRECTIONS_ADVANCED_CATEGORY;
     const creditsCharged = await set(
       recordMapsUsage$,
       {
@@ -566,13 +607,17 @@ export const zeroMapsPlacesSearch$ = command(
       return locationBias;
     }
 
-    const hasCredits = await set(
+    const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        category: PLACES_TEXT_SEARCH_PRO_CATEGORY,
+      },
       signal,
     );
-    if (!hasCredits) {
-      return insufficientCredits();
+    if (creditError) {
+      return creditError;
     }
 
     const requestBody = {
@@ -635,13 +680,18 @@ export const zeroMapsPlacesDetails$ = command(
       );
     }
 
-    const hasCredits = await set(
+    const billingCategory = placeDetailsBillingCategory(args.body.fields);
+    const creditError = await set(
       checkMapsCredits$,
-      { orgId: args.auth.orgId, userId: args.auth.userId },
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        category: billingCategory,
+      },
       signal,
     );
-    if (!hasCredits) {
-      return insufficientCredits();
+    if (creditError) {
+      return creditError;
     }
 
     const placeId = args.body.placeId.replace(/^places\//, "");
@@ -663,7 +713,6 @@ export const zeroMapsPlacesDetails$ = command(
       return result;
     }
 
-    const billingCategory = placeDetailsBillingCategory(args.body.fields);
     const creditsCharged = await set(
       recordMapsUsage$,
       {

@@ -1,8 +1,23 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import chalk from "chalk";
+import { mkdtempSync } from "fs";
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { zeroMapsCommand } from "../index";
+
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "zero-maps-home-"));
+vi.mock("os", async (importOriginal) => {
+  const original = await importOriginal<typeof import("os")>();
+  return {
+    ...original,
+    homedir: () => {
+      return TEST_HOME;
+    },
+  };
+});
 
 describe("zero maps command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -13,17 +28,19 @@ describe("zero maps command", () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     vi.unstubAllEnvs();
+    await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
   it("posts directions requests to the maps API and prints JSON", async () => {
