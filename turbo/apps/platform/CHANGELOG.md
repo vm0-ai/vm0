@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.372.0](https://github.com/vm0-ai/vm0/compare/app-v0.371.2...app-v0.372.0) (2026-05-20)
+
+
+### Features
+
+* add novita connector ([#14346](https://github.com/vm0-ai/vm0/issues/14346)) ([bdc5589](https://github.com/vm0-ai/vm0/commit/bdc55899b1243c4128e4e9540d3f25e7ec403f96))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.3
+    * @vm0/connectors bumped to 1.25.0
+    * @vm0/core bumped to 8.286.3
+
 ## [0.371.2](https://github.com/vm0-ai/vm0/compare/app-v0.371.1...app-v0.371.2) (2026-05-20)
 
 
