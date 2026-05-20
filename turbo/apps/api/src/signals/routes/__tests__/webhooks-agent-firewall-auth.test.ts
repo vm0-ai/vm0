@@ -42,7 +42,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const ORG_SENTINEL_USER_ID = "__org__";
-const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
+const BASE44_OAUTH_TOKEN_URL = "https://app.base44.com/oauth/token";
 
 interface FirewallFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -920,7 +920,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     await seedExpiredBase44Connector(fixture);
     let refreshBody: URLSearchParams | undefined;
     server.use(
-      http.post(BASE44_TOKEN_URL, async ({ request }) => {
+      http.post(BASE44_OAUTH_TOKEN_URL, async ({ request }) => {
         refreshBody = new URLSearchParams(await request.text());
         return HttpResponse.json({
           access_token: "fresh-base44-token",
@@ -983,7 +983,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const fixture = await track(seedFixture());
     await seedExpiredBase44Connector(fixture);
     server.use(
-      http.post(BASE44_TOKEN_URL, () => {
+      http.post(BASE44_OAUTH_TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "fresh-base44-token",
           expires_in: 3600,
