@@ -128,7 +128,7 @@ describe("POST /api/zero/billing/portal", () => {
         context.signal,
       ),
     );
-    mockEnv("VM0_WEB_URL", APP_ORIGIN);
+    mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
       url: "https://billing.stripe.com/session/test",
@@ -154,8 +154,8 @@ describe("POST /api/zero/billing/portal", () => {
     });
   });
 
-  it("returns 400 when returnUrl origin does not match VM0_WEB_URL", async () => {
-    mockEnv("VM0_WEB_URL", APP_ORIGIN);
+  it("returns 400 when returnUrl origin does not match APP_URL", async () => {
+    mockEnv("APP_URL", APP_ORIGIN);
     mocks.clerk.session(
       `user_${randomUUID()}`,
       `org_${randomUUID()}`,

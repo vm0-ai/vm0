@@ -1364,6 +1364,17 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero billing portal rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/portal")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/portal/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/portals")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero billing status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(

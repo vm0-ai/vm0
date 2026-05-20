@@ -823,6 +823,13 @@ const ZERO_BILLING_INVOICES_NEXT_NEGATIVE_PATHS = [
   "/api/zero/billing/invoices/extra",
   "/api/zero/billing/invoice",
 ] as const;
+const ZERO_BILLING_PORTAL_REWRITE_SOURCE = "/api/zero/billing/portal";
+const ZERO_BILLING_PORTAL_PATH = "/api/zero/billing/portal";
+const ZERO_BILLING_PORTAL_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/billing",
+  "/api/zero/billing/portal/extra",
+  "/api/zero/billing/portals",
+] as const;
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 const ZERO_BILLING_STATUS_PATH = "/api/zero/billing/status";
 const ZERO_BILLING_STATUS_NEXT_NEGATIVE_PATHS = [
@@ -2058,6 +2065,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_BILLING_INVOICES_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/billing/invoices",
+        },
+        {
+          source: ZERO_BILLING_PORTAL_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/billing/portal",
         },
         {
           source: ZERO_BILLING_STATUS_REWRITE_SOURCE,
@@ -5542,6 +5553,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero billing portal rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_BILLING_PORTAL_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_BILLING_PORTAL_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/billing/portal",
+    });
+
+    const matcher = getPathMatch(ZERO_BILLING_PORTAL_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_BILLING_PORTAL_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_BILLING_PORTAL_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact permission policies rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -7222,6 +7256,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero billing invoices path", () => {
     expect(matchesApiBackendRewritePath(ZERO_BILLING_INVOICES_PATH)).toBe(true);
     for (const pathname of ZERO_BILLING_INVOICES_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero billing portal path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_BILLING_PORTAL_PATH)).toBe(true);
+    for (const pathname of ZERO_BILLING_PORTAL_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

@@ -36,7 +36,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const { returnUrl } = bodyResult.data;
 
-  const appOrigin = new URL(env("VM0_WEB_URL")).origin;
+  const appOrigin = new URL(env("APP_URL")).origin;
   if (new URL(returnUrl).origin !== appOrigin) {
     return badRequestMessage("returnUrl must match the platform origin");
   }

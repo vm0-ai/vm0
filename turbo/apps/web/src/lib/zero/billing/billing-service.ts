@@ -575,34 +575,6 @@ export async function handleSubscriptionDeleted(
   });
 }
 
-/**
- * Create a Stripe Billing Portal session for managing subscriptions.
- * Returns the portal URL.
- */
-export async function createBillingPortalSession(
-  orgId: string,
-  returnUrl: string,
-): Promise<string> {
-  const db = globalThis.services.db;
-  const [org] = await db
-    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (!org?.stripeCustomerId) {
-    throw new Error("Org has no Stripe customer — subscribe first");
-  }
-
-  const stripe = getStripe();
-  const session = await stripe.billingPortal.sessions.create({
-    customer: org.stripeCustomerId,
-    return_url: returnUrl,
-  });
-
-  return session.url;
-}
-
 type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
 type PlanCreditTier = "pro" | "team";
 

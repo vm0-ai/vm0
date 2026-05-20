@@ -17,7 +17,6 @@ const stripeMocks = vi.hoisted(() => {
     customersCreate: vi.fn(),
     checkoutSessionsCreate: vi.fn(),
     subscriptionsRetrieve: vi.fn(),
-    billingPortalSessionsCreate: vi.fn(),
     invoicesList: vi.fn(),
   };
 });
@@ -29,9 +28,6 @@ vi.mock("stripe", () => {
         customers: { create: stripeMocks.customersCreate },
         checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
         subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
-        billingPortal: {
-          sessions: { create: stripeMocks.billingPortalSessionsCreate },
-        },
         invoices: { list: stripeMocks.invoicesList },
         webhooks: { constructEvent: vi.fn() },
       };
@@ -51,7 +47,6 @@ describe("billing-service", () => {
     stripeMocks.customersCreate.mockReset();
     stripeMocks.checkoutSessionsCreate.mockReset();
     stripeMocks.subscriptionsRetrieve.mockReset();
-    stripeMocks.billingPortalSessionsCreate.mockReset();
     stripeMocks.invoicesList.mockReset();
 
     stripeMocks.checkoutSessionsCreate.mockImplementation(async (params) => {

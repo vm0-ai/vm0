@@ -28,7 +28,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/webhooks/clerk/route.ts",
   "app/api/webhooks/github/route.ts",
   "app/api/webhooks/stripe/route.ts",
-  "app/api/zero/billing/portal/route.ts",
   "app/api/zero/billing/redeem/[campaign]/route.ts",
   "app/api/zero/connectors/[type]/route.ts",
   "app/api/zero/connectors/[type]/scope-diff/route.ts",
