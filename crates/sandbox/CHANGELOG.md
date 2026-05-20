@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.16.1...sandbox-v0.17.0) (2026-05-20)
+
+
+### Features
+
+* **runner:** add firecracker io limiters ([#13585](https://github.com/vm0-ai/vm0/issues/13585)) ([653b854](https://github.com/vm0-ai/vm0/commit/653b854613580861d503848a3eeffff98fe75095))
+
 ## [0.16.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.16.0...sandbox-v0.16.1) (2026-05-19)
 
 

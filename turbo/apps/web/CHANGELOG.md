@@ -1,5 +1,37 @@
 # Changelog
 
+## [12.379.0](https://github.com/vm0-ai/vm0/compare/web-v12.378.1...web-v12.379.0) (2026-05-20)
+
+
+### Features
+
+* **runner:** add firecracker io limiters ([#13585](https://github.com/vm0-ai/vm0/issues/13585)) ([653b854](https://github.com/vm0-ai/vm0/commit/653b854613580861d503848a3eeffff98fe75095))
+
+
+### Bug Fixes
+
+* align external run error copy ([#14098](https://github.com/vm0-ai/vm0/issues/14098)) ([7377423](https://github.com/vm0-ai/vm0/commit/7377423018ea54c45b4d75299525b3b604129875))
+* pin integration model routes for runs ([#14100](https://github.com/vm0-ai/vm0/issues/14100)) ([4aa1ab1](https://github.com/vm0-ai/vm0/commit/4aa1ab1668faf25f8bb1564fc59db3d8833e6701))
+
+
+### Refactoring
+
+* cut over telegram setup status route ([#14115](https://github.com/vm0-ai/vm0/issues/14115)) ([2143f0d](https://github.com/vm0-ai/vm0/commit/2143f0d7936509ed156c25a16890ba7b3a07318d))
+* cut over zero email reply callback route ([#14116](https://github.com/vm0-ai/vm0/issues/14116)) ([2cda078](https://github.com/vm0-ai/vm0/commit/2cda0789129fb9c7af4765038d9da876552bddba))
+* proxy zero billing status to api ([#14114](https://github.com/vm0-ai/vm0/issues/14114)) ([35c348e](https://github.com/vm0-ai/vm0/commit/35c348ec561df044a47e6cbb934e14a1c7a38ccd))
+* proxy zero logs list to api ([#14106](https://github.com/vm0-ai/vm0/issues/14106)) ([5d69768](https://github.com/vm0-ai/vm0/commit/5d69768829816a5abe16a082d54c485121082d23))
+* remove codex oauth browser flow ([#14113](https://github.com/vm0-ai/vm0/issues/14113)) ([0db0857](https://github.com/vm0-ai/vm0/commit/0db0857413a56989e856a2c721634a2549a0be3b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.33.0
+    * @vm0/connectors bumped to 1.23.0
+    * @vm0/core bumped to 8.285.0
+    * @vm0/db bumped to 1.16.0
+
 ## [12.378.1](https://github.com/vm0-ai/vm0/compare/web-v12.378.0...web-v12.378.1) (2026-05-20)
 
 

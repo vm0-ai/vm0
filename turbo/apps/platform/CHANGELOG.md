@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.369.0](https://github.com/vm0-ai/vm0/compare/app-v0.368.0...app-v0.369.0) (2026-05-20)
+
+
+### Features
+
+* add weread connector ([#14105](https://github.com/vm0-ai/vm0/issues/14105)) ([491b4cf](https://github.com/vm0-ai/vm0/commit/491b4cf1e7485351234ff820d269bf5d5286b130))
+* **runner:** add firecracker io limiters ([#13585](https://github.com/vm0-ai/vm0/issues/13585)) ([653b854](https://github.com/vm0-ai/vm0/commit/653b854613580861d503848a3eeffff98fe75095))
+
+
+### Bug Fixes
+
+* hide firewall permission management from members ([#14096](https://github.com/vm0-ai/vm0/issues/14096)) ([7029719](https://github.com/vm0-ai/vm0/commit/7029719036bd07d889f36b1950b020b33b928957))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.33.0
+    * @vm0/connectors bumped to 1.23.0
+    * @vm0/core bumped to 8.285.0
+
 ## [0.368.0](https://github.com/vm0-ai/vm0/compare/app-v0.367.0...app-v0.368.0) (2026-05-19)
 
 

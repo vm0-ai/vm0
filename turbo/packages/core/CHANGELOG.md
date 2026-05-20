@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.285.0](https://github.com/vm0-ai/vm0/compare/core-v8.284.0...core-v8.285.0) (2026-05-20)
+
+
+### Features
+
+* add weread connector ([#14105](https://github.com/vm0-ai/vm0/issues/14105)) ([491b4cf](https://github.com/vm0-ai/vm0/commit/491b4cf1e7485351234ff820d269bf5d5286b130))
+* **runner:** add firecracker io limiters ([#13585](https://github.com/vm0-ai/vm0/issues/13585)) ([653b854](https://github.com/vm0-ai/vm0/commit/653b854613580861d503848a3eeffff98fe75095))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.33.0
+    * @vm0/connectors bumped to 1.23.0
+
 ## [8.284.0](https://github.com/vm0-ai/vm0/compare/core-v8.283.0...core-v8.284.0) (2026-05-19)
 
 

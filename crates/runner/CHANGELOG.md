@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.103.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.5...runner-rs-v0.103.0) (2026-05-20)
+
+
+### Features
+
+* **runner:** add firecracker io limiters ([#13585](https://github.com/vm0-ai/vm0/issues/13585)) ([653b854](https://github.com/vm0-ai/vm0/commit/653b854613580861d503848a3eeffff98fe75095))
+
+
+### Bug Fixes
+
+* install pnpm in sandbox image ([#14099](https://github.com/vm0-ai/vm0/issues/14099)) ([75ac682](https://github.com/vm0-ai/vm0/commit/75ac68262f75cbfbae57a1a107cd346f429d45d9))
+
 ## [0.102.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.4...runner-rs-v0.102.5) (2026-05-19)
 
 ## [0.102.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.3...runner-rs-v0.102.4) (2026-05-19)
