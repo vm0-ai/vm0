@@ -16,6 +16,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
@@ -73,6 +74,20 @@ function mockUserConnectors(enabledTypes: string[] = []) {
   );
 }
 
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: true, close: vi.fn(), location: { href: "" } };
+}
+
 describe("directed connect page", () => {
   it("renders connect card for an oauth connector", async () => {
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });
@@ -115,9 +130,11 @@ describe("directed connect page", () => {
     expect(reconnectBtn).toBeDefined();
   });
   it("reconnect button reopens OAuth flow for an already-connected OAuth connector", async () => {
+    mockConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
+      .mockReturnValue(mockWindow as unknown as Window);
     mockConnectors([{ type: "github" }]);
 
     detachedSetupPage({ context, path: "/connectors/github/connect" });
@@ -138,9 +155,12 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
+        "about:blank",
         "_blank",
         expect.any(String),
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
       );
     });
   });
@@ -302,9 +322,11 @@ describe("directed connect page", () => {
   });
 
   it("connect button opens OAuth flow for OAuth-enabled connector (CONN-I-047)", async () => {
+    mockConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
+      .mockReturnValue(mockWindow as unknown as Window);
 
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 
@@ -324,9 +346,12 @@ describe("directed connect page", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/gmail/authorize"),
+        "about:blank",
         "_blank",
         expect.any(String),
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/gmail/authorize",
       );
     });
   });
