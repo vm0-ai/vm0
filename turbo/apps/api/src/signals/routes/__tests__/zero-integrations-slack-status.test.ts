@@ -131,6 +131,36 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.workspaceName).toBe("Test Org Workspace");
   });
 
+  it("returns empty environment details when no default agent version is configured", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const fixture = await track(
+      store.set(seedSlackOrgInstallation$, { orgId }, context.signal),
+    );
+    await store.set(
+      seedSlackOrgConnection$,
+      { slackWorkspaceId: fixture.slackWorkspaceId, vm0UserId: userId },
+      context.signal,
+    );
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.environment).toStrictEqual({
+      requiredSecrets: [],
+      requiredVars: [],
+      missingSecrets: [],
+      missingVars: [],
+    });
+  });
+
   it("returns isAdmin=true for admin members", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

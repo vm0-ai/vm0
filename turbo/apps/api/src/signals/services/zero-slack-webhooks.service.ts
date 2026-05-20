@@ -1654,11 +1654,16 @@ async function postEphemeralMessage(args: {
   readonly slackUserId: string;
   readonly text: string;
 }): Promise<void> {
-  await createSlackClient(args.botToken).chat.postEphemeral({
-    channel: args.channel,
-    user: args.slackUserId,
-    text: args.text,
-  });
+  const result = await settle(
+    createSlackClient(args.botToken).chat.postEphemeral({
+      channel: args.channel,
+      user: args.slackUserId,
+      text: args.text,
+    }),
+  );
+  if (!result.ok) {
+    L.warn("Failed to post ephemeral message", { error: result.error });
+  }
 }
 
 async function resolveOrgDefaultName(db: Db, orgId: string): Promise<string> {

@@ -67,8 +67,21 @@ const slackDownloadFileContract = c.router({
   },
 });
 
+type SlackEnvironment = NonNullable<
+  z.infer<typeof slackOrgStatusSchema>["environment"]
+>;
+
+function emptySlackEnvironment(): SlackEnvironment {
+  return {
+    requiredSecrets: [],
+    requiredVars: [],
+    missingSecrets: [],
+    missingVars: [],
+  };
+}
+
 const getSlackEnvironment$ = computed(
-  async (get): Promise<z.infer<typeof slackOrgStatusSchema>["environment"]> => {
+  async (get): Promise<SlackEnvironment> => {
     const auth = get(organizationAuthContext$);
     const db = get(db$);
 
@@ -81,7 +94,7 @@ const getSlackEnvironment$ = computed(
       .limit(1);
 
     if (!meta?.defaultAgentId) {
-      return undefined;
+      return emptySlackEnvironment();
     }
 
     const [compose] = await db
@@ -91,7 +104,7 @@ const getSlackEnvironment$ = computed(
       .limit(1);
 
     if (!compose?.headVersionId) {
-      return undefined;
+      return emptySlackEnvironment();
     }
 
     const [version] = await db
@@ -101,7 +114,7 @@ const getSlackEnvironment$ = computed(
       .limit(1);
 
     if (!version) {
-      return undefined;
+      return emptySlackEnvironment();
     }
 
     const grouped = extractAndGroupVariables(version.content);
@@ -161,25 +174,22 @@ const getSlackStatusInner$ = computed(async (get) => {
     }),
   );
 
-  const environment = status.isConnected
-    ? await get(getSlackEnvironment$)
-    : undefined;
-
+  const statusFields = status.isConnected
+    ? {
+        workspaceName: status.workspaceName,
+        defaultAgentName: status.defaultAgentName,
+        agentOrgSlug: status.agentOrgSlug,
+        environment: await get(getSlackEnvironment$),
+      }
+    : {
+        installUrl: status.installUrl,
+        connectUrl: status.connectUrl,
+      };
   const body: z.infer<typeof slackOrgStatusSchema> = {
     isConnected: status.isConnected,
     isInstalled: status.isInstalled,
     isAdmin: status.isAdmin,
-    ...(status.isConnected
-      ? {
-          workspaceName: status.workspaceName,
-          defaultAgentName: status.defaultAgentName,
-          agentOrgSlug: status.agentOrgSlug,
-          ...(environment !== undefined && { environment }),
-        }
-      : {
-          installUrl: status.installUrl,
-          connectUrl: status.connectUrl,
-        }),
+    ...statusFields,
     ...(status.scopeMismatch !== null && {
       scopeMismatch: status.scopeMismatch,
       reinstallUrl: status.reinstallUrl,

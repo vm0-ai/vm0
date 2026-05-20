@@ -275,6 +275,42 @@ describe("POST /api/zero/slack/interactive", () => {
     });
   });
 
+  it("persists the selected agent when channel confirmation fails", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: true,
+          withSwitchAgent: true,
+        },
+        context.signal,
+      ),
+    );
+    expect(fixture.switchAgentId).toBeTruthy();
+    context.mocks.slack.chat.postEphemeral.mockRejectedValueOnce(
+      new Error("ephemeral failed"),
+    );
+
+    const response = await postInteractive(
+      agentPickerSubmission({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        selectedValue: fixture.switchAgentId ?? "",
+        channelId: "C-test",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(
+      store.set(
+        findSlackAgentPreference$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    ).resolves.toBe(fixture.switchAgentId);
+  });
+
   it("persists the selected model and opens the home switch modal", async () => {
     const fixture = await track(
       store.set(
