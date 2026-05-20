@@ -56,14 +56,22 @@ describe("billing-service", () => {
 
     stripeMocks.checkoutSessionsCreate.mockImplementation(async (params) => {
       return {
+        id: uniqueId("cs"),
         url: `https://checkout.stripe.test/${params.customer}`,
       };
     });
   });
 
   it("serializes Stripe customer creation across concurrent checkout requests", async () => {
-    const { createCheckoutSession } = await import("../billing-service");
+    const { createOneTimeCheckoutSession } = await import("../billing-service");
     const firstCustomerId = uniqueId("cus");
+    vi.stubEnv(
+      "ZERO_ONE_TIME_CAMPAIGN",
+      JSON.stringify({
+        ZERO100: { priceId: "price_zero100", couponId: "ZERO100" },
+      }),
+    );
+    reloadEnv();
 
     stripeMocks.customersCreate.mockImplementationOnce(async () => {
       await new Promise((resolve) => {
@@ -72,21 +80,24 @@ describe("billing-service", () => {
       return { id: firstCustomerId };
     });
 
-    const checkout1 = createCheckoutSession(
-      user.orgId,
-      "price_test_pro",
-      "https://app.vm0.test/success",
-      "https://app.vm0.test/cancel",
-    );
+    const checkout1 = createOneTimeCheckoutSession({
+      orgId: user.orgId,
+      campaignKey: "ZERO100",
+      successUrl: "https://app.vm0.test/success",
+      cancelUrl: "https://app.vm0.test/cancel",
+    });
 
-    const checkout2 = createCheckoutSession(
-      user.orgId,
-      "price_test_pro",
-      "https://app.vm0.test/success",
-      "https://app.vm0.test/cancel",
-    );
+    const checkout2 = createOneTimeCheckoutSession({
+      orgId: user.orgId,
+      campaignKey: "ZERO100",
+      successUrl: "https://app.vm0.test/success",
+      cancelUrl: "https://app.vm0.test/cancel",
+    });
 
-    const [url1, url2] = await Promise.all([checkout1, checkout2]);
+    const [checkoutUrl1, checkoutUrl2] = await Promise.all([
+      checkout1,
+      checkout2,
+    ]);
 
     expect(stripeMocks.customersCreate).toHaveBeenCalledTimes(1);
     expect(stripeMocks.checkoutSessionsCreate).toHaveBeenCalledTimes(2);
@@ -97,8 +108,12 @@ describe("billing-service", () => {
       },
     );
     expect(sessionCustomers).toEqual([firstCustomerId, firstCustomerId]);
-    expect(url1).toBe(`https://checkout.stripe.test/${firstCustomerId}`);
-    expect(url2).toBe(`https://checkout.stripe.test/${firstCustomerId}`);
+    expect(checkoutUrl1.url).toBe(
+      `https://checkout.stripe.test/${firstCustomerId}`,
+    );
+    expect(checkoutUrl2.url).toBe(
+      `https://checkout.stripe.test/${firstCustomerId}`,
+    );
 
     const billing = await getOrgBillingFields(user.orgId);
     expect(billing?.stripeCustomerId).toBe(firstCustomerId);

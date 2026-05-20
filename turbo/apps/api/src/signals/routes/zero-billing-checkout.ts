@@ -1,8 +1,8 @@
 import { command } from "ccstate";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { env } from "../../lib/env";
-import { badRequestMessage } from "../../lib/error";
+import { env, optionalEnv } from "../../lib/env";
+import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -22,7 +22,7 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const checkoutInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired;
@@ -62,12 +62,23 @@ const checkoutInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { url } };
 });
 
+const checkout$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      checkoutAuthed$,
+    ),
+    signal,
+  );
+});
+
 export const zeroBillingCheckoutRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingCheckoutContract.create,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      checkoutInner$,
-    ),
+    handler: checkout$,
   },
 ];

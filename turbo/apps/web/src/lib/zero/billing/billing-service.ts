@@ -102,7 +102,7 @@ function tierFromPriceId(priceId: string): OrgTier {
 }
 
 /** Returns the active (first) price ID for a given tier. */
-export function activePriceId(tier: "pro" | "team"): string | undefined {
+function activePriceId(tier: "pro" | "team"): string | undefined {
   return env().ZERO_PRICE?.[tier]?.[0];
 }
 
@@ -144,38 +144,6 @@ async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
 
     return customer.id;
   });
-}
-
-/**
- * Create a Stripe Checkout session for subscription.
- * Returns the checkout session URL.
- */
-export async function createCheckoutSession(
-  orgId: string,
-  priceId: string,
-  successUrl: string,
-  cancelUrl: string,
-): Promise<string> {
-  const customerId = await getOrCreateStripeCustomer(orgId);
-  const stripe = getStripe();
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    allow_promotion_codes: true,
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-    subscription_data: {
-      metadata: { orgId },
-    },
-  });
-
-  if (!session.url) {
-    throw new Error("Stripe checkout session did not return a URL");
-  }
-
-  return session.url;
 }
 
 /**

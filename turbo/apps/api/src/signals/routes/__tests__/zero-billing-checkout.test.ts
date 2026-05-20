@@ -6,7 +6,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -65,6 +65,31 @@ describe("POST /api/zero/billing/checkout", () => {
     createdOrgIds.push(fixture.orgId);
     return fixture;
   }
+
+  it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
+    mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: {},
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Billing not configured",
+        code: "PROVIDER_UNAVAILABLE",
+      },
+    });
+  });
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroBillingCheckoutContract);
