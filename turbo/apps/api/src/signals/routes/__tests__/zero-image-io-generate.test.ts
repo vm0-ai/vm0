@@ -1020,14 +1020,14 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(filename).toBe(`image-${fileId.slice(0, 8)}.webp`);
     expect(url).toBe(
       `https://cdn.vm7.io/artifacts/${encodeURIComponent(
-        fixture.userId.replace(/^user_/, ""),
+        fixture.userId,
       )}/${fileId}/${filename}`,
     );
 
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("image/webp");
     const putBody = putInput.Body;
@@ -1062,7 +1062,7 @@ describe("POST /api/zero/image-io/generate", () => {
       background: "opaque",
       outputFormat: "webp",
       moderation: "auto",
-      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
     const usageRows = await store
@@ -1328,7 +1328,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const filename = String(body.filename);
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("image/jpeg");
 

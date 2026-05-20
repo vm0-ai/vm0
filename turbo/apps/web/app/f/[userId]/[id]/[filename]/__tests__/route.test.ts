@@ -30,12 +30,12 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toBe(
-      "https://cdn.vm7.io/artifacts/alice/file-id/doc.pdf",
+      "https://cdn.vm7.io/artifacts/user_alice/file-id/doc.pdf",
     );
     expect(res.headers.get("Cache-Control")).toContain("public");
     expect(context.mocks.s3.s3ObjectExists).toHaveBeenCalledWith(
       "test-artifacts-bucket",
-      "artifacts/alice/file-id/doc.pdf",
+      "artifacts/user_alice/file-id/doc.pdf",
     );
     expect(context.mocks.s3.generatePresignedUrl).not.toHaveBeenCalled();
   });
@@ -47,7 +47,7 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
 
     expect(context.mocks.s3.s3ObjectExists).toHaveBeenCalledWith(
       "test-artifacts-bucket",
-      "artifacts/alice/file-id/doc.pdf",
+      "artifacts/user_alice/file-id/doc.pdf",
     );
   });
 
@@ -60,7 +60,7 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     );
   });
 
-  it("falls back to old user-storage presigned URLs before backfill reaches the object", async () => {
+  it("falls back to old user-storage presigned URLs when the artifact object is absent", async () => {
     context.mocks.s3.s3ObjectExists.mockResolvedValueOnce(false);
     context.mocks.s3.generatePresignedUrl.mockResolvedValue(
       "https://signed.example.com/doc.pdf?sig=abc",

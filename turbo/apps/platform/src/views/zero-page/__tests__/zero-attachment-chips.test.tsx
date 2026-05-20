@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { server } from "../../../mocks/server.ts";
@@ -397,11 +398,11 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CHAT-I-066: Lightbox download fallback stays in-page and uses artifact URL
+// CHAT-I-066: Lightbox download fetches blobs instead of opening image URLs
 // ---------------------------------------------------------------------------
 
-describe("chat-i-066: lightbox download fallback uses direct download", () => {
-  it("uses the original artifact URL and avoids opening a new tab", async () => {
+describe("chat-i-066: lightbox download fetches blobs", () => {
+  it("does not fall back to opening the image URL when fetch fails", async () => {
     const user = userEvent.setup();
     const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
     server.use(
@@ -412,14 +413,14 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
       return null;
     });
+    const toastErrorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+      return "" as ReturnType<typeof toast.error>;
+    });
 
-    let clickedHref = "";
-    let clickedDownload = "";
     const anchorClickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        clickedHref = this.href;
-        clickedDownload = this.download;
+      .mockImplementation(function () {
+        return;
       });
 
     server.use(
@@ -460,11 +461,10 @@ describe("chat-i-066: lightbox download fallback uses direct download", () => {
     click(downloadButton);
 
     await waitFor(() => {
-      expect(anchorClickSpy).toHaveBeenCalledOnce();
+      expect(toastErrorSpy).toHaveBeenCalledWith("Download failed");
     });
 
-    expect(clickedHref).toBe(imageUrl);
-    expect(clickedDownload).toBe("photo.png");
+    expect(anchorClickSpy).not.toHaveBeenCalled();
     expect(openSpy).not.toHaveBeenCalled();
   });
 });

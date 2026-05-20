@@ -867,7 +867,7 @@ describe("AgentPhone migrated API routes", () => {
     mocks.s3.listObjects([
       {
         bucket: "test-user-artifacts",
-        key: `artifacts/${userId.replace(/^user_/, "")}/${uploadId}/photo.png`,
+        key: `artifacts/${userId}/${uploadId}/photo.png`,
         size: 456,
       },
     ]);

@@ -60,6 +60,13 @@ function defaultS3Credentials(): S3Credentials {
   };
 }
 
+function userArtifactsS3Credentials(): S3Credentials {
+  return {
+    accessKeyId: env("R2_USER_ARTIFACTS_ACCESS_KEY_ID"),
+    secretAccessKey: env("R2_USER_ARTIFACTS_SECRET_ACCESS_KEY"),
+  };
+}
+
 function hostedSitesS3Credentials(): S3Credentials {
   const accessKeyId = env("R2_HOSTED_SITES_ACCESS_KEY_ID");
   const secretAccessKey = env("R2_HOSTED_SITES_SECRET_ACCESS_KEY");
@@ -86,6 +93,33 @@ const publicS3Client$ = computed((get): S3Client => {
   return createS3Client(publicEndpoint, defaultS3Credentials());
 });
 
+const userArtifactsS3Client$ = computed((): S3Client => {
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    userArtifactsS3Credentials(),
+  );
+});
+
+const userArtifactsPublicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  if (!publicEndpoint) {
+    return get(userArtifactsS3Client$);
+  }
+  return createS3Client(publicEndpoint, userArtifactsS3Credentials());
+});
+
+function s3ClientForBucket(
+  bucket: string,
+  usePublicEndpoint = false,
+): Computed<S3Client> {
+  if (bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {
+    return usePublicEndpoint
+      ? userArtifactsPublicS3Client$
+      : userArtifactsS3Client$;
+  }
+  return usePublicEndpoint ? publicS3Client$ : s3Client$;
+}
+
 const hostedSitesS3Client$ = computed((): S3Client => {
   return createS3Client(
     env("S3_ENDPOINT") ?? defaultS3Endpoint(),
@@ -106,7 +140,7 @@ export function listS3Objects(
   prefix: string,
 ): Computed<Promise<readonly S3Object[]>> {
   return computed(async (get): Promise<readonly S3Object[]> => {
-    const client = get(s3Client$);
+    const client = get(s3ClientForBucket(bucket));
     const objects: S3Object[] = [];
     let continuationToken: string | undefined;
 
@@ -144,7 +178,7 @@ export function deleteS3Objects(
     if (keys.length === 0) {
       return;
     }
-    const client = get(s3Client$);
+    const client = get(s3ClientForBucket(bucket));
     await client.send(
       new DeleteObjectsCommand({
         Bucket: bucket,
@@ -163,7 +197,7 @@ export function downloadS3Buffer(
   key: string,
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
-    const client = get(s3Client$);
+    const client = get(s3ClientForBucket(bucket));
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
@@ -201,7 +235,7 @@ export function generatePresignedPutUrl(
   usePublicEndpoint = false,
 ): Computed<Promise<string>> {
   return generatePresignedPutUrlWithClient(
-    usePublicEndpoint ? publicS3Client$ : s3Client$,
+    s3ClientForBucket(bucket, usePublicEndpoint),
     bucket,
     key,
     contentType,
@@ -251,7 +285,7 @@ export function generatePresignedGetUrl(
   usePublicEndpoint = false,
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
-    const client = get(usePublicEndpoint ? publicS3Client$ : s3Client$);
+    const client = get(s3ClientForBucket(bucket, usePublicEndpoint));
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -269,7 +303,13 @@ export function putS3Object(
   body: string | Buffer,
   contentType: string,
 ): Computed<Promise<void>> {
-  return putS3ObjectWithClient(s3Client$, bucket, key, body, contentType);
+  return putS3ObjectWithClient(
+    s3ClientForBucket(bucket),
+    bucket,
+    key,
+    body,
+    contentType,
+  );
 }
 
 function putS3ObjectWithClient(
@@ -323,7 +363,7 @@ export function s3ObjectExists(
   bucket: string,
   key: string,
 ): Computed<Promise<boolean>> {
-  return s3ObjectExistsWithClient(s3Client$, bucket, key);
+  return s3ObjectExistsWithClient(s3ClientForBucket(bucket), bucket, key);
 }
 
 function s3ObjectExistsWithClient(

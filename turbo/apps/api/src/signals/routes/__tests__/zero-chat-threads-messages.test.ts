@@ -343,11 +343,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     mocks.s3.listObjects([
       {
         bucket: "test-user-artifacts",
-        key: `artifacts/${
-          fixture.userId.startsWith("user_")
-            ? fixture.userId.slice("user_".length)
-            : fixture.userId
-        }/paged-resolve-uuid/data.csv`,
+        key: `artifacts/${fixture.userId}/paged-resolve-uuid/data.csv`,
         size: 512,
       },
     ]);
@@ -368,11 +364,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(userMsg?.attachFiles).toHaveLength(1);
     expect(userMsg?.attachFiles?.[0]?.id).toBe("paged-resolve-uuid");
     expect(userMsg?.attachFiles?.[0]?.filename).toBe("data.csv");
-    const userIdSlug = fixture.userId.startsWith("user_")
-      ? fixture.userId.slice("user_".length)
-      : fixture.userId;
     expect(userMsg?.attachFiles?.[0]?.url).toBe(
-      `https://cdn.vm7.io/artifacts/${encodeURIComponent(userIdSlug)}/paged-resolve-uuid/data.csv`,
+      `https://cdn.vm7.io/artifacts/${encodeURIComponent(fixture.userId)}/paged-resolve-uuid/data.csv`,
     );
   });
 

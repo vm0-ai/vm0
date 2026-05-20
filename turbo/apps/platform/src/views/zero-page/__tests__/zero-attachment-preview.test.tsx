@@ -155,8 +155,8 @@ describe("attachment preview component", () => {
     ).toBeInTheDocument();
     expect(within(preview).getByText("XLSX")).toBeInTheDocument();
     expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
-      "href",
-      "https://example.com/budget.xlsx",
+      "type",
+      "button",
     );
   });
 

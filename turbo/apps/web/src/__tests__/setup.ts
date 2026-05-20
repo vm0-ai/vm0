@@ -32,6 +32,11 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
     vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
     vi.stubEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-artifacts-bucket");
+    vi.stubEnv("R2_USER_ARTIFACTS_ACCESS_KEY_ID", "test-artifacts-access-key");
+    vi.stubEnv(
+      "R2_USER_ARTIFACTS_SECRET_ACCESS_KEY",
+      "test-artifacts-secret-key",
+    );
     vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
     // Optional env vars
     vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");

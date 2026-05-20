@@ -40,6 +40,8 @@ function initEnv() {
       R2_SECRET_ACCESS_KEY: z.string().min(1),
       R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
       R2_USER_ARTIFACTS_BUCKET_NAME: z.string().min(1),
+      R2_USER_ARTIFACTS_ACCESS_KEY_ID: z.string().min(1),
+      R2_USER_ARTIFACTS_SECRET_ACCESS_KEY: z.string().min(1),
       PUBLIC_ARTIFACTS_BASE_URL: z.url(),
       // S3-compatible storage overrides (MinIO, AWS S3, etc.)
       S3_ENDPOINT: z.url().optional(),
@@ -306,6 +308,10 @@ function initEnv() {
       R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
       R2_USER_STORAGES_BUCKET_NAME: process.env.R2_USER_STORAGES_BUCKET_NAME,
       R2_USER_ARTIFACTS_BUCKET_NAME: process.env.R2_USER_ARTIFACTS_BUCKET_NAME,
+      R2_USER_ARTIFACTS_ACCESS_KEY_ID:
+        process.env.R2_USER_ARTIFACTS_ACCESS_KEY_ID,
+      R2_USER_ARTIFACTS_SECRET_ACCESS_KEY:
+        process.env.R2_USER_ARTIFACTS_SECRET_ACCESS_KEY,
       PUBLIC_ARTIFACTS_BASE_URL: process.env.PUBLIC_ARTIFACTS_BASE_URL,
       S3_ENDPOINT: process.env.S3_ENDPOINT,
       S3_REGION: process.env.S3_REGION,

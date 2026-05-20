@@ -1135,7 +1135,7 @@ describe("POST /api/zero/voice-io/*", () => {
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe(SPEECH_CONTENT_TYPE);
     const putBody = putInput.Body;
@@ -1166,7 +1166,7 @@ describe("POST /api/zero/voice-io/*", () => {
       model: VOICE_IO_TTS_MODEL,
       voice: "marin",
       durationSeconds: 2,
-      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
     const usageRows = await store

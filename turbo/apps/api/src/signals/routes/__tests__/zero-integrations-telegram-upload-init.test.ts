@@ -97,7 +97,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
     expect(response.body.uploadId).toMatch(/^[0-9a-f-]{36}$/);
     expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
     expect(response.body.fileUrl).toBe(
-      `https://cdn.vm7.io/artifacts/${userId.replace(/^user_/, "")}/${response.body.uploadId}/daily_report.pdf`,
+      `https://cdn.vm7.io/artifacts/${userId}/${response.body.uploadId}/daily_report.pdf`,
     );
 
     const calls = context.mocks.s3.getSignedUrl.mock.calls;
@@ -105,7 +105,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
     const cmd = calls[0]?.[1] as { input: { Bucket: string; Key: string } };
     expect(cmd.input.Bucket).toBe("test-user-artifacts");
     expect(cmd.input.Key).toBe(
-      `artifacts/${userId.replace(/^user_/, "")}/${response.body.uploadId}/daily_report.pdf`,
+      `artifacts/${userId}/${response.body.uploadId}/daily_report.pdf`,
     );
   });
 

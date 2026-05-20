@@ -1,17 +1,6 @@
 import { env } from "./env";
 
-const CLERK_USER_ID_PREFIX = "user_";
 const ARTIFACTS_PREFIX = "artifacts";
-
-/**
- * Strip the `user_` prefix from a Clerk user ID for public artifact paths.
- * Non-Clerk IDs (legacy / dev) are returned unchanged.
- */
-function publicFileUserIdSegment(userId: string): string {
-  return userId.startsWith(CLERK_USER_ID_PREFIX)
-    ? userId.slice(CLERK_USER_ID_PREFIX.length)
-    : userId;
-}
 
 function publicArtifactsBaseUrl(): string {
   return env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
@@ -22,13 +11,11 @@ export function buildArtifactKey(
   id: string,
   filename: string,
 ): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 export function buildArtifactPrefix(userId: string, id: string): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/`;
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/`;
 }
 
 /**

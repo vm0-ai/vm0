@@ -10,12 +10,6 @@ import { env } from "../../../env";
 const CLERK_USER_ID_PREFIX = "user_";
 const ARTIFACTS_PREFIX = "artifacts";
 
-export function publicFileUserIdSegment(userId: string): string {
-  return userId.startsWith(CLERK_USER_ID_PREFIX)
-    ? userId.slice(CLERK_USER_ID_PREFIX.length)
-    : userId;
-}
-
 export function storageUserIdFromFileUrlSegment(userIdSegment: string): string {
   // Preserve old `/f/user_...` links and non-Clerk/dev IDs such as `user-1`.
   if (
@@ -37,13 +31,11 @@ export function buildArtifactKey(
   id: string,
   filename: string,
 ): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/${encodeURIComponent(filename)}`;
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 export function buildArtifactPrefix(userId: string, id: string): string {
-  const publicUserId = publicFileUserIdSegment(userId);
-  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(publicUserId)}/${id}/`;
+  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/`;
 }
 
 export function buildFileUrl(

@@ -154,7 +154,7 @@ describe("POST /api/zero/uploads/complete", () => {
   function s3Object(userId: string, fileId: string, ext: string, size = 1234) {
     return {
       bucket: "test-user-artifacts",
-      key: `artifacts/${userId.replace(/^user_/, "")}/${fileId}/${ext}`,
+      key: `artifacts/${userId}/${fileId}/${ext}`,
       size,
     };
   }
@@ -193,7 +193,7 @@ describe("POST /api/zero/uploads/complete", () => {
       sizeBytes: 1234,
     });
     expect(rows[0]?.metadata).toMatchObject({
-      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/report.pdf`,
+      s3Key: `artifacts/${fixture.userId}/${fileId}/report.pdf`,
     });
   });
 

@@ -16,9 +16,9 @@ import { applyCorsHeaders } from "../../../../../proxy.cors";
  * Legacy permanent file URL resolver.
  *
  * New uploads return CDN URLs directly. This route keeps old
- * `/f/{publicUserId}/{id}/{filename}` links alive by redirecting to the new
- * public artifact CDN when the migrated object exists. During backfill, it
- * falls back to the old user-storage presigned URL convention.
+ * `/f/{userIdSegment}/{id}/{filename}` links alive by redirecting to the new
+ * public artifact CDN when the migrated object exists. If the artifact object
+ * is absent, it falls back to the old user-storage presigned URL convention.
  *
  * Access model: share-by-link. The path itself is the capability — any
  * caller that knows it may fetch the file, matching the semantics of public

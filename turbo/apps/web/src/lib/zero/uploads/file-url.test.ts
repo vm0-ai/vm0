@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildFileUrl,
-  publicFileUserIdSegment,
-  storageUserIdFromFileUrlSegment,
-} from "./file-url";
+import { buildFileUrl, storageUserIdFromFileUrlSegment } from "./file-url";
 
 describe("file URL user ID segments", () => {
-  it("omits the Clerk user_ prefix from generated CDN URLs", () => {
+  it("keeps the storage user ID in generated CDN URLs", () => {
     expect(buildFileUrl("user_alice", "file-id", "report.pdf")).toBe(
-      "https://cdn.vm7.io/artifacts/alice/file-id/report.pdf",
+      "https://cdn.vm7.io/artifacts/user_alice/file-id/report.pdf",
     );
   });
 
@@ -19,7 +15,6 @@ describe("file URL user ID segments", () => {
   });
 
   it("maps public URL segments back to storage user IDs", () => {
-    expect(publicFileUserIdSegment("user_alice")).toBe("alice");
     expect(storageUserIdFromFileUrlSegment("alice")).toBe("user_alice");
     expect(storageUserIdFromFileUrlSegment("user_alice")).toBe("user_alice");
     expect(storageUserIdFromFileUrlSegment("user-1")).toBe("user-1");

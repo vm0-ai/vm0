@@ -153,7 +153,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
     expect(response.body.uploadUrl).toMatch(/^https?:\/\//);
     expect(response.body.url).toBe(
-      `https://cdn.vm7.io/artifacts/${userId.replace(/^user_/, "")}/${response.body.id}/hello.txt`,
+      `https://cdn.vm7.io/artifacts/${userId}/${response.body.id}/hello.txt`,
     );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -201,6 +201,10 @@ describe("POST /api/zero/uploads/prepare", () => {
     const config = context.mocks.s3.clientConfig.mock.calls[0]?.[0];
     expect(config).toMatchObject({
       endpoint: "http://public-s3.example.com",
+      credentials: {
+        accessKeyId: "test-artifacts-access-key",
+        secretAccessKey: "test-artifacts-secret-key",
+      },
       region: "auto",
       forcePathStyle: false,
     });
@@ -228,9 +232,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     };
     expect(command.input.Bucket).toBe("test-user-artifacts");
     expect(command.input.Key).toContain("my_file__1_.txt");
-    expect(command.input.Key).toContain(
-      `artifacts/${userId.replace(/^user_/, "")}/`,
-    );
+    expect(command.input.Key).toContain(`artifacts/${userId}/`);
   });
 
   it("accepts representative MIME types from the allowlist", async () => {

@@ -24,6 +24,8 @@ vi.stubEnv("R2_ACCOUNT_ID", "test-account");
 vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
 vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
 vi.stubEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
+vi.stubEnv("R2_USER_ARTIFACTS_ACCESS_KEY_ID", "test-artifacts-access-key");
+vi.stubEnv("R2_USER_ARTIFACTS_SECRET_ACCESS_KEY", "test-artifacts-secret-key");
 vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
 vi.stubEnv("R2_HOSTED_SITES_BUCKET_NAME", "test-hosted-sites");
 vi.stubEnv("R2_HOSTED_SITES_ACCESS_KEY_ID", "test-hosted-sites-access-key");

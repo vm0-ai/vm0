@@ -967,7 +967,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(filename).toBe(`presentation-${fileId.slice(0, 8)}.html`);
     expect(url).toBe(
       `https://cdn.vm7.io/artifacts/${encodeURIComponent(
-        fixture.userId.replace(/^user_/, ""),
+        fixture.userId,
       )}/${fileId}/${filename}`,
     );
     expect(imageUrl).toContain("https://cdn.vm7.io/artifacts/");
@@ -991,7 +991,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
     expect(imagePutInput.Body).toStrictEqual(IMAGE_BYTES);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("text/html");
     const putBody = putInput.Body;
@@ -1046,7 +1046,7 @@ describe("POST /api/zero/presentation-io/generate", () => {
       imageIds: [expect.any(String)],
       title: "API Migration Plan",
       responseId: "resp_presentation_test",
-      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
     const runUploadRows = await store
       .set(writeDb$)

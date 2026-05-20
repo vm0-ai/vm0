@@ -759,14 +759,14 @@ describe("POST /api/zero/video-io/generate", () => {
     expect(filename).toBe(`video-${fileId.slice(0, 8)}.mp4`);
     expect(url).toBe(
       `https://cdn.vm7.io/artifacts/${encodeURIComponent(
-        fixture.userId.replace(/^user_/, ""),
+        fixture.userId,
       )}/${fileId}/${filename}`,
     );
 
     const putInput = commandInput(context.mocks.s3.send.mock.calls[0]?.[0]);
     expect(putInput.Bucket).toBe(TEST_BUCKET);
     expect(putInput.Key).toBe(
-      `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      `artifacts/${fixture.userId}/${fileId}/${filename}`,
     );
     expect(putInput.ContentType).toBe("video/mp4");
     const putBody = putInput.Body;
@@ -803,7 +803,7 @@ describe("POST /api/zero/video-io/generate", () => {
       durationSeconds: 8,
       resolution: "720p",
       generateAudio: true,
-      s3Key: `artifacts/${fixture.userId.replace(/^user_/, "")}/${fileId}/${filename}`,
+      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
     const usageRows = await store

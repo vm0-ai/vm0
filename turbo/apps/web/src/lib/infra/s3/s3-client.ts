@@ -13,6 +13,53 @@ import { s3DownloadError, s3UploadError } from "./types";
 
 let s3Client: S3Client | null = null;
 let publicS3Client: S3Client | null = null;
+let userArtifactsS3Client: S3Client | null = null;
+let userArtifactsPublicS3Client: S3Client | null = null;
+
+interface S3Credentials {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+}
+
+function createS3Client(
+  endpoint: string,
+  credentials: S3Credentials,
+): S3Client {
+  const envVars = env();
+  const region = envVars.S3_REGION || "auto";
+  const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
+
+  return new S3Client({
+    region,
+    endpoint,
+    credentials,
+    forcePathStyle,
+  });
+}
+
+function defaultS3Endpoint(): string {
+  const envVars = env();
+  return (
+    envVars.S3_ENDPOINT ||
+    `https://${envVars.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+  );
+}
+
+function defaultS3Credentials(): S3Credentials {
+  const envVars = env();
+  return {
+    accessKeyId: envVars.R2_ACCESS_KEY_ID,
+    secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
+  };
+}
+
+function userArtifactsS3Credentials(): S3Credentials {
+  const envVars = env();
+  return {
+    accessKeyId: envVars.R2_USER_ARTIFACTS_ACCESS_KEY_ID,
+    secretAccessKey: envVars.R2_USER_ARTIFACTS_SECRET_ACCESS_KEY,
+  };
+}
 
 /**
  * Get S3 client singleton for server-to-S3 operations (upload, download, list, delete).
@@ -21,23 +68,7 @@ let publicS3Client: S3Client | null = null;
 function getS3Client(): S3Client {
   if (s3Client) return s3Client;
 
-  const envVars = env();
-
-  const endpoint =
-    envVars.S3_ENDPOINT ||
-    `https://${envVars.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-  const region = envVars.S3_REGION || "auto";
-  const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
-
-  s3Client = new S3Client({
-    region,
-    endpoint,
-    credentials: {
-      accessKeyId: envVars.R2_ACCESS_KEY_ID,
-      secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
-    },
-    forcePathStyle,
-  });
+  s3Client = createS3Client(defaultS3Endpoint(), defaultS3Credentials());
   return s3Client;
 }
 
@@ -58,19 +89,46 @@ function getPublicS3Client(): S3Client {
     return publicS3Client;
   }
 
-  const region = envVars.S3_REGION || "auto";
-  const forcePathStyle = envVars.S3_FORCE_PATH_STYLE === "true";
-
-  publicS3Client = new S3Client({
-    region,
-    endpoint: publicEndpoint,
-    credentials: {
-      accessKeyId: envVars.R2_ACCESS_KEY_ID,
-      secretAccessKey: envVars.R2_SECRET_ACCESS_KEY,
-    },
-    forcePathStyle,
-  });
+  publicS3Client = createS3Client(publicEndpoint, defaultS3Credentials());
   return publicS3Client;
+}
+
+function getUserArtifactsS3Client(): S3Client {
+  if (userArtifactsS3Client) return userArtifactsS3Client;
+
+  userArtifactsS3Client = createS3Client(
+    defaultS3Endpoint(),
+    userArtifactsS3Credentials(),
+  );
+  return userArtifactsS3Client;
+}
+
+function getUserArtifactsPublicS3Client(): S3Client {
+  if (userArtifactsPublicS3Client) return userArtifactsPublicS3Client;
+
+  const publicEndpoint = env().S3_PUBLIC_ENDPOINT;
+  if (!publicEndpoint) {
+    userArtifactsPublicS3Client = getUserArtifactsS3Client();
+    return userArtifactsPublicS3Client;
+  }
+
+  userArtifactsPublicS3Client = createS3Client(
+    publicEndpoint,
+    userArtifactsS3Credentials(),
+  );
+  return userArtifactsPublicS3Client;
+}
+
+function getS3ClientForBucket(
+  bucket: string,
+  usePublicEndpoint = false,
+): S3Client {
+  if (bucket === env().R2_USER_ARTIFACTS_BUCKET_NAME) {
+    return usePublicEndpoint
+      ? getUserArtifactsPublicS3Client()
+      : getUserArtifactsS3Client();
+  }
+  return usePublicEndpoint ? getPublicS3Client() : getS3Client();
 }
 
 /**
@@ -83,7 +141,7 @@ export async function listS3Objects(
   bucket: string,
   prefix: string,
 ): Promise<S3Object[]> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
   const objects: S3Object[] = [];
   let continuationToken: string | undefined;
 
@@ -136,7 +194,7 @@ export async function uploadS3Buffer(
   data: Buffer,
   contentType?: string,
 ): Promise<void> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
 
   try {
     const command = new PutObjectCommand({
@@ -168,7 +226,7 @@ export async function deleteS3Objects(
 ): Promise<void> {
   if (keys.length === 0) return;
 
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
 
   // Delete in batches of 1000 (AWS limit)
   const batchSize = 1000;
@@ -200,7 +258,7 @@ export async function generatePresignedUrl(
   filename?: string,
   usePublicEndpoint: boolean = false,
 ): Promise<string> {
-  const client = usePublicEndpoint ? getPublicS3Client() : getS3Client();
+  const client = getS3ClientForBucket(bucket, usePublicEndpoint);
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -223,7 +281,7 @@ export async function downloadManifest(
   bucket: string,
   s3Key: string,
 ): Promise<S3StorageManifest> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
   const manifestKey = `${s3Key}/manifest.json`;
 
   const command = new GetObjectCommand({
@@ -262,7 +320,7 @@ export async function downloadBlob(
   bucket: string,
   hash: string,
 ): Promise<Buffer> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
   const blobKey = `blobs/${hash}.blob`;
 
   const command = new GetObjectCommand({
@@ -294,7 +352,7 @@ export async function downloadS3Buffer(
   bucket: string,
   key: string,
 ): Promise<Buffer> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
 
   const command = new GetObjectCommand({
     Bucket: bucket,
@@ -327,7 +385,7 @@ export async function generatePresignedPutUrl(
   expiresIn: number = 3600,
   usePublicEndpoint: boolean = false,
 ): Promise<string> {
-  const client = usePublicEndpoint ? getPublicS3Client() : getS3Client();
+  const client = getS3ClientForBucket(bucket, usePublicEndpoint);
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -353,7 +411,7 @@ export async function putS3Object(
   body: string | Buffer,
   contentType: string,
 ): Promise<void> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
 
   await client.send(
     new PutObjectCommand({
@@ -378,7 +436,7 @@ export async function s3ObjectExists(
   bucket: string,
   key: string,
 ): Promise<boolean> {
-  const client = getS3Client();
+  const client = getS3ClientForBucket(bucket);
 
   try {
     await client.send(

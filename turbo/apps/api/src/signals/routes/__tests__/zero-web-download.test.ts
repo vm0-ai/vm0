@@ -151,7 +151,7 @@ function requestDownload(args: {
 }
 
 function artifactKey(userId: string, fileId: string, filename: string): string {
-  return `artifacts/${userId.replace(/^user_/, "")}/${fileId}/${filename}`;
+  return `artifacts/${userId}/${fileId}/${filename}`;
 }
 
 async function expectErrorResponse(
@@ -335,8 +335,6 @@ describe("GET /api/zero/web/download-file", () => {
       .filter((prefix): prefix is string => {
         return typeof prefix === "string";
       });
-    expect(prefixes).toContain(
-      `artifacts/${userId.replace(/^user_/, "")}/${fileId}/`,
-    );
+    expect(prefixes).toContain(`artifacts/${userId}/${fileId}/`);
   });
 });
