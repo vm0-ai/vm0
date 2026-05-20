@@ -1485,6 +1485,39 @@ describe("CLI auth routes", () => {
       });
     });
 
+    it("rejects connector types that do not use OAuth", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({ orgId, userId, slug: "connector-non-oauth" });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "computer",
+            accessToken: "computer-access-token",
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "computer connector does not use OAuth",
+      });
+      await expect(
+        readConnectorState({ orgId, userId, type: "computer" }),
+      ).resolves.toBeNull();
+      await expect(
+        findConnectorSecret({
+          orgId,
+          userId,
+          name: "COMPUTER_CONNECTOR_AUTHTOKEN",
+        }),
+      ).resolves.toBeUndefined();
+    });
+
     it("seeds OAuth connector token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
@@ -1542,39 +1575,6 @@ describe("CLI auth routes", () => {
           name: "TEST_OAUTH_REFRESH_TOKEN",
         }),
       ).resolves.toBe("test-oauth-refresh-token");
-
-      const computerResponse = await acceptResponse<TestConnectorResponseBody>(
-        client.create({
-          query: {},
-          body: {
-            connectorName: "computer",
-            accessToken: "computer-access-token",
-          },
-        }),
-        200,
-      );
-
-      expect(computerResponse.body).toStrictEqual({
-        ok: true,
-        connectorType: "computer",
-        orgId,
-      });
-      await expect(
-        readConnectorState({ orgId, userId, type: "computer" }),
-      ).resolves.toMatchObject({
-        authMethod: "oauth",
-        externalId: "e2e-test-computer",
-        externalUsername: "e2e-computer",
-        externalEmail: "e2e-computer@test.vm0.ai",
-        tokenExpiresAt: null,
-      });
-      await expect(
-        findConnectorSecret({
-          orgId,
-          userId,
-          name: "COMPUTER_CONNECTOR_AUTHTOKEN",
-        }),
-      ).resolves.toBe("computer-access-token");
     });
 
     it("resolves a custom test user email through Clerk", async () => {
