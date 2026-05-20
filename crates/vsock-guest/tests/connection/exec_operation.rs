@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
@@ -76,20 +76,6 @@ fn assert_exec_control_result(
     assert_eq!(decoded.message_id, "message");
     assert_eq!(decoded.status, expected_status);
     assert_eq!(decoded.diagnostic, expected_diagnostic);
-}
-
-fn wait_for_file(path: &str) -> String {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        match std::fs::read_to_string(path) {
-            Ok(value) if !value.is_empty() => return value,
-            Ok(_) | Err(_) if Instant::now() < deadline => {
-                thread::sleep(Duration::from_millis(10));
-            }
-            Ok(_) => panic!("file remained empty: {path}"),
-            Err(error) => panic!("file was not created before deadline: {path}: {error}"),
-        }
-    }
 }
 
 #[test]
@@ -296,29 +282,35 @@ fn supervised_exec_spawn_failure_returns_start_failed_without_started_ack() {
 
 #[test]
 fn supervised_exec_control_forwards_to_bootstrap_sink() {
-    let endpoint_path = unique_tmp_path("supervised-exec-control-endpoint", ".txt");
-    let command = format!(
-        "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\" > '{}'; sleep 60",
-        endpoint_path.as_str()
-    );
+    let target_seq = 203;
+    let endpoint = process_control_ipc::endpoint_name(target_seq, &EXEC_CONTROL_NONCE);
+    let command = "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60";
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_supervised_exec_start(
+    send_exec_start_request(
         &mut host_stream,
-        203,
-        &command,
-        ExecTimeoutPolicy::None,
-        ExecOutputPolicy::Discard,
-        ExecControlPolicy::Enabled {
-            control_nonce: EXEC_CONTROL_NONCE,
-            sink: true,
+        target_seq,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: ExecTimeoutPolicy::None,
+            command,
+            env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],
+            sudo: false,
+            label: "supervised-test",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Enabled {
+                control_nonce: EXEC_CONTROL_NONCE,
+                sink: true,
+            },
         },
     );
-    assert!(read_exec_started(&mut host_stream, 203) > 0);
+    assert!(read_exec_started(&mut host_stream, target_seq) > 0);
 
-    let endpoint = wait_for_file(endpoint_path.as_str());
+    let client_endpoint = endpoint.clone();
     let client = thread::spawn(move || {
-        let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
+        let mut stream = process_control_ipc::connect_abstract(&client_endpoint).unwrap();
         process_control_ipc::write_hello(&mut stream).unwrap();
         let request = process_control_ipc::read_request(&mut stream).unwrap();
         assert_eq!(request.message_id, "message");
@@ -334,19 +326,26 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         .unwrap();
     });
 
-    send_exec_control(&mut host_stream, 303, 203, EXEC_CONTROL_NONCE, "message");
+    send_exec_control(
+        &mut host_stream,
+        303,
+        target_seq,
+        EXEC_CONTROL_NONCE,
+        "message",
+    );
     assert_exec_control_result(
         &mut host_stream,
         303,
-        203,
+        target_seq,
         ProcessControlStatus::Delivered,
         "ok",
     );
     client.join().unwrap();
 
-    send_exec_cancel(&mut host_stream, 203);
-    let (_chunks, result) = read_exec_result(&mut host_stream, 203);
+    send_exec_cancel(&mut host_stream, target_seq);
+    let (_chunks, result) = read_exec_result(&mut host_stream, target_seq);
     assert_eq!(result.termination, ExecTermination::Cancelled);
+    assert_eq!(result.stdout, Some(endpoint.into_bytes()));
 
     finish_guest_connection(handle, host_stream);
 }
