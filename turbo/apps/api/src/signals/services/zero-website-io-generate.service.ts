@@ -9,6 +9,9 @@ import {
   type ZeroWebsiteSiteData,
   type ZeroWebsiteTemplateId,
   type ZeroWebsiteTemplateRequest,
+  type ZeroWebsiteGeneratedVisual,
+  type ZeroWebsiteVisualPlacement,
+  type ZeroWebsiteVisualSpec,
 } from "@vm0/api-contracts/contracts/zero-website-io-generate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
@@ -18,9 +21,22 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { now } from "../../lib/time";
-import { safeJsonParse } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { builtInGenerationUsageIdempotencyKey } from "./built-in-generation-usage-idempotency";
+import {
+  IMAGE_IO_MODEL,
+  generateImageWithProvider,
+  imageModelConfig,
+  imageModelList,
+  normalizeImageModel,
+  parseImageOptions,
+  recordGeneratedImage$,
+  type ImageModel,
+  type ImageOptions,
+  type ImagePricing,
+  type ParsedImageGeneration,
+} from "./zero-image-io-generate.service";
 
 export const OPENAI_WEBSITE_GENERATION_URL =
   "https://api.openai.com/v1/responses";
@@ -28,6 +44,9 @@ export const WEBSITE_IO_MODEL = "gpt-5.5";
 export const WEBSITE_USAGE_KIND = "website";
 
 const WEBSITE_IO_MAX_PROMPT_LENGTH = 32_000;
+const WEBSITE_IO_DEFAULT_IMAGE_COUNT = 1;
+const WEBSITE_IO_MAX_IMAGES = 3;
+const WEBSITE_VISUAL_IMAGE_TIMEOUT_MS = 120_000;
 const WEBSITE_IO_TEMPLATE_LABELS: Readonly<
   Record<ZeroWebsiteTemplateId, string>
 > = {
@@ -46,7 +65,7 @@ const WEBSITE_PRICING_CATEGORIES = [
 ] as const;
 
 type WebsitePricingCategory = (typeof WEBSITE_PRICING_CATEGORIES)[number];
-type ErrorStatus = 400 | 402 | 502 | 503;
+type ErrorStatus = 400 | 402 | 500 | 502 | 503;
 type JsonSchema = Record<string, unknown>;
 
 interface ErrorBody {
@@ -71,9 +90,11 @@ export type WebsitePricing = ReadonlyMap<
   WebsitePricingRow
 >;
 
-interface WebsiteOptions {
+export interface WebsiteOptions {
   readonly prompt: string;
   readonly template: ZeroWebsiteTemplateRequest;
+  readonly imageCount: number;
+  readonly imageModel: ImageModel;
   readonly title: string | undefined;
   readonly audience: string | undefined;
 }
@@ -95,6 +116,13 @@ interface ParsedWebsiteGeneration {
   readonly siteData: ZeroWebsiteSiteData;
   readonly usage: WebsiteUsage;
   readonly responseId: string | undefined;
+}
+
+interface GeneratedWebsiteVisualImage {
+  readonly visualIndex: number;
+  readonly visual: ZeroWebsiteVisualSpec;
+  readonly prompt: string;
+  readonly generation: ParsedImageGeneration;
 }
 
 interface CreditCheckRow extends Record<string, unknown> {
@@ -164,6 +192,29 @@ const FOOTER_SCHEMA: JsonSchema = {
   },
 } as const;
 
+const VISUAL_SCHEMA: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["placement", "prompt", "alt"],
+  properties: {
+    placement: {
+      type: "string",
+      enum: ["hero", "feature", "section"],
+      description:
+        "Where the generated image should appear in the website template.",
+    },
+    prompt: {
+      type: "string",
+      description:
+        "Image generation prompt. Describe a visual scene or abstract composition; avoid visible text.",
+    },
+    alt: {
+      type: "string",
+      description: "Short accessible image description.",
+    },
+  },
+} as const;
+
 const THEME_SCHEMA: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -192,6 +243,7 @@ const SITE_DATA_REQUIRED = [
   "stats",
   "footer",
   "theme",
+  "visuals",
 ] as const;
 
 function errorBody(message: string, code: string): ErrorBody {
@@ -256,6 +308,28 @@ function readOptionalString(
   return normalized.length > 0 ? normalized.slice(0, maxLength) : undefined;
 }
 
+function readInteger(
+  body: Record<string, unknown>,
+  key: string,
+): number | ErrorResponse | undefined {
+  const value = body[key];
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isInteger(parsed)) {
+    return badRequest(`${key} must be an integer`);
+  }
+
+  return parsed;
+}
+
 function isWebsitePricingCategory(
   value: string,
 ): value is WebsitePricingCategory {
@@ -287,9 +361,35 @@ export function parseWebsiteOptions(
     return badRequest(`Unsupported website template: ${template}`);
   }
 
+  const rawImageCount =
+    readInteger(body, "imageCount") ?? readInteger(body, "images");
+  if (typeof rawImageCount === "object") {
+    return rawImageCount;
+  }
+  const imageCount = rawImageCount ?? WEBSITE_IO_DEFAULT_IMAGE_COUNT;
+  if (
+    !Number.isSafeInteger(imageCount) ||
+    imageCount < 0 ||
+    imageCount > WEBSITE_IO_MAX_IMAGES
+  ) {
+    return badRequest(
+      `imageCount must be between 0 and ${WEBSITE_IO_MAX_IMAGES}`,
+    );
+  }
+
+  const rawImageModel = readString(body, "imageModel", IMAGE_IO_MODEL);
+  const imageModel = normalizeImageModel(rawImageModel);
+  if (!imageModel) {
+    return badRequest(
+      `Unsupported image model: ${rawImageModel}. Available models: ${imageModelList()}`,
+    );
+  }
+
   return {
     prompt,
     template: templateResult.data,
+    imageCount,
+    imageModel,
     title: readOptionalString(body, "title", 120),
     audience: readOptionalString(body, "audience", 160),
   };
@@ -391,6 +491,7 @@ function websiteInstructions(): string {
     "Choose profile for portfolio, personal, creator, venue, service, or case-study pages.",
     "Write copy that is specific to the prompt, practical, and ready to publish.",
     "Use short labels, strong section titles, and compact paragraphs.",
+    "For visuals, write concise image prompts that describe scenes or abstract compositions without visible text.",
     "Do not include markdown, HTML, JavaScript, image URLs, external links, legal claims, or unsupported facts.",
     "CTA href values must be same-page anchors such as #contact, #features, #work, or #top.",
   ].join(" ");
@@ -401,6 +502,7 @@ function websiteInput(options: WebsiteOptions): string {
     `Template request: ${options.template}.`,
     "Create 3 to 5 highlights, 2 to 4 content sections, and 0 to 4 stats.",
     "Use theme.accent to choose one of cobalt, green, coral, or mono. Use theme.tone for light or dark.",
+    `Create up to ${options.imageCount} visual prompts. Prefer one hero image, then feature or section images only when they strengthen the page. Use no visual prompts when the requested count is 0.`,
   ];
 
   if (options.title) {
@@ -416,6 +518,7 @@ function websiteInput(options: WebsiteOptions): string {
 
 function websitePayloadSchema(
   templateOptions: readonly ZeroWebsiteTemplateId[],
+  maxVisuals: number,
 ): Record<string, unknown> {
   return {
     type: "object",
@@ -468,6 +571,11 @@ function websitePayloadSchema(
           },
           footer: FOOTER_SCHEMA,
           theme: THEME_SCHEMA,
+          visuals: {
+            type: "array",
+            maxItems: maxVisuals,
+            items: VISUAL_SCHEMA,
+          },
         },
       },
     },
@@ -493,7 +601,7 @@ function createOpenAiWebsiteRequest(
         type: "json_schema",
         name: "website_template_content",
         strict: true,
-        schema: websitePayloadSchema(templateOptions),
+        schema: websitePayloadSchema(templateOptions, options.imageCount),
       },
     },
   };
@@ -633,6 +741,240 @@ function parseWebsiteGenerationResult(
   };
 }
 
+function placementInstruction(placement: ZeroWebsiteVisualPlacement): string {
+  if (placement === "hero") {
+    return "Hero website image with a strong first-viewport subject and crop-safe negative space.";
+  }
+  if (placement === "feature") {
+    return "Feature support image that reinforces product benefits without looking like a UI screenshot.";
+  }
+  return "Section support image with a simple composition that can sit beside editorial website copy.";
+}
+
+function websitePalette(data: ZeroWebsiteSiteData): string {
+  const accent: Readonly<Record<string, string>> = {
+    cobalt: "cobalt blue",
+    green: "deep green",
+    coral: "warm coral",
+    mono: "black and white",
+  };
+  return `${data.theme.tone} tone with ${accent[data.theme.accent]} accent`;
+}
+
+function visualPromptForWebsite(params: {
+  readonly siteData: ZeroWebsiteSiteData;
+  readonly visual: ZeroWebsiteVisualSpec;
+  readonly options: WebsiteOptions;
+}): string {
+  return [
+    `Create a 16:9 website image for "${params.siteData.siteName}".`,
+    `Placement: ${params.visual.placement}. ${placementInstruction(
+      params.visual.placement,
+    )}`,
+    `Visual direction: ${params.visual.prompt}.`,
+    `Website headline: ${params.siteData.headline}.`,
+    `Audience: ${params.options.audience ?? "general website visitors"}.`,
+    `Use a cohesive ${websitePalette(params.siteData)} palette.`,
+    "No visible words, labels, logos, watermarks, UI screenshots, charts with text, or typography.",
+  ].join(" ");
+}
+
+function websiteVisualImageSizeForModel(model: ImageModel): string {
+  const config = imageModelConfig(model);
+  if (config.sizeMode === "standard") {
+    return "1536x1024";
+  }
+  return "1536x864";
+}
+
+function websiteVisualImageOutputFormatForModel(model: ImageModel): string {
+  const formats: readonly string[] = imageModelConfig(model).outputFormats;
+  if (formats.includes("webp")) {
+    return "webp";
+  }
+  if (formats.includes("png")) {
+    return "png";
+  }
+  return formats[0] ?? "png";
+}
+
+function createWebsiteVisualImageOptions(
+  prompt: string,
+  imageModel: ImageModel,
+): ImageOptions | ErrorResponse {
+  return parseImageOptions({
+    prompt,
+    model: imageModel,
+    size: websiteVisualImageSizeForModel(imageModel),
+    quality: "medium",
+    background: "opaque",
+    outputFormat: websiteVisualImageOutputFormatForModel(imageModel),
+    moderation: "auto",
+    safetyTolerance: "4",
+    enhancePrompt: false,
+  });
+}
+
+function loggableError(error: unknown): unknown {
+  return error instanceof Error
+    ? { name: error.name, message: error.message }
+    : String(error);
+}
+
+async function generateWebsiteVisualImage(
+  params: {
+    readonly visualIndex: number;
+    readonly visual: ZeroWebsiteVisualSpec;
+    readonly prompt: string;
+    readonly imageModel: ImageModel;
+  },
+  signal: AbortSignal,
+): Promise<GeneratedWebsiteVisualImage | null> {
+  const startedAt = now();
+  const result = await settle(
+    (async (): Promise<GeneratedWebsiteVisualImage | null> => {
+      const imageOptions = createWebsiteVisualImageOptions(
+        params.prompt,
+        params.imageModel,
+      );
+      if ("status" in imageOptions) {
+        L.warn("Website visual image options could not be used", {
+          visualIndex: params.visualIndex,
+          code: imageOptions.body.error.code,
+          durationMs: now() - startedAt,
+        });
+        return null;
+      }
+
+      const generation = await generateImageWithProvider(
+        imageOptions,
+        AbortSignal.any([
+          signal,
+          AbortSignal.timeout(WEBSITE_VISUAL_IMAGE_TIMEOUT_MS),
+        ]),
+      );
+      signal.throwIfAborted();
+      if ("status" in generation) {
+        L.warn("Website visual image response could not be used", {
+          visualIndex: params.visualIndex,
+          code: generation.body.error.code,
+          durationMs: now() - startedAt,
+        });
+        return null;
+      }
+
+      return {
+        visualIndex: params.visualIndex,
+        visual: params.visual,
+        prompt: params.prompt,
+        generation,
+      };
+    })(),
+  );
+
+  if (!result.ok) {
+    signal.throwIfAborted();
+    L.warn("Website visual image request skipped", {
+      visualIndex: params.visualIndex,
+      error: loggableError(result.error),
+      durationMs: now() - startedAt,
+    });
+    return null;
+  }
+
+  return result.value;
+}
+
+const generateWebsiteVisuals$ = command(
+  async (
+    { set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly runId: string | undefined;
+      readonly imagePricing: ImagePricing;
+      readonly generation: ParsedWebsiteGeneration;
+      readonly options: WebsiteOptions;
+      readonly generationId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly ZeroWebsiteGeneratedVisual[]> => {
+    const candidates = params.generation.siteData.visuals
+      .slice(0, params.options.imageCount)
+      .filter((visual) => {
+        return visual.prompt.trim().length > 0;
+      });
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const generatedImages = await Promise.all(
+      candidates.map((visual, visualIndex) => {
+        return generateWebsiteVisualImage(
+          {
+            visualIndex,
+            visual,
+            imageModel: params.options.imageModel,
+            prompt: visualPromptForWebsite({
+              siteData: params.generation.siteData,
+              visual,
+              options: params.options,
+            }),
+          },
+          signal,
+        );
+      }),
+    );
+    signal.throwIfAborted();
+
+    const visuals: ZeroWebsiteGeneratedVisual[] = [];
+    for (const image of generatedImages) {
+      if (!image) {
+        continue;
+      }
+
+      const recordedImageResult = await settle(
+        set(
+          recordGeneratedImage$,
+          {
+            orgId: params.orgId,
+            userId: params.userId,
+            runId: params.runId,
+            pricing: params.imagePricing,
+            generation: image.generation,
+            recordArtifact: false,
+            usageIdempotency: {
+              generationId: params.generationId,
+              scope: `website-visual:${image.visualIndex}`,
+            },
+          },
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!recordedImageResult.ok) {
+        L.warn("Website visual image record skipped", {
+          visualIndex: image.visualIndex,
+          error: loggableError(recordedImageResult.error),
+        });
+        continue;
+      }
+      const recordedImage = recordedImageResult.value;
+      visuals.push({
+        placement: image.visual.placement,
+        url: recordedImage.url,
+        alt: image.visual.alt,
+        prompt: image.prompt,
+        imageId: recordedImage.id,
+        filename: recordedImage.filename,
+        creditsCharged: recordedImage.creditsCharged,
+      });
+    }
+
+    return visuals;
+  },
+);
+
 function estimateWebsiteCredits(
   usage: WebsiteUsage,
   pricing: WebsitePricing,
@@ -663,10 +1005,12 @@ export const generateWebsite$ = command(
       readonly runId: string | undefined;
       readonly options: WebsiteOptions;
       readonly pricing: WebsitePricing;
+      readonly imagePricing: ImagePricing | null;
+      readonly generationId?: string;
     },
     signal: AbortSignal,
   ): Promise<ZeroWebsiteIoGenerateResponse | ErrorResponse> => {
-    const generationId = randomUUID();
+    const generationId = params.generationId ?? randomUUID();
     const openAiResponse = await fetch(OPENAI_WEBSITE_GENERATION_URL, {
       method: "POST",
       headers: {
@@ -694,6 +1038,24 @@ export const generateWebsite$ = command(
     if ("status" in generation) {
       return generation;
     }
+
+    const generatedVisuals =
+      params.options.imageCount > 0 && params.imagePricing
+        ? await set(
+            generateWebsiteVisuals$,
+            {
+              orgId: params.orgId,
+              userId: params.userId,
+              runId: params.runId,
+              imagePricing: params.imagePricing,
+              generation,
+              options: params.options,
+              generationId,
+            },
+            signal,
+          )
+        : [];
+    signal.throwIfAborted();
 
     const usageRows = [
       {
@@ -734,14 +1096,31 @@ export const generateWebsite$ = command(
     await set(processOrgUsageEvents$, params.orgId, signal);
     signal.throwIfAborted();
 
+    const generatedVisualList = [...generatedVisuals];
+    const textCreditsCharged = estimateWebsiteCredits(
+      generation.usage,
+      params.pricing,
+    );
+    const imageCreditsCharged = generatedVisualList.reduce((total, visual) => {
+      return total + visual.creditsCharged;
+    }, 0);
+
     return {
       generationId,
       templateId: generation.templateId,
       templateLabel: WEBSITE_IO_TEMPLATE_LABELS[generation.templateId],
       slugSuggestion: slugifySiteName(generation.siteData.siteName),
       siteData: generation.siteData,
-      creditsCharged: estimateWebsiteCredits(generation.usage, params.pricing),
+      creditsCharged: textCreditsCharged + imageCreditsCharged,
+      textCreditsCharged,
+      imageCreditsCharged,
       model: WEBSITE_IO_MODEL,
+      imageCount: generatedVisualList.length,
+      imageModel: params.options.imageModel,
+      imageUrls: generatedVisualList.map((visual) => {
+        return visual.url;
+      }),
+      generatedVisuals: generatedVisualList,
       responseId: generation.responseId,
       usage: generation.usage,
     };

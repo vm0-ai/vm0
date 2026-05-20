@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
 
@@ -16,6 +17,8 @@ export const zeroWebsiteIoGenerateRequestSchema = z
   .object({
     prompt: z.unknown().optional(),
     template: z.unknown().optional(),
+    imageCount: z.unknown().optional(),
+    imageModel: z.unknown().optional(),
     title: z.unknown().optional(),
     audience: z.unknown().optional(),
   })
@@ -60,6 +63,28 @@ export const zeroWebsiteThemeSchema = z.object({
   tone: z.enum(["light", "dark"]),
 });
 
+export const zeroWebsiteVisualPlacementSchema = z.enum([
+  "hero",
+  "feature",
+  "section",
+]);
+
+export const zeroWebsiteVisualSpecSchema = z.object({
+  placement: zeroWebsiteVisualPlacementSchema,
+  prompt: z.string(),
+  alt: z.string(),
+});
+
+export const zeroWebsiteGeneratedVisualSchema = z.object({
+  placement: zeroWebsiteVisualPlacementSchema,
+  url: z.string(),
+  alt: z.string(),
+  prompt: z.string(),
+  imageId: z.string(),
+  filename: z.string(),
+  creditsCharged: z.number(),
+});
+
 export const zeroWebsiteSiteDataSchema = z.object({
   siteName: z.string(),
   eyebrow: z.string(),
@@ -72,6 +97,7 @@ export const zeroWebsiteSiteDataSchema = z.object({
   stats: z.array(zeroWebsiteStatSchema),
   footer: zeroWebsiteFooterSchema,
   theme: zeroWebsiteThemeSchema,
+  visuals: z.array(zeroWebsiteVisualSpecSchema),
 });
 
 export const zeroWebsiteGenerationPayloadSchema = z.object({
@@ -86,7 +112,13 @@ export const zeroWebsiteIoGenerateResponseSchema = z.object({
   slugSuggestion: z.string(),
   siteData: zeroWebsiteSiteDataSchema,
   creditsCharged: z.number(),
+  textCreditsCharged: z.number(),
+  imageCreditsCharged: z.number(),
   model: z.string(),
+  imageCount: z.number(),
+  imageModel: z.string(),
+  imageUrls: z.array(z.string()),
+  generatedVisuals: z.array(zeroWebsiteGeneratedVisualSchema),
   responseId: z.string().optional(),
   usage: zeroWebsiteIoUsageSchema,
 });
@@ -94,6 +126,13 @@ export const zeroWebsiteIoGenerateResponseSchema = z.object({
 export type ZeroWebsiteTemplateId = z.infer<typeof zeroWebsiteTemplateIdSchema>;
 export type ZeroWebsiteTemplateRequest = z.infer<
   typeof zeroWebsiteTemplateRequestSchema
+>;
+export type ZeroWebsiteVisualPlacement = z.infer<
+  typeof zeroWebsiteVisualPlacementSchema
+>;
+export type ZeroWebsiteVisualSpec = z.infer<typeof zeroWebsiteVisualSpecSchema>;
+export type ZeroWebsiteGeneratedVisual = z.infer<
+  typeof zeroWebsiteGeneratedVisualSchema
 >;
 export type ZeroWebsiteSiteData = z.infer<typeof zeroWebsiteSiteDataSchema>;
 export type ZeroWebsiteGenerationPayload = z.infer<
@@ -114,6 +153,7 @@ export const zeroWebsiteIoGenerateContract = c.router({
     body: zeroWebsiteIoGenerateRequestSchema,
     responses: {
       200: zeroWebsiteIoGenerateResponseSchema,
+      202: zeroBuiltInGenerationAcceptedResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,

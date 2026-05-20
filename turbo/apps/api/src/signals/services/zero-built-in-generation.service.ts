@@ -22,6 +22,7 @@ const BUILT_IN_GENERATION_TIMEOUT_MS_BY_TYPE = {
   image: 15 * 60 * 1000,
   video: 30 * 60 * 1000,
   presentation: 60 * 60 * 1000,
+  website: 60 * 60 * 1000,
 } as const satisfies Record<BuiltInGenerationType, number>;
 
 const BUILT_IN_GENERATION_TIMEOUT_ERROR: BuiltInGenerationError = Object.freeze(

@@ -10,6 +10,7 @@ export const zeroBuiltInGenerationTypeSchema = z.enum([
   "image",
   "video",
   "presentation",
+  "website",
 ]);
 
 export const zeroBuiltInGenerationStatusSchema = z.enum([

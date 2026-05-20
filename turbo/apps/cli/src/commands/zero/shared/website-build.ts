@@ -4,6 +4,7 @@ import { join } from "node:path";
 import React, { type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type {
+  ZeroWebsiteGeneratedVisual,
   ZeroWebsiteSiteData,
   ZeroWebsiteTemplateId,
 } from "@vm0/api-contracts/contracts/zero-website-io-generate";
@@ -14,11 +15,13 @@ interface BuildGeneratedWebsiteOptions {
   readonly outDir: string;
   readonly templateId: ZeroWebsiteTemplateId;
   readonly siteData: ZeroWebsiteSiteData;
+  readonly generatedVisuals?: readonly ZeroWebsiteGeneratedVisual[];
 }
 
 interface WebsiteProps {
   readonly data: ZeroWebsiteSiteData;
   readonly templateId: ZeroWebsiteTemplateId;
+  readonly generatedVisuals: readonly ZeroWebsiteGeneratedVisual[];
 }
 
 interface CtaLinkProps {
@@ -117,10 +120,57 @@ function Stats(props: { readonly data: ZeroWebsiteSiteData }): ReactNode {
   );
 }
 
+function VisualFigure(props: {
+  readonly visual: ZeroWebsiteGeneratedVisual;
+  readonly className: string;
+}): ReactNode {
+  return h(
+    "figure",
+    { className: `website-visual-frame ${props.className}` },
+    h("img", { src: props.visual.url, alt: props.visual.alt }),
+  );
+}
+
+function heroVisual(
+  visuals: readonly ZeroWebsiteGeneratedVisual[],
+): ZeroWebsiteGeneratedVisual | undefined {
+  return (
+    visuals.find((visual) => {
+      return visual.placement === "hero";
+    }) ?? visuals[0]
+  );
+}
+
+function SupportVisuals(props: {
+  readonly visuals: readonly ZeroWebsiteGeneratedVisual[];
+}): ReactNode {
+  const hero = heroVisual(props.visuals);
+  const support = props.visuals.filter((visual) => {
+    return visual !== hero;
+  });
+  if (support.length === 0) {
+    return null;
+  }
+
+  return h(
+    "section",
+    { className: "visual-strip", "aria-label": "Generated visuals" },
+    ...support.map((visual) => {
+      return h(VisualFigure, {
+        key: visual.imageId,
+        visual,
+        className: `visual-${visual.placement}`,
+      });
+    }),
+  );
+}
+
 function LaunchTemplate(props: {
   readonly data: ZeroWebsiteSiteData;
+  readonly generatedVisuals: readonly ZeroWebsiteGeneratedVisual[];
 }): ReactNode {
   const data = props.data;
+  const visual = heroVisual(props.generatedVisuals);
   return h(
     React.Fragment,
     null,
@@ -148,25 +198,31 @@ function LaunchTemplate(props: {
           }),
         ),
       ),
-      h(
-        "div",
-        { className: "hero-panel", "aria-hidden": "true" },
-        h("span", { className: "panel-label" }, data.siteName),
-        h(
-          "div",
-          { className: "panel-stack" },
-          ...data.highlights.slice(0, 3).map((highlight) => {
-            return h(
+      visual
+        ? h(VisualFigure, {
+            visual,
+            className: "hero-visual",
+          })
+        : h(
+            "div",
+            { className: "hero-panel", "aria-hidden": "true" },
+            h("span", { className: "panel-label" }, data.siteName),
+            h(
               "div",
-              { className: "panel-line", key: highlight.title },
-              h("strong", null, highlight.title),
-              h("span", null, highlight.body),
-            );
-          }),
-        ),
-      ),
+              { className: "panel-stack" },
+              ...data.highlights.slice(0, 3).map((highlight) => {
+                return h(
+                  "div",
+                  { className: "panel-line", key: highlight.title },
+                  h("strong", null, highlight.title),
+                  h("span", null, highlight.body),
+                );
+              }),
+            ),
+          ),
     ),
     h(Highlights, { data }),
+    h(SupportVisuals, { visuals: props.generatedVisuals }),
     h(Stats, { data }),
     h(SectionList, { data }),
   );
@@ -174,19 +230,26 @@ function LaunchTemplate(props: {
 
 function ProfileTemplate(props: {
   readonly data: ZeroWebsiteSiteData;
+  readonly generatedVisuals: readonly ZeroWebsiteGeneratedVisual[];
 }): ReactNode {
   const data = props.data;
+  const visual = heroVisual(props.generatedVisuals);
   return h(
     React.Fragment,
     null,
     h(
       "section",
       { className: "hero hero-profile", id: "top" },
-      h(
-        "div",
-        { className: "profile-mark", "aria-hidden": "true" },
-        data.siteName.slice(0, 2).toUpperCase(),
-      ),
+      visual
+        ? h(VisualFigure, {
+            visual,
+            className: "hero-visual profile-visual",
+          })
+        : h(
+            "div",
+            { className: "profile-mark", "aria-hidden": "true" },
+            data.siteName.slice(0, 2).toUpperCase(),
+          ),
       h(
         "div",
         { className: "hero-copy" },
@@ -211,6 +274,7 @@ function ProfileTemplate(props: {
     ),
     h(Stats, { data }),
     h(Highlights, { data }),
+    h(SupportVisuals, { visuals: props.generatedVisuals }),
     h(SectionList, { data }),
   );
 }
@@ -219,8 +283,8 @@ function WebsiteDocument(props: WebsiteProps): ReactNode {
   const { data, templateId } = props;
   const template =
     templateId === "profile"
-      ? h(ProfileTemplate, { data })
-      : h(LaunchTemplate, { data });
+      ? h(ProfileTemplate, { data, generatedVisuals: props.generatedVisuals })
+      : h(LaunchTemplate, { data, generatedVisuals: props.generatedVisuals });
 
   return h(
     "html",
@@ -482,6 +546,45 @@ h1 {
   justify-content: space-between;
 }
 
+.website-visual-frame {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.website-visual-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-visual {
+  align-self: stretch;
+  min-height: 420px;
+  aspect-ratio: 4 / 5;
+}
+
+.profile-visual {
+  width: min(32vw, 360px);
+  min-height: 320px;
+  aspect-ratio: 4 / 5;
+}
+
+.visual-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 clamp(20px, 5vw, 72px) clamp(36px, 6vw, 72px);
+}
+
+.visual-strip .website-visual-frame {
+  min-height: 260px;
+  aspect-ratio: 16 / 9;
+}
+
 .panel-label {
   color: var(--muted);
   font-size: 0.86rem;
@@ -678,8 +781,16 @@ h1 {
     min-height: 300px;
   }
 
+  .hero-visual,
+  .profile-visual {
+    width: 100%;
+    min-height: 280px;
+    aspect-ratio: 16 / 10;
+  }
+
   .highlights,
-  .stats {
+  .stats,
+  .visual-strip {
     grid-template-columns: 1fr;
   }
 
@@ -709,6 +820,7 @@ export async function buildGeneratedWebsite(
     React.createElement(WebsiteDocument, {
       data: options.siteData,
       templateId: options.templateId,
+      generatedVisuals: options.generatedVisuals ?? [],
     }),
   );
 

@@ -11,10 +11,13 @@ import { publishStaticSite } from "../../../../lib/host/publish-static-site";
 import { buildGeneratedWebsite } from "../../shared/website-build";
 
 const WEBSITE_TEMPLATES = ["auto", "launch", "profile"] as const;
+const WEBSITE_MAX_IMAGES = 3;
 
 interface WebsiteOptions {
   readonly prompt?: string;
   readonly template: string;
+  readonly images: number;
+  readonly imageModel?: string;
   readonly site?: string;
   readonly title?: string;
   readonly audience?: string;
@@ -31,6 +34,23 @@ function parseTemplate(value: string): string {
     return value;
   }
   throw new InvalidArgumentError("template must be auto, launch, or profile");
+}
+
+function parseImageCount(value: string): number {
+  const imageCount = Number(value);
+  if (!Number.isInteger(imageCount)) {
+    throw new InvalidArgumentError("images must be an integer");
+  }
+  if (
+    !Number.isSafeInteger(imageCount) ||
+    imageCount < 0 ||
+    imageCount > WEBSITE_MAX_IMAGES
+  ) {
+    throw new InvalidArgumentError(
+      `images must be between 0 and ${WEBSITE_MAX_IMAGES}`,
+    );
+  }
+  return imageCount;
 }
 
 function readPrompt(options: WebsiteOptions): string {
@@ -68,6 +88,16 @@ export const websiteCommand = new Command()
     parseTemplate,
     "auto",
   )
+  .option(
+    "--images <count>",
+    `Generated website image count: 0-${WEBSITE_MAX_IMAGES}`,
+    parseImageCount,
+    1,
+  )
+  .option(
+    "--image-model <model>",
+    "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
+  )
   .option("--site <slug>", "Hosted site slug; defaults to the generated name")
   .option("--title <text>", "Requested site title or name")
   .option("--audience <text>", "Audience context")
@@ -78,7 +108,7 @@ export const websiteCommand = new Command()
     `
 Examples:
   Generate site:         zero built-in generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero built-in generate website --template profile --prompt "Portfolio for a robotics photographer"
+  Pick template:         zero built-in generate website --template profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
   Stable hosted slug:    zero built-in generate website --site api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero built-in generate website
 
@@ -88,7 +118,7 @@ Output:
 Notes:
   - Authenticates via ZERO_TOKEN (requires host:write capability)
   - Charges org credits for model-generated website content
-  - Uses OpenAI gpt-5.5 through the Responses API`,
+  - Uses OpenAI gpt-5.5 for website content and fal.ai for generated visuals`,
   )
   .action(
     withErrorHandler(async (options: WebsiteOptions) => {
@@ -99,6 +129,8 @@ Notes:
       const generation = await generateWebWebsite({
         prompt,
         template: options.template,
+        imageCount: options.images,
+        imageModel: options.imageModel,
         title: options.title,
         audience: options.audience,
       });
@@ -113,6 +145,7 @@ Notes:
           outDir,
           templateId: generation.templateId,
           siteData: generation.siteData,
+          generatedVisuals: generation.generatedVisuals,
         });
 
         const site = options.site ?? generation.slugSuggestion;
@@ -143,7 +176,12 @@ Notes:
           fileCount: hosted.fileCount,
           size: hosted.size,
           creditsCharged: generation.creditsCharged,
+          textCreditsCharged: generation.textCreditsCharged,
+          imageCreditsCharged: generation.imageCreditsCharged,
           model: generation.model,
+          imageCount: generation.imageCount,
+          imageModel: generation.imageModel,
+          imageUrls: generation.imageUrls,
           responseId: generation.responseId,
           generationId: generation.generationId,
           usage: generation.usage,
@@ -161,8 +199,16 @@ Notes:
         console.log(chalk.dim(`  Template: ${generation.templateLabel}`));
         console.log(chalk.dim(`  Files: ${hosted.fileCount.toLocaleString()}`));
         console.log(chalk.dim(`  Size: ${formatBytes(hosted.size)}`));
+        console.log(chalk.dim(`  Images: ${generation.imageCount}`));
+        console.log(chalk.dim(`  Image model: ${generation.imageModel}`));
         console.log(
           chalk.dim(`  Credits charged: ${generation.creditsCharged}`),
+        );
+        console.log(
+          chalk.dim(`  Text credits: ${generation.textCreditsCharged}`),
+        );
+        console.log(
+          chalk.dim(`  Image credits: ${generation.imageCreditsCharged}`),
         );
         console.log(chalk.dim(`  Model: ${generation.model}`));
         if (options.keepBuildDir) {

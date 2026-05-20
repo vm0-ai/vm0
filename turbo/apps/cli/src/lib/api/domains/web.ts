@@ -17,6 +17,7 @@ const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE = {
   image: 15 * 60 * 1000,
   video: 30 * 60 * 1000,
   presentation: 60 * 60 * 1000,
+  website: 60 * 60 * 1000,
 } as const satisfies Record<
   ZeroBuiltInGenerationAcceptedResponse["type"],
   number
@@ -339,6 +340,8 @@ interface GenerateWebPresentationResult {
 interface GenerateWebWebsiteOptions {
   prompt: string;
   template?: string;
+  imageCount?: number;
+  imageModel?: string;
   title?: string;
   audience?: string;
 }
@@ -407,7 +410,8 @@ function isBuiltInGenerationAcceptedResponse(
     value.status === "queued" &&
     (value.type === "image" ||
       value.type === "video" ||
-      value.type === "presentation") &&
+      value.type === "presentation" ||
+      value.type === "website") &&
     isRecord(value.realtime)
   );
 }
@@ -1055,6 +1059,10 @@ export async function generateWebWebsite(
       body: JSON.stringify({
         prompt: options.prompt,
         ...(options.template ? { template: options.template } : {}),
+        ...(options.imageCount !== undefined
+          ? { imageCount: options.imageCount }
+          : {}),
+        ...(options.imageModel ? { imageModel: options.imageModel } : {}),
         ...(options.title ? { title: options.title } : {}),
         ...(options.audience ? { audience: options.audience } : {}),
       }),
@@ -1069,5 +1077,10 @@ export async function generateWebWebsite(
     throw new ApiRequestError(message, code, response.status);
   }
 
-  return (await response.json()) as GenerateWebWebsiteResult;
+  return readBuiltInGenerationResponse<GenerateWebWebsiteResult>({
+    response,
+    baseUrl,
+    token,
+    fallback: "Failed to generate website",
+  });
 }

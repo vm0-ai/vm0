@@ -13,6 +13,7 @@ export const BUILT_IN_GENERATION_TYPES = [
   "image",
   "video",
   "presentation",
+  "website",
 ] as const;
 export type BuiltInGenerationType = (typeof BUILT_IN_GENERATION_TYPES)[number];
 

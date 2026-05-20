@@ -14,18 +14,36 @@ import { server } from "../../../../../mocks/server";
 import { zeroBuiltInCommand } from "../../index";
 
 const WEBSITE_URL = "http://localhost:3000/api/zero/website-io/generate";
+const WEBSITE_GENERATION_ID = "11111111-1111-4111-8111-111111111111";
+const WEBSITE_STATUS_URL = `http://localhost:3000/api/zero/built-in-generations/${WEBSITE_GENERATION_ID}`;
 const HOST_PREPARE_URL =
   "http://localhost:3000/api/zero/host/deployments/prepare";
 const HOST_COMPLETE_URL =
   "http://localhost:3000/api/zero/host/deployments/22222222-2222-4222-8222-222222222222/complete";
 
 const WEBSITE_RESULT = {
-  generationId: "11111111-1111-4111-8111-111111111111",
+  generationId: WEBSITE_GENERATION_ID,
   templateId: "launch",
   templateLabel: "Launch site",
   slugSuggestion: "clearpath-observability",
   creditsCharged: 18,
+  textCreditsCharged: 12,
+  imageCreditsCharged: 6,
   model: "gpt-5.5",
+  imageCount: 1,
+  imageModel: "gpt-image-1",
+  imageUrls: ["http://localhost:3000/f/user-1/image-file-id/image-visual.webp"],
+  generatedVisuals: [
+    {
+      placement: "hero",
+      url: "http://localhost:3000/f/user-1/image-file-id/image-visual.webp",
+      alt: "Abstract observability workspace visual",
+      prompt: "Create a 16:9 website image for Clearpath Observability.",
+      imageId: "image-file-id",
+      filename: "image-visual.webp",
+      creditsCharged: 6,
+    },
+  ],
   responseId: "resp_website",
   usage: {
     inputTokens: 1200,
@@ -78,6 +96,13 @@ const WEBSITE_RESULT = {
       cta: { label: "Book a walkthrough", href: "#top" },
     },
     theme: { accent: "cobalt", tone: "light" },
+    visuals: [
+      {
+        placement: "hero",
+        prompt: "A calm observability workspace visual",
+        alt: "Abstract observability workspace visual",
+      },
+    ],
   },
 };
 
@@ -115,16 +140,50 @@ describe("zero built-in generate website command", () => {
   it("should generate, build, host, and print JSON metadata", async () => {
     const uploadedPaths: string[] = [];
     let prepareBody: PrepareBody | null = null;
+    let statusRequested = false;
     server.use(
       http.post(WEBSITE_URL, async ({ request }) => {
         expect(request.headers.get("authorization")).toBe("Bearer test-token");
         expect(await request.json()).toEqual({
           prompt: "observability launch site",
           template: "launch",
+          imageCount: 1,
           title: "Clearpath",
           audience: "small engineering teams",
         });
-        return HttpResponse.json(WEBSITE_RESULT);
+        return HttpResponse.json(
+          {
+            generationId: WEBSITE_GENERATION_ID,
+            type: "website",
+            status: "queued",
+            realtime: {
+              channelName: "user:user-1",
+              eventName: `built-in-generation:${WEBSITE_GENERATION_ID}`,
+              tokenRequest: {
+                keyName: "test-key",
+                timestamp: 1_700_000_000_000,
+                capability: '{"user:user-1":["subscribe"]}',
+                clientId: "user-1",
+                nonce: "test-nonce",
+                mac: "test-mac",
+              },
+            },
+          },
+          { status: 202 },
+        );
+      }),
+      http.get(WEBSITE_STATUS_URL, ({ request }) => {
+        statusRequested = true;
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        return HttpResponse.json({
+          generationId: WEBSITE_GENERATION_ID,
+          type: "website",
+          status: "completed",
+          result: WEBSITE_RESULT,
+          createdAt: "2026-05-15T00:00:00.000Z",
+          startedAt: "2026-05-15T00:00:01.000Z",
+          completedAt: "2026-05-15T00:00:02.000Z",
+        });
       }),
       http.post(HOST_PREPARE_URL, async ({ request }) => {
         prepareBody = (await request.json()) as PrepareBody;
@@ -195,6 +254,7 @@ describe("zero built-in generate website command", () => {
       "/assets/styles.css",
       "/index.html",
     ]);
+    expect(statusRequested).toBe(true);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     const parsed = JSON.parse(stdout) as Record<string, unknown>;
@@ -206,7 +266,12 @@ describe("zero built-in generate website command", () => {
       templateLabel: "Launch site",
       fileCount: 2,
       creditsCharged: 18,
+      textCreditsCharged: 12,
+      imageCreditsCharged: 6,
       model: "gpt-5.5",
+      imageCount: 1,
+      imageModel: "gpt-image-1",
+      imageUrls: WEBSITE_RESULT.imageUrls,
       responseId: "resp_website",
       generationId: "11111111-1111-4111-8111-111111111111",
       usage: WEBSITE_RESULT.usage,
