@@ -7,6 +7,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -18,6 +19,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -144,6 +146,15 @@ const deleteEmailFixture$ = command(
     await db.delete(agentComposes).where(eq(agentComposes.id, fixture.agentId));
     signal.throwIfAborted();
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await db
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.orgId, fixture.orgId),
+          eq(userFeatureSwitches.userId, fixture.userId),
+        ),
+      );
     signal.throwIfAborted();
     await db.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
     signal.throwIfAborted();
@@ -426,6 +437,54 @@ function mockRunOutput(text: string): void {
     ]);
 }
 
+interface SentEmail {
+  readonly to?: string | readonly string[];
+  readonly cc?: string | readonly string[];
+  readonly subject?: string;
+  readonly html?: string;
+  readonly headers?: Record<string, string>;
+}
+
+function lastSentEmail(): SentEmail {
+  const call = resendMocks.send.mock.calls.at(-1);
+  expect(call).toBeDefined();
+  return call![0] as SentEmail;
+}
+
+async function seedReplyCallback(args: {
+  readonly fixture: EmailFixture;
+  readonly status?: "completed" | "failed" | "running";
+  readonly result?: Record<string, unknown> | null;
+  readonly prompt?: string;
+  readonly lastEmailMessageId?: string | null;
+}): Promise<{
+  readonly callbackId: string;
+  readonly runId: string;
+  readonly thread: { readonly id: string; readonly replyToken: string };
+}> {
+  const run = await seedRun({
+    fixture: args.fixture,
+    status: args.status ?? "completed",
+    result: args.result,
+    prompt: args.prompt,
+  });
+  const thread = await seedThread({
+    fixture: args.fixture,
+    agentSessionId: run.sessionId,
+    lastEmailMessageId: args.lastEmailMessageId,
+  });
+  const { callbackId } = await store.set(
+    seedAgentRunCallback$,
+    {
+      runId: run.runId,
+      url: `http://localhost${REPLY_PATH}`,
+      payload: { emailThreadSessionId: thread.id },
+    },
+    context.signal,
+  );
+  return { callbackId, runId: run.runId, thread };
+}
+
 beforeEach(() => {
   resendMocks.send.mockReset();
   resendMocks.get.mockReset();
@@ -532,6 +591,9 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         }),
       }),
     );
+    const email = lastSentEmail();
+    expect(email.html).toContain("final email answer");
+    expect(email.html).not.toContain(`/activities/${run.runId}`);
 
     const db = store.set(writeDb$);
     const [updatedThread] = await db
@@ -542,6 +604,135 @@ describe("POST /api/zero/email/callbacks/reply", () => {
       agentSessionId: nextSessionId,
       lastEmailMessageId: "<sent@example.com>",
     });
+  });
+
+  it("includes the audit log link when the AuditLink switch is enabled", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, thread } = await seedReplyCallback({
+      fixture: fx,
+    });
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.AuditLink]: true },
+    });
+    mockRunOutput("audited email answer");
+
+    const response = await postCallback(REPLY_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        emailThreadSessionId: thread.id,
+        inboundEmailId: "email_audit",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.html).toContain(`/activities/${runId}`);
+  });
+
+  it("falls back to the last sent email message id when inbound threading headers are missing", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, thread } = await seedReplyCallback({
+      fixture: fx,
+      lastEmailMessageId: "<bot-prev@example.com>",
+    });
+    mockRunOutput("fallback threading answer");
+
+    const response = await postCallback(REPLY_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        emailThreadSessionId: thread.id,
+        inboundEmailId: "email_fallback",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.headers?.["In-Reply-To"]).toBe("<bot-prev@example.com>");
+    expect(email.headers?.References).toBe("<bot-prev@example.com>");
+  });
+
+  it("uses the last sent message id in references when only the inbound message id is present", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, thread } = await seedReplyCallback({
+      fixture: fx,
+      lastEmailMessageId: "<bot-prev@example.com>",
+    });
+    mockRunOutput("partial threading answer");
+
+    const response = await postCallback(REPLY_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        emailThreadSessionId: thread.id,
+        inboundEmailId: "email_partial",
+        inboundMessageId: "<inbound@example.com>",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.headers?.["In-Reply-To"]).toBe("<inbound@example.com>");
+    expect(email.headers?.References).toBe(
+      "<bot-prev@example.com> <inbound@example.com>",
+    );
+  });
+
+  it("omits threading headers when neither inbound nor session message ids exist", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, thread } = await seedReplyCallback({
+      fixture: fx,
+    });
+    mockRunOutput("no threading answer");
+
+    const response = await postCallback(REPLY_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        emailThreadSessionId: thread.id,
+        inboundEmailId: "email_without_threading",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.headers?.["In-Reply-To"]).toBeUndefined();
+    expect(email.headers?.References).toBeUndefined();
+  });
+
+  it("falls back to the thread owner email and sends the failure message on failed runs", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, thread } = await seedReplyCallback({
+      fixture: fx,
+      status: "failed",
+    });
+
+    const response = await postCallback(REPLY_PATH, {
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: {
+        emailThreadSessionId: thread.id,
+        inboundEmailId: "email_failed",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.subject).toBe(
+      `Re: VM0 - Scheduled run for "${fx.agentName}" completed`,
+    );
+    expect(email.html).toContain("Agent crashed");
   });
 });
 

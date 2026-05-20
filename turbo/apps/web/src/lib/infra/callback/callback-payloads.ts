@@ -43,15 +43,6 @@ export interface EmailTriggerCallbackPayload {
   replyRecipientCc?: string[];
 }
 
-export interface EmailReplyCallbackPayload {
-  emailThreadSessionId: string;
-  inboundEmailId: string;
-  inboundMessageId?: string;
-  inboundReferences?: string;
-  replyRecipientTo?: string[];
-  replyRecipientCc?: string[];
-}
-
 export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;
