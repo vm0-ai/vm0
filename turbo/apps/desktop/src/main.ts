@@ -33,6 +33,10 @@ import {
   parseDesktopAuthCallback,
   parseDesktopAuthCallbackArgv,
 } from "./desktop-auth";
+import {
+  shouldHideMainWindowOnClose,
+  showAndFocusWindow,
+} from "./desktop-window-lifecycle";
 import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
 
@@ -45,6 +49,7 @@ const signedOutPageUrl = buildSignedOutPageUrl(desktopAuthStartUrl);
 let mainWindow: BrowserWindow | null = null;
 let pendingDesktopAuthCode: string | null = null;
 let desktopLocalAgentManager: DesktopLocalAgentManager | null = null;
+let appIsQuitting = false;
 let quittingAfterLocalAgentStop = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
@@ -374,7 +379,7 @@ async function createMainWindow(initialUrl?: string): Promise<BrowserWindow> {
     if (initialUrl) {
       await mainWindow.loadURL(initialUrl);
     }
-    mainWindow.focus();
+    showAndFocusWindow(mainWindow);
     return mainWindow;
   }
 
@@ -387,6 +392,17 @@ async function createMainWindow(initialUrl?: string): Promise<BrowserWindow> {
   });
 
   mainWindow = window;
+  window.on("close", (event) => {
+    if (
+      shouldHideMainWindowOnClose({
+        platform: process.platform,
+        isQuitting: appIsQuitting,
+      })
+    ) {
+      event.preventDefault();
+      window.hide();
+    }
+  });
   window.on("closed", () => {
     if (mainWindow === window) {
       mainWindow = null;
@@ -476,9 +492,7 @@ if (!hasSingleInstanceLock) {
       return;
     }
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
+    void createMainWindow();
   });
 
   app.on("open-url", (event, url) => {
@@ -490,6 +504,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("before-quit", (event) => {
+    appIsQuitting = true;
     const manager = desktopLocalAgentManager;
     if (
       !manager ||
@@ -523,9 +538,7 @@ if (!hasSingleInstanceLock) {
     );
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        void createMainWindow();
-      }
+      void createMainWindow();
     });
   });
 
