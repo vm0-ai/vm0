@@ -811,6 +811,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero integrations Slack connect rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connect"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/slack/connect/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connected"),
+    ).toBe(false);
+  });
+
   it("matches the zero connector sessions rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/sessions"),

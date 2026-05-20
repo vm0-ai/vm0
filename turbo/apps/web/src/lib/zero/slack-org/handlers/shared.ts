@@ -3,7 +3,6 @@ import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-prefe
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
 import { getAppUrl } from "../../url";
-import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
 import type { UserInfoOptions } from "../../integration-prompt";
 import {
@@ -108,17 +107,6 @@ export function buildOrgConnectUrl(
     params.set("t", threadTs);
   }
   return `${appUrl}/settings/slack?${params.toString()}`;
-}
-
-/**
- * Ensure artifact storage exists for a user in a specific org.
- * Unlike the legacy version, this takes explicit org context.
- */
-export async function ensureOrgArtifact(
-  userId: string,
-  orgId: string,
-): Promise<void> {
-  await ensureStorageExists(orgId, userId, "artifact", "artifact");
 }
 
 type SlackClient = ReturnType<typeof createSlackClient>;

@@ -901,6 +901,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/chat/message",
   ],
   [
+    "/api/zero/integrations/slack/connect",
+    "/api/zero/integrations/slack/connect",
+  ],
+  [
     "/api/zero/integrations/slack/message",
     "/api/zero/integrations/slack/message",
   ],

@@ -2523,6 +2523,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/slack/message",
         },
         {
+          source: "/api/zero/integrations/slack/connect",
+          destination:
+            "https://api.example.test/api/zero/integrations/slack/connect",
+        },
+        {
           source: "/api/zero/integrations/telegram/bots",
           destination:
             "https://api.example.test/api/zero/integrations/telegram/bots",
@@ -8179,6 +8184,23 @@ describe("API backend rewrites", () => {
     expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
       false,
     );
+  });
+
+  it("should match the zero integrations Slack connect route for middleware pass-through", async () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connect"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/slack/connect/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connected"),
+    ).toBe(false);
   });
 
   it("should match the zero integrations Telegram message route for middleware pass-through", async () => {
