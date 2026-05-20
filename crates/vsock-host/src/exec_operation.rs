@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::{Future, ready};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -2153,6 +2154,17 @@ pub(crate) async fn start_supervised_exec_on_shared(
     shared: &Arc<Shared>,
     request: SupervisedExecRequest<'_>,
 ) -> io::Result<SupervisedExecHandle> {
+    start_supervised_exec_on_shared_with_after_start_write(shared, request, ready(())).await
+}
+
+async fn start_supervised_exec_on_shared_with_after_start_write<F>(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+    after_start_write: F,
+) -> io::Result<SupervisedExecHandle>
+where
+    F: Future<Output = ()>,
+{
     let stream_queue_capacity = stream_queue_capacity_for(
         request.stdout,
         request.stderr,
@@ -2250,6 +2262,7 @@ pub(crate) async fn start_supervised_exec_on_shared(
         start_cancel_on_drop.disarm();
         return Err(error);
     }
+    after_start_write.await;
 
     let pid = tokio::select! {
         biased;
@@ -2576,6 +2589,18 @@ pub(crate) mod test_support {
     pub(crate) fn drop_started_frame_write_guard(shared: Arc<Shared>) {
         let state = Arc::new(AtomicU8::new(EXEC_OPERATION_FRAME_WRITE_STARTED));
         drop(ExecOperationFrameWriteGuard::new(shared, state));
+    }
+
+    pub(crate) async fn start_supervised_exec_after_start_write<F>(
+        shared: &Arc<Shared>,
+        request: SupervisedExecRequest<'_>,
+        after_start_write: F,
+    ) -> io::Result<SupervisedExecHandle>
+    where
+        F: Future<Output = ()>,
+    {
+        start_supervised_exec_on_shared_with_after_start_write(shared, request, after_start_write)
+            .await
     }
 }
 

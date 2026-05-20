@@ -1116,20 +1116,36 @@ async fn supervised_exec_start_ack_timeout_sends_cancel() {
 async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
+    let (start_written_tx, start_written_rx) = tokio::sync::oneshot::channel();
+    let (allow_start_wait_tx, allow_start_wait_rx) = tokio::sync::oneshot::channel();
     let task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move {
-            host.start_supervised_exec(SupervisedExecRequest {
-                start_timeout: Duration::from_millis(100),
-                ..supervised_request("blocked-start-timeout-cancel")
-            })
+            exec_operation_impl::test_support::start_supervised_exec_after_start_write(
+                &host.shared,
+                SupervisedExecRequest {
+                    start_timeout: Duration::ZERO,
+                    ..supervised_request("blocked-start-timeout-cancel")
+                },
+                async move {
+                    let _ = start_written_tx.send(());
+                    let _ = allow_start_wait_rx.await;
+                },
+            )
             .await
         })
     };
 
+    tokio::time::timeout(Duration::from_secs(5), start_written_rx)
+        .await
+        .expect("start frame write should complete")
+        .expect("start write hook should notify");
+    let writer_guard = host.shared.writer.lock().await;
     let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
-    let writer_guard = host.shared.writer.lock().await;
+    allow_start_wait_tx
+        .send(())
+        .expect("start wait hook should still be pending");
 
     let result = tokio::time::timeout(Duration::from_secs(5), task)
         .await
