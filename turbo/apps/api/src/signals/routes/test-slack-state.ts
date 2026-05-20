@@ -115,7 +115,12 @@ async function upsertSlackInstallation(
   db: Db,
   input: UpsertSlackInstallationInput,
 ): Promise<typeof slackOrgInstallations.$inferSelect> {
-  const encryptedBotToken = await encryptPersistentSecretValue(input.botToken);
+  const encryptedBotToken = await encryptPersistentSecretValue(
+    input.botToken,
+    input.orgId && input.installedByUserId
+      ? { orgId: input.orgId, userId: input.installedByUserId }
+      : {},
+  );
   const [row] = await db
     .insert(slackOrgInstallations)
     .values({

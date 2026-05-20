@@ -76,6 +76,7 @@ import {
   updateUserModelPreference$,
   userModelPreference,
 } from "./zero-user-data.service";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import type { ApiOrgRole, AuthContext, AuthTokenType } from "../../types/auth";
 
 const log = logger("api:telegram:post");
@@ -561,12 +562,18 @@ async function handleExistingInstallation(args: {
   if (configureError) {
     return configureError;
   }
+  const featureSwitchContext = await args.get(
+    userFeatureSwitchContext(args.auth.orgId, args.auth.userId),
+  );
 
   const [updated] = await args.db
     .update(telegramInstallations)
     .set({
       botUsername: args.botInfo.username,
-      encryptedBotToken: await encryptPersistentSecretValue(args.body.botToken),
+      encryptedBotToken: await encryptPersistentSecretValue(
+        args.body.botToken,
+        featureSwitchContext,
+      ),
       webhookSecret,
       defaultComposeId: resolvedAgent.agentId,
       updatedAt: nowDate(),
@@ -657,6 +664,10 @@ export const registerTelegramBot$ = command(
     }
 
     const webhookSecret = generateCallbackSecret();
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
     const [installation] = await db
       .insert(telegramInstallations)
       .values({
@@ -664,6 +675,7 @@ export const registerTelegramBot$ = command(
         botUsername: botInfoResult.value.username,
         encryptedBotToken: await encryptPersistentSecretValue(
           bodyResult.data.botToken,
+          featureSwitchContext,
         ),
         webhookSecret,
         defaultComposeId: resolvedAgent.agentId,
@@ -2668,6 +2680,9 @@ const processCustomWebhookMessage$ = command(
 
     const botToken = await decryptPersistentSecretValue(
       installation.encryptedBotToken,
+      await get(
+        userFeatureSwitchContext(installation.orgId, installation.ownerUserId),
+      ),
     );
     signal.throwIfAborted();
     const commandName = parseBotCommand(

@@ -28,6 +28,7 @@ import {
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { encryptPersistentSecretValue } from "./crypto.utils";
+import { loadComposeFeatureSwitchContext } from "./github-oauth.service";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 const L = logger("WebhookGithub");
@@ -914,13 +915,21 @@ export const handleGithubInstallationEvent$ = command(
       signal,
     });
     signal.throwIfAborted();
+    const featureSwitchContext = await loadComposeFeatureSwitchContext({
+      db,
+      composeId: pending.defaultComposeId,
+      signal,
+    });
 
     await db
       .update(githubInstallations)
       .set({
         status: "active",
         installationId: ghInstallationId,
-        encryptedAccessToken: await encryptPersistentSecretValue(token),
+        encryptedAccessToken: await encryptPersistentSecretValue(
+          token,
+          featureSwitchContext,
+        ),
         targetName: payload.installation.account.login,
         adminGithubUserId: payload.sender ? String(payload.sender.id) : null,
         updatedAt: nowDate(),

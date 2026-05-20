@@ -25,6 +25,7 @@ import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 const L = logger("TelegramDispatch");
@@ -69,6 +70,7 @@ interface TelegramInstallation {
   readonly encryptedBotToken: string;
   readonly defaultComposeId: string;
   readonly orgId: string;
+  readonly ownerUserId: string;
 }
 
 interface TelegramUserLink {
@@ -456,6 +458,7 @@ async function loadInstallation(
       encryptedBotToken: telegramInstallations.encryptedBotToken,
       defaultComposeId: telegramInstallations.defaultComposeId,
       orgId: telegramInstallations.orgId,
+      ownerUserId: telegramInstallations.ownerUserId,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.telegramBotId, installationId))
@@ -1068,6 +1071,11 @@ async function resolveDispatchBase(args: {
 
   const botToken = await decryptPersistentSecretValue(
     installation.encryptedBotToken,
+    await loadUserFeatureSwitchContext(
+      args.db,
+      installation.orgId,
+      installation.ownerUserId,
+    ),
   );
   const telegramDisplayName = formatTelegramUserDisplayName(message.from);
   const userLink = await resolveUserLink({

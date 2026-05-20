@@ -5,6 +5,7 @@ import type {
   TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { getConnectorProvidedSecretNames } from "@vm0/connectors/connector-utils";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import {
   agentComposes,
@@ -28,6 +29,7 @@ import {
 } from "../external/telegram-official";
 import { safeUrlParse, settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -323,7 +325,15 @@ function customTelegramBot(args: {
           userId: args.userId,
         }),
       ),
-      resolveIntegrationTokenStatus(args.installation),
+      resolveIntegrationTokenStatus(
+        args.installation,
+        await get(
+          userFeatureSwitchContext(
+            args.installation.orgId,
+            args.installation.ownerUserId,
+          ),
+        ),
+      ),
     ]);
 
     return {
@@ -607,6 +617,7 @@ export function zeroTelegramInstallation(args: {
       .select({
         encryptedBotToken: telegramInstallations.encryptedBotToken,
         botUsername: telegramInstallations.botUsername,
+        ownerUserId: telegramInstallations.ownerUserId,
       })
       .from(telegramInstallations)
       .where(
@@ -622,7 +633,10 @@ export function zeroTelegramInstallation(args: {
     }
 
     return {
-      botToken: await decryptPersistentSecretValue(row.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(
+        row.encryptedBotToken,
+        await get(userFeatureSwitchContext(args.orgId, row.ownerUserId)),
+      ),
       botUsername: row.botUsername ?? null,
     };
   });
@@ -643,6 +657,8 @@ export function telegramBotToken(args: {
       .select({
         encryptedBotToken: telegramInstallations.encryptedBotToken,
         botUsername: telegramInstallations.botUsername,
+        ownerUserId: telegramInstallations.ownerUserId,
+        orgId: telegramInstallations.orgId,
       })
       .from(telegramInstallations)
       .where(
@@ -658,7 +674,10 @@ export function telegramBotToken(args: {
     }
 
     return {
-      botToken: await decryptPersistentSecretValue(row.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(
+        row.encryptedBotToken,
+        await get(userFeatureSwitchContext(row.orgId, row.ownerUserId)),
+      ),
       botUsername: row.botUsername ?? null,
     };
   });
@@ -677,9 +696,11 @@ function isInvalidTelegramTokenError(error: unknown): boolean {
 
 async function resolveIntegrationTokenStatus(
   installation: TelegramInstallationRow,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<TelegramBot["tokenStatus"]> {
   const token = await decryptPersistentSecretValue(
     installation.encryptedBotToken,
+    featureSwitchContext,
   );
   const result = await settle(getMe(token));
 

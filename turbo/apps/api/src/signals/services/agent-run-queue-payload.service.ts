@@ -2,6 +2,7 @@ import {
   storedExecutionContextSchema,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import {
@@ -27,10 +28,14 @@ type QueuedRunnerJobPayload = z.infer<typeof queuedRunnerJobPayloadSchema>;
 
 export async function encryptQueuedRunnerJobPayload(
   payload: QueuedRunnerJobPayload,
+  ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap({
-    [QUEUED_RUNNER_JOB_PAYLOAD_KEY]: JSON.stringify(payload),
-  });
+  const encrypted = await encryptPersistentSecretsMap(
+    {
+      [QUEUED_RUNNER_JOB_PAYLOAD_KEY]: JSON.stringify(payload),
+    },
+    ctx,
+  );
   if (!encrypted) {
     throw new Error("Failed to encrypt queued runner job payload");
   }
@@ -55,12 +60,13 @@ export async function encryptQueuedRunnerJobPayloadWithMode(
 
 export async function decryptQueuedRunnerJobPayload(
   encryptedParams: string | null,
+  ctx: FeatureSwitchContext = {},
 ): Promise<QueuedRunnerJobPayload | null> {
   if (!encryptedParams) {
     return null;
   }
 
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams);
+  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
   const rawPayload = decrypted?.[QUEUED_RUNNER_JOB_PAYLOAD_KEY];
   if (!rawPayload) {
     return null;

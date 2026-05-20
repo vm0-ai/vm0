@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer";
 import { createSign, timingSafeEqual } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
@@ -11,6 +13,7 @@ import { safeJsonParse, settle } from "../utils";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { encryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
@@ -372,6 +375,30 @@ export async function tryLinkGithubFromLocalRecord(args: {
   return true;
 }
 
+export async function loadComposeFeatureSwitchContext(args: {
+  readonly db: Db;
+  readonly composeId: string;
+  readonly userId?: string | null;
+  readonly signal: AbortSignal;
+}): Promise<FeatureSwitchContext> {
+  const [compose] = await args.db
+    .select({ orgId: agentComposes.orgId, userId: agentComposes.userId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, args.composeId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!compose) {
+    throw new Error(`Agent compose not found: composeId=${args.composeId}`);
+  }
+
+  return await loadUserFeatureSwitchContext(
+    args.db,
+    compose.orgId,
+    args.userId ?? compose.userId,
+  );
+}
+
 export async function tryLinkGithubFromRemoteInstallations(args: {
   readonly db: Db;
   readonly appId: string;
@@ -428,6 +455,12 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   if (!args.composeId) {
     return false;
   }
+  const featureSwitchContext = await loadComposeFeatureSwitchContext({
+    db: args.db,
+    composeId: args.composeId,
+    userId: args.vm0UserId,
+    signal: args.signal,
+  });
 
   const ghInstallationId = String(ghInstall.id);
   const { token } = await getGithubInstallationAccessToken({
@@ -445,7 +478,10 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
     .insert(githubInstallations)
     .values({
       installationId: ghInstallationId,
-      encryptedAccessToken: await encryptPersistentSecretValue(token),
+      encryptedAccessToken: await encryptPersistentSecretValue(
+        token,
+        featureSwitchContext,
+      ),
       status: "active",
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),

@@ -591,6 +591,7 @@ const postTestTelegramState$ = command(
 
     const encryptedBotToken = await encryptPersistentSecretValue(
       TELEGRAM_E2E_FIXTURES.botToken,
+      { orgId, userId },
     );
     signal.throwIfAborted();
     await db

@@ -11,6 +11,7 @@ import { now, nowDate } from "../external/time";
 import { publishOrgSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 
 const L = logger("ZeroRunQueue");
@@ -92,6 +93,7 @@ export const drainOrgQueue$ = command(
       const queueRows = await tx
         .select({
           runId: agentRunQueue.runId,
+          userId: agentRunQueue.userId,
           encryptedParams: agentRunQueue.encryptedParams,
         })
         .from(agentRunQueue)
@@ -118,8 +120,14 @@ export const drainOrgQueue$ = command(
           });
           continue;
         }
+        const featureSwitchContext = await loadUserFeatureSwitchContext(
+          tx,
+          args.orgId,
+          row.userId,
+        );
         const payload = await decryptQueuedRunnerJobPayload(
           row.encryptedParams,
+          featureSwitchContext,
         );
         if (payload) {
           await tx.insert(runnerJobQueue).values({

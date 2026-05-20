@@ -28,6 +28,7 @@ import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
 import type { ApiOrgRole } from "../../types/auth";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 type PermissionAccessRequestRow = typeof permissionAccessRequests.$inferSelect;
 type ForbiddenResponse = NonNullable<ReturnType<typeof requireAgentPermission>>;
@@ -192,7 +193,10 @@ async function resolveSlackDmTarget(
 
   return {
     client: createSlackClient(
-      await decryptPersistentSecretValue(installation.encryptedBotToken),
+      await decryptPersistentSecretValue(
+        installation.encryptedBotToken,
+        await loadUserFeatureSwitchContext(db, orgId, userId),
+      ),
     ),
     slackUserId: connection.slackUserId,
   };

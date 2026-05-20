@@ -17,6 +17,7 @@ import { logger } from "../../lib/log";
 import { env, optionalEnv } from "../../lib/env";
 import { safeJsonParse, settle, tapError } from "../utils";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   connectSlackWorkspace$,
@@ -253,6 +254,7 @@ function notifyAfterConnect(args: {
   readonly installation: SlackInstallation;
   readonly slackUserId: string;
   readonly orgId: string;
+  readonly userId: string;
   readonly pendingPrompt: string | null;
   readonly signal: AbortSignal;
 }): void {
@@ -265,6 +267,7 @@ function notifyAfterConnect(args: {
             installation: args.installation,
             slackUserId: args.slackUserId,
             orgId: args.orgId,
+            userId: args.userId,
             ...(args.pendingPrompt
               ? { pendingPrompt: args.pendingPrompt }
               : {}),
@@ -333,6 +336,7 @@ async function handlePlatformInstall(args: {
     installation: args.installation,
     slackUserId: args.authedUserId,
     orgId: args.state.orgId,
+    userId: args.state.vm0UserId,
     pendingPrompt: args.state.prompt,
     signal: args.signal,
   });
@@ -381,8 +385,17 @@ async function handleInstallCallback(args: {
 
   const oauthResult = exchange.value;
   const writeDb = args.set(writeDb$);
+  const featureSwitchContext =
+    args.state.orgId && args.state.vm0UserId
+      ? await loadUserFeatureSwitchContext(
+          writeDb,
+          args.state.orgId,
+          args.state.vm0UserId,
+        )
+      : {};
   const encryptedBotToken = await encryptPersistentSecretValue(
     oauthResult.accessToken,
+    featureSwitchContext,
   );
   const botScopes = oauthResult.scope
     ? JSON.stringify(oauthResult.scope.split(",").filter(Boolean))
@@ -565,6 +578,7 @@ async function handleConnectCallback(args: {
     installation,
     slackUserId: exchange.value.authedUserId,
     orgId: args.state.orgId,
+    userId: args.state.vm0UserId,
     pendingPrompt: args.state.prompt,
     signal: args.signal,
   });

@@ -3,7 +3,10 @@ import { randomBytes } from "node:crypto";
 import { command, type Getter, type Setter } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  type FeatureSwitchContext,
+} from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
@@ -435,6 +438,41 @@ async function resolveConnectionContext(
   return { connection, installation, orgId: installation.orgId };
 }
 
+async function slackPersistentSecretContext(args: {
+  readonly get: ComputedGetter;
+  readonly orgId: string | null;
+  readonly userId: string | undefined;
+}): Promise<FeatureSwitchContext> {
+  if (!args.orgId) {
+    return {};
+  }
+  if (!args.userId) {
+    return { orgId: args.orgId };
+  }
+  return {
+    orgId: args.orgId,
+    userId: args.userId,
+    overrides: await args.get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    ),
+  };
+}
+
+async function decryptSlackBotToken(args: {
+  readonly get: ComputedGetter;
+  readonly installation: SlackInstallation;
+  readonly userId?: string;
+}): Promise<string> {
+  return await decryptPersistentSecretValue(
+    args.installation.encryptedBotToken,
+    await slackPersistentSecretContext({
+      get: args.get,
+      orgId: args.installation.orgId,
+      userId: args.userId,
+    }),
+  );
+}
+
 async function resolveDefaultComposeId(
   db: Db,
   orgId: string,
@@ -633,16 +671,19 @@ async function isModelCommandAvailable(
 }
 
 async function refreshOrgAppHome(
+  get: ComputedGetter,
   db: Db,
   installation: SlackInstallation,
   slackUserId: string,
 ): Promise<void> {
   const workspaceId = installation.slackWorkspaceId;
-  const botToken = await decryptPersistentSecretValue(
-    installation.encryptedBotToken,
-  );
-  const client = createSlackClient(botToken);
   const connection = await connectionForSlackUser(db, workspaceId, slackUserId);
+  const botToken = await decryptSlackBotToken({
+    get,
+    installation,
+    userId: connection?.vm0UserId,
+  });
+  const client = createSlackClient(botToken);
   if (!connection) {
     await publishAppHome(
       client,
@@ -745,7 +786,11 @@ async function commandSwitchResponse(
     installation.orgId,
   );
   const client = createSlackClient(
-    await decryptPersistentSecretValue(installation.encryptedBotToken),
+    await decryptSlackBotToken({
+      get,
+      installation,
+      userId: connection.vm0UserId,
+    }),
   );
   const result = await settle(
     openView(
@@ -805,7 +850,11 @@ async function commandModelResponse(
     );
   }
   const client = createSlackClient(
-    await decryptPersistentSecretValue(args.installation.encryptedBotToken),
+    await decryptSlackBotToken({
+      get: args.get,
+      installation: args.installation,
+      userId: args.connection.vm0UserId,
+    }),
   );
   const result = await settle(
     openView(
@@ -906,7 +955,7 @@ export const handleZeroSlackCommands$ = command(
       signal.throwIfAborted();
       waitUntil(
         tapError(
-          refreshOrgAppHome(db, installation, payload.user_id),
+          refreshOrgAppHome(get, db, installation, payload.user_id),
           (error) => {
             L.warn("Failed to refresh App Home after disconnect", { error });
           },
@@ -1172,16 +1221,18 @@ async function resolveSlackAgentMessage(
     return null;
   }
   const boundInstallation = { ...installation, orgId };
-  const botToken = await decryptPersistentSecretValue(
-    installation.encryptedBotToken,
-  );
-  const client = createSlackClient(botToken);
   const threadTs = args.threadTs ?? args.messageTs;
   const connection = await connectionForSlackUser(
     args.db,
     args.workspaceId,
     args.slackUserId,
   );
+  const botToken = await decryptSlackBotToken({
+    get: args.get,
+    installation,
+    userId: connection?.vm0UserId,
+  });
+  const client = createSlackClient(botToken);
 
   if (!connection) {
     const connectUrl = buildOrgConnectUrl(
@@ -1414,6 +1465,7 @@ export const dispatchZeroSlackProbe$ = command(
 );
 
 async function handleAppHomeOpened(
+  get: ComputedGetter,
   db: Db,
   workspaceId: string,
   slackUserId: string,
@@ -1422,10 +1474,11 @@ async function handleAppHomeOpened(
   if (!installation) {
     return;
   }
-  await refreshOrgAppHome(db, installation, slackUserId);
+  await refreshOrgAppHome(get, db, installation, slackUserId);
 }
 
 async function handleMessagesTabOpened(
+  get: ComputedGetter,
   db: Db,
   workspaceId: string,
   slackUserId: string,
@@ -1436,7 +1489,10 @@ async function handleMessagesTabOpened(
     return;
   }
   const [connection] = await db
-    .select({ id: slackOrgConnections.id })
+    .select({
+      id: slackOrgConnections.id,
+      vm0UserId: slackOrgConnections.vm0UserId,
+    })
     .from(slackOrgConnections)
     .where(
       and(
@@ -1470,7 +1526,11 @@ async function handleMessagesTabOpened(
   }
   await postMessage(
     createSlackClient(
-      await decryptPersistentSecretValue(installation.encryptedBotToken),
+      await decryptSlackBotToken({
+        get,
+        installation,
+        userId: connection.vm0UserId,
+      }),
     ),
     channelId,
     "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
@@ -1542,7 +1602,12 @@ function handleEventCallback(args: {
   if (event.type === "app_home_opened" && event.tab === "home") {
     waitUntil(
       tapError(
-        handleAppHomeOpened(args.db, args.payload.team_id, event.user),
+        handleAppHomeOpened(
+          args.get,
+          args.db,
+          args.payload.team_id,
+          event.user,
+        ),
         (error) => {
           L.error("Error handling org app_home_opened", { error });
         },
@@ -1554,6 +1619,7 @@ function handleEventCallback(args: {
     waitUntil(
       tapError(
         handleMessagesTabOpened(
+          args.get,
           args.db,
           args.payload.team_id,
           event.user,
@@ -1682,6 +1748,7 @@ async function resolveOrgDefaultName(db: Db, orgId: string): Promise<string> {
 }
 
 async function handleAgentPickerSubmit(
+  get: ComputedGetter,
   db: Db,
   payload: SlackInteractivePayload,
 ): Promise<Response> {
@@ -1702,9 +1769,11 @@ async function handleAgentPickerSubmit(
   if (!ctx) {
     return emptyResponse();
   }
-  const botToken = await decryptPersistentSecretValue(
-    ctx.installation.encryptedBotToken,
-  );
+  const botToken = await decryptSlackBotToken({
+    get,
+    installation: ctx.installation,
+    userId: ctx.connection.vm0UserId,
+  });
   const channelId = parseViewChannelId(payload.view?.private_metadata);
   if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
     const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
@@ -1722,7 +1791,7 @@ async function handleAgentPickerSubmit(
         text: `Switched to *${defaultName}*.`,
       });
     }
-    waitUntil(refreshOrgAppHome(db, ctx.installation, payload.user.id));
+    waitUntil(refreshOrgAppHome(get, db, ctx.installation, payload.user.id));
     return emptyResponse();
   }
 
@@ -1749,7 +1818,7 @@ async function handleAgentPickerSubmit(
       text: `Switched to *${agent.displayName ?? agent.name}*.`,
     });
   }
-  waitUntil(refreshOrgAppHome(db, ctx.installation, payload.user.id));
+  waitUntil(refreshOrgAppHome(get, db, ctx.installation, payload.user.id));
   return emptyResponse();
 }
 
@@ -1807,9 +1876,11 @@ async function handleModelPickerSubmit(
   const channelId = parseViewChannelId(payload.view?.private_metadata);
   if (channelId) {
     await postEphemeralMessage({
-      botToken: await decryptPersistentSecretValue(
-        ctx.installation.encryptedBotToken,
-      ),
+      botToken: await decryptSlackBotToken({
+        get,
+        installation: ctx.installation,
+        userId: ctx.connection.vm0UserId,
+      }),
       channel: channelId,
       slackUserId: payload.user.id,
       text: `Switched to *${option.label}*.`,
@@ -1862,7 +1933,11 @@ async function handleHomeSwitchAgent(
   const result = await settle(
     openView(
       createSlackClient(
-        await decryptPersistentSecretValue(ctx.installation.encryptedBotToken),
+        await decryptSlackBotToken({
+          get,
+          installation: ctx.installation,
+          userId: ctx.connection.vm0UserId,
+        }),
       ),
       triggerId,
       buildAgentPickerModal({
@@ -1880,6 +1955,7 @@ async function handleHomeSwitchAgent(
 }
 
 async function handleHomeDisconnect(
+  get: ComputedGetter,
   db: Db,
   payload: SlackInteractivePayload,
 ): Promise<void> {
@@ -1896,7 +1972,7 @@ async function handleHomeDisconnect(
   if (!installation) {
     return;
   }
-  await refreshOrgAppHome(db, installation, payload.user.id);
+  await refreshOrgAppHome(get, db, installation, payload.user.id);
 }
 
 export const handleZeroSlackInteractive$ = command(
@@ -1924,7 +2000,7 @@ export const handleZeroSlackInteractive$ = command(
       payload.type === "view_submission" &&
       payload.view?.callback_id === AGENT_PICKER_CALLBACK_ID
     ) {
-      return handleAgentPickerSubmit(db, payload);
+      return handleAgentPickerSubmit(get, db, payload);
     }
     if (
       payload.type === "view_submission" &&
@@ -1938,7 +2014,7 @@ export const handleZeroSlackInteractive$ = command(
         return emptyResponse();
       }
       if (action.action_id === "home_disconnect") {
-        await handleHomeDisconnect(db, payload);
+        await handleHomeDisconnect(get, db, payload);
       } else if (action.action_id === "home_switch_agent") {
         await handleHomeSwitchAgent(get, db, payload);
       }

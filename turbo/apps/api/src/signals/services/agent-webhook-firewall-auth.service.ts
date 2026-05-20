@@ -87,6 +87,20 @@ interface ResolveResult {
   };
 }
 
+type ResolveFirewallAuthResult =
+  | ResolveResult
+  | ReturnType<typeof badRequestMessage>
+  | {
+      readonly status: 402 | 403 | 424 | 502;
+      readonly body: {
+        readonly error: {
+          readonly message: string;
+          readonly code: string;
+          readonly connectors?: readonly string[];
+        };
+      };
+    };
+
 function mergeExpiresAt(
   expiresAt: number | null,
   additionalExpiresAt: number | undefined,
@@ -914,6 +928,37 @@ async function findRefreshRunOrgId(
   return run?.orgId ?? null;
 }
 
+async function decryptFirewallAuthSecrets(
+  db: Db,
+  auth: SandboxAuth,
+  encryptedSecrets: string,
+): Promise<
+  | { readonly ok: true; readonly secrets: Record<string, string> | null }
+  | {
+      readonly ok: false;
+      readonly response: ReturnType<typeof badRequestMessage>;
+    }
+> {
+  const orgId = await findRefreshRunOrgId(db, auth);
+  if (!orgId) {
+    L.warn(`[${auth.runId}] Run not found for firewall auth`);
+    return { ok: false, response: badRequestMessage("Run not found") };
+  }
+
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    orgId,
+    auth.userId,
+  );
+  const decryptedResult = await settle(
+    decryptPersistentSecretsMap(encryptedSecrets, featureSwitchContext),
+  );
+  return {
+    ok: true,
+    secrets: decryptedResult.ok ? decryptedResult.value : null,
+  };
+}
+
 function connectorTypesNeedingRefresh(args: {
   readonly connectorTypes: readonly string[];
   readonly expiryMap: Map<string, number | null>;
@@ -1300,24 +1345,16 @@ export async function resolveFirewallAuth(
   db: Db,
   auth: SandboxAuth,
   body: FirewallAuthBody,
-): Promise<
-  | ResolveResult
-  | ReturnType<typeof badRequestMessage>
-  | {
-      readonly status: 402 | 403 | 424 | 502;
-      readonly body: {
-        readonly error: {
-          readonly message: string;
-          readonly code: string;
-          readonly connectors?: readonly string[];
-        };
-      };
-    }
-> {
-  const decryptedResult = await settle(
-    decryptPersistentSecretsMap(body.encryptedSecrets),
+): Promise<ResolveFirewallAuthResult> {
+  const decrypted = await decryptFirewallAuthSecrets(
+    db,
+    auth,
+    body.encryptedSecrets,
   );
-  const decryptedSecrets = decryptedResult.ok ? decryptedResult.value : null;
+  if (!decrypted.ok) {
+    return decrypted.response;
+  }
+  const decryptedSecrets = decrypted.secrets;
 
   if (!decryptedSecrets) {
     return badRequestMessage("Failed to decrypt secrets");

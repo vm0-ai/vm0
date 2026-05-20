@@ -33,7 +33,7 @@ const initInner$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId }),
+    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   signal.throwIfAborted();
   if (!installation) {

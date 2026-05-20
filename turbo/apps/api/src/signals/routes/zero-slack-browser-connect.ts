@@ -142,6 +142,7 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
           installation: result.installation,
           slackUserId: result.slackUserId,
           orgId,
+          userId: auth.userId,
           channelId: result.channelId,
           threadTs: result.threadTs,
         },

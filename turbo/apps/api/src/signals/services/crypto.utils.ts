@@ -426,7 +426,7 @@ export async function decryptPersistentSecretValueWithMode(
 
 export async function encryptPersistentSecretValue(
   plaintext: string,
-  ctx: FeatureSwitchContext = {},
+  ctx: FeatureSwitchContext,
 ): Promise<string> {
   if (!env("SECRETS_KMS_KEY_ID")) {
     return encryptSecretValue(plaintext);
@@ -441,7 +441,7 @@ export async function encryptPersistentSecretValue(
 
 export async function decryptPersistentSecretValue(
   encrypted: string,
-  ctx: FeatureSwitchContext = {},
+  ctx: FeatureSwitchContext,
 ): Promise<string> {
   return await decryptPersistentSecretValueWithMode(
     encrypted,
@@ -451,7 +451,7 @@ export async function decryptPersistentSecretValue(
 
 export async function encryptPersistentSecretsMap(
   secrets: Record<string, string> | null | undefined,
-  ctx: FeatureSwitchContext = {},
+  ctx: FeatureSwitchContext,
 ): Promise<string | null> {
   if (!secrets) {
     return null;
@@ -476,7 +476,7 @@ export async function encryptPersistentSecretsMapWithMode(
 
 export async function decryptPersistentSecretsMap(
   encryptedData: string | null,
-  ctx: FeatureSwitchContext = {},
+  ctx: FeatureSwitchContext,
 ): Promise<Record<string, string> | null> {
   if (!encryptedData) {
     return null;

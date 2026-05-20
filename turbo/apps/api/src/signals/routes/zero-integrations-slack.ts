@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, type Getter } from "ccstate";
 import { initContract } from "@ts-rest/core";
 import { z } from "zod";
 import type { View } from "@slack/web-api";
@@ -34,10 +34,11 @@ import {
   MAX_SLACK_FILE_SIZE_BYTES,
 } from "../external/slack-file-fetcher";
 import { createSlackClient } from "../external/slack-message-client";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
 import type { RouteEntry } from "../route";
 import { bestEffort, settle } from "../utils";
@@ -305,149 +306,186 @@ const deleteSlackIntegrationQuery$ = queryOf(
   zeroIntegrationsSlackContract.disconnect,
 );
 
+async function decryptSlackInstallationToken(args: {
+  readonly get: Getter;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly encryptedBotToken: string;
+}): Promise<string> {
+  return await decryptPersistentSecretValue(
+    args.encryptedBotToken,
+    await args.get(userFeatureSwitchContext(args.orgId, args.userId)),
+  );
+}
+
+async function uninstallSlackIntegration(args: {
+  readonly get: Getter;
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly publishChanged: () => Promise<void>;
+  readonly signal: AbortSignal;
+}) {
+  const [installation] = await args.db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, args.orgId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!installation) {
+    return contractErrorResponse(
+      404,
+      "No Slack installation found",
+      "NOT_FOUND",
+    );
+  }
+
+  const connections = await args.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .where(
+      eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+  args.signal.throwIfAborted();
+
+  if (connections.length > 0) {
+    const client = createSlackClient(
+      await decryptSlackInstallationToken({
+        get: args.get,
+        orgId: args.orgId,
+        userId: args.userId,
+        encryptedBotToken: installation.encryptedBotToken,
+      }),
+    );
+    const view = buildUninstalledAppHomeView();
+    await Promise.allSettled(
+      connections.map((connection) => {
+        return publishAppHome(client, connection.slackUserId, view);
+      }),
+    );
+    args.signal.throwIfAborted();
+  }
+
+  await args.db
+    .delete(slackOrgConnections)
+    .where(
+      eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+  args.signal.throwIfAborted();
+
+  await args.db
+    .delete(slackOrgInstallations)
+    .where(
+      eq(slackOrgInstallations.slackWorkspaceId, installation.slackWorkspaceId),
+    );
+  args.signal.throwIfAborted();
+
+  await args.publishChanged();
+  args.signal.throwIfAborted();
+
+  return { status: 200 as const, body: { ok: true } };
+}
+
+async function disconnectSlackIntegration(args: {
+  readonly get: Getter;
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}) {
+  const [installation] = await args.db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.orgId, args.orgId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!installation) {
+    return contractErrorResponse(404, "No Slack connection found", "NOT_FOUND");
+  }
+
+  const [connection] = await args.db
+    .select({
+      id: slackOrgConnections.id,
+      slackUserId: slackOrgConnections.slackUserId,
+    })
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.vm0UserId, args.userId),
+        eq(slackOrgConnections.slackWorkspaceId, installation.slackWorkspaceId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!connection) {
+    return contractErrorResponse(404, "No Slack connection found", "NOT_FOUND");
+  }
+
+  await args.db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.id, connection.id));
+  args.signal.throwIfAborted();
+
+  const client = createSlackClient(
+    await decryptSlackInstallationToken({
+      get: args.get,
+      orgId: args.orgId,
+      userId: args.userId,
+      encryptedBotToken: installation.encryptedBotToken,
+    }),
+  );
+  await bestEffort(
+    publishAppHome(
+      client,
+      connection.slackUserId,
+      buildDisconnectedAppHomeView({
+        workspaceId: installation.slackWorkspaceId,
+        slackUserId: connection.slackUserId,
+      }),
+    ),
+  );
+  args.signal.throwIfAborted();
+
+  return { status: 200 as const, body: { ok: true } };
+}
+
 const deleteSlackIntegration$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(deleteSlackIntegrationQuery$);
+    const db = set(writeDb$);
 
     if (query.action === "uninstall") {
       if (auth.orgRole !== "admin") {
         return contractErrorResponse(403, "Admin access required", "FORBIDDEN");
       }
 
-      const db = set(writeDb$);
-      const [installation] = await db
-        .select()
-        .from(slackOrgInstallations)
-        .where(eq(slackOrgInstallations.orgId, auth.orgId))
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (!installation) {
-        return contractErrorResponse(
-          404,
-          "No Slack installation found",
-          "NOT_FOUND",
-        );
-      }
-
-      const connections = await db
-        .select({ slackUserId: slackOrgConnections.slackUserId })
-        .from(slackOrgConnections)
-        .where(
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        );
-      signal.throwIfAborted();
-
-      if (connections.length > 0) {
-        const client = createSlackClient(
-          await decryptPersistentSecretValue(installation.encryptedBotToken),
-        );
-        const view = buildUninstalledAppHomeView();
-        await Promise.allSettled(
-          connections.map((connection) => {
-            return publishAppHome(client, connection.slackUserId, view);
-          }),
-        );
-        signal.throwIfAborted();
-      }
-
-      await db
-        .delete(slackOrgConnections)
-        .where(
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        );
-      signal.throwIfAborted();
-
-      await db
-        .delete(slackOrgInstallations)
-        .where(
-          eq(
-            slackOrgInstallations.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        );
-      signal.throwIfAborted();
-
-      await set(
-        publishSlackAdminSignal$,
-        { orgId: auth.orgId, topic: "slack:changed" },
+      return await uninstallSlackIntegration({
+        get,
+        db,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        publishChanged: async () => {
+          await set(
+            publishSlackAdminSignal$,
+            { orgId: auth.orgId, topic: "slack:changed" },
+            signal,
+          );
+        },
         signal,
-      );
-      signal.throwIfAborted();
-
-      return { status: 200 as const, body: { ok: true } };
+      });
     }
 
-    const db = set(writeDb$);
-    const [installation] = await db
-      .select()
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.orgId, auth.orgId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!installation) {
-      return contractErrorResponse(
-        404,
-        "No Slack connection found",
-        "NOT_FOUND",
-      );
-    }
-
-    const [connection] = await db
-      .select({
-        id: slackOrgConnections.id,
-        slackUserId: slackOrgConnections.slackUserId,
-      })
-      .from(slackOrgConnections)
-      .where(
-        and(
-          eq(slackOrgConnections.vm0UserId, auth.userId),
-          eq(
-            slackOrgConnections.slackWorkspaceId,
-            installation.slackWorkspaceId,
-          ),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!connection) {
-      return contractErrorResponse(
-        404,
-        "No Slack connection found",
-        "NOT_FOUND",
-      );
-    }
-
-    await db
-      .delete(slackOrgConnections)
-      .where(eq(slackOrgConnections.id, connection.id));
-    signal.throwIfAborted();
-
-    const client = createSlackClient(
-      await decryptPersistentSecretValue(installation.encryptedBotToken),
-    );
-    await bestEffort(
-      publishAppHome(
-        client,
-        connection.slackUserId,
-        buildDisconnectedAppHomeView({
-          workspaceId: installation.slackWorkspaceId,
-          slackUserId: connection.slackUserId,
-        }),
-      ),
-    );
-    signal.throwIfAborted();
-
-    return { status: 200 as const, body: { ok: true } };
+    return await disconnectSlackIntegration({
+      get,
+      db,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      signal,
+    });
   },
 );
 
@@ -535,7 +573,7 @@ const getSlackDownloadFileInner$ = computed(async (get) => {
   }
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId }),
+    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   if (!installation) {
     return jsonErrorResponse(

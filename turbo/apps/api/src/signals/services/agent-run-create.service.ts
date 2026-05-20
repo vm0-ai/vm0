@@ -2255,6 +2255,7 @@ async function insertRunRecord(
     readonly callbacks: readonly RunCallback[] | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
   const sessionId =
@@ -2319,7 +2320,10 @@ async function insertRunRecord(
         return {
           runId: run.id,
           url: callback.url,
-          encryptedSecret: await encryptPersistentSecretValue(callback.secret),
+          encryptedSecret: await encryptPersistentSecretValue(
+            callback.secret,
+            args.featureSwitchContext,
+          ),
           payload: callback.payload,
         };
       }),
@@ -2343,6 +2347,7 @@ async function insertQueuedRunRecord(
     readonly callbacks: readonly RunCallback[] | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
+    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<RunRecord> {
   const sessionId =
@@ -2407,7 +2412,10 @@ async function insertQueuedRunRecord(
         return {
           runId: run.id,
           url: callback.url,
-          encryptedSecret: await encryptPersistentSecretValue(callback.secret),
+          encryptedSecret: await encryptPersistentSecretValue(
+            callback.secret,
+            args.featureSwitchContext,
+          ),
           payload: callback.payload,
         };
       }),
@@ -2852,7 +2860,10 @@ async function enqueueRunForConcurrency(
     runId: args.run.id,
     userId: args.userId,
     orgId: args.orgId,
-    encryptedParams: await encryptQueuedRunnerJobPayload(payload),
+    encryptedParams: await encryptQueuedRunnerJobPayload(
+      payload,
+      args.featureSwitchContext,
+    ),
     createdAt: args.run.createdAt,
     expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
   });
@@ -3272,6 +3283,7 @@ async function insertRunWithConcurrency(
           callbacks: args.callbacks,
           chatThreadId: args.chatThreadId,
           zeroRunMetadata: args.zeroRunMetadata,
+          featureSwitchContext: context.featureSwitchContext,
         });
       }
       return concurrency;
@@ -3287,6 +3299,7 @@ async function insertRunWithConcurrency(
       callbacks: args.callbacks,
       chatThreadId: args.chatThreadId,
       zeroRunMetadata: args.zeroRunMetadata,
+      featureSwitchContext: context.featureSwitchContext,
     });
   });
 }

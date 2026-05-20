@@ -1,4 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { and, eq, or } from "drizzle-orm";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -8,6 +10,7 @@ import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("AgentRunCallback");
 
@@ -33,6 +36,7 @@ interface DispatchSingleCallbackInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 function resolveCallbackUrl(url: string): string {
@@ -48,6 +52,22 @@ export async function dispatchRunCallbacks(
   result?: Record<string, unknown>,
   error?: string,
 ): Promise<DispatchResult[]> {
+  const [run] = await db
+    .select({
+      orgId: agentRuns.orgId,
+      userId: agentRuns.userId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    return [];
+  }
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    run.orgId,
+    run.userId,
+  );
   const callbacks = await db
     .select({
       id: agentRunCallbacks.id,
@@ -75,6 +95,7 @@ export async function dispatchRunCallbacks(
       status,
       result,
       error,
+      featureSwitchContext,
     });
     results.push(dispatchResult);
   }
@@ -85,7 +106,10 @@ async function dispatchSingleCallback(
   input: DispatchSingleCallbackInput,
 ): Promise<DispatchResult> {
   const { db, callback, runId, status, result, error } = input;
-  const secret = await decryptPersistentSecretValue(callback.encryptedSecret);
+  const secret = await decryptPersistentSecretValue(
+    callback.encryptedSecret,
+    input.featureSwitchContext,
+  );
   const body = JSON.stringify({
     callbackId: callback.id,
     runId,

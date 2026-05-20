@@ -54,7 +54,7 @@ const sendMessageInner$ = command(async ({ get }, signal: AbortSignal) => {
   const body = bodyResult.data;
 
   const installation = await get(
-    zeroSlackOrgInstallation({ orgId: auth.orgId }),
+    zeroSlackOrgInstallation({ orgId: auth.orgId, userId: auth.userId }),
   );
   signal.throwIfAborted();
   if (!installation) {

@@ -17,6 +17,7 @@ import {
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
@@ -86,6 +87,8 @@ const refreshTelegramTypingForRun$ = command(
       const [installation] = await db
         .select({
           encryptedBotToken: telegramInstallations.encryptedBotToken,
+          orgId: telegramInstallations.orgId,
+          ownerUserId: telegramInstallations.ownerUserId,
         })
         .from(telegramInstallations)
         .where(eq(telegramInstallations.telegramBotId, target.installationId))
@@ -97,6 +100,11 @@ const refreshTelegramTypingForRun$ = command(
 
       const botToken = await decryptPersistentSecretValue(
         installation.encryptedBotToken,
+        await loadUserFeatureSwitchContext(
+          db,
+          installation.orgId,
+          installation.ownerUserId,
+        ),
       );
       await sendChatAction(botToken, target.chatId, "typing");
     }

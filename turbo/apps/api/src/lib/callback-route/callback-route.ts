@@ -1,11 +1,13 @@
 import { command, computed, state, type Command } from "ccstate";
 import { eq } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 
 import { request$ } from "../../signals/context/hono";
 import type { SignalRouteHandler } from "../../signals/context/route";
 import { db$ } from "../../signals/external/db";
 import { decryptPersistentSecretValue } from "../../signals/services/crypto.utils";
+import { userFeatureSwitchContext } from "../../signals/services/feature-switches.service";
 import { safeJsonParse } from "../../signals/utils";
 import { verifyCallbackRequest } from "../event-consumer/verify-signature";
 
@@ -102,13 +104,23 @@ export function callbackRoute<T>(
       const db = get(db$);
       const [record] = callbackId
         ? await db
-            .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+            .select({
+              encryptedSecret: agentRunCallbacks.encryptedSecret,
+              orgId: agentRuns.orgId,
+              userId: agentRuns.userId,
+            })
             .from(agentRunCallbacks)
+            .innerJoin(agentRuns, eq(agentRuns.id, agentRunCallbacks.runId))
             .where(eq(agentRunCallbacks.id, callbackId))
             .limit(1)
         : await db
-            .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+            .select({
+              encryptedSecret: agentRunCallbacks.encryptedSecret,
+              orgId: agentRuns.orgId,
+              userId: agentRuns.userId,
+            })
             .from(agentRunCallbacks)
+            .innerJoin(agentRuns, eq(agentRuns.id, agentRunCallbacks.runId))
             .where(eq(agentRunCallbacks.runId, runId))
             .limit(1);
       signal.throwIfAborted();
@@ -117,7 +129,10 @@ export function callbackRoute<T>(
         return { status: 404, body: { error: "Callback not found" } };
       }
 
-      const secret = await decryptPersistentSecretValue(record.encryptedSecret);
+      const secret = await decryptPersistentSecretValue(
+        record.encryptedSecret,
+        await get(userFeatureSwitchContext(record.orgId, record.userId)),
+      );
       signal.throwIfAborted();
 
       const verification = verifyCallbackRequest(

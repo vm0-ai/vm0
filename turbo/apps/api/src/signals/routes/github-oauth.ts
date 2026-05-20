@@ -14,6 +14,7 @@ import {
   getGithubInstallationInfo,
   isGithubOauthStateSignatureValid,
   linkGithubVm0User,
+  loadComposeFeatureSwitchContext,
   parseGithubOauthState,
   tryLinkGithubFromLocalRecord,
   tryLinkGithubFromRemoteInstallations,
@@ -227,11 +228,20 @@ const callbackGithubOauth$ = command(
 
     const adminGithubUserId =
       installInfo.targetType === "User" ? installInfo.targetId : null;
+    const featureSwitchContext = await loadComposeFeatureSwitchContext({
+      db,
+      composeId,
+      userId: state.vm0UserId,
+      signal,
+    });
     const installRecordId = await createOrActivateGithubInstallation({
       db,
       installationId,
       installInfo,
-      encryptedAccessToken: await encryptPersistentSecretValue(token),
+      encryptedAccessToken: await encryptPersistentSecretValue(
+        token,
+        featureSwitchContext,
+      ),
       adminGithubUserId,
       composeId,
       signal,

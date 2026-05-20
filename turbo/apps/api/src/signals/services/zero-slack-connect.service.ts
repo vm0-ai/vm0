@@ -26,6 +26,7 @@ import { settle } from "../utils";
 import { db$, writeDb$, type Db } from "../external/db";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 type SlackClient = ReturnType<typeof createSlackClient>;
@@ -486,6 +487,7 @@ export const notifySlackConnect$ = command(
       readonly installation: SlackInstallation;
       readonly slackUserId: string;
       readonly orgId: string;
+      readonly userId: string;
       readonly channelId?: string;
       readonly threadTs?: string;
       readonly pendingPrompt?: string;
@@ -494,7 +496,10 @@ export const notifySlackConnect$ = command(
   ): Promise<void> => {
     const writeDb = set(writeDb$);
     const client = createSlackClient(
-      await decryptPersistentSecretValue(args.installation.encryptedBotToken),
+      await decryptPersistentSecretValue(
+        args.installation.encryptedBotToken,
+        await get(userFeatureSwitchContext(args.orgId, args.userId)),
+      ),
     );
     const defaultComposeId = await resolveDefaultComposeId(writeDb, args.orgId);
     signal.throwIfAborted();

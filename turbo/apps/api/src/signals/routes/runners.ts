@@ -8,6 +8,7 @@ import {
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -27,6 +28,7 @@ import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route";
 
 const L = logger("Runners");
@@ -349,9 +351,11 @@ async function markRunRunning(
 
 async function secretValuesForRunner(
   storedContext: StoredExecutionContext,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<string[] | null> {
   const secretsMap = await decryptPersistentSecretsMap(
     storedContext.encryptedSecrets,
+    featureSwitchContext,
   );
   if (!secretsMap) {
     return null;
@@ -447,7 +451,10 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: (run.vars as Record<string, string>) ?? null,
       checkpointId: run.resumedFromCheckpointId ?? null,
       sandboxToken,
-      secretValues: await secretValuesForRunner(storedContext),
+      secretValues: await secretValuesForRunner(
+        storedContext,
+        await loadUserFeatureSwitchContext(db, run.orgId, run.userId),
+      ),
     },
   };
 });

@@ -42,6 +42,7 @@ import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
 import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -139,6 +140,7 @@ async function deregisterOrgTelegramWebhooks(
     .select({
       telegramBotId: telegramInstallations.telegramBotId,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
+      ownerUserId: telegramInstallations.ownerUserId,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.orgId, orgId));
@@ -146,7 +148,14 @@ async function deregisterOrgTelegramWebhooks(
   for (const installation of installations) {
     await tapError(
       deleteWebhook(
-        await decryptPersistentSecretValue(installation.encryptedBotToken),
+        await decryptPersistentSecretValue(
+          installation.encryptedBotToken,
+          await loadUserFeatureSwitchContext(
+            db,
+            orgId,
+            installation.ownerUserId,
+          ),
+        ),
       ),
       (error) => {
         L.warn("failed to deregister telegram webhook", {
@@ -166,6 +175,7 @@ async function deregisterOwnedTelegramWebhooks(
     .select({
       telegramBotId: telegramInstallations.telegramBotId,
       encryptedBotToken: telegramInstallations.encryptedBotToken,
+      orgId: telegramInstallations.orgId,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.ownerUserId, userId));
@@ -173,7 +183,10 @@ async function deregisterOwnedTelegramWebhooks(
   for (const installation of installations) {
     await tapError(
       deleteWebhook(
-        await decryptPersistentSecretValue(installation.encryptedBotToken),
+        await decryptPersistentSecretValue(
+          installation.encryptedBotToken,
+          await loadUserFeatureSwitchContext(db, installation.orgId, userId),
+        ),
       ),
       (error) => {
         L.warn("failed to deregister telegram webhook", {

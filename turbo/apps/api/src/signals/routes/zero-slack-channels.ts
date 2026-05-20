@@ -18,7 +18,9 @@ const slackInstallationNotFound = Object.freeze({
 
 const getSlackChannelsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const channels = await get(zeroSlackChannels({ orgId: auth.orgId }));
+  const channels = await get(
+    zeroSlackChannels({ orgId: auth.orgId, userId: auth.userId }),
+  );
   if (channels === null) {
     return slackInstallationNotFound;
   }

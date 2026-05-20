@@ -240,14 +240,14 @@ describe("stored secret encryption", () => {
   });
 
   it("keeps persistent secrets legacy-only when KMS is not configured", async () => {
-    const encrypted = await encryptPersistentSecretValue("bot-token");
+    const encrypted = await encryptPersistentSecretValue("bot-token", {});
 
     expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
       format: "legacy",
       hasLegacy: true,
       hasKms: false,
     });
-    await expect(decryptPersistentSecretValue(encrypted)).resolves.toBe(
+    await expect(decryptPersistentSecretValue(encrypted, {})).resolves.toBe(
       "bot-token",
     );
     expect(fakeKmsClient.calls).toHaveLength(0);
@@ -265,7 +265,7 @@ describe("stored secret encryption", () => {
       hasLegacy: true,
       hasKms: false,
     });
-    await expect(decryptPersistentSecretValue(encrypted)).resolves.toBe(
+    await expect(decryptPersistentSecretValue(encrypted, {})).resolves.toBe(
       "bot-token",
     );
     expect(fakeKmsClient.calls).toHaveLength(0);
