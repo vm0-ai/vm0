@@ -599,6 +599,124 @@ async fn supervised_exec_control_uses_exec_control_messages() {
 }
 
 #[tokio::test]
+async fn supervised_exec_control_sub_millisecond_timeout_rounds_up_to_one_ms() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-sub-ms-timeout")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    let decoded_start = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    let ExecControlPolicy::Enabled { control_nonce, .. } = decoded_start.control else {
+        panic!("supervised exec should enable control");
+    };
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control("sub-ms-timeout", b"payload", Duration::from_nanos(1))
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    let decoded_control = vsock_proto::decode_exec_control(&control.payload).unwrap();
+    assert_eq!(decoded_control.target_seq, start.seq);
+    assert_eq!(decoded_control.control_nonce, control_nonce);
+    assert_eq!(decoded_control.message_id, "sub-ms-timeout");
+    assert_eq!(decoded_control.request_timeout_ms, 1);
+    let err = control_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervised_exec_control_large_timeout_saturates_request_timeout_ms() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                control: SupervisedExecControl::Enabled { sink: true },
+                ..supervised_request("control-large-timeout")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    let decoded_start = vsock_proto::decode_exec_start(&start.payload).unwrap();
+    let ExecControlPolicy::Enabled { control_nonce, .. } = decoded_start.control else {
+        panic!("supervised exec should enable control");
+    };
+    send_exec_started(&mut guest, start.seq, 123).await;
+    let handle = task.await.unwrap().unwrap();
+
+    let control_task = tokio::spawn({
+        let control_handle = handle.control_handle().unwrap();
+        async move {
+            control_handle
+                .control(
+                    "large-timeout",
+                    b"payload",
+                    Duration::from_millis(u64::from(u32::MAX) + 1),
+                )
+                .await
+        }
+    });
+    let control = read_guest_message(&mut guest).await;
+    let decoded_control = vsock_proto::decode_exec_control(&control.payload).unwrap();
+    assert_eq!(decoded_control.target_seq, start.seq);
+    assert_eq!(decoded_control.control_nonce, control_nonce);
+    assert_eq!(decoded_control.message_id, "large-timeout");
+    assert_eq!(decoded_control.request_timeout_ms, u32::MAX);
+
+    send_exec_control_result(
+        &mut guest,
+        control.seq,
+        start.seq,
+        control_nonce,
+        "large-timeout",
+        ProcessControlStatus::Delivered,
+        "",
+    )
+    .await;
+    let ack = control_task.await.unwrap().unwrap();
+    assert_eq!(ack.target_seq, start.seq);
+    assert_eq!(ack.message_id, "large-timeout");
+
+    send_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+        b"",
+        b"",
+    )
+    .await;
+    handle.wait(Duration::from_secs(5)).await.unwrap();
+}
+
+#[tokio::test]
 async fn supervised_exec_control_disabled_returns_unsupported_without_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
