@@ -25,6 +25,7 @@ import usage
 from tests.auth_state_helpers import (
     cached_headers,
     force_refresh_pending,
+    has_auth_state,
     set_cached_headers,
     set_last_force_refresh_at,
 )
@@ -1558,7 +1559,7 @@ class TestResponseHandler:
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
         cache_key = ("run-conn-new", "run-conn-new:0")
-        assert cache_key not in auth._auth_state
+        assert not has_auth_state(cache_key)
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -5633,7 +5634,7 @@ class TestFirewallHeaderCache:
             registry_cache.reset_cache_for_tests()
             registry_cache.load_registry(str(reg_path))
 
-        assert cache_key not in auth._auth_state
+        assert not has_auth_state(cache_key)
 
 
 class TestUsagePendingCounter:

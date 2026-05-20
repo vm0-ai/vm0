@@ -4,12 +4,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import auth
 import logging_utils
 import registry
 from tests.auth_state_helpers import (
     cached_headers,
+    clear_auth_state,
     force_refresh_pending,
+    has_auth_state,
     last_force_refresh_at,
     mark_force_refresh,
     set_cached_headers,
@@ -20,7 +21,7 @@ from tests.auth_state_helpers import (
 def _reset_cache():
     """Reset the module-level registry cache between tests."""
     registry.reset_cache_for_tests()
-    auth._auth_state.clear()
+    clear_auth_state()
 
 
 class TestLoadRegistry:
@@ -170,7 +171,7 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))  # reload triggers eviction
 
         # run-abc-123 state should be evicted (no longer in registry)
-        assert ("run-abc-123", "api-0") not in auth._auth_state
+        assert not has_auth_state(("run-abc-123", "api-0"))
         # run-other state should remain (still in registry)
         assert cached_headers(("run-other", "api-0"))
         assert force_refresh_pending(("run-other", "api-0"))
@@ -207,7 +208,7 @@ class TestLoadRegistry:
 
         registry.load_registry(str(registry_file))
 
-        assert ("run-abc-123", "api-0") not in auth._auth_state
+        assert not has_auth_state(("run-abc-123", "api-0"))
 
     def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
         """Registry entries with missing/empty runId are not active cache owners."""
@@ -235,7 +236,7 @@ class TestLoadRegistry:
 
         registry.load_registry(str(registry_file))
 
-        assert ("", "api-0") not in auth._auth_state
+        assert not has_auth_state(("", "api-0"))
         assert cached_headers(("run-active", "api-0"))
         assert force_refresh_pending(("run-active", "api-0"))
         assert last_force_refresh_at(("run-active", "api-0")) == 200.0

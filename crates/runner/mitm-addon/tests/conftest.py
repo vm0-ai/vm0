@@ -28,6 +28,7 @@ import auth
 import mitm_addon
 import registry
 import usage
+from tests.auth_state_helpers import clear_auth_state
 from usage.providers import connectors as _usage_connectors
 
 
@@ -45,7 +46,7 @@ def _reset_module_state() -> None:
     """
     mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
-    auth._auth_state.clear()
+    clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters._pending_write_error_logged = False
 

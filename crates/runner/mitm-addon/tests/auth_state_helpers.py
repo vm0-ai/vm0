@@ -3,6 +3,14 @@
 import auth
 
 
+def clear_auth_state() -> None:
+    auth._auth_state.clear()
+
+
+def has_auth_state(cache_key: tuple[str, str]) -> bool:
+    return cache_key in auth._auth_state
+
+
 def set_cached_headers(
     cache_key: tuple[str, str],
     *,
