@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -27,6 +27,10 @@ import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 const context = testContext();
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+
+afterEach(() => {
+  Reflect.deleteProperty(window, "vm0DesktopLocalAgent");
+});
 
 function mockBaseAPIs() {
   setMockTeam([
@@ -203,6 +207,36 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
       expect(
         screen.getByRole("heading", { name: "Members" }),
       ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", () => {
+  it("marks the app shell as desktop-only when the local agent bridge is available", async () => {
+    mockBaseAPIs();
+    Object.defineProperty(window, "vm0DesktopLocalAgent", {
+      configurable: true,
+      value: {},
+    });
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(document.querySelector(".zero-app")).toHaveAttribute(
+        "data-desktop-shell",
+        "true",
+      );
+    });
+  });
+
+  it("leaves the web app shell unmarked when the desktop bridge is unavailable", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(document.querySelector(".zero-app")).not.toHaveAttribute(
+        "data-desktop-shell",
+      );
     });
   });
 });

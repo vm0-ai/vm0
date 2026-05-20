@@ -159,6 +159,27 @@
     0 2px 12px hsl(220 12% 50% / 0.04), 0 0 0 0.5px hsl(220 12% 50% / 0.02);
 }
 
+/* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
+.zero-app[data-desktop-shell] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.zero-app[data-desktop-shell]
+  :where(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"]),
+    [role="textbox"],
+    .zero-chat-bubble-user,
+    .zero-chat-bubble-assistant,
+    .zero-desktop-selectable
+  ) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* Search bar / text input (matches form inputs: white surface in light theme) */
 .zero-app .zero-search-input {
   background-color: hsl(var(--input));
