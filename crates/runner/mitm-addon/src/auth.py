@@ -481,7 +481,14 @@ async def get_firewall_headers(
             cache_entry.base = result["base"]
         if result.get("query"):
             cache_entry.query = result["query"]
-        state.cache = cache_entry
+
+        # A 401 can request a forced refresh while this non-forced fetch is
+        # in flight. Return the current result to this request, but do not let
+        # it repopulate shared cache ahead of the pending forced refresh.
+        should_cache = force_refresh or not state.force_refresh_pending
+        if should_cache:
+            state.cache = cache_entry
+
         ret: dict = {
             "headers": headers,
             "resolved_secrets": resolved_secrets,

@@ -1571,6 +1571,58 @@ class TestGetFirewallHeaders:
         assert last_force_refresh_at(cache_key) >= before
         assert cached_headers(cache_key) is None
 
+    async def test_non_forced_fetch_does_not_cache_if_marker_appears_in_flight(self, headers):
+        """A 401 marker during a non-forced fetch must win over the cache write."""
+        cache_key = ("run-1", "api-1")
+        fetch_entered = asyncio.Event()
+        allow_fetch_return = asyncio.Event()
+        first_force_refresh_values = []
+
+        async def delayed_fetch(*args, force_refresh=False):
+            first_force_refresh_values.append(force_refresh)
+            fetch_entered.set()
+            await allow_fetch_return.wait()
+            return {
+                "headers": {"Authorization": "Bearer maybe-stale"},
+                "expiresAt": time.time() + 3600,
+            }
+
+        with patch.object(auth, "fetch_firewall_headers", side_effect=delayed_fetch):
+            task = asyncio.create_task(
+                auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+            )
+            await fetch_entered.wait()
+            auth.request_force_refresh(cache_key)
+            allow_fetch_return.set()
+            result = await task
+
+        assert first_force_refresh_values == [False]
+        assert result["headers"] == {"Authorization": "Bearer maybe-stale"}
+        assert result["cache_hit"] is False
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
+        forced_headers = {"Authorization": "Bearer refreshed"}
+        forced_fetch = AsyncMock(
+            return_value={
+                "headers": forced_headers,
+                "expiresAt": time.time() + 3600,
+            }
+        )
+        before_forced = time.time()
+
+        with patch.object(auth, "fetch_firewall_headers", forced_fetch):
+            forced_result = await auth.get_firewall_headers(
+                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
+            )
+
+        assert forced_fetch.call_args.kwargs["force_refresh"] is True
+        assert forced_result["headers"] == forced_headers
+        assert forced_result["cache_hit"] is False
+        assert not force_refresh_pending(cache_key)
+        assert last_force_refresh_at(cache_key) >= before_forced
+        assert cached_headers(cache_key).headers == forced_headers
+
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
         mock_fetch = AsyncMock(return_value={"headers": {}})
