@@ -20,6 +20,10 @@ interface TelegramTriggerContext {
   userId: string;
   callbackContext: TelegramCallbackPayload;
   apiStartTime: number;
+  modelProviderType?: string;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: string;
+  selectedModel?: string;
 }
 
 export function adaptTelegramTrigger(
@@ -46,6 +50,11 @@ export function adaptTelegramTrigger(
     triggerSource: "telegram",
     apiStartTime: ctx.apiStartTime,
     userInfoExtras: ctx.userInfoExtras,
+    modelProvider: ctx.modelProviderType,
+    modelProviderId: ctx.modelProviderId ?? undefined,
+    modelProviderCredentialScope: ctx.modelProviderCredentialScope,
+    selectedModelOverride: ctx.selectedModel,
+    explicitModelFirstModelSelection: Boolean(ctx.selectedModel),
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/telegram`,

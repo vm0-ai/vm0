@@ -181,6 +181,7 @@ export async function handleTelegramMention(
     rootMessageId: rootMessageId ?? null,
     messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
+    orgId: installation.orgId,
     apiStartTime,
     callbackContext: {
       installationId,

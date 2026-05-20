@@ -210,7 +210,14 @@ interface RunAgentParams {
   readonly threadTs: string;
   readonly callbackContext: SlackCallbackPayload;
   readonly apiStartTime: number;
-  readonly selectedModelOverride?: string;
+  readonly modelRoute: ModelRoutePin | undefined;
+}
+
+interface ModelRoutePin {
+  readonly modelProviderType: string;
+  readonly modelProviderId: string | null;
+  readonly modelProviderCredentialScope: "org" | "member";
+  readonly selectedModel: string;
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
@@ -994,12 +1001,18 @@ async function runAgentForSlackOrg(
         prompt: params.prompt,
         agentId: params.agentId,
         sessionId: params.sessionId,
+        ...(params.modelRoute?.modelProviderType
+          ? { modelProvider: params.modelRoute.modelProviderType }
+          : {}),
       },
       apiStartTime: params.apiStartTime,
       triggerSource: "slack",
       appendSystemPrompt: buildSlackPrompt(params),
       userInfoExtras: params.userInfoExtras,
-      selectedModelOverride: params.selectedModelOverride,
+      modelProviderId: params.modelRoute?.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        params.modelRoute?.modelProviderCredentialScope,
+      selectedModelOverride: params.modelRoute?.selectedModel,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/slack/org`,
@@ -1084,6 +1097,38 @@ async function resolveCompatibleThreadSession(args: {
   }
 
   return session.agentSessionId;
+}
+
+async function resolveModelRouteForUser(
+  get: ComputedGetter,
+  set: ComputedSetter,
+  orgId: string,
+  userId: string,
+  signal: AbortSignal,
+): Promise<ModelRoutePin | undefined> {
+  const [preference, policies] = await Promise.all([
+    get(userModelPreference({ orgId, userId })),
+    set(listOrgModelPolicies$, { orgId, userId }, signal),
+  ]);
+  const selectedModel = preference.selectedModel;
+  const policy =
+    (selectedModel
+      ? policies.policies.find((candidate) => {
+          return candidate.model === selectedModel;
+        })
+      : undefined) ??
+    policies.policies.find((candidate) => {
+      return candidate.isDefault;
+    });
+  if (!policy) {
+    return undefined;
+  }
+  return {
+    modelProviderType: policy.defaultProviderType,
+    modelProviderId: policy.modelProviderId,
+    modelProviderCredentialScope: policy.credentialScope,
+    selectedModel: policy.model,
+  };
 }
 
 async function postPreDispatchErrorReply(args: {
@@ -1247,14 +1292,13 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const selectedModelOverride = (
-    await args.get(
-      userModelPreference({
-        orgId: resolved.installation.orgId,
-        userId: resolved.connection.vm0UserId,
-      }),
-    )
-  ).selectedModel;
+  const modelRoute = await resolveModelRouteForUser(
+    args.get,
+    args.set,
+    resolved.installation.orgId,
+    resolved.connection.vm0UserId,
+    args.signal,
+  );
   const existingSessionId = await resolveCompatibleThreadSession({
     db: args.db,
     channelId: args.channelId,
@@ -1262,7 +1306,7 @@ async function buildRunAgentParams(
     connectionId: resolved.connection.id,
     userId: resolved.connection.vm0UserId,
     agentComposeId: resolved.composeId,
-    selectedModelOverride: selectedModelOverride ?? undefined,
+    selectedModelOverride: modelRoute?.selectedModel,
   });
   const { executionContext } = await fetchConversationContexts(
     resolved.client,
@@ -1295,7 +1339,7 @@ async function buildRunAgentParams(
     threadTs: resolved.threadTs,
     callbackContext,
     apiStartTime: args.apiStartTime,
-    selectedModelOverride: selectedModelOverride ?? undefined,
+    modelRoute,
   };
 }
 
