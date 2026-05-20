@@ -116,9 +116,18 @@ def test_rejects_invalid_extractor_bounds(bound, value):
         JsonSelectiveExtractor(**{bound: value})
 
 
-def test_rejects_bool_extractor_bound():
-    with pytest.raises(TypeError, match="max_depth"):
-        JsonSelectiveExtractor(max_depth=True)
+@pytest.mark.parametrize(
+    ("bound", "value"),
+    [
+        ("max_depth", True),
+        ("max_key_bytes", "1024"),
+        ("max_number_bytes", 128.0),
+        ("max_wildcard_keys", None),
+    ],
+)
+def test_rejects_non_integer_extractor_bounds(bound, value):
+    with pytest.raises(TypeError, match=bound):
+        JsonSelectiveExtractor(**{bound: value})
 
 
 @pytest.mark.parametrize(
