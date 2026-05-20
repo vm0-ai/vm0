@@ -1402,6 +1402,22 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero billing redeem rewrite path by a single campaign segment", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/redeem/ZERO100"),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/redeem")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/redeem/ZERO100/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/redeems/ZERO100"),
+    ).toBe(false);
+  });
+
   it("matches the zero billing status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(

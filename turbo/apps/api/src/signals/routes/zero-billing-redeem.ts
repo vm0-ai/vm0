@@ -47,7 +47,7 @@ const redeemAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Open-redirect guard: client supplies successUrl/cancelUrl and they flow
   // straight to Stripe. Pin both to the platform origin so an attacker can't
   // redirect Stripe back to evil.example.com.
-  const appOrigin = new URL(env("VM0_WEB_URL")).origin;
+  const appOrigin = new URL(env("APP_URL")).origin;
   if (
     new URL(successUrl).origin !== appOrigin ||
     new URL(cancelUrl).origin !== appOrigin

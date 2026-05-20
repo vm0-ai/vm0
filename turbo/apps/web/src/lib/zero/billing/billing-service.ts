@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { getStripe } from "../stripe";
 import { env } from "../../../env";
@@ -99,46 +99,6 @@ function tierFromPriceId(priceId: string): OrgTier {
     }
   }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
-}
-
-/**
- * Get or create a Stripe customer for an org.
- * Returns the Stripe customer ID.
- */
-async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
-  const db = globalThis.services.db;
-  return db.transaction(async (tx) => {
-    // Serialize customer materialization per org so concurrent checkout / redeem
-    // requests cannot mint multiple Stripe customers and orphan webhook events.
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext('stripe_customer_' || ${orgId}))`,
-    );
-
-    const [row] = await tx
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-
-    if (row?.stripeCustomerId) {
-      return row.stripeCustomerId;
-    }
-
-    const stripe = getStripe();
-    const customer = await stripe.customers.create({
-      metadata: { orgId },
-    });
-
-    await tx
-      .insert(orgMetadata)
-      .values({ orgId, stripeCustomerId: customer.id, credits: 0 })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: { stripeCustomerId: customer.id, updatedAt: new Date() },
-      });
-
-    return customer.id;
-  });
 }
 
 /**
@@ -300,52 +260,6 @@ async function handleOneTimePurchaseCompleted(
       sessionId: session.id,
     });
   });
-}
-
-// ---------------------------------------------------------------------------
-// One-time Checkout Session creation (used by POST /api/zero/billing/redeem/:campaign)
-// ---------------------------------------------------------------------------
-
-/**
- * Create a Stripe Checkout session for a one-time campaign redemption.
- *
- * The session carries a fixed metadata shape the webhook relies on to
- * dispatch to {@link handleOneTimePurchaseCompleted}. Callers are responsible
- * for checking that `campaignKey` is whitelisted *before* calling this —
- * see {@link getCampaign}.
- */
-export async function createOneTimeCheckoutSession(params: {
-  orgId: string;
-  campaignKey: string;
-  successUrl: string;
-  cancelUrl: string;
-}): Promise<{ sessionId: string; url: string }> {
-  const campaign = getCampaign(params.campaignKey);
-  if (!campaign) {
-    throw new Error(`Unknown campaign: ${params.campaignKey}`);
-  }
-
-  const customerId = await getOrCreateStripeCustomer(params.orgId);
-  const stripe = getStripe();
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer: customerId,
-    line_items: [{ price: campaign.priceId, quantity: 1 }],
-    discounts: [{ coupon: campaign.couponId }],
-    success_url: params.successUrl,
-    cancel_url: params.cancelUrl,
-    metadata: {
-      orgId: params.orgId,
-      campaignKey: params.campaignKey,
-      purpose: "one_time_purchase",
-    },
-  });
-
-  if (!session.url) {
-    throw new Error("Stripe checkout session did not return a URL");
-  }
-  return { sessionId: session.id, url: session.url };
 }
 
 /**

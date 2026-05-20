@@ -33,7 +33,7 @@ const CANCEL_URL = `${APP_ORIGIN}/redeem/${CAMPAIGN}`;
 
 function setRedeemEnv(): void {
   mockOptionalEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-  mockEnv("VM0_WEB_URL", APP_ORIGIN);
+  mockEnv("APP_URL", APP_ORIGIN);
   mockEnv(
     "ZERO_ONE_TIME_CAMPAIGN",
     JSON.stringify({ [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID } }),
@@ -793,7 +793,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
     });
   });
 
-  it("rejects successUrl/cancelUrl whose origin does not match VM0_WEB_URL", async () => {
+  it("rejects successUrl/cancelUrl whose origin does not match APP_URL", async () => {
     const fixture = await track(store.set(seedRedeemOrg$, {}, context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
