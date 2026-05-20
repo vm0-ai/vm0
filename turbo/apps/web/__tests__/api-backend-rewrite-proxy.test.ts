@@ -2247,6 +2247,16 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the developer support rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/developer-support")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/developer-support/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/developer")).toBe(false);
+  });
+
   it("matches the zero secrets by-name rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME")).toBe(
       true,

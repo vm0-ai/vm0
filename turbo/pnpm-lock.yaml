@@ -670,9 +670,6 @@ importers:
       '@tabler/icons-react':
         specifier: ^3.36.1
         version: 3.41.0(react@19.2.6)
-      '@team-plain/typescript-sdk':
-        specifier: ^5.12.1
-        version: 5.12.1
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@24.3.0)
@@ -703,9 +700,6 @@ importers:
       ably:
         specifier: ^2.17.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      archiver:
-        specifier: ^7.0.1
-        version: 7.0.1
       cpu-features:
         specifier: 0.0.10
         version: 0.0.10
@@ -779,12 +773,6 @@ importers:
       '@testing-library/user-event':
         specifier: ^14.6.1
         version: 14.6.1(@testing-library/dom@10.4.1)
-      '@types/adm-zip':
-        specifier: ^0.5.8
-        version: 0.5.8
-      '@types/archiver':
-        specifier: ^7.0.0
-        version: 7.0.0
       '@types/html-to-text':
         specifier: ^9.0.4
         version: 9.0.4
@@ -812,9 +800,6 @@ importers:
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
-      adm-zip:
-        specifier: ^0.5.17
-        version: 0.5.17
       drizzle-kit:
         specifier: ^0.31.9
         version: 0.31.10

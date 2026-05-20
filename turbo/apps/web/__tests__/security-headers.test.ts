@@ -836,6 +836,12 @@ const ZERO_BILLING_STATUS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/billing",
   "/api/zero/billing/status/extra",
 ] as const;
+const ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE = "/api/zero/developer-support";
+const ZERO_DEVELOPER_SUPPORT_PATH = "/api/zero/developer-support";
+const ZERO_DEVELOPER_SUPPORT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/developer",
+  "/api/zero/developer-support/extra",
+] as const;
 const ZERO_API_KEY_BY_ID_REWRITE_SOURCE =
   "/api/zero/api-keys/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 const ZERO_API_KEY_BY_ID_PATH = `/api/zero/api-keys/${ZERO_API_KEY_ID}`;
@@ -2093,6 +2099,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_CONNECTORS_LIST_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/connectors",
+        },
+        {
+          source: ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/developer-support",
         },
         {
           source: ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE,
@@ -5509,6 +5519,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact zero developer-support rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/developer-support",
+    });
+
+    const matcher = getPathMatch(ZERO_DEVELOPER_SUPPORT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_DEVELOPER_SUPPORT_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_DEVELOPER_SUPPORT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact zero billing auto-recharge rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -7336,6 +7369,15 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact zero billing portal path", () => {
     expect(matchesApiBackendRewritePath(ZERO_BILLING_PORTAL_PATH)).toBe(true);
     for (const pathname of ZERO_BILLING_PORTAL_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact zero developer-support path", () => {
+    expect(matchesApiBackendRewritePath(ZERO_DEVELOPER_SUPPORT_PATH)).toBe(
+      true,
+    );
+    for (const pathname of ZERO_DEVELOPER_SUPPORT_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
