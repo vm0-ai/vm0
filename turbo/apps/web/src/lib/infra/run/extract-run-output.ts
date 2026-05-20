@@ -201,16 +201,3 @@ function buildRunOutput(
     error: error ?? null,
   };
 }
-
-/**
- * Get formatted run output text (result string).
- *
- * Convenience wrapper for channels that just need a string.
- */
-export async function getRunOutputText(
-  runId: string,
-  optionsInput?: RunOutputOptionsInput,
-): Promise<string | undefined> {
-  const output = await extractRunOutput(runId, undefined, optionsInput);
-  return output.result ?? undefined;
-}

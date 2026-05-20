@@ -29,20 +29,6 @@ export interface SlackOrgCallbackPayload {
   existingSessionId?: string;
 }
 
-export interface EmailTriggerCallbackPayload {
-  senderEmail: string;
-  agentId: string;
-  userId: string;
-  inboundEmailId: string;
-  replyToken: string;
-  inboundMessageId?: string;
-  inboundReferences?: string;
-  subject?: string;
-  runtimeOrgId?: string;
-  replyRecipientTo?: string[];
-  replyRecipientCc?: string[];
-}
-
 export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;

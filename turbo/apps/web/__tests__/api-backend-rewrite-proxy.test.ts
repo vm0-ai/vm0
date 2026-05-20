@@ -1089,6 +1089,18 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the email trigger callback rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/email/callbacks/trigger"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/email/callbacks/trigger/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/email/callbacks")).toBe(
+      false,
+    );
+  });
+
   it("matches the generate image rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/generate-image")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/generate-image/extra")).toBe(
@@ -2725,6 +2737,57 @@ describe("API backend rewrite proxy behavior", () => {
         const payload = (await response.json()) as EchoPayload;
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe("/api/zero/email/callbacks/reply?from=runner");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.headers["x-vm0-signature"]).toBe(
+          "sha256=test-signature",
+        );
+        expect(payload.headers["x-vm0-timestamp"]).toBe("1710000000");
+        expect(payload.body).toBe(callbackBody);
+      },
+    );
+  });
+
+  it("forwards email trigger callback POST bodies and VM0 signature headers", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const callbackBody = JSON.stringify({
+          callbackId: "callback_email_trigger_1",
+          runId: "run_email_trigger_1",
+          status: "completed",
+          payload: {
+            senderEmail: "sender@example.com",
+            agentId: "agent_1",
+            userId: "user_1",
+            inboundEmailId: "email_inbound_1",
+            replyToken: "reply_token_1",
+          },
+        });
+        const response = await fetch(
+          `${origin}/api/zero/email/callbacks/trigger?from=runner`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-vm0-signature": "sha256=test-signature",
+              "x-vm0-timestamp": "1710000000",
+            },
+            body: callbackBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/zero/email/callbacks/trigger?from=runner",
+        );
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.headers["x-vm0-signature"]).toBe(
           "sha256=test-signature",

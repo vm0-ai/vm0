@@ -4,4 +4,3 @@ export {
   dispatchProgressCallbacks,
   getApiUrl,
 } from "./dispatcher";
-export { verifyCallback } from "./verify-callback";

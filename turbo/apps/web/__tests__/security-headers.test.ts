@@ -588,6 +588,13 @@ const ZERO_EMAIL_REPLY_CALLBACK_NEXT_NEGATIVE_PATHS = [
   "/api/zero/email/callbacks/reply/extra",
   "/api/zero/email/callbacks",
 ] as const;
+const ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE =
+  "/api/zero/email/callbacks/trigger";
+const ZERO_EMAIL_TRIGGER_CALLBACK_PATH = "/api/zero/email/callbacks/trigger";
+const ZERO_EMAIL_TRIGGER_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/email/callbacks/trigger/extra",
+  "/api/zero/email/callbacks",
+] as const;
 const GENERATE_IMAGE_REWRITE_SOURCE = "/api/generate-image";
 const GENERATE_IMAGE_PATH = "/api/generate-image";
 const GENERATE_IMAGE_NEXT_NEGATIVE_PATHS = [
@@ -1744,6 +1751,11 @@ describe("API backend rewrites", () => {
           source: ZERO_EMAIL_REPLY_CALLBACK_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/email/callbacks/reply",
+        },
+        {
+          source: ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/email/callbacks/trigger",
         },
         {
           source: GENERATE_IMAGE_REWRITE_SOURCE,
@@ -3610,6 +3622,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_EMAIL_REPLY_CALLBACK_PATH)).toStrictEqual({});
     for (const pathname of ZERO_EMAIL_REPLY_CALLBACK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact email trigger callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/email/callbacks/trigger",
+    });
+
+    const matcher = getPathMatch(ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_EMAIL_TRIGGER_CALLBACK_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_EMAIL_TRIGGER_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

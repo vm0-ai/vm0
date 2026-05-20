@@ -1,13 +1,9 @@
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { resolveDefaultAgentId } from "../../resolve-default-agent";
 import { env } from "../../../../env";
-import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../../infra/callback/dispatcher";
-import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 
 // ============================================================================
 // Handler Result Type
@@ -208,39 +204,11 @@ export function getFromDomain(): string {
 }
 
 /**
- * Build a reply-to email address with the token embedded via plus addressing.
- */
-export function buildReplyToAddress(token: string): string {
-  return `reply+${token}@${getFromDomain()}`;
-}
-
-/**
  * Build the from address for outbound emails.
  * Display name is always "Zero"; localPart is the org slug used as the email local part.
  */
 export function buildFromAddress(localPart: string): string {
   return `Zero <${localPart}@${getFromDomain()}>`;
-}
-
-/**
- * Build the logs URL for a run, linking to the agent detail logs page.
- */
-function buildLogsUrl(runId: string): string {
-  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
-}
-
-export async function resolveEmailAuditLogsUrl(opts: {
-  orgId: string;
-  userId: string;
-  runId: string;
-}): Promise<string | undefined> {
-  const overrides = await loadFeatureSwitchOverrides(opts.orgId, opts.userId);
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
-    userId: opts.userId,
-    orgId: opts.orgId,
-    overrides,
-  });
-  return enabled ? buildLogsUrl(opts.runId) : undefined;
 }
 
 // ============================================================================

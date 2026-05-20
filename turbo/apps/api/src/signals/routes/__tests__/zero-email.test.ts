@@ -341,11 +341,23 @@ async function seedThread(args: {
   return { id: thread.id, replyToken };
 }
 
-function signedCallbackHeaders(rawBody: string, secret = CALLBACK_SECRET) {
-  const timestamp = Math.floor(now() / 1000);
+interface CallbackPostOptions {
+  readonly secret?: string;
+  readonly timestamp?: number;
+}
+
+function signedCallbackHeaders(
+  rawBody: string,
+  options: CallbackPostOptions = {},
+) {
+  const timestamp = options.timestamp ?? Math.floor(now() / 1000);
   return {
     "Content-Type": "application/json",
-    "X-VM0-Signature": computeHmacSignature(rawBody, secret, timestamp),
+    "X-VM0-Signature": computeHmacSignature(
+      rawBody,
+      options.secret ?? CALLBACK_SECRET,
+      timestamp,
+    ),
     "X-VM0-Timestamp": String(timestamp),
   };
 }
@@ -353,12 +365,14 @@ function signedCallbackHeaders(rawBody: string, secret = CALLBACK_SECRET) {
 async function postCallback(
   path: string,
   body: Record<string, unknown>,
-  secret?: string,
+  options?: CallbackPostOptions | string,
 ): Promise<Response> {
   const rawBody = JSON.stringify(body);
+  const headerOptions =
+    typeof options === "string" ? { secret: options } : options;
   return await createApp({ signal: context.signal }).request(path, {
     method: "POST",
-    headers: signedCallbackHeaders(rawBody, secret),
+    headers: signedCallbackHeaders(rawBody, headerOptions),
     body: rawBody,
   });
 }
@@ -443,6 +457,7 @@ interface SentEmail {
   readonly subject?: string;
   readonly html?: string;
   readonly headers?: Record<string, string>;
+  readonly replyTo?: string;
 }
 
 function lastSentEmail(): SentEmail {
@@ -483,6 +498,35 @@ async function seedReplyCallback(args: {
     context.signal,
   );
   return { callbackId, runId: run.runId, thread };
+}
+
+async function seedTriggerCallback(args: {
+  readonly fixture: EmailFixture;
+  readonly status?: "completed" | "failed" | "running";
+  readonly result?: Record<string, unknown> | null;
+  readonly prompt?: string;
+}): Promise<{
+  readonly callbackId: string;
+  readonly runId: string;
+  readonly replyToken: string;
+}> {
+  const run = await seedRun({
+    fixture: args.fixture,
+    status: args.status ?? "completed",
+    result: args.result,
+    prompt: args.prompt,
+  });
+  const replyToken = generateReplyToken(randomUUID());
+  const { callbackId } = await store.set(
+    seedAgentRunCallback$,
+    {
+      runId: run.runId,
+      url: `http://localhost${TRIGGER_PATH}`,
+      payload: { agentId: args.fixture.agentId },
+    },
+    context.signal,
+  );
+  return { callbackId, runId: run.runId, replyToken };
 }
 
 beforeEach(() => {
@@ -756,6 +800,64 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     });
   });
 
+  it("rejects invalid callback signatures", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+    });
+
+    const response = await postCallback(
+      TRIGGER_PATH,
+      {
+        callbackId,
+        runId,
+        status: "completed",
+        payload: {
+          senderEmail: fx.userEmail,
+          agentId: fx.agentId,
+          userId: fx.userId,
+          inboundEmailId: "email_invalid_signature",
+          replyToken,
+        },
+      },
+      "wrong-secret",
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid signature",
+    });
+  });
+
+  it("rejects expired callback timestamps", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+    });
+
+    const response = await postCallback(
+      TRIGGER_PATH,
+      {
+        callbackId,
+        runId,
+        status: "completed",
+        payload: {
+          senderEmail: fx.userEmail,
+          agentId: fx.agentId,
+          userId: fx.userId,
+          inboundEmailId: "email_expired_signature",
+          replyToken,
+        },
+      },
+      { timestamp: Math.floor(now() / 1000) - 1000 },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Timestamp expired",
+    });
+  });
+
   it("sends a response email and creates the thread session", async () => {
     const fx = await fixture();
     const agentSessionId = await seedAgentSession(fx);
@@ -805,8 +907,15 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
         cc: ["cc@example.com"],
         replyTo: `reply+${replyToken}@mail.example.com`,
         subject: "Re: Need help",
+        headers: expect.objectContaining({
+          "In-Reply-To": "<inbound@example.com>",
+          References: "<root@example.com> <inbound@example.com>",
+        }),
       }),
     );
+    const email = lastSentEmail();
+    expect(email.html).toContain("trigger response");
+    expect(email.html).not.toContain(`/activities/${run.runId}`);
 
     const db = store.set(writeDb$);
     const [thread] = await db
@@ -820,6 +929,184 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       lastEmailMessageId: "<sent@example.com>",
       orgId: fx.orgId,
     });
+  });
+
+  it("includes the audit log link when the AuditLink switch is enabled", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      result: { agentSessionId },
+    });
+    const db = store.set(writeDb$);
+    await db.insert(userFeatureSwitches).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      switches: { [FeatureSwitchKey.AuditLink]: true },
+    });
+    mockRunOutput("audited trigger response");
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        senderEmail: fx.userEmail,
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_trigger_audit",
+        replyToken,
+        runtimeOrgId: fx.orgId,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.html).toContain(`/activities/${runId}`);
+  });
+
+  it("strips an existing Re prefix from the trigger subject", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      result: { agentSessionId },
+    });
+    mockRunOutput("subject normalized response");
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        senderEmail: fx.userEmail,
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_subject_re",
+        replyToken,
+        subject: "Re: Original Topic",
+        runtimeOrgId: fx.orgId,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.subject).toBe("Re: Original Topic");
+  });
+
+  it("falls back to senderEmail when reply recipients are absent", async () => {
+    const fx = await fixture();
+    const agentSessionId = await seedAgentSession(fx);
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      result: { agentSessionId },
+    });
+    mockRunOutput("fallback recipient response");
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        senderEmail: "sender@example.com",
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_sender_fallback",
+        replyToken,
+        runtimeOrgId: fx.orgId,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.to).toBe("sender@example.com");
+    expect(email.cc).toBeUndefined();
+  });
+
+  it("sends the failure message for failed trigger runs", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      status: "failed",
+    });
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "failed",
+      error: "Agent crashed",
+      payload: {
+        senderEmail: "sender@example.com",
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_trigger_failed",
+        replyToken,
+        runtimeOrgId: fx.orgId,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.to).toBe("sender@example.com");
+    expect(email.html).toContain("Agent crashed");
+  });
+
+  it("no-ops progress callbacks without sending email", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      status: "running",
+    });
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "progress",
+      payload: {
+        senderEmail: fx.userEmail,
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_trigger_progress",
+        replyToken,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+    expect(resendMocks.send).not.toHaveBeenCalled();
+  });
+
+  it("omits reply continuity when the run result has no agent session id", async () => {
+    const fx = await fixture();
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
+      fixture: fx,
+      result: null,
+    });
+    mockRunOutput("no continuity response");
+
+    const response = await postCallback(TRIGGER_PATH, {
+      callbackId,
+      runId,
+      status: "completed",
+      payload: {
+        senderEmail: fx.userEmail,
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_no_continuity",
+        replyToken,
+        runtimeOrgId: fx.orgId,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const email = lastSentEmail();
+    expect(email.replyTo).toBeUndefined();
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .select()
+      .from(emailThreadSessions)
+      .where(eq(emailThreadSessions.replyToToken, replyToken));
+    expect(thread).toBeUndefined();
   });
 });
 

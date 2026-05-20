@@ -49,15 +49,3 @@ export function verifyHmacSignature(
   }
   return result === 0;
 }
-
-/**
- * Check if timestamp is within acceptable window (5 minutes)
- * Prevents replay attacks
- */
-export function isTimestampValid(
-  timestamp: number,
-  maxAgeSeconds: number = 300,
-): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  return Math.abs(now - timestamp) <= maxAgeSeconds;
-}
