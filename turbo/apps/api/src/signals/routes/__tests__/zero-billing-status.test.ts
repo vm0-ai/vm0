@@ -71,7 +71,7 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns correct data for subscribed org", async () => {
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
@@ -106,7 +106,7 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns cancelAtPeriodEnd true when set", async () => {
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
@@ -152,8 +152,8 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("includes creditExpiry data for paid org with expires records", async () => {
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
-    const expiryDate = new Date("2026-05-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
+    const expiryDate = new Date("2099-05-20T00:00:00Z");
     const fixture = await track(
       store.set(
         seedBillingStatusOrg$,
@@ -262,7 +262,7 @@ describe("GET /api/zero/billing/status", () => {
           subscription: {
             tier: "pro",
             status: "active",
-            currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
@@ -270,7 +270,7 @@ describe("GET /api/zero/billing/status", () => {
             {
               source: "subscription_renewal",
               amount: 20_000,
-              expiresAt: new Date("2026-06-20T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
             {
               source: "auto_recharge",
@@ -320,7 +320,7 @@ describe("GET /api/zero/billing/status", () => {
           subscription: {
             tier: "pro",
             status: "active",
-            currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
@@ -328,7 +328,7 @@ describe("GET /api/zero/billing/status", () => {
             {
               source: "subscription_renewal",
               amount: 20_000,
-              expiresAt: new Date("2026-06-20T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
           ],
         },
@@ -363,7 +363,7 @@ describe("GET /api/zero/billing/status", () => {
           subscription: {
             tier: "team",
             status: "active",
-            currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
@@ -371,7 +371,7 @@ describe("GET /api/zero/billing/status", () => {
             {
               source: "subscription_renewal",
               amount: 120_000,
-              expiresAt: new Date("2026-06-20T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
           ],
         },
@@ -407,7 +407,7 @@ describe("GET /api/zero/billing/status", () => {
           subscription: {
             tier: "pro",
             status: "active",
-            currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
@@ -415,13 +415,13 @@ describe("GET /api/zero/billing/status", () => {
             {
               source: "subscription_renewal",
               amount: 20_000,
-              expiresAt: new Date("2026-06-20T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
             {
               source: "subscription_renewal",
               amount: 120_000,
               remaining: 40_000,
-              expiresAt: new Date("2026-07-20T00:00:00Z"),
+              expiresAt: new Date("2099-07-20T00:00:00Z"),
             },
           ],
         },
@@ -536,7 +536,7 @@ describe("GET /api/zero/billing/status", () => {
           subscription: {
             tier: "pro",
             status: "active",
-            currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+            currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
             stripeCustomerId: `cus_${randomUUID()}`,
             stripeSubscriptionId: `sub_${randomUUID()}`,
           },
@@ -544,7 +544,7 @@ describe("GET /api/zero/billing/status", () => {
             {
               source: "subscription_renewal",
               amount: 20_000,
-              expiresAt: new Date("2026-06-20T00:00:00Z"),
+              expiresAt: new Date("2099-06-20T00:00:00Z"),
             },
           ],
         },
