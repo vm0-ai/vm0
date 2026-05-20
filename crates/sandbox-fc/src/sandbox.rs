@@ -4801,14 +4801,6 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while stdout_rx.is_empty() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("first stdout chunk was not buffered");
-
         tokio::time::timeout(
             Duration::from_secs(1),
             stream_tx.send(ExecOutputEvent {

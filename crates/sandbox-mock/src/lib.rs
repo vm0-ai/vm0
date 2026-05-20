@@ -2321,13 +2321,9 @@ mod tests {
 
         let wait =
             tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
-        tokio::time::timeout(test_timeout(), async {
-            while !stdout_tx.is_closed() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("wait_process should drop an unclaimed stdout receiver before blocking");
+        tokio::time::timeout(test_timeout(), stdout_tx.closed())
+            .await
+            .expect("wait_process should drop an unclaimed stdout receiver before blocking");
 
         gate.notify_waiters();
         wait.await.unwrap().unwrap();
