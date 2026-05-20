@@ -14,7 +14,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { composeJobs } from "@vm0/db/schema/compose-job";
 import { uniqueId } from "../test-helpers";
 import { getMessagesByThreadId } from "../../lib/zero/chat-thread/chat-message-service";
 import type { ContextArtifact } from "../../lib/infra/run/types";
@@ -155,42 +154,6 @@ export async function clearComposeHeadVersion(
     .update(agentComposes)
     .set({ headVersionId: null })
     .where(eq(agentComposes.id, composeId));
-}
-
-/**
- * @why-db-direct Transfers compose between orgs — no API for org transfer.
- * Tests org-scoped installations for composes created in other orgs.
- */
-export async function updateAgentComposeOrg(
-  composeId: string,
-  orgId: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(agentComposes)
-    .set({ orgId })
-    .where(eq(agentComposes.id, composeId));
-}
-
-/**
- * @why-db-direct Direct compose_jobs insert — compose jobs are created by
- * internal pipeline, not user API. Tests compose job cleanup on deletion.
- */
-export async function insertTestComposeJob(params: {
-  userId: string;
-  status?: string;
-  githubUrl?: string;
-}): Promise<{ id: string }> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(composeJobs)
-    .values({
-      userId: params.userId,
-      status: params.status ?? "completed",
-      githubUrl: params.githubUrl ?? "https://github.com/test/repo",
-    })
-    .returning({ id: composeJobs.id });
-  return row!;
 }
 
 /**

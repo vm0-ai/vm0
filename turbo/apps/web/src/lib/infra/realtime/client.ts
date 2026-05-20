@@ -75,31 +75,3 @@ export async function publishJobNotification(
     return false;
   }
 }
-
-/**
- * Publish cancel notification to a runner group's Ably channel.
- * Non-blocking — logs errors but doesn't throw, because the cancellation is
- * already committed in DB and the VM will stop at natural completion even if
- * Ably is degraded.
- */
-export async function publishCancelNotification(
-  group: string,
-  runId: string,
-): Promise<boolean> {
-  try {
-    const channel = getAblyClient().channels.get(
-      getRunnerGroupChannelName(group),
-    );
-    await channel.publish("cancel", { runId });
-    log.debug(
-      `Published cancel notification ${runId} to runner-group:${group}`,
-    );
-    return true;
-  } catch (error) {
-    log.error(
-      `Ably cancel notification failed for runner-group:${group}:`,
-      error,
-    );
-    return false;
-  }
-}

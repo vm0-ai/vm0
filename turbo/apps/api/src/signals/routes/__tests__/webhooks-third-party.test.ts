@@ -9,6 +9,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -57,6 +59,7 @@ interface StripeFixture {
 }
 
 interface ClerkFixture {
+  readonly orgId: string;
   readonly userId: string;
 }
 
@@ -276,6 +279,15 @@ const deleteClerkFixture$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
+    await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
+    await db
+      .delete(orgMembersMetadata)
+      .where(eq(orgMembersMetadata.userId, fixture.userId));
+    await db
+      .delete(orgMembersCache)
+      .where(eq(orgMembersCache.userId, fixture.userId));
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+    await db.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
     await db.delete(userCache).where(eq(userCache.userId, fixture.userId));
     await db.delete(users).where(eq(users.id, fixture.userId));
   },
@@ -289,13 +301,26 @@ const seedClerkFixture$ = command(
   ): Promise<ClerkFixture> => {
     const db = set(writeDb$);
     const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
     await db.insert(users).values({ id: userId });
     await db.insert(userCache).values({
       userId,
       email: "deleted-user@example.com",
       name: "Deleted User",
     });
-    return { userId };
+    await db.insert(orgCache).values({
+      orgId,
+      slug: `deleted-org-${randomUUID()}`,
+      name: "Deleted Org",
+    });
+    await db.insert(orgMetadata).values({ orgId });
+    await db.insert(orgMembersCache).values({
+      orgId,
+      userId,
+      role: "admin",
+    });
+    await db.insert(orgMembersMetadata).values({ orgId, userId });
+    return { orgId, userId };
   },
 );
 
@@ -532,6 +557,132 @@ describe("POST /api/webhooks/clerk", () => {
     });
   });
 
+  it("passes the request and configured signing secret to Clerk verification", async () => {
+    mockOptionalEnv("CLERK_WEBHOOK_SIGNING_SECRET", "clerk-secret");
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.created",
+      data: { id: `user_${randomUUID()}` },
+    });
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+
+    expect(response.status).toBe(200);
+    const call = context.mocks.clerk.verifyWebhook.mock.calls[0];
+    expect(call?.[0]).toBeInstanceOf(Request);
+    expect(call?.[1]).toStrictEqual({ signingSecret: "clerk-secret" });
+  });
+
+  it("returns OK for unhandled event types", async () => {
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.created",
+      data: { id: `user_${randomUUID()}` },
+    });
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+  });
+
+  it("runs organization deletion cleanup after a Clerk organization.deleted event", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "organization.deleted",
+      data: { id: fixture.orgId },
+    });
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const db = store.set(writeDb$);
+    const cacheRows = await db
+      .select({ orgId: orgCache.orgId })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, fixture.orgId));
+    const metadataRows = await db
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    const membershipRows = await db
+      .select({ orgId: orgMembersCache.orgId })
+      .from(orgMembersCache)
+      .where(eq(orgMembersCache.orgId, fixture.orgId));
+    expect(cacheRows).toHaveLength(0);
+    expect(metadataRows).toHaveLength(0);
+    expect(membershipRows).toHaveLength(0);
+  });
+
+  it("does not schedule organization deletion cleanup without an org ID", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "organization.deleted",
+      data: { id: undefined },
+    });
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const db = store.set(writeDb$);
+    const cacheRows = await db
+      .select({ orgId: orgCache.orgId })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, fixture.orgId));
+    expect(cacheRows).toHaveLength(1);
+  });
+
+  it("does not surface organization cleanup errors in the response", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    await store
+      .set(writeDb$)
+      .insert(storages)
+      .values({
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        name: "org-memory",
+        type: "memory",
+        s3Prefix: `orgs/${fixture.orgId}/memory`,
+      });
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "organization.deleted",
+      data: { id: fixture.orgId },
+    });
+    context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+
+    await expect(clearAllDetached()).resolves.toBeUndefined();
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+  });
+
   it("runs user deletion cleanup after a Clerk user.deleted event", async () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
@@ -560,8 +711,39 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, fixture.userId));
+    const orgRows = await db
+      .select({ orgId: orgCache.orgId })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, fixture.orgId));
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
+    expect(orgRows).toHaveLength(1);
+  });
+
+  it("does not schedule user deletion cleanup without a user ID", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.deleted",
+      data: { id: undefined },
+    });
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const db = store.set(writeDb$);
+    const userRows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, fixture.userId));
+    expect(userRows).toHaveLength(1);
   });
 
   it("continues user deletion cleanup when user S3 cleanup fails", async () => {
@@ -606,5 +788,34 @@ describe("POST /api/webhooks/clerk", () => {
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
     expect(storageRows).toHaveLength(0);
+  });
+
+  it("returns OK for organizationMembership.deleted without cleanup", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "organizationMembership.deleted",
+      data: {
+        organization: { id: fixture.orgId },
+        public_user_data: { user_id: fixture.userId },
+      },
+    });
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const db = store.set(writeDb$);
+    const membershipRows = await db
+      .select({ userId: orgMembersCache.userId })
+      .from(orgMembersCache)
+      .where(eq(orgMembersCache.userId, fixture.userId));
+    expect(membershipRows).toHaveLength(1);
   });
 });

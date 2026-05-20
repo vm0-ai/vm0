@@ -229,7 +229,7 @@ async function cleanupOrphanedOrg(
     );
   }
 
-  // Phase 3: Database cleanup (same order as org-deletion-service.ts)
+  // Phase 3: Database cleanup (same order as the Clerk cleanup service)
 
   // Step 1: Slack cleanup
   const slackRows = await db.execute<{ slack_workspace_id: string }>(

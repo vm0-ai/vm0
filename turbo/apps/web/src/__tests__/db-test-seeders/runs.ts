@@ -608,26 +608,6 @@ export async function setTestRunStatus(
 }
 
 /**
- * Set `agent_runs.runner_group` for a run.
- *
- * @why-db-direct `agent_runs.runner_group` is assigned by the dispatch
- * pipeline once the execution context has been built. Tests that need a
- * specific runner group without standing up the full dispatch path (e.g. to
- * force `publishCancelNotification` in cancel-flow tests) must seed it
- * directly.
- */
-export async function setTestRunRunnerGroup(
-  runId: string,
-  runnerGroup: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(agentRuns)
-    .set({ runnerGroup })
-    .where(eq(agentRuns.id, runId));
-}
-
-/**
  * Overwrite the `agent_runs.result` JSONB blob for a run.
  *
  * @why-db-direct `agent_runs.result` is populated by the runner / complete

@@ -1,49 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { reloadEnv } from "../../../env";
-import {
-  simulateClerkOrgCreated,
-  simulateClerkOrgDeleted,
-  simulateClerkUserDeleted,
-} from "../clerk";
 import { invokeCron } from "../cron";
 import {
   simulateGitHubInstallation,
   simulateGitHubIssueOpened,
 } from "../github";
 
-// Clerk mock setup (must be at module level)
-const mockVerifyWebhook = vi.hoisted(() => {
-  return vi.fn();
-});
-vi.mock("@clerk/nextjs/webhooks", () => {
-  return {
-    verifyWebhook: mockVerifyWebhook,
-  };
-});
-
 describe("webhook-simulators", () => {
-  describe("clerk", () => {
-    it("simulateClerkOrgCreated returns 200", async () => {
-      const response = await simulateClerkOrgCreated(
-        "org_test",
-        "Test Org",
-        "test-org",
-      );
-      expect(response.status).toBe(200);
-      expect(mockVerifyWebhook).toHaveBeenCalled();
-    });
-
-    it("simulateClerkOrgDeleted returns 200", async () => {
-      const response = await simulateClerkOrgDeleted("org_test");
-      expect(response.status).toBe(200);
-    });
-
-    it("simulateClerkUserDeleted returns 200", async () => {
-      const response = await simulateClerkUserDeleted("user_test");
-      expect(response.status).toBe(200);
-    });
-  });
-
   describe("cron", () => {
     it("invokeCron passes auth header to handler", async () => {
       const handler = vi

@@ -3,14 +3,6 @@ import { deriveApiTokenConnectedTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { logger } from "../../shared/logger";
-import { getSecretValue } from "../secret/secret-service";
-import {
-  getConnectorOAuthProvider,
-  providerEnvFromObject,
-} from "@vm0/connectors/oauth-providers";
-
-const log = logger("service:connector");
 
 /**
  * Derive api-token connector types from user secrets and variables.
@@ -50,51 +42,4 @@ export async function getApiTokenConnectorTypes(
       }),
     ),
   );
-}
-
-/**
- * Best-effort revocation of an OAuth provider's remote token/grant.
- * Looks up the connector's OAuth provider, reads the access token from DB,
- * and calls the provider's revokeToken method if available.
- * Errors are logged and swallowed — revocation must never block disconnect.
- */
-export async function revokeConnectorToken(
-  orgId: string,
-  userId: string,
-  type: ConnectorType,
-): Promise<void> {
-  if (type === "computer") return;
-
-  const provider = getConnectorOAuthProvider(type);
-  if (!provider?.revokeToken) return;
-
-  const env = providerEnvFromObject(globalThis.services.env);
-  const clientId = provider.getClientId(env);
-  const clientSecret = provider.getClientSecret(env);
-  if (!clientId || !clientSecret) {
-    log.debug(
-      `${type} OAuth credentials not configured, skipping token revocation`,
-    );
-    return;
-  }
-
-  const accessTokenName = provider.getSecretName();
-  const accessToken = await getSecretValue(
-    orgId,
-    userId,
-    accessTokenName,
-    "connector",
-  );
-  if (!accessToken) {
-    log.debug(`${type} access token not found, skipping revocation`);
-    return;
-  }
-
-  try {
-    await provider.revokeToken({ clientId, clientSecret, accessToken });
-    log.debug(`${type} token revoked successfully`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    log.warn(`${type} token revocation failed: ${message}`);
-  }
 }
