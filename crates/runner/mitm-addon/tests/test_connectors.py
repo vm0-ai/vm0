@@ -3554,6 +3554,59 @@ class TestCompiledFirewallMatching:
             "path": "a/b/c",
         }
 
+    def test_matches_raw_for_greedy_host_base_params(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub+}.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                },
+                {
+                    "base": "https://{sub*}.example.org",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "empty-read", "rules": ["GET /items/{id}"]},
+                    ],
+                },
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {
+            "example": {
+                "allow": ["read", "empty-read"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        url = "https://a.b.example.com/items/123"
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["params"] == {"sub": "a.b", "id": "123"}
+
+        url = "https://example.org/items/123"
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["params"] == {"sub": "", "id": "123"}
+
     def test_matches_raw_for_static_base_boundary_and_query(self):
         fws = _wrap_firewalls(
             [
@@ -3691,6 +3744,50 @@ class TestCompiledFirewallMatching:
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, FirewallBlock)
         assert compiled.permissions == ("repo-read",)
+
+    def test_later_allowed_firewall_wins_after_earlier_unknown_match(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {"allow": [], "deny": [], "unknownPolicy": "deny"},
+            "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        }
+        url = "https://api.example.com/items/123"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["name"] == "specific"
+        assert compiled.match_info["permission"] == "items-read"
 
     def test_preserves_raw_rule_order_for_any_before_exact_method(self):
         api_entry = {
