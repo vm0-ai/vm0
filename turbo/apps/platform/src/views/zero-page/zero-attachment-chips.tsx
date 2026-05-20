@@ -119,12 +119,26 @@ function publicArtifactsBaseUrl(): string | null {
   return baseUrl.replace(/\/+$/, "");
 }
 
-function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
-  const baseUrl = publicArtifactsBaseUrl();
-  if (!baseUrl) {
-    return null;
+function fallbackPublicArtifactsBaseUrl(hostname: string): string | null {
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".vm6.ai") ||
+    hostname.endsWith(".vm7.ai")
+  ) {
+    return "https://cdn.vm7.io";
   }
+  return null;
+}
 
+function publicArtifactsBaseUrlForFileUrl(parsed: URL): string | null {
+  return (
+    publicArtifactsBaseUrl() ??
+    fallbackPublicArtifactsBaseUrl(parsed.hostname) ??
+    fallbackPublicArtifactsBaseUrl(window.location.hostname)
+  );
+}
+
+function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
   if (!URL.canParse(url, window.location.origin)) {
     return null;
   }
@@ -134,6 +148,11 @@ function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
     !["http:", "https:"].includes(parsed.protocol) ||
     !isPlatformFileUrlHost(parsed.hostname)
   ) {
+    return null;
+  }
+
+  const baseUrl = publicArtifactsBaseUrlForFileUrl(parsed);
+  if (!baseUrl) {
     return null;
   }
 
@@ -153,7 +172,7 @@ function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
   return `${baseUrl}/artifacts/${encodeURIComponent(storageUserId)}/${id}/${filename}`;
 }
 
-function downloadFetchUrl(url: string): string {
+export function publicAttachmentUrl(url: string): string {
   return legacyFileUrlToArtifactCdnUrl(url) ?? url;
 }
 
@@ -281,7 +300,7 @@ async function fetchBlobForDownload(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob | null> {
-  const fetchUrl = downloadFetchUrl(url);
+  const fetchUrl = publicAttachmentUrl(url);
   // The catch branch reports network/CORS failures without falling back to
   // cross-origin anchor navigation, which would open images instead.
   // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
@@ -315,7 +334,7 @@ export async function downloadAttachmentUrl(
 }
 
 async function copyAttachmentLinkToClipboard(url: string): Promise<void> {
-  const copied = await writeToClipboard(url);
+  const copied = await writeToClipboard(publicAttachmentUrl(url));
   if (copied) {
     toast.success("Link copied");
     return;

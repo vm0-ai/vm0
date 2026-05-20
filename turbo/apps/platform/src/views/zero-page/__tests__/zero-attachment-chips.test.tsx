@@ -411,7 +411,7 @@ describe("chat-i-066: lightbox download fetches blobs", () => {
       "https://cdn.vm7.io/artifacts/user_3BennfUepyJwP3OaiYD0rK8CZKs/9c4c6df4-f0ed-4c25-af3a-b58bc40faf0f/image-9c4c6df4.png";
     let legacyRequests = 0;
     let cdnRequests = 0;
-    vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
+    vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", "");
     server.use(
       http.get(legacyUrl, () => {
         legacyRequests += 1;
@@ -454,7 +454,7 @@ describe("chat-i-066: lightbox download fetches blobs", () => {
 
   it("does not fall back to opening the image URL when fetch fails", async () => {
     const user = userEvent.setup();
-    const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
+    const imageUrl = "http://localhost:3000/files/user-1/file-1/photo.png";
     server.use(
       http.get(imageUrl, () => {
         return HttpResponse.error();

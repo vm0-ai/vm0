@@ -82,6 +82,7 @@ import {
   getAttachmentRawUrl,
   parseCsvRows,
   PreviewableFileAttachmentChip,
+  publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import {
@@ -572,7 +573,7 @@ function ArtifactPreviewOpenOverlay({
 async function copyArtifactLinkToClipboard(
   file: ChatThreadArtifactFile,
 ): Promise<void> {
-  const copied = await writeToClipboard(file.url);
+  const copied = await writeToClipboard(publicAttachmentUrl(file.url));
   if (copied) {
     toast.success("Link copied");
     return;

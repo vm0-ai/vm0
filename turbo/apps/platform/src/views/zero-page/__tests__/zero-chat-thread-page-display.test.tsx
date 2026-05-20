@@ -100,7 +100,8 @@ describe("zero chat thread page display - attachment audio chip", () => {
     const download = await waitFor(() => {
       return screen.getByLabelText("Download clip.mp3");
     });
-    expect(download).toHaveAttribute("href", "https://example.com/clip.mp3");
+    expect(download).toHaveAttribute("type", "button");
+    expect(download).not.toHaveAttribute("href");
     expect(
       within(download).getByTestId("attachment-chip-file-icon"),
     ).toBeInTheDocument();
@@ -302,10 +303,9 @@ describe("zero chat thread page display - body link document preview", () => {
       within(preview).getByTestId("attachment-preview-file-icon"),
     ).toBeInTheDocument();
     expect(within(preview).getByText("ZIP")).toBeInTheDocument();
-    expect(screen.getByLabelText("Download test_files.zip")).toHaveAttribute(
-      "href",
-      fileUrl,
-    );
+    const download = screen.getByLabelText("Download test_files.zip");
+    expect(download).toHaveAttribute("type", "button");
+    expect(download).not.toHaveAttribute("href");
   });
 
   it("keeps platform file links inside markdown tables as table links", async () => {
@@ -651,10 +651,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
     expect(new URL(requestedUrl).searchParams.get("raw")).toBeNull();
     expect(requestedRange).toBe("bytes=0-65535");
-    expect(screen.getByLabelText("Download readme.txt")).toHaveAttribute(
-      "href",
-      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt#summary",
-    );
+    const download = screen.getByLabelText("Download readme.txt");
+    expect(download).toHaveAttribute("type", "button");
+    expect(download).not.toHaveAttribute("href");
 
     await userEvent.click(
       screen.getByLabelText("Collapse text preview for readme.txt"),
@@ -739,10 +738,9 @@ describe("zero chat thread page display - body link document preview", () => {
         within(preview).getByTestId("attachment-preview-file-icon"),
       ).toBeInTheDocument();
       expect(within(preview).getByText("XLSX")).toBeInTheDocument();
-      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
-        "href",
-        docUrl,
-      );
+      const download = screen.getByLabelText("Download budget.xlsx");
+      expect(download).toHaveAttribute("type", "button");
+      expect(download).not.toHaveAttribute("href");
     });
   });
 
@@ -780,7 +778,8 @@ describe("zero chat thread page display - body link document preview", () => {
         within(preview).getByTestId("attachment-chip-file-icon"),
       ).toBeInTheDocument();
       expect(within(preview).getByText("XLSX")).toBeInTheDocument();
-      expect(preview).toHaveAttribute("href", fileUrl);
+      expect(preview).toHaveAttribute("type", "button");
+      expect(preview).not.toHaveAttribute("href");
     });
   });
 
@@ -858,7 +857,8 @@ describe("zero chat thread page display - attachment video chip", () => {
       return screen.getByLabelText("Download clip.mp4");
     });
 
-    expect(download).toHaveAttribute("href", videoUrl);
+    expect(download).toHaveAttribute("type", "button");
+    expect(download).not.toHaveAttribute("href");
     expect(
       within(download).getByTestId("attachment-chip-file-icon"),
     ).toBeInTheDocument();
@@ -1393,9 +1393,14 @@ describe("zero chat thread page display - artifacts drawer", () => {
 
   it("copies artifact links and syncs to Google Drive when connected", async () => {
     const user = userEvent.setup();
-    const fileUrl = "https://example.com/chart.png";
+    const fileUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    const copiedFileUrl =
+      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    const previousBaseUrl = import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL;
     let artifactsRequests = 0;
     const syncBodies: unknown[] = [];
+    vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", "");
     mockChatLifecycle({
       chatMessages: [
         {
@@ -1497,7 +1502,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
       ).toBeInTheDocument();
     });
     await user.click(screen.getByLabelText("Copy link for chart.png"));
-    expect(writeTextSpy).toHaveBeenCalledWith(fileUrl);
+    expect(writeTextSpy).toHaveBeenCalledWith(copiedFileUrl);
 
     await user.click(screen.getByLabelText("Sync chart.png to Google Drive"));
 
@@ -1530,6 +1535,7 @@ describe("zero chat thread page display - artifacts drawer", () => {
         },
       ]);
     });
+    vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", previousBaseUrl ?? "");
   });
 
   it("syncs bulk Google Drive artifacts sequentially", async () => {
