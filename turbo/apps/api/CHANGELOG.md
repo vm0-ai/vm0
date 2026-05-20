@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.62.2](https://github.com/vm0-ai/vm0/compare/api-v1.62.1...api-v1.62.2) (2026-05-20)
+
+
+### Bug Fixes
+
+* load all user secrets so firewall-only connector secrets resolve ([#14342](https://github.com/vm0-ai/vm0/issues/14342)) ([1e60c2b](https://github.com/vm0-ai/vm0/commit/1e60c2bc853e011dbc0aabf3c24b1c9564c11104))
+
+
+### Refactoring
+
+* cut over github webhook route ([#14341](https://github.com/vm0-ai/vm0/issues/14341)) ([0671a6f](https://github.com/vm0-ai/vm0/commit/0671a6f3ca1101109d2d807b31952710a0103946))
+* cut over stripe webhook route ([#14345](https://github.com/vm0-ai/vm0/issues/14345)) ([4e54a8b](https://github.com/vm0-ai/vm0/commit/4e54a8b23ead56f9f7f7510df4560b7eb8be4561))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.2
+    * @vm0/connectors bumped to 1.24.2
+    * @vm0/core bumped to 8.286.2
+    * @vm0/db bumped to 1.17.2
+
 ## [1.62.1](https://github.com/vm0-ai/vm0/compare/api-v1.62.0...api-v1.62.1) (2026-05-20)
 
 
