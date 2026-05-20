@@ -8,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use vsock_proto::{
     ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
     ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
-    MSG_EXEC_START, ProcessControlStatus,
+    MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_QUIESCE_OPERATIONS, ProcessControlStatus,
 };
 
 use super::super::support::{
@@ -1110,6 +1110,60 @@ async fn supervised_exec_start_ack_timeout_sends_cancel() {
         Ok(n) => panic!("start timeout must send exactly one exec cancel; read {n} extra bytes"),
         Err(err) => panic!("unexpected read error after start timeout: {err}"),
     }
+}
+
+#[tokio::test]
+async fn supervised_exec_late_start_frames_after_start_timeout_are_ignored() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = match host
+        .start_supervised_exec(SupervisedExecRequest {
+            start_timeout: Duration::ZERO,
+            ..supervised_request("late-start-after-timeout")
+        })
+        .await
+    {
+        Ok(_) => panic!("supervised exec should time out before exec_started"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    send_exec_started(&mut guest, start.seq, 123).await;
+    send_discarded_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(5)).await })
+    };
+    let quiesce = read_guest_message(&mut guest).await;
+    assert_eq!(quiesce.msg_type, MSG_QUIESCE_OPERATIONS);
+    let response = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, quiesce.seq, &[]).unwrap();
+    guest.write_all(&response).await.unwrap();
+    quiesce_task.await.unwrap().unwrap();
+
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
 }
 
 #[tokio::test]
