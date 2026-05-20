@@ -904,6 +904,27 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero integrations Telegram upload init rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file/init",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file/init/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
+    ).toBe(false);
+  });
+
   it("matches the zero connector OAuth start rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/oauth/start"),

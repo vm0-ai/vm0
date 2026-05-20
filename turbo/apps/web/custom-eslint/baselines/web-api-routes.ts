@@ -23,7 +23,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/slack/upload-file/complete/route.ts",
   "app/api/zero/integrations/slack/upload-file/init/route.ts",
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
-  "app/api/zero/integrations/telegram/upload-file/init/route.ts",
   "app/api/zero/slack/oauth/callback/route.ts",
   "app/api/zero/slack/oauth/connect/route.ts",
   "app/api/zero/slack/oauth/install/route.ts",
