@@ -14,6 +14,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { eq } from "drizzle-orm";
 
+import { createApp } from "../../../app-factory";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { verifyHmacSignature } from "../../../lib/event-consumer/hmac";
@@ -57,6 +58,37 @@ function sandboxToken(fixture: {
     iat: nowSeconds,
     exp: nowSeconds + 60,
   });
+}
+
+function authHeaders(fixture: {
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+}): { readonly authorization: string } {
+  return { authorization: `Bearer ${sandboxToken(fixture)}` };
+}
+
+async function postRawHeartbeat(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/webhooks/agent/heartbeat", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
 }
 
 async function seedFixture(status = "running"): Promise<AgentWebhookFixture> {
@@ -120,6 +152,61 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
         message: "Not authenticated or runId mismatch",
         code: "UNAUTHORIZED",
       },
+    });
+  });
+
+  it("rejects missing runId before updating the run", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await postRawHeartbeat({}, authHeaders(fixture));
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("runId");
+    await expect(heartbeatAt(fixture.runId)).resolves.toBeNull();
+  });
+
+  it("returns 404 when the authenticated run no longer exists", async () => {
+    const missingRun = {
+      runId: randomUUID(),
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+    };
+    const client = setupApp({ context })(webhookHeartbeatContract);
+
+    const response = await accept(
+      client.send({
+        body: { runId: missingRun.runId },
+        headers: authHeaders(missingRun),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 404 for a run owned by a different user", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookHeartbeatContract);
+
+    const response = await accept(
+      client.send({
+        body: { runId: fixture.runId },
+        headers: authHeaders({
+          runId: fixture.runId,
+          userId: `other_${randomUUID()}`,
+          orgId: fixture.orgId,
+        }),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
     });
   });
 
@@ -188,6 +275,22 @@ describe("POST /api/webhooks/agent/heartbeat", () => {
       attempts: 0,
       lastAttemptAt: null,
     });
+  });
+
+  it("accepts multiple consecutive heartbeats for the same run", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookHeartbeatContract);
+    const request = {
+      body: { runId: fixture.runId },
+      headers: authHeaders(fixture),
+    };
+
+    const firstResponse = await accept(client.send(request), [200]);
+    const secondResponse = await accept(client.send(request), [200]);
+
+    expect(firstResponse.body).toStrictEqual({ ok: true });
+    expect(secondResponse.body).toStrictEqual({ ok: true });
+    await expect(heartbeatAt(fixture.runId)).resolves.toBeInstanceOf(Date);
   });
 });
 
