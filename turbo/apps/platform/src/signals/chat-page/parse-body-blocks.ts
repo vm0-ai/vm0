@@ -255,7 +255,7 @@ function platformFileHosts(): Set<string> {
   addPlatformFileHostVariants(hosts, browserHost());
   addPlatformFileHostVariants(
     hosts,
-    artifactsCdnHost(import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL),
+    artifactsCdnHost(import.meta.env.PUBLIC_ARTIFACTS_BASE_URL),
   );
   return hosts;
 }

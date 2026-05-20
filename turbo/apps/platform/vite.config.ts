@@ -5,7 +5,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base: process.env.VITE_BASE_URL || "/",
-  envPrefix: ["VITE_"],
+  envPrefix: ["VITE_", "PUBLIC_"],
   plugins: [
     tailwindcss(),
     react(),

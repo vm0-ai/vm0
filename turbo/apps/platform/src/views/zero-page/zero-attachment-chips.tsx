@@ -112,33 +112,19 @@ function isPlatformFileUrlHost(hostname: string): boolean {
 }
 
 function publicArtifactsBaseUrl(): string | null {
-  const baseUrl = import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL;
+  const baseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
   if (!baseUrl || !URL.canParse(baseUrl)) {
     return null;
   }
   return baseUrl.replace(/\/+$/, "");
 }
 
-function fallbackPublicArtifactsBaseUrl(hostname: string): string | null {
-  if (
-    hostname === "localhost" ||
-    hostname.endsWith(".vm6.ai") ||
-    hostname.endsWith(".vm7.ai")
-  ) {
-    return "https://cdn.vm7.io";
-  }
-  return null;
-}
-
-function publicArtifactsBaseUrlForFileUrl(parsed: URL): string | null {
-  return (
-    publicArtifactsBaseUrl() ??
-    fallbackPublicArtifactsBaseUrl(parsed.hostname) ??
-    fallbackPublicArtifactsBaseUrl(window.location.hostname)
-  );
-}
-
 function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
+  const baseUrl = publicArtifactsBaseUrl();
+  if (!baseUrl) {
+    return null;
+  }
+
   if (!URL.canParse(url, window.location.origin)) {
     return null;
   }
@@ -148,11 +134,6 @@ function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
     !["http:", "https:"].includes(parsed.protocol) ||
     !isPlatformFileUrlHost(parsed.hostname)
   ) {
-    return null;
-  }
-
-  const baseUrl = publicArtifactsBaseUrlForFileUrl(parsed);
-  if (!baseUrl) {
     return null;
   }
 
