@@ -240,6 +240,9 @@ const trackAgentPhoneGroupFixture = createFixtureTracker(
       .delete(orgMetadata)
       .where(eq(orgMetadata.orgId, fixture.orgId));
     await writeDb
+      .delete(orgMembersMetadata)
+      .where(eq(orgMembersMetadata.orgId, fixture.orgId));
+    await writeDb
       .delete(agentComposeVersions)
       .where(eq(agentComposeVersions.composeId, fixture.composeId));
     await writeDb
@@ -266,6 +269,7 @@ function uniquePhone(): string {
 
 function configureAgentPhoneEnv(): void {
   mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
+  mockEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-user-artifacts");
   mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
@@ -384,6 +388,12 @@ async function seedAgentPhoneGroupFixture(): Promise<AgentPhoneGroupFixture> {
   await writeDb.insert(orgMetadata).values({
     orgId,
     defaultAgentId: composeId,
+    credits: 100_000,
+  });
+  await writeDb.insert(orgMembersMetadata).values({
+    orgId,
+    userId,
+    timezone: "UTC",
   });
   await seedAgentPhoneLink({ phoneHandle, userId, orgId });
 
@@ -1167,7 +1177,7 @@ describe("AgentPhone migrated API routes", () => {
         agent_id: "agt-agentphone",
         conversation_id: conversationId,
         reply_to_message_id: "ap-group-trigger",
-        body: "Group failure",
+        body: "Oops, something went wrong. Please try again later.",
       }),
     );
     expect(sendCalls[0]?.to_number).toBeUndefined();
@@ -1249,7 +1259,7 @@ describe("AgentPhone migrated API routes", () => {
       contentType: "image/png",
       size: 123,
     });
-    expect(response.body.fileUrl).toContain("/f/");
+    expect(response.body.fileUrl).toContain("https://cdn.vm7.io/artifacts/");
   });
 
   it("post /api/zero/integrations/phone/upload-file/complete sends uploaded media", async () => {
@@ -1263,8 +1273,8 @@ describe("AgentPhone migrated API routes", () => {
     await seedAgentPhoneLink({ phoneHandle, userId, orgId });
     mocks.s3.listObjects([
       {
-        bucket: "test-user-storages",
-        key: `uploads/${userId}/${uploadId}/photo.png`,
+        bucket: "test-user-artifacts",
+        key: `artifacts/${userId}/${uploadId}/photo.png`,
         size: 456,
       },
     ]);
