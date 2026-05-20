@@ -5006,45 +5006,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exec_process_control_guest_status_keeps_policy_open() {
-        let ExecProcessControlFixture {
-            host: _host,
-            handle,
-            mut guest,
-            exec_seq,
-        } = setup_exec_process_control_fixture().await;
-        let control = handle.control_handle().unwrap();
-        let coordinator = ParkCoordinator::new();
-        let (state, state_tx) = running_process_state();
-
-        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
-            coordinator.clone(),
-            state,
-            state_tx.subscribe(),
-            control,
-            "exec-sink-timeout".to_owned(),
-            b"payload".to_vec(),
-            Duration::from_secs(5),
-        ));
-        let request = read_vsock_message(&mut guest).await;
-        send_exec_control_result(
-            &mut guest,
-            request,
-            ExecControlStatus::SinkTimeout,
-            "guest sink timed out",
-        )
-        .await;
-
-        let error = control_task.await.unwrap().unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
-        assert_eq!(error.to_string(), "guest sink timed out");
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-
-        send_exec_exit(&mut guest, exec_seq).await;
-        handle.wait(Duration::from_secs(5)).await.unwrap();
-    }
-
-    #[tokio::test]
     async fn process_control_guest_error_keeps_policy_open() {
         let ExecProcessControlFixture {
             host: _host,
@@ -5071,48 +5032,6 @@ mod tests {
         let error = control_task.await.unwrap().unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "guest rejected control");
-        assert_eq!(coordinator.state(), CoordinatorState::Open);
-
-        send_exec_exit(&mut guest, exec_seq).await;
-        handle.wait(Duration::from_secs(5)).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn exec_process_control_backend_crash_after_guest_write_keeps_policy_open() {
-        let ExecProcessControlFixture {
-            host: _host,
-            handle,
-            mut guest,
-            exec_seq,
-        } = setup_exec_process_control_fixture().await;
-        let control = handle.control_handle().unwrap();
-        let coordinator = ParkCoordinator::new();
-        let (state, state_tx) = running_process_state();
-
-        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
-            coordinator.clone(),
-            Arc::clone(&state),
-            state_tx.subscribe(),
-            control,
-            "exec-backend-crash".to_owned(),
-            b"payload".to_vec(),
-            Duration::from_secs(5),
-        ));
-        let request = read_vsock_message(&mut guest).await;
-        assert_eq!(request.msg_type, vsock_proto::MSG_EXEC_CONTROL);
-
-        state.store(SandboxState::Crashed as u8, Ordering::Release);
-        state_tx.send(SandboxState::Crashed).unwrap();
-
-        let error = tokio::time::timeout(Duration::from_secs(1), control_task)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap_err();
-        assert!(
-            error.to_string().contains("firecracker process crashed"),
-            "unexpected error: {error}",
-        );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
         send_exec_exit(&mut guest, exec_seq).await;

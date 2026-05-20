@@ -43,16 +43,9 @@ impl Default for ExecControlRegistry {
     }
 }
 
-/// Active exec-control registration for a seq.
-///
-/// Operations without a control nonce still reserve their seq so malformed or
-/// duplicate exec requests cannot run concurrently under the same routing key.
-enum ExecControlEntry {
-    NoControl,
-    WithNonce {
-        nonce: ExecControlNonce,
-        sink: Option<Arc<ControlSinkState>>,
-    },
+struct ExecControlEntry {
+    nonce: ExecControlNonce,
+    sink: Option<Arc<ControlSinkState>>,
 }
 
 pub(crate) struct ExecControlRegistration {
@@ -126,30 +119,29 @@ impl ExecControlRegistry {
     pub(crate) fn register(
         &self,
         seq: u32,
-        control_nonce: Option<ExecControlNonce>,
+        control_nonce: ExecControlNonce,
         control_sink: bool,
     ) -> io::Result<ExecControlRegistration> {
-        let (bootstrap_endpoint, accept_sink) = match control_nonce {
-            Some(nonce) if control_sink => {
-                let endpoint = process_control_ipc::endpoint_name(seq, &nonce);
-                let sink = Arc::new(ControlSinkState::new());
-                self.insert(
-                    seq,
-                    ExecControlEntry::WithNonce {
-                        nonce,
-                        sink: Some(Arc::clone(&sink)),
-                    },
-                )?;
-                (Some(endpoint), Some(sink))
-            }
-            Some(nonce) => {
-                self.insert(seq, ExecControlEntry::WithNonce { nonce, sink: None })?;
-                (None, None)
-            }
-            None => {
-                self.insert(seq, ExecControlEntry::NoControl)?;
-                (None, None)
-            }
+        let (bootstrap_endpoint, accept_sink) = if control_sink {
+            let endpoint = process_control_ipc::endpoint_name(seq, &control_nonce);
+            let sink = Arc::new(ControlSinkState::new());
+            self.insert(
+                seq,
+                ExecControlEntry {
+                    nonce: control_nonce,
+                    sink: Some(Arc::clone(&sink)),
+                },
+            )?;
+            (Some(endpoint), Some(sink))
+        } else {
+            self.insert(
+                seq,
+                ExecControlEntry {
+                    nonce: control_nonce,
+                    sink: None,
+                },
+            )?;
+            (None, None)
         };
 
         let start_result = match (&bootstrap_endpoint, accept_sink) {
@@ -200,16 +192,13 @@ impl ExecControlRegistry {
         let Some(entry) = guard.get(&target_seq) else {
             return Err((ExecControlStatus::Inactive, EXEC_OPERATION_INACTIVE_MESSAGE));
         };
-        let ExecControlEntry::WithNonce { nonce, sink } = entry else {
-            return Err((ExecControlStatus::Inactive, EXEC_OPERATION_INACTIVE_MESSAGE));
-        };
-        if *nonce != control_nonce {
+        if entry.nonce != control_nonce {
             return Err((
                 ExecControlStatus::NonceMismatch,
                 EXEC_OPERATION_NONCE_MISMATCH_MESSAGE,
             ));
         }
-        let Some(sink) = sink else {
+        let Some(sink) = &entry.sink else {
             return Err((
                 ExecControlStatus::Unsupported,
                 EXEC_CONTROL_SINK_NOT_CONFIGURED_MESSAGE,
@@ -221,10 +210,7 @@ impl ExecControlRegistry {
 
 impl ExecControlEntry {
     fn close(self) {
-        if let ExecControlEntry::WithNonce {
-            sink: Some(sink), ..
-        } = self
-        {
+        if let Some(sink) = self.sink {
             sink.close();
         }
     }
@@ -851,7 +837,7 @@ mod tests {
     #[test]
     fn registered_operation_rejects_nonce_mismatch() {
         let registry = ExecControlRegistry::default();
-        let _registration = registry.register(7, Some(NONCE), false).unwrap();
+        let _registration = registry.register(7, NONCE, false).unwrap();
         let wrong_nonce = *b"fedcba9876543210";
 
         let (status, diagnostic) = resolve_error(&registry, 7, wrong_nonce);
@@ -863,7 +849,7 @@ mod tests {
     #[test]
     fn released_operation_is_inactive() {
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(7, Some(NONCE), false).unwrap();
+        let registration = registry.register(7, NONCE, false).unwrap();
 
         registration.guard.release();
         let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
@@ -875,7 +861,7 @@ mod tests {
     #[test]
     fn valid_operation_without_sink_is_unsupported() {
         let registry = ExecControlRegistry::default();
-        let _registration = registry.register(7, Some(NONCE), false).unwrap();
+        let _registration = registry.register(7, NONCE, false).unwrap();
 
         let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
 
@@ -886,19 +872,15 @@ mod tests {
     #[test]
     fn duplicate_active_sequence_is_rejected_until_guard_releases() {
         let registry = ExecControlRegistry::default();
-        let first = registry.register(7, Some(NONCE), false).unwrap();
+        let first = registry.register(7, NONCE, false).unwrap();
 
-        assert!(
-            registry
-                .register(7, Some(*b"fedcba9876543210"), false)
-                .is_err()
-        );
+        assert!(registry.register(7, *b"fedcba9876543210", false).is_err());
         let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
         assert_eq!(status, ExecControlStatus::Unsupported);
         assert_eq!(diagnostic, "exec control sink is not configured");
 
         first.guard.release();
-        assert!(registry.register(7, None, false).is_ok());
+        assert!(registry.register(7, NONCE, false).is_ok());
     }
 
     #[test]
@@ -906,9 +888,9 @@ mod tests {
         let sink_nonce = unique_test_nonce(14);
 
         let registry = ExecControlRegistry::default();
-        let first = registry.register(14, Some(sink_nonce), true).unwrap();
+        let first = registry.register(14, sink_nonce, true).unwrap();
 
-        let error = match registry.register(14, Some(sink_nonce), true) {
+        let error = match registry.register(14, sink_nonce, true) {
             Ok(_) => panic!("expected duplicate exec control registration to fail"),
             Err(error) => error,
         };
@@ -921,24 +903,10 @@ mod tests {
     }
 
     #[test]
-    fn operation_without_control_nonce_still_reserves_sequence() {
-        let registry = ExecControlRegistry::default();
-        let registration = registry.register(7, None, false).unwrap();
-
-        assert!(registry.register(7, Some(NONCE), false).is_err());
-        let (status, diagnostic) = resolve_error(&registry, 7, NONCE);
-        assert_eq!(status, ExecControlStatus::Inactive);
-        assert_eq!(diagnostic, "exec operation is not active");
-
-        drop(registration);
-        assert!(registry.register(7, Some(NONCE), false).is_ok());
-    }
-
-    #[test]
     fn control_sink_registration_exports_bootstrap_endpoint() {
         let nonce = unique_test_nonce(7);
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(7, Some(nonce), true).unwrap();
+        let registration = registry.register(7, nonce, true).unwrap();
 
         assert!(registration.bootstrap_endpoint.is_some());
         assert!(registry.resolve(7, nonce).is_ok());
@@ -949,7 +917,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(8);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(8, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(8, forward_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let client = std::thread::spawn(move || {
             let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
@@ -990,7 +958,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(9);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(9, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(9, forward_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -1057,7 +1025,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(16);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(16, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(16, forward_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
@@ -1120,7 +1088,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(11);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(11, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(11, forward_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let client = std::thread::spawn(move || {
             let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
@@ -1210,7 +1178,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(10);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(10, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(10, forward_nonce, true).unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
@@ -1440,7 +1408,7 @@ mod tests {
         let forward_nonce = unique_test_nonce(13);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(13, Some(forward_nonce), true).unwrap();
+        let registration = registry.register(13, forward_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let sink = registry.resolve(13, forward_nonce).unwrap();
 
@@ -1490,7 +1458,7 @@ mod tests {
         let handshake_nonce = unique_test_nonce(15);
 
         let registry = ExecControlRegistry::default();
-        let registration = registry.register(15, Some(handshake_nonce), true).unwrap();
+        let registration = registry.register(15, handshake_nonce, true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let sink = registry.resolve(15, handshake_nonce).unwrap();
         let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();

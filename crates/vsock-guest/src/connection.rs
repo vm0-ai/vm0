@@ -222,27 +222,31 @@ impl ConnectionDispatcher {
             return Ok(());
         };
         if let Some((control_nonce, control_sink)) = request.exec_control_registration() {
-            let registration = match self.exec_control_registry.register(
-                msg.seq,
-                Some(control_nonce),
-                control_sink,
-            ) {
-                Ok(registration) => registration,
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                    operation_guard.release();
-                    send_error_response(msg.seq, "exec operation already active", &self.writer)?;
-                    return Ok(());
-                }
-                Err(error) => {
-                    operation_guard.release();
-                    send_error_response(
-                        msg.seq,
-                        &format!("exec control setup failed: {error}"),
-                        &self.writer,
-                    )?;
-                    return Ok(());
-                }
-            };
+            let registration =
+                match self
+                    .exec_control_registry
+                    .register(msg.seq, control_nonce, control_sink)
+                {
+                    Ok(registration) => registration,
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                        operation_guard.release();
+                        send_error_response(
+                            msg.seq,
+                            "exec operation already active",
+                            &self.writer,
+                        )?;
+                        return Ok(());
+                    }
+                    Err(error) => {
+                        operation_guard.release();
+                        send_error_response(
+                            msg.seq,
+                            &format!("exec control setup failed: {error}"),
+                            &self.writer,
+                        )?;
+                        return Ok(());
+                    }
+                };
             request.attach_exec_control(registration.guard, registration.bootstrap_endpoint);
         }
         start_exec_operation(
