@@ -1442,6 +1442,15 @@ const ZERO_CONNECTORS_SEARCH_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors",
   "/api/zero/connectors/github",
 ] as const;
+const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/scope-diff";
+const ZERO_CONNECTORS_SCOPE_DIFF_PATH =
+  "/api/zero/connectors/github/scope-diff";
+const ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/scope-diff/extra",
+  "/api/zero/connectors/scope-diff",
+  "/api/zero/connectors/github/scope",
+] as const;
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -3724,6 +3733,32 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_CONNECTORS_SEARCH_PATH)).toStrictEqual({});
     for (const pathname of ZERO_CONNECTORS_SEARCH_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the zero connectors scope diff rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/scope-diff",
+    });
+
+    const matcher = getPathMatch(ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CONNECTORS_SCOPE_DIFF_PATH)).toStrictEqual({
+      type: "github",
+    });
+    for (const pathname of ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
