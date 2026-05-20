@@ -2321,6 +2321,28 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
     expectUnauthorized(await expectJson(response));
   });
 
+  it("returns 401 when the token has no active organization membership", async () => {
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const token = mintZeroToken({
+      userId,
+      orgId,
+      capabilities: ["telegram:read"],
+    });
+
+    const response = await requestDownload({
+      search: "?file_id=tg-file-1&bot_id=tg-bot",
+      token,
+    });
+
+    expect(response.status).toBe(401);
+    expectUnauthorized(await expectJson(response));
+  });
+
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 

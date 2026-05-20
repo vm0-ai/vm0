@@ -224,42 +224,48 @@ const getIntegrationTelegramLinkStatusInner$ = computed(async (get) => {
   );
 });
 
-const getTelegramDownloadFileInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const query = get(queryOf(telegramDownloadFileContract.download));
+const getTelegramDownloadFileInner$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(queryOf(telegramDownloadFileContract.download));
 
-  let botToken: string | null | undefined;
-  if (isOfficialTelegramBotId(query.bot_id)) {
-    botToken = getOfficialTelegramBotConfig().botToken;
-  } else {
-    const installation = await get(
-      zeroTelegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
+    let botToken: string | null | undefined;
+    if (isOfficialTelegramBotId(query.bot_id)) {
+      botToken = getOfficialTelegramBotConfig().botToken;
+    } else {
+      const installation = await get(
+        zeroTelegramInstallation({ orgId: auth.orgId, botId: query.bot_id }),
+      );
+      signal.throwIfAborted();
+      botToken = installation?.botToken;
+    }
+
+    if (!botToken) {
+      return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
+    }
+
+    const settled = await settle(
+      downloadTelegramFile({ botToken, fileId: query.file_id, signal }),
     );
-    botToken = installation?.botToken;
-  }
-
-  if (!botToken) {
-    return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
-  }
-
-  const settled = await settle(
-    downloadTelegramFile({ botToken, fileId: query.file_id }),
-  );
-  if (!settled.ok) {
-    return errorResponse(
-      502,
-      "Failed to download file from Telegram",
-      "BAD_GATEWAY",
-    );
-  }
-  return settled.value;
-});
+    signal.throwIfAborted();
+    if (!settled.ok) {
+      return errorResponse(
+        502,
+        "Failed to download file from Telegram",
+        "BAD_GATEWAY",
+      );
+    }
+    return settled.value;
+  },
+);
 
 async function downloadTelegramFile(args: {
   readonly botToken: string;
   readonly fileId: string;
+  readonly signal: AbortSignal;
 }): Promise<Response> {
   const file = await getFile(args.botToken, args.fileId);
+  args.signal.throwIfAborted();
   if (!file.file_path) {
     return errorResponse(
       404,
@@ -273,7 +279,8 @@ async function downloadTelegramFile(args: {
 
   const fileName = file.file_path.split("/").pop() ?? args.fileId;
   const downloadUrl = buildFileDownloadUrl(args.botToken, file.file_path);
-  const fileResponse = await fetch(downloadUrl);
+  const fileResponse = await fetch(downloadUrl, { signal: args.signal });
+  args.signal.throwIfAborted();
   if (!fileResponse.ok) {
     return errorResponse(
       502,

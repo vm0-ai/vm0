@@ -304,34 +304,6 @@ export async function deleteMessage(
   });
 }
 
-interface TelegramFile {
-  file_id: string;
-  file_unique_id: string;
-  file_size?: number;
-  file_path?: string;
-}
-
-/**
- * Get file info and download path from Telegram.
- * The returned file_path can be used to download via:
- * https://api.telegram.org/file/bot<token>/<file_path>
- */
-export async function getFile(
-  client: TelegramClient,
-  fileId: string,
-): Promise<TelegramFile> {
-  return callTelegramApi<TelegramFile>(client.token, "getFile", {
-    file_id: fileId,
-  });
-}
-
-/**
- * Build a download URL for a Telegram file.
- */
-export function buildFileDownloadUrl(token: string, filePath: string): string {
-  return `https://api.telegram.org/file/bot${token}/${filePath}`;
-}
-
 /**
  * Register bot commands
  */
