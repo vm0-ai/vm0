@@ -77,10 +77,6 @@ interface RunDispatchError extends Error {
   sessionId?: string;
 }
 
-export function isRunDispatchError(error: unknown): error is RunDispatchError {
-  return error instanceof Error && "runId" in error;
-}
-
 export interface CreateRunParams {
   // Required — every caller must provide
   userId: string;

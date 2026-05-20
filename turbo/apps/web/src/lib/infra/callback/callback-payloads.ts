@@ -6,16 +6,6 @@
  * the parsePayload() functions in each route provide runtime validation.
  */
 
-export interface SlackOrgCallbackPayload {
-  workspaceId: string;
-  channelId: string;
-  threadTs: string;
-  messageTs: string;
-  connectionId: string;
-  agentId: string;
-  existingSessionId?: string;
-}
-
 export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;

@@ -9,7 +9,6 @@ export {
   loadCompose,
   markRunFailed,
   registerCallbacks,
-  isRunDispatchError,
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "./run-service";

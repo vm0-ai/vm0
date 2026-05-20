@@ -1,7 +1,4 @@
 import { eq, and } from "drizzle-orm";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
 import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
@@ -9,7 +6,6 @@ import { getAppUrl } from "../../url";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
 import type { UserInfoOptions } from "../../integration-prompt";
-import { canReuseSessionForRunModel } from "../../context/session-model-compatibility";
 import {
   fetchThreadContext,
   fetchChannelContext,
@@ -19,50 +15,6 @@ import {
   resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
-import { validateAgentSession } from "../../zero-run-validation";
-import { logger } from "../../../shared/logger";
-
-/**
- * Resolve installation and org from a Slack workspace ID.
- * Returns null if the workspace is not installed or not bound to an org.
- */
-export async function resolveOrgFromWorkspace(workspaceId: string): Promise<{
-  installation: typeof slackOrgInstallations.$inferSelect;
-  orgId: string;
-} | null> {
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-
-  if (!installation?.orgId) {
-    return null;
-  }
-
-  return { installation, orgId: installation.orgId };
-}
-
-/**
- * Resolve a connection from a Slack user in a workspace.
- */
-export async function resolveConnectionFromSlackUser(
-  slackUserId: string,
-  workspaceId: string,
-): Promise<typeof slackOrgConnections.$inferSelect | null> {
-  const [connection] = await globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, slackUserId),
-        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
-      ),
-    )
-    .limit(1);
-
-  return connection ?? null;
-}
 
 /**
  * Resolve default agent compose ID from org table.
@@ -166,35 +118,6 @@ export async function resolveEffectiveComposeId(
 }
 
 /**
- * Look up an existing thread session.
- */
-async function lookupThreadSession(
-  channelId: string,
-  threadTs: string,
-  connectionId: string,
-): Promise<{
-  existingSessionId: string | undefined;
-}> {
-  const [session] = await globalThis.services.db
-    .select({
-      agentSessionId: slackOrgThreadSessions.agentSessionId,
-    })
-    .from(slackOrgThreadSessions)
-    .where(
-      and(
-        eq(slackOrgThreadSessions.connectionId, connectionId),
-        eq(slackOrgThreadSessions.slackChannelId, channelId),
-        eq(slackOrgThreadSessions.slackThreadTs, threadTs),
-      ),
-    )
-    .limit(1);
-
-  return {
-    existingSessionId: session?.agentSessionId ?? undefined,
-  };
-}
-
-/**
  * Build the org connect URL for Slack users.
  */
 export function buildOrgConnectUrl(
@@ -227,8 +150,6 @@ export async function ensureOrgArtifact(
 ): Promise<void> {
   await ensureStorageExists(orgId, userId, "artifact", "artifact");
 }
-
-const log = logger("slack:shared");
 
 type SlackClient = ReturnType<typeof createSlackClient>;
 
@@ -332,82 +253,6 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     displayName: agent.displayName,
     agentId: agent.id,
   };
-}
-
-/**
- * Resolve compose info from an existing session.
- * Used when continuing a conversation to ensure we use the session's agent,
- * not the workspace default.
- */
-async function resolveSessionCompose(
-  sessionId: string,
-  userId: string,
-): Promise<
-  | { composeId: string; agentName: string; agentDisplayName: string | null }
-  | undefined
-> {
-  try {
-    const sessionData = await validateAgentSession(sessionId, userId);
-    const agent = await getWorkspaceAgent(sessionData.agentComposeId);
-    if (agent) {
-      return {
-        composeId: sessionData.agentComposeId,
-        agentName: agent.name,
-        agentDisplayName: agent.displayName,
-      };
-    }
-  } catch (error) {
-    log.warn("Failed to resolve session compose, using workspace default", {
-      sessionId,
-      error,
-    });
-  }
-  return undefined;
-}
-
-export async function resolveCompatibleThreadSession(opts: {
-  channelId: string;
-  threadTs: string;
-  connectionId: string;
-  userId: string;
-  orgId: string;
-  agentComposeId: string;
-}): Promise<string | undefined> {
-  const session = await lookupThreadSession(
-    opts.channelId,
-    opts.threadTs,
-    opts.connectionId,
-  );
-  const existingSessionId = session.existingSessionId;
-  if (!existingSessionId) return undefined;
-
-  const sessionCompose = await resolveSessionCompose(
-    existingSessionId,
-    opts.userId,
-  );
-  if (sessionCompose && sessionCompose.composeId !== opts.agentComposeId) {
-    log.debug("Agent changed, starting new Slack session", {
-      sessionComposeId: sessionCompose.composeId,
-      currentComposeId: opts.agentComposeId,
-    });
-    return undefined;
-  }
-
-  const canReuseSession = await canReuseSessionForRunModel({
-    sessionId: existingSessionId,
-    userId: opts.userId,
-    orgId: opts.orgId,
-    agentComposeId: opts.agentComposeId,
-  });
-  if (!canReuseSession) {
-    log.debug("Model changed, starting new Slack session", {
-      composeId: opts.agentComposeId,
-      existingSessionId,
-    });
-    return undefined;
-  }
-
-  return existingSessionId;
 }
 
 /**

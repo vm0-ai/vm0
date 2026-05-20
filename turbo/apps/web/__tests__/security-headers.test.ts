@@ -1593,6 +1593,13 @@ const ZERO_SLACK_COMMANDS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/slack/command",
   "/api/zero/slack/commands/help",
 ] as const;
+const ZERO_SLACK_EVENTS_REWRITE_SOURCE = "/api/zero/slack/events";
+const ZERO_SLACK_EVENTS_PATH = "/api/zero/slack/events";
+const ZERO_SLACK_EVENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/slack/events/extra",
+  "/api/zero/slack/event",
+  "/api/zero/slack/oauth/events",
+] as const;
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -2316,6 +2323,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SLACK_COMMANDS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/slack/commands",
+        },
+        {
+          source: ZERO_SLACK_EVENTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/slack/events",
         },
         {
           source: "/api/zero/devices/bb0/confirm",
@@ -4208,6 +4219,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SLACK_COMMANDS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SLACK_COMMANDS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero Slack events rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SLACK_EVENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SLACK_EVENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/slack/events",
+    });
+
+    const matcher = getPathMatch(ZERO_SLACK_EVENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SLACK_EVENTS_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_SLACK_EVENTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

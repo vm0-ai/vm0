@@ -57,31 +57,6 @@ export async function seedTestCompose(opts: {
 }
 
 /**
- * @why-db-direct Creates compose WITHOUT zero_agents row — API always creates
- * both. Tests "agent not found" scenarios where getWorkspaceAgent() returns
- * undefined despite compose FK being satisfied.
- */
-export async function seedOrphanCompose(opts: {
-  userId: string;
-  name: string;
-  orgId: string;
-}): Promise<{ composeId: string }> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId: opts.userId,
-      name: opts.name,
-      orgId: opts.orgId,
-    })
-    .returning({ id: agentComposes.id });
-  if (!row) {
-    throw new Error("Failed to seed orphan agent compose");
-  }
-  return { composeId: row.id };
-}
-
-/**
  * @why-db-direct Seeds the compose create-route side effects after the legacy
  * web route has been removed. Tests still need production-compatible compose
  * rows without making network calls through the web-to-api rewrite.

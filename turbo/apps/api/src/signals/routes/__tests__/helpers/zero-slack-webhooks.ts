@@ -199,6 +199,96 @@ export const countSlackWebhookConnections$ = command(
   },
 );
 
+export const countSlackWebhookInstallations$ = command(
+  async (
+    { set },
+    slackWorkspaceId: string,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    const db = set(writeDb$);
+    const rows = await db
+      .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.slackWorkspaceId, slackWorkspaceId));
+    signal.throwIfAborted();
+    return rows.length;
+  },
+);
+
+export const seedSlackWebhookOrphanCompose$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly namePrefix: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{ readonly composeId: string; readonly name: string }> => {
+    const db = set(writeDb$);
+    const name = `${args.namePrefix}-${randomUUID().slice(0, 8)}`;
+    const [compose] = await db
+      .insert(agentComposes)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        name,
+      })
+      .returning({ id: agentComposes.id });
+    signal.throwIfAborted();
+    if (!compose) {
+      throw new Error("orphan compose insert returned no row");
+    }
+    return { composeId: compose.id, name };
+  },
+);
+
+export const setSlackWebhookDefaultAgent$ = command(
+  async (
+    { set },
+    args: { readonly orgId: string; readonly composeId: string | null },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .update(orgMetadata)
+      .set({ defaultAgentId: args.composeId })
+      .where(eq(orgMetadata.orgId, args.orgId));
+    signal.throwIfAborted();
+  },
+);
+
+export const clearSlackWebhookAgentHeadVersion$ = command(
+  async ({ set }, composeId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .update(agentComposes)
+      .set({ headVersionId: null })
+      .where(eq(agentComposes.id, composeId));
+    signal.throwIfAborted();
+  },
+);
+
+export const setSlackWebhookUserAgentPreference$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly composeId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(slackUserAgentPreferences).values({
+      orgId: args.orgId,
+      vm0UserId: args.userId,
+      selectedComposeId: args.composeId,
+    });
+    signal.throwIfAborted();
+  },
+);
+
 export const findSlackAgentPreference$ = command(
   async (
     { set },

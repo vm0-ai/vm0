@@ -2,9 +2,10 @@ import { createStore } from "ccstate";
 import { WebClient } from "@slack/web-api";
 import type { TestSlackDispatchProbeResponse } from "@vm0/api-contracts/contracts/test-slack-dispatch-probe";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
@@ -20,6 +21,26 @@ import {
 const context = testContext();
 const store = createStore();
 const ROUTE = "/api/test/slack-dispatch-probe";
+const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
+
+afterEach(async () => {
+  const db = store.set(writeDb$);
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
+});
+
+async function seedVm0AnthropicKey(): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
+  await db.insert(vm0ApiKeys).values({
+    vendor: "anthropic",
+    model: "claude-sonnet-4-6",
+    apiKey: TEST_VM0_ANTHROPIC_KEY,
+  });
+}
 
 function configureSlackProbeTest(): void {
   mockEnv("ENV", "development");
@@ -114,7 +135,8 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await seedVm0AnthropicKey();
     configureSlackProbeTest();
   });
 

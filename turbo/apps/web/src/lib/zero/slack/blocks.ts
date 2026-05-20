@@ -1,4 +1,4 @@
-import type { Block, KnownBlock, View, MarkdownBlock } from "@slack/web-api";
+import type { Block, KnownBlock, View } from "@slack/web-api";
 import { getAppUrl } from "../url";
 
 /**
@@ -396,87 +396,6 @@ export function buildSuccessMessage(message: string): (Block | KnownBlock)[] {
       },
     },
   ];
-}
-
-/**
- * Build markdown message blocks using Slack's native markdown block type.
- * Slack's markdown block accepts standard markdown (including tables, code blocks,
- * lists, blockquotes) and handles rendering internally.
- *
- * @see https://docs.slack.dev/reference/block-kit/blocks/markdown-block/
- *
- * @param content - Standard markdown content
- * @returns Block Kit blocks
- */
-const MARKDOWN_BLOCK_MAX_LENGTH = 12000;
-
-function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
-  // Markdown blocks have a cumulative 12,000 character limit per message.
-  // If content exceeds that, truncate and indicate there is more.
-  const truncationSuffix = "\n\n_(Message too long to view in Slack.)_";
-  const truncated =
-    content.length > MARKDOWN_BLOCK_MAX_LENGTH
-      ? content.substring(
-          0,
-          MARKDOWN_BLOCK_MAX_LENGTH - truncationSuffix.length,
-        ) + truncationSuffix
-      : content;
-
-  const block: MarkdownBlock = {
-    type: "markdown",
-    text: truncated,
-  };
-
-  return [block];
-}
-
-/**
- * Build an agent response message with optional logs link.
- *
- * The attribution footer renders as a single context block without a divider —
- * a deliberately weaker visual than `buildFooterBlocks`, which is reserved for
- * longer schedule/user footers from the outbound `/integrations/slack/message`
- * path. Callers pre-assemble `footerText` (e.g. `"Reply to <@U123> · Claude
- * Opus 4.7"`); this helper only decides how to render it.
- *
- * @param content - The agent's response content
- * @param logsUrl - Optional URL to the run logs
- * @param footerText - Optional pre-joined attribution text
- * @returns Block Kit blocks with response content
- */
-export function buildAgentResponseMessage(
-  content: string,
-  logsUrl?: string,
-  footerText?: string,
-): (Block | KnownBlock)[] {
-  const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
-
-  // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>
-  if (logsUrl) {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:clipboard: <${logsUrl}|Audit>`,
-        },
-      ],
-    });
-  }
-
-  if (footerText) {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: footerText,
-        },
-      ],
-    });
-  }
-
-  return blocks;
 }
 
 /**

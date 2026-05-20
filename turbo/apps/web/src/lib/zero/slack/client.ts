@@ -296,32 +296,6 @@ export async function exchangeOAuthCodeForUser(
   };
 }
 
-/**
- * Set the assistant thread status indicator.
- *
- * Shows a typing-style status below the thread (e.g. "is thinking...").
- * Pass an empty string to clear the status.
- *
- * Per the 2026-03-05 Slack scope update, this API only requires `chat:write`.
- *
- * @param client - Slack WebClient
- * @param channel - Channel ID
- * @param threadTs - Thread timestamp
- * @param status - Status text (empty string to clear)
- */
-export async function setThreadStatus(
-  client: WebClient,
-  channel: string,
-  threadTs: string,
-  status: string,
-): Promise<void> {
-  await client.assistant.threads.setStatus({
-    channel_id: channel,
-    thread_ts: threadTs,
-    status,
-  });
-}
-
 /** Type guard for Slack API platform errors that carry a `data.error` string */
 export function isSlackPlatformError(
   err: unknown,

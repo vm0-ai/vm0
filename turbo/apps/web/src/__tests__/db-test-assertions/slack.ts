@@ -58,20 +58,6 @@ export async function findTestSlackOrgConnectionsByVm0UserId(
 }
 
 /**
- * Count Slack org installations for a workspace.
- */
-export async function countSlackOrgInstallations(
-  workspaceId: string,
-): Promise<number> {
-  initServices();
-  const rows = await globalThis.services.db
-    .select({ id: slackOrgInstallations.slackWorkspaceId })
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
-  return rows.length;
-}
-
-/**
  * Count Slack org connections for a workspace.
  */
 export async function countSlackOrgConnections(
