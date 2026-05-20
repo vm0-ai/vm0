@@ -182,9 +182,10 @@ pub(in super::super) async fn wait_cancel_token_removed(
 }
 
 pub(in super::super) async fn wait_discover_entered(env: &MockRunEnv, timeout: Duration) {
-    tokio::time::timeout(timeout, env.handle.discover_entered.notified())
-        .await
-        .expect("run() did not enter discover_fut select! within timeout");
+    assert!(
+        env.handle.wait_discover_entered(timeout).await,
+        "run() did not enter discover_fut select! within {timeout:?}"
+    );
 }
 
 pub(in super::super) async fn wait_budget_exhausted_reactor(env: &MockRunEnv, timeout: Duration) {

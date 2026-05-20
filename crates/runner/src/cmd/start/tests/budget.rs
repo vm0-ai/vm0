@@ -75,7 +75,7 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
     let budget = Arc::clone(&config.budget);
     let run_handle = tokio::spawn(run(config));
-    env.handle.discover_entered.notified().await;
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
 
     let id1 = RunId::new_v4();
     push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
@@ -84,12 +84,12 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
 
     let id2 = RunId::new_v4();
     push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect_err("discovery must not be polled while budget is exhausted");
+    assert!(
+        !env.handle
+            .wait_discover_entered(Duration::from_millis(100))
+            .await,
+        "discovery must not be polled while budget is exhausted"
+    );
     assert!(
         !env.cancel_tokens.lock().await.contains_key(&id2),
         "queued job must not be claimed while budget is exhausted",

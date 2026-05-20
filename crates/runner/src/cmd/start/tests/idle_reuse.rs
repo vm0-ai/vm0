@@ -3,9 +3,9 @@ use super::support::{
     assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
     mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
     seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
-    wait_budget_count, wait_cancel_token, wait_idle_pool_len, wait_idle_pool_sessions,
-    wait_parking_state, wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
-    wait_status_idle_sessions_and_active_runs,
+    wait_budget_count, wait_cancel_token, wait_discover_entered, wait_idle_pool_len,
+    wait_idle_pool_sessions, wait_parking_state, wait_sandbox_lifecycle_counts,
+    wait_status_idle_empty_with_active_run, wait_status_idle_sessions_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
@@ -200,12 +200,7 @@ async fn park_triggers_immediate_heartbeat() {
     let run_handle = tokio::spawn(run(config));
 
     // Snapshot the heartbeat count once the provider is parked in discovery.
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect("runner should enter discovery before the heartbeat baseline is captured");
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
     let before = env.handle.heartbeat_count();
 
     let run_id = RunId::new_v4();

@@ -42,12 +42,7 @@ async fn running_reaps_completed_jobs_without_budget_exhaustion() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect("run() did not enter discover_fut select! within 2s");
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     let run_id = RunId::new_v4();
     push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
@@ -795,12 +790,7 @@ async fn claim_after_stopping_sent_cancels_new_job() {
     // The 2s timeout gives a clear diagnostic if the "loop parks on
     // discover" invariant ever regresses, rather than hanging until
     // the outer test harness kills us.
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect("run() did not enter discover_fut select! within 2s");
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     // Flip the watch value to Stopping without firing changed().
     env.parking_gate.close();
@@ -850,12 +840,7 @@ async fn resume_after_stopping_is_ignored() {
     // `trigger_stopping`, which fires `changed()`), but the same barrier
     // is still the right "main loop is idle" signal — and deterministic
     // under coverage CI, unlike the 50 ms sleep this replaces.
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect("run() did not enter discover_fut select! within 2s");
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     // Enter Stopping first.
     env.trigger_stopping().await;
@@ -894,12 +879,7 @@ async fn heartbeat_tick_defers_past_first_select_poll() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        env.handle.discover_entered.notified(),
-    )
-    .await
-    .expect("run() did not enter discover_fut select! within 2s");
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
 
     // `minimal_context` → no session → completion path does not trigger
     // `park_notify`, so any heartbeat observed here came from the

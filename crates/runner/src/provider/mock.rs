@@ -60,9 +60,10 @@ pub struct MockJobProvider {
     /// point (lock + optional `poll_delay` complete, about to park on
     /// `rx.recv()`). Tests that need to order actions against that state —
     /// e.g. a silent `send_if_modified` that must land *after* the main loop
-    /// has entered its `discover_fut` select — await `notified()` instead of
-    /// sleeping. `notify_one` queues a permit, so a test that waits after
-    /// the signal fired still wakes immediately.
+    /// has entered its `discover_fut` select — call
+    /// [`MockProviderHandle::wait_discover_entered`] instead of sleeping.
+    /// `notify_one` queues a permit, so a test that waits after the signal
+    /// fired still wakes immediately.
     discover_entered: Arc<Notify>,
     /// Fired by `complete()` after a completion is appended to `completions`.
     /// `wait_completion` subscribes to this before checking the vec, so any
@@ -85,8 +86,8 @@ pub struct MockProviderHandle {
     pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
     pub completions: Arc<StdMutex<Vec<Completion>>>,
     pub heartbeats: Arc<StdMutex<Vec<HeartbeatState>>>,
-    /// See [`MockJobProvider::discover_entered`].
-    pub discover_entered: Arc<Notify>,
+    /// See [`Self::wait_discover_entered`].
+    discover_entered: Arc<Notify>,
     /// See [`MockJobProvider::completion_notify`].
     completion_notify: Arc<Notify>,
     /// See [`MockJobProvider::discover_poll_started`].
@@ -187,6 +188,13 @@ impl MockProviderHandle {
         }
     }
 
+    /// Wait until `discover()` has reached its inner await point.
+    pub async fn wait_discover_entered(&self, timeout: Duration) -> bool {
+        tokio::time::timeout(timeout, self.discover_entered.notified())
+            .await
+            .is_ok()
+    }
+
     /// Wait until `discover()` has been polled at least once and its optional
     /// poll-delay timer has been created.
     pub async fn wait_discover_poll_started(&self, timeout: Duration) -> bool {
@@ -252,7 +260,7 @@ impl JobProvider for MockJobProvider {
         // Signal tests that the future has reached its await point — the
         // main loop has polled `discover_fut`, the discovery Mutex is held,
         // and we are about to park on `rx.recv()`. Tests ordering actions
-        // against this state use `handle.discover_entered.notified()`.
+        // against this state use `handle.wait_discover_entered(...)`.
         self.discover_entered.notify_one();
         tokio::select! {
             result = rx.recv() => result,
