@@ -155,50 +155,57 @@ pub async fn populate_cache(
 fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
     let mut out = Vec::new();
     for (i, s) in manifest.storages.iter().enumerate() {
-        if s.cached {
-            continue;
+        if let Some(target) = cache_target_from_entry(
+            TargetKind::Storage,
+            i,
+            s.cached,
+            s.archive_url.as_deref(),
+            &s.vas_storage_name,
+            &s.vas_version_id,
+        ) {
+            out.push(target);
         }
-        let Some(url) = s.archive_url.as_deref() else {
-            continue;
-        };
-        let name = s.vas_storage_name.as_str();
-        let version = s.vas_version_id.as_str();
-        // Empty components would hash to the same fixed digest as every
-        // other empty component, collapsing distinct manifest entries into
-        // a shared cache slot. Treat them like missing keys: passthrough.
-        if name.is_empty() || version.is_empty() {
-            continue;
-        }
-        out.push(CacheTarget {
-            kind: TargetKind::Storage,
-            index: i,
-            name: name.to_string(),
-            version: version.to_string(),
-            archive_url: url.to_string(),
-        });
     }
     for (i, a) in manifest.artifacts.iter().enumerate() {
-        if a.cached {
-            continue;
+        if let Some(target) = cache_target_from_entry(
+            TargetKind::Artifact,
+            i,
+            a.cached,
+            a.archive_url.as_deref(),
+            &a.vas_storage_name,
+            &a.vas_version_id,
+        ) {
+            out.push(target);
         }
-        let Some(url) = a.archive_url.as_deref() else {
-            continue;
-        };
-        // `ArtifactEntry` keys are non-optional `String`, so an empty value
-        // is representable and must be skipped for the same reason as the
-        // storage branch above.
-        if a.vas_storage_name.is_empty() || a.vas_version_id.is_empty() {
-            continue;
-        }
-        out.push(CacheTarget {
-            kind: TargetKind::Artifact,
-            index: i,
-            name: a.vas_storage_name.clone(),
-            version: a.vas_version_id.clone(),
-            archive_url: url.to_string(),
-        });
     }
     out
+}
+
+fn cache_target_from_entry(
+    kind: TargetKind,
+    index: usize,
+    cached: bool,
+    archive_url: Option<&str>,
+    name: &str,
+    version: &str,
+) -> Option<CacheTarget> {
+    if cached {
+        return None;
+    }
+    let archive_url = archive_url?;
+    // Empty components would hash to the same fixed digest as every other
+    // empty component, collapsing distinct manifest entries into a shared
+    // cache slot. Treat them like missing keys: passthrough.
+    if name.is_empty() || version.is_empty() {
+        return None;
+    }
+    Some(CacheTarget {
+        kind,
+        index,
+        name: name.to_string(),
+        version: version.to_string(),
+        archive_url: archive_url.to_string(),
+    })
 }
 
 async fn process_one(
@@ -625,21 +632,25 @@ fn rewrite_url(manifest: &mut GuestDownloadManifest, target: &CacheTarget) {
     let mut applied = false;
     match target.kind {
         TargetKind::Storage => {
-            if let Some(entry) = manifest.storages.get_mut(target.index)
-                && entry.vas_storage_name == target.name
-                && entry.vas_version_id == target.version
-            {
-                entry.archive_url = Some(new_url);
-                applied = true;
+            if let Some(entry) = manifest.storages.get_mut(target.index) {
+                applied = rewrite_entry_url(
+                    &mut entry.archive_url,
+                    &entry.vas_storage_name,
+                    &entry.vas_version_id,
+                    target,
+                    new_url,
+                );
             }
         }
         TargetKind::Artifact => {
-            if let Some(entry) = manifest.artifacts.get_mut(target.index)
-                && entry.vas_storage_name == target.name
-                && entry.vas_version_id == target.version
-            {
-                entry.archive_url = Some(new_url);
-                applied = true;
+            if let Some(entry) = manifest.artifacts.get_mut(target.index) {
+                applied = rewrite_entry_url(
+                    &mut entry.archive_url,
+                    &entry.vas_storage_name,
+                    &entry.vas_version_id,
+                    target,
+                    new_url,
+                );
             }
         }
     }
@@ -651,6 +662,20 @@ fn rewrite_url(manifest: &mut GuestDownloadManifest, target: &CacheTarget) {
             "storage_cache: manifest identity mismatch at rewrite, skipping url swap"
         );
     }
+}
+
+fn rewrite_entry_url(
+    archive_url: &mut Option<String>,
+    name: &str,
+    version: &str,
+    target: &CacheTarget,
+    new_url: String,
+) -> bool {
+    if name != target.name.as_str() || version != target.version.as_str() {
+        return false;
+    }
+    *archive_url = Some(new_url);
+    true
 }
 
 #[cfg(test)]
