@@ -1,7 +1,16 @@
 """Bounded selective JSON extraction.
 
 The scanner keeps only selected scalars and object keys needed to resolve
-selected paths, while skipping unselected values by JSON syntax.
+selected paths, while skipping unselected values by JSON syntax. Callers create
+one extractor per JSON document, call :meth:`JsonSelectiveExtractor.feed` with
+byte chunks, and call :meth:`JsonSelectiveExtractor.finish` once to finalize the
+result.
+
+Paths are tuples of object keys. For example, ``("usage", "input_tokens")``
+matches ``{"usage": {"input_tokens": 1}}``. Wildcards are supported only by
+``wildcard_array_count_paths`` and each wildcard pattern must contain exactly one
+``"*"`` segment. For example, ``("includes", "*")`` records the array lengths
+for keys such as ``includes.users`` and ``includes.tweets``.
 """
 
 import json
@@ -34,12 +43,36 @@ _UTF8_SURROGATE_MAX = 0xDFFF
 
 @dataclass(frozen=True)
 class ScalarField:
+    """Selected scalar field configuration.
+
+    ``kind`` must be ``"string"`` or ``"int"``. ``max_bytes`` is the capture
+    limit for the selected scalar token; exceeding it fails extraction with
+    ``"string limit exceeded"`` or ``"number limit exceeded"``.
+    """
+
     kind: ScalarKind
     max_bytes: int = 4096
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("string", "int"):
+            raise ValueError("scalar field kind must be 'string' or 'int'")
+        _validate_positive_int("scalar field max_bytes", self.max_bytes)
 
 
 @dataclass
 class JsonExtractionResult:
+    """Final extraction result returned by :meth:`JsonSelectiveExtractor.finish`.
+
+    ``complete`` is true only when the JSON document parsed successfully.
+    ``values`` contains selected scalar values, ``array_counts`` contains exact
+    array path lengths, ``wildcard_array_counts`` contains per-wildcard-key array
+    lengths, and ``object_present`` contains observed object paths.
+
+    When ``complete`` is false, all observation containers are empty and
+    ``error`` describes the parse or bound failure. This prevents callers from
+    consuming partial observations.
+    """
+
     complete: bool
     values: dict[Path, object] = field(default_factory=dict)
     array_counts: dict[Path, int] = field(default_factory=dict)
@@ -87,6 +120,21 @@ class _LiteralState:
 
 
 class JsonSelectiveExtractor:
+    """Streaming, bounded JSON extractor for a fixed observation set.
+
+    The extractor observes four kinds of data while parsing:
+
+    - ``scalar_fields`` captures selected string or integer values.
+    - ``array_count_paths`` counts arrays at exact paths.
+    - ``wildcard_array_count_paths`` counts arrays at wildcard paths with one
+      ``"*"`` segment, recording counts by the concrete wildcard key.
+    - ``object_presence_paths`` records exact paths where JSON objects appear.
+
+    Oversized selected scalars fail extraction. Oversized object keys are treated
+    as unknown keys instead, so selected descendants below that key cannot match.
+    Objects that are array elements do not match normal object-path observations.
+    """
+
     def __init__(
         self,
         *,
@@ -99,17 +147,33 @@ class JsonSelectiveExtractor:
         max_number_bytes: int = 128,
         max_wildcard_keys: int = 256,
     ) -> None:
-        self.scalar_fields = scalar_fields or {}
-        self.array_count_paths = array_count_paths or set()
-        self.wildcard_array_count_paths = wildcard_array_count_paths or set()
-        for pattern in self.wildcard_array_count_paths:
-            if pattern.count("*") != 1:
-                raise ValueError("wildcard array count paths must contain exactly one '*'")
-        self.object_presence_paths = object_presence_paths or set()
+        """Create an extractor for selected JSON observations.
+
+        ``max_depth`` bounds nested objects and arrays and fails with
+        ``"max depth exceeded"``. ``max_key_bytes`` bounds object key capture;
+        keys above the limit become unknown keys rather than parser errors.
+        ``max_number_bytes`` bounds number tokens and fails with
+        ``"number limit exceeded"``. ``max_wildcard_keys`` bounds distinct
+        wildcard keys and fails with ``"max wildcard keys exceeded"``.
+        """
+        self.scalar_fields = dict(scalar_fields or {})
+        self.array_count_paths = set(array_count_paths or set())
+        self.wildcard_array_count_paths = set(wildcard_array_count_paths or set())
+        self.object_presence_paths = set(object_presence_paths or set())
         self.max_depth = max_depth
         self.max_key_bytes = max_key_bytes
         self.max_number_bytes = max_number_bytes
         self.max_wildcard_keys = max_wildcard_keys
+        _validate_extractor_config(
+            self.scalar_fields,
+            self.array_count_paths,
+            self.wildcard_array_count_paths,
+            self.object_presence_paths,
+            max_depth=self.max_depth,
+            max_key_bytes=self.max_key_bytes,
+            max_number_bytes=self.max_number_bytes,
+            max_wildcard_keys=self.max_wildcard_keys,
+        )
         self.key_collection_paths = _build_key_collection_paths(
             set(self.scalar_fields)
             | self.array_count_paths
@@ -130,6 +194,12 @@ class JsonSelectiveExtractor:
         self._literal: _LiteralState | None = None
 
     def feed(self, chunk: bytes) -> None:
+        """Consume the next bytes for this JSON document.
+
+        Feed may be called repeatedly before ``finish()``. If the extractor has
+        already recorded an error, later chunks are ignored and cannot recover
+        the parser.
+        """
         if self._error:
             return
         i = 0
@@ -144,6 +214,12 @@ class JsonSelectiveExtractor:
                 i = self._consume_main(chunk, i)
 
     def finish(self) -> JsonExtractionResult:
+        """Finalize the current document and return the extraction result.
+
+        Call once after all chunks have been fed. If parsing is incomplete,
+        invalid, or a configured bound was exceeded, the returned result has
+        ``complete=False`` and empty observation containers.
+        """
         if not self._error and self._number is not None:
             self._finish_number()
 
@@ -678,6 +754,45 @@ class JsonSelectiveExtractor:
 
 def _is_hex_byte(b: int) -> bool:
     return ord("0") <= b <= ord("9") or ord("a") <= b <= ord("f") or ord("A") <= b <= ord("F")
+
+
+def _validate_extractor_config(
+    scalar_fields: dict[Path, ScalarField],
+    array_count_paths: set[Path],
+    wildcard_array_count_paths: set[WildcardPath],
+    object_presence_paths: set[Path],
+    *,
+    max_depth: int,
+    max_key_bytes: int,
+    max_number_bytes: int,
+    max_wildcard_keys: int,
+) -> None:
+    for name, value in (
+        ("max_depth", max_depth),
+        ("max_key_bytes", max_key_bytes),
+        ("max_number_bytes", max_number_bytes),
+        ("max_wildcard_keys", max_wildcard_keys),
+    ):
+        _validate_positive_int(name, value)
+
+    _validate_exact_paths("scalar field paths", set(scalar_fields))
+    _validate_exact_paths("array count paths", array_count_paths)
+    _validate_exact_paths("object presence paths", object_presence_paths)
+
+    for pattern in wildcard_array_count_paths:
+        if pattern.count("*") != 1:
+            raise ValueError("wildcard array count paths must contain exactly one '*'")
+
+
+def _validate_exact_paths(name: str, paths: set[Path]) -> None:
+    for path in paths:
+        if "*" in path:
+            raise ValueError(f"{name} must not contain '*'")
+
+
+def _validate_positive_int(name: str, value: int) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
 
 
 def _is_utf8_continuation(b: int) -> bool:
