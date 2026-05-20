@@ -1525,15 +1525,14 @@ fn supervised_stdout_receiver(
     Box<dyn FnOnce() + Send + 'static>,
 ) {
     let (stdout_tx, stdout_rx) = mpsc::channel(queue_capacity.max(1));
-    let (close_tx, mut close_rx) = watch::channel(false);
+    let close = CancellationToken::new();
+    let task_close = close.clone();
 
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                changed = close_rx.changed() => {
-                    if changed.is_err() || *close_rx.borrow() {
-                        break;
-                    }
+                () = task_close.cancelled() => {
+                    break;
                 }
                 event = stream_rx.recv() => {
                     let Some(event) = event else {
@@ -1564,7 +1563,7 @@ fn supervised_stdout_receiver(
     (
         stdout_rx,
         Box::new(move || {
-            close_tx.send_replace(true);
+            close.cancel();
         }),
     )
 }
@@ -4665,6 +4664,48 @@ mod tests {
             .await
             .expect("stdout adapter did not close");
         assert!(received.is_none());
+    }
+
+    #[tokio::test]
+    async fn supervised_stdout_receiver_dropping_cleanup_handle_does_not_close_claimed_stream() {
+        let (stream_tx, stream_rx) = mpsc::channel(4);
+        let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 2);
+
+        stream_tx
+            .send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 1,
+                chunk: b"before".to_vec(),
+                truncated: false,
+            })
+            .await
+            .unwrap();
+
+        drop(close);
+
+        stream_tx
+            .send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 2,
+                chunk: b"after".to_vec(),
+                truncated: false,
+            })
+            .await
+            .unwrap();
+        drop(stream_tx);
+
+        let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("first stdout chunk was not forwarded")
+            .expect("stdout stream closed before first chunk");
+        let second = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("second stdout chunk was not forwarded")
+            .expect("stdout stream closed before second chunk");
+
+        assert_eq!(first.bytes, b"before");
+        assert_eq!(second.bytes, b"after");
+        assert!(stdout_rx.recv().await.is_none());
     }
 
     #[test]
