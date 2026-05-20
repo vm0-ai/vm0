@@ -469,32 +469,25 @@ async fn resolve_guest(
                 dest.display()
             ))
         })?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod {name}: {e}")))?;
-        }
-        return Ok(dest);
-    }
-    if let Some(bytes) = bundled_guest(name) {
+    } else if let Some(bytes) = bundled_guest(name) {
         tokio::fs::write(&dest, bytes)
             .await
             .map_err(|e| RunnerError::Internal(format!("write bundled {name}: {e}")))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
-                .await
-                .map_err(|e| RunnerError::Internal(format!("chmod {name}: {e}")))?;
-        }
-        return Ok(dest);
+    } else {
+        return Err(RunnerError::Internal(format!(
+            "missing --{} and no bundled binary available",
+            name
+        )));
     }
-    Err(RunnerError::Internal(format!(
-        "missing --{} and no bundled binary available",
-        name
-    )))
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))
+            .await
+            .map_err(|e| RunnerError::Internal(format!("chmod {name}: {e}")))?;
+    }
+    Ok(dest)
 }
 
 /// Build an image (template from R2 cache or local build, snapshot always local).
