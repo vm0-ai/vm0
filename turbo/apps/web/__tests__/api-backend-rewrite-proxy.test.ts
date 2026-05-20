@@ -729,6 +729,18 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero connectors computer rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/computer")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/computer/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/computers")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero connectors scope diff rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/scope-diff"),
