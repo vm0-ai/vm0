@@ -2528,6 +2528,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/slack/connect",
         },
         {
+          source: "/api/zero/integrations/slack/download-file",
+          destination:
+            "https://api.example.test/api/zero/integrations/slack/download-file",
+        },
+        {
           source: "/api/zero/integrations/telegram/bots",
           destination:
             "https://api.example.test/api/zero/integrations/telegram/bots",
@@ -8251,6 +8256,25 @@ describe("API backend rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
     ).toBe(false);
+  });
+
+  it("should match the zero integrations Slack download-file route for middleware pass-through", async () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/slack/download-file",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/slack/download-file/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/download"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      false,
+    );
   });
 
   it("should match the zero integrations Telegram upload init route for middleware pass-through", async () => {

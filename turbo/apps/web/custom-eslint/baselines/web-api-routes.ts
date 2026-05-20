@@ -13,7 +13,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/webhooks/github/route.ts",
   "app/api/webhooks/stripe/route.ts",
   "app/api/zero/feature-switches/route.ts",
-  "app/api/zero/integrations/slack/download-file/route.ts",
   "app/api/zero/integrations/slack/route.ts",
   "app/api/zero/integrations/slack/upload-file/complete/route.ts",
   "app/api/zero/integrations/slack/upload-file/init/route.ts",
