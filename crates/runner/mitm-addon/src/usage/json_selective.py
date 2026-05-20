@@ -41,6 +41,13 @@ _UTF8_SURROGATE_MIN = 0xD800
 _UTF8_SURROGATE_MAX = 0xDFFF
 
 
+def _validate_positive_int(name: str, value: int) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
 @dataclass(frozen=True)
 class ScalarField:
     """Selected scalar field configuration.
@@ -156,10 +163,14 @@ class JsonSelectiveExtractor:
         ``"number limit exceeded"``. ``max_wildcard_keys`` bounds distinct
         wildcard keys and fails with ``"max wildcard keys exceeded"``.
         """
-        self.scalar_fields = dict(scalar_fields or {})
-        self.array_count_paths = set(array_count_paths or set())
-        self.wildcard_array_count_paths = set(wildcard_array_count_paths or set())
-        self.object_presence_paths = set(object_presence_paths or set())
+        self.scalar_fields = dict(scalar_fields) if scalar_fields is not None else {}
+        self.array_count_paths = set(array_count_paths) if array_count_paths is not None else set()
+        self.wildcard_array_count_paths = (
+            set(wildcard_array_count_paths) if wildcard_array_count_paths is not None else set()
+        )
+        self.object_presence_paths = (
+            set(object_presence_paths) if object_presence_paths is not None else set()
+        )
         self.max_depth = max_depth
         self.max_key_bytes = max_key_bytes
         self.max_number_bytes = max_number_bytes
@@ -775,24 +786,30 @@ def _validate_extractor_config(
     ):
         _validate_positive_int(name, value)
 
+    for scalar_field in scalar_fields.values():
+        if not isinstance(scalar_field, ScalarField):
+            raise TypeError("scalar fields must map to ScalarField")
+
     _validate_exact_paths("scalar field paths", set(scalar_fields))
     _validate_exact_paths("array count paths", array_count_paths)
     _validate_exact_paths("object presence paths", object_presence_paths)
 
-    for pattern in wildcard_array_count_paths:
-        if pattern.count("*") != 1:
+    for path in wildcard_array_count_paths:
+        _validate_path("wildcard array count paths", path)
+        if path.count("*") != 1:
             raise ValueError("wildcard array count paths must contain exactly one '*'")
 
 
 def _validate_exact_paths(name: str, paths: set[Path]) -> None:
     for path in paths:
+        _validate_path(name, path)
         if "*" in path:
             raise ValueError(f"{name} must not contain '*'")
 
 
-def _validate_positive_int(name: str, value: int) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise ValueError(f"{name} must be a positive integer")
+def _validate_path(name: str, path: Path) -> None:
+    if not isinstance(path, tuple) or any(not isinstance(segment, str) for segment in path):
+        raise TypeError(f"{name} must be tuple[str, ...]")
 
 
 def _is_utf8_continuation(b: int) -> bool:

@@ -86,19 +86,39 @@ def test_rejects_invalid_scalar_field_kind():
         ScalarField("number")
 
 
-@pytest.mark.parametrize("max_bytes", [0, -1, True])
+@pytest.mark.parametrize("max_bytes", [0, -1])
 def test_rejects_invalid_scalar_field_max_bytes(max_bytes):
     with pytest.raises(ValueError, match="max_bytes"):
         ScalarField("string", max_bytes=max_bytes)
 
 
+def test_rejects_bool_scalar_field_max_bytes():
+    with pytest.raises(TypeError, match="max_bytes"):
+        ScalarField("string", max_bytes=True)
+
+
+def test_rejects_invalid_scalar_field_config_value():
+    with pytest.raises(TypeError, match="ScalarField"):
+        JsonSelectiveExtractor(scalar_fields={("model",): "string"})
+
+
 @pytest.mark.parametrize(
-    "bound",
-    ["max_depth", "max_key_bytes", "max_number_bytes", "max_wildcard_keys"],
+    ("bound", "value"),
+    [
+        ("max_depth", 0),
+        ("max_key_bytes", 0),
+        ("max_number_bytes", 0),
+        ("max_wildcard_keys", 0),
+    ],
 )
-def test_rejects_invalid_extractor_bounds(bound):
+def test_rejects_invalid_extractor_bounds(bound, value):
     with pytest.raises(ValueError, match=bound):
-        JsonSelectiveExtractor(**{bound: 0})
+        JsonSelectiveExtractor(**{bound: value})
+
+
+def test_rejects_bool_extractor_bound():
+    with pytest.raises(TypeError, match="max_depth"):
+        JsonSelectiveExtractor(max_depth=True)
 
 
 @pytest.mark.parametrize(
@@ -111,6 +131,34 @@ def test_rejects_invalid_extractor_bounds(bound):
 )
 def test_rejects_wildcards_in_exact_observation_paths(kwargs):
     with pytest.raises(ValueError, match="must not contain"):
+        JsonSelectiveExtractor(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"scalar_fields": {"model": ScalarField("string")}},
+        {"array_count_paths": {"data"}},
+        {"wildcard_array_count_paths": {"includes"}},
+        {"object_presence_paths": {"data"}},
+    ],
+)
+def test_rejects_non_tuple_observation_paths(kwargs):
+    with pytest.raises(TypeError, match=r"tuple\[str, \.\.\.\]"):
+        JsonSelectiveExtractor(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"scalar_fields": {(1,): ScalarField("string")}},
+        {"array_count_paths": {(1,)}},
+        {"wildcard_array_count_paths": {("includes", 1)}},
+        {"object_presence_paths": {(1,)}},
+    ],
+)
+def test_rejects_non_string_path_segments(kwargs):
+    with pytest.raises(TypeError, match=r"tuple\[str, \.\.\.\]"):
         JsonSelectiveExtractor(**kwargs)
 
 
