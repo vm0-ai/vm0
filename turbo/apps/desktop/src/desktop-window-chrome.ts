@@ -3,7 +3,7 @@ type DesktopWindowChromeOptions = Pick<
   "titleBarStyle" | "trafficLightPosition"
 >;
 
-export type DesktopWindowTrafficLightLayout = "expanded" | "collapsed";
+type DesktopWindowTrafficLightLayout = "expanded" | "collapsed";
 
 const EXPANDED_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 16, y: 18 };
 const COLLAPSED_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 8, y: 18 };
