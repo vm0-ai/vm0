@@ -331,6 +331,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
+  [FeatureSwitchKey.WereadConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the WeRead (微信读书) connector. When disabled, WeRead is hidden from the connectors list and cannot be connected.",
+    enabled: false,
+  },
   [FeatureSwitchKey.VoiceChatRealtimeBilling]: {
     maintainer: "lancy@vm0.ai",
     description:

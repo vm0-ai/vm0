@@ -183,6 +183,7 @@ import { supabaseHandler } from "./providers/supabase-handler";
 import { mailchimpHandler } from "./providers/mailchimp-handler";
 import { todoistHandler } from "./providers/todoist-handler";
 import { webflowHandler } from "./providers/webflow-handler";
+import { wereadHandler } from "./providers/weread-handler";
 import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
 import { outlookMailHandler } from "./providers/outlook-mail-handler";
 import { metaAdsHandler } from "./providers/meta-ads-handler";
@@ -394,6 +395,7 @@ export const PROVIDER_HANDLERS: Record<
   todoist: todoistHandler,
   vercel: vercelHandler,
   webflow: webflowHandler,
+  weread: wereadHandler,
   supabase: supabaseHandler,
   "meta-ads": metaAdsHandler,
   posthog: posthogHandler,

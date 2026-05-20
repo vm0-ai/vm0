@@ -229,6 +229,7 @@ import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
 import { wandbFirewall } from "./wandb.generated";
 import { webflowFirewall } from "./webflow.generated";
+import { wereadFirewall } from "./weread.generated";
 import { wixFirewall } from "./wix.generated";
 import { workosFirewall } from "./workos.generated";
 import { wrikeFirewall } from "./wrike.generated";
@@ -449,6 +450,7 @@ const CONNECTOR_FIREWALLS = {
   vercel: vercelFirewall,
   wandb: wandbFirewall,
   webflow: webflowFirewall,
+  weread: wereadFirewall,
   wix: wixFirewall,
   workos: workosFirewall,
   wrike: wrikeFirewall,

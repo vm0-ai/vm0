@@ -189,6 +189,7 @@ import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
+import { generate as generateWeread } from "./weread";
 import { generate as generateWix } from "./wix";
 import { generate as generateWorkos } from "./workos";
 import { generate as generateWrike } from "./wrike";
@@ -389,6 +390,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,
+  weread: generateWeread,
   wix: generateWix,
   workos: generateWorkos,
   wrike: generateWrike,

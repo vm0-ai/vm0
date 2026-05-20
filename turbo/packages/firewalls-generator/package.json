@@ -187,6 +187,7 @@
     "generate:v0": "tsx src/index.ts v0",
     "generate:vercel": "tsx src/index.ts vercel",
     "generate:webflow": "tsx src/index.ts webflow",
+    "generate:weread": "tsx src/index.ts weread",
     "generate:wix": "tsx src/index.ts wix",
     "generate:wrike": "tsx src/index.ts wrike",
     "generate:x": "tsx src/index.ts x",

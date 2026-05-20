@@ -134,6 +134,15 @@ describe("getAvailableConnectorAuthMethods", () => {
       "api-token",
     ]);
   });
+
+  it("exposes WeRead API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethods("weread", {
+        [FeatureSwitchKey.WereadConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
 });
 
 describe("getConnectorManagedSecretNames", () => {

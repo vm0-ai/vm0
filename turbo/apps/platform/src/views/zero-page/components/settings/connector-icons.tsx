@@ -182,6 +182,7 @@ const CONNECTOR_ICON_COLORFUL = {
   together: true,
   wandb: true,
   webflow: true,
+  weread: true,
   workos: true,
   wrike: true,
   xero: true,
