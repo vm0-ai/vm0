@@ -69,7 +69,11 @@ _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
 def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
-    return _auth_state.setdefault(cache_key, _FirewallAuthState())
+    state = _auth_state.get(cache_key)
+    if state is None:
+        state = _FirewallAuthState()
+        _auth_state[cache_key] = state
+    return state
 
 
 def is_billable_firewall(match_info: dict, vm_info: dict) -> bool:
