@@ -20,8 +20,6 @@ import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
   getConnectorOAuthProviderHandler,
-  isOAuthConnectorType,
-  PROVIDER_HANDLERS,
   providerEnvFromObject,
   providerSupportsRefresh,
   refreshProviderToken,
@@ -64,15 +62,6 @@ function isConnectorOAuthHandler(
   handler: OAuthHandler,
 ): handler is ConnectorProviderHandler {
   return "buildAuthUrl" in handler && "exchangeCode" in handler;
-}
-
-function getRequiredConnectorOAuthHandler(
-  type: ConnectorType,
-): ConnectorProviderHandler {
-  if (!isOAuthConnectorType(type)) {
-    throw new Error(`${type} connector does not use OAuth`);
-  }
-  return PROVIDER_HANDLERS[type];
 }
 
 function supportsOAuthRefresh(
@@ -471,8 +460,8 @@ export async function revokeConnectorToken(
 ): Promise<void> {
   if (type === "computer") return;
 
-  const handler = getRequiredConnectorOAuthHandler(type);
-  if (!handler.revokeToken) return;
+  const handler = getConnectorOAuthProviderHandler(type);
+  if (!handler?.revokeToken) return;
 
   const env = providerEnvFromObject(globalThis.services.env);
   const clientId = handler.getClientId(env);
@@ -548,8 +537,8 @@ export async function deleteConnector(
     );
 
     if (existing.authMethod === "oauth" && type !== "computer") {
-      const handler = getRequiredConnectorOAuthHandler(type);
-      const refreshSecretName = handler.getRefreshSecretName?.();
+      const refreshSecretName =
+        getConnectorOAuthProviderHandler(type)?.getRefreshSecretName?.();
       if (refreshSecretName) {
         secretNames.push(refreshSecretName);
       }
