@@ -729,6 +729,12 @@ const TEST_TELEGRAM_STATE_NEXT_NEGATIVE_PATHS = [
   "/api/test/telegram-state/extra",
   "/api/test/telegram-states",
 ] as const;
+const TELEGRAM_REGISTER_REWRITE_SOURCE = "/api/telegram/register";
+const TELEGRAM_REGISTER_PATH = "/api/telegram/register";
+const TELEGRAM_REGISTER_NEXT_NEGATIVE_PATHS = [
+  "/api/telegram/register/extra",
+  "/api/telegram/registrations",
+] as const;
 const TELEGRAM_SETUP_STATUS_REWRITE_SOURCE = "/api/telegram/setup-status";
 const TELEGRAM_SETUP_STATUS_PATH = "/api/telegram/setup-status";
 const TELEGRAM_SETUP_STATUS_NEXT_NEGATIVE_PATHS = [
@@ -6423,6 +6429,35 @@ describe("API backend rewrites", () => {
     expect(matcher(TELEGRAM_SETUP_STATUS_PATH)).toStrictEqual({});
     for (const pathname of TELEGRAM_SETUP_STATUS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact telegram register rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TELEGRAM_REGISTER_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TELEGRAM_REGISTER_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/telegram/register",
+    });
+
+    const matcher = getPathMatch(TELEGRAM_REGISTER_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(TELEGRAM_REGISTER_PATH)).toStrictEqual({});
+    for (const pathname of TELEGRAM_REGISTER_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact telegram register path", () => {
+    expect(matchesApiBackendRewritePath(TELEGRAM_REGISTER_PATH)).toBe(true);
+    for (const pathname of TELEGRAM_REGISTER_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
 

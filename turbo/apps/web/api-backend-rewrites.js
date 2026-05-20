@@ -149,6 +149,7 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const GITHUB_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/github";
 const STRIPE_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/stripe";
+const TELEGRAM_REGISTER_REWRITE_SOURCE = "/api/telegram/register";
 const TELEGRAM_SETUP_STATUS_REWRITE_SOURCE = "/api/telegram/setup-status";
 const TELEGRAM_WEBHOOK_REWRITE_SOURCE = "/api/telegram/webhook/:telegramBotId";
 const TELEGRAM_WEBHOOK_PATH_RE = /^\/api\/telegram\/webhook\/[^/]+$/;
@@ -484,6 +485,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/test/slack-state", "/api/test/slack-state"],
   ["/api/test/telegram-state", "/api/test/telegram-state"],
+  [TELEGRAM_REGISTER_REWRITE_SOURCE, "/api/telegram/register"],
   [TELEGRAM_SETUP_STATUS_REWRITE_SOURCE, "/api/telegram/setup-status"],
   [
     TELEGRAM_WEBHOOK_REWRITE_SOURCE,

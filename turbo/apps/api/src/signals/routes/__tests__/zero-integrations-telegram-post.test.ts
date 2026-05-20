@@ -26,6 +26,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { decryptSecretValue } from "../../services/crypto.utils";
 import { clearAllDetached } from "../../utils";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
@@ -38,6 +39,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const TEST_BOT_TOKEN = "123456:test-bot-token";
+const NEW_BOT_TOKEN = "123456:new-test-bot-token";
 const OFFICIAL_BOT_TOKEN = "987654:official-bot-token";
 const OFFICIAL_BOT_USERNAME = "official_zero_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
@@ -329,6 +331,20 @@ function telegramClient() {
   return setupApp({ context })(zeroIntegrationsTelegramContract);
 }
 
+async function postRegisterRaw(body: unknown): Promise<Response> {
+  return await createApp({ signal: context.signal }).request(
+    "/api/telegram/register",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 async function postWebhook(args: {
   readonly telegramBotId: string;
   readonly secret: string;
@@ -473,6 +489,45 @@ describe("POST /api/telegram/setup-status", () => {
 });
 
 describe("POST /api/telegram/register", () => {
+  it("requires an authenticated organization session", async () => {
+    const response = await accept(
+      telegramClient().register({
+        headers: {},
+        body: { botToken: TEST_BOT_TOKEN },
+      }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 400 when botToken is missing", async () => {
+    mocks.clerk.session("user_register_missing_token", "org_register_missing");
+
+    const response = await postRegisterRaw({});
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "botToken is required", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("returns 400 when bot token is invalid", async () => {
+    mocks.clerk.session("user_register_invalid_token", "org_register_invalid");
+    context.mocks.telegram.getMe.mockRejectedValue(new Error("Unauthorized"));
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { botToken: TEST_BOT_TOKEN },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Invalid bot token");
+  });
+
   it("registers a custom Telegram bot and configures its webhook", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
@@ -528,6 +583,225 @@ describe("POST /api/telegram/register", () => {
       .limit(1);
     expect(installation?.defaultComposeId).toBe(fixture.composeId);
     expect(installation?.botUsername).toBe("registered_bot");
+  });
+
+  it("uses the active org default agent when defaultAgentId is omitted", async () => {
+    const telegramBotId = newTelegramBotId();
+    const fixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        { telegramBotId, installBot: false },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockTelegramGetMe({
+      botId: telegramBotId,
+      username: `default_bot_${telegramBotId}`,
+    });
+    context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
+    context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { botToken: TEST_BOT_TOKEN },
+      }),
+      [201],
+    );
+
+    expect(response.body.id).toBe(telegramBotId);
+    expect(response.body.agent).toStrictEqual({
+      id: fixture.composeId,
+      name: expect.any(String),
+    });
+  });
+
+  it("rejects an empty defaultAgentId before verifying the token", async () => {
+    mocks.clerk.session("user_register_empty_agent", "org_register_empty");
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { botToken: TEST_BOT_TOKEN, defaultAgentId: "" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("defaultAgentId");
+    expect(context.mocks.telegram.getMe).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when bot is already registered", async () => {
+    const fixture = await trackFixture(
+      store.set(seedTelegramPostFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockTelegramGetMe({ botId: fixture.telegramBotId });
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          botToken: TEST_BOT_TOKEN,
+          defaultAgentId: fixture.composeId,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toContain("/connect");
+    expect(context.mocks.telegram.setWebhook).not.toHaveBeenCalled();
+  });
+
+  it("reinstalls an existing bot when reinstallBotId matches the token bot id", async () => {
+    const fixture = await trackFixture(
+      store.set(seedTelegramPostFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockTelegramGetMe({
+      botId: fixture.telegramBotId,
+      username: `reinstall_bot_${fixture.telegramBotId}`,
+    });
+    context.mocks.telegram.setWebhook.mockResolvedValue(undefined);
+    context.mocks.telegram.setMyCommands.mockResolvedValue(undefined);
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          botToken: NEW_BOT_TOKEN,
+          reinstallBotId: fixture.telegramBotId,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: fixture.telegramBotId,
+      tokenStatus: "valid",
+      agent: { id: fixture.composeId },
+    });
+    expect(context.mocks.telegram.setWebhook).toHaveBeenCalledWith(
+      NEW_BOT_TOKEN,
+      expect.stringContaining(`/api/telegram/webhook/${fixture.telegramBotId}`),
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+    );
+    expect(context.mocks.telegram.setMyCommands).toHaveBeenCalledWith(
+      NEW_BOT_TOKEN,
+      expect.arrayContaining([expect.objectContaining({ command: "connect" })]),
+    );
+
+    const db = store.set(writeDb$);
+    const [installation] = await db
+      .select()
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.telegramBotId, fixture.telegramBotId))
+      .limit(1);
+    expect(installation).toBeDefined();
+    if (!installation) {
+      throw new Error("Expected Telegram installation to exist");
+    }
+    expect(decryptSecretValue(installation.encryptedBotToken)).toBe(
+      NEW_BOT_TOKEN,
+    );
+  });
+
+  it("rejects reinstall when the token belongs to a different bot", async () => {
+    const fixture = await trackFixture(
+      store.set(seedTelegramPostFixture$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockTelegramGetMe({ botId: newTelegramBotId() });
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          botToken: NEW_BOT_TOKEN,
+          reinstallBotId: fixture.telegramBotId,
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("different Telegram bot");
+    expect(context.mocks.telegram.setWebhook).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when no default agent is available", async () => {
+    const telegramBotId = newTelegramBotId();
+    const fixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        { telegramBotId, installBot: false, seedDefaultAgent: false },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockTelegramGetMe({ botId: telegramBotId });
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { botToken: TEST_BOT_TOKEN },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("No default agent specified");
+  });
+
+  it("returns 404 when defaultAgentId references a nonexistent agent", async () => {
+    mocks.clerk.session("user_register_missing_agent", "org_register_missing");
+    mockTelegramGetMe({ botId: newTelegramBotId() });
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          botToken: TEST_BOT_TOKEN,
+          defaultAgentId: "00000000-0000-0000-0000-000000000000",
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(response.body.error.message).toContain("Agent not found");
+  });
+
+  it("returns 403 when defaultAgentId belongs to another org", async () => {
+    const otherFixture = await trackFixture(
+      store.set(
+        seedTelegramPostFixture$,
+        {
+          orgId: `org_other_${randomUUID().slice(0, 8)}`,
+          userId: `user_other_${randomUUID().slice(0, 8)}`,
+          installBot: false,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session("user_register_cross_org", "org_register_cross");
+    mockTelegramGetMe({ botId: newTelegramBotId() });
+
+    const response = await accept(
+      telegramClient().register({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          botToken: TEST_BOT_TOKEN,
+          defaultAgentId: otherFixture.composeId,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
   it("rolls back a new installation when webhook registration fails", async () => {
