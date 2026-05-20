@@ -2,6 +2,7 @@ import path from "node:path";
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { executeComputerUseCommand } from "./computer-use-accessibility";
 import { ComputerUseHostRuntime } from "./computer-use-host";
+import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   buildComputerUsePageUrl,
   COMPUTER_USE_FEATURE_SWITCH_KEY,
@@ -129,7 +130,9 @@ function startComputerUseRuntime(): void {
     },
     getPermissions: getComputerUsePermissionState,
     executeCommand: (command, permissions) => {
-      return executeComputerUseCommand(command, permissions);
+      return executeComputerUseCommand(command, permissions, {
+        captureScreenshot: captureComputerUseScreenshot,
+      });
     },
   });
   computerUseRuntime.start();

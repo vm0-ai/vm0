@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { renderAccessibilityTree } from "./computer-use-accessibility";
+import {
+  executeComputerUseCommand,
+  renderAccessibilityTree,
+} from "./computer-use-accessibility";
 import {
   buildComputerUseRuntimeBody,
   resolveComputerUseApiBaseUrl,
@@ -442,7 +445,7 @@ describe("computer use desktop runtime", () => {
   });
 
   it("renders model-readable accessibility state", () => {
-    const text = renderAccessibilityTree({
+    const snapshot = {
       app: "Safari",
       snapshotId: "snap_1",
       elements: [
@@ -460,10 +463,86 @@ describe("computer use desktop runtime", () => {
           ],
         },
       ],
-    });
+    };
+    const text = renderAccessibilityTree(snapshot);
 
     expect(text).toContain("snapshot_id=snap_1");
     expect(text).toContain('w0 AXWindow "Example"');
     expect(text).toContain('w0.e0 AXButton "Open" actions=AXPress');
+  });
+
+  it("returns screenshot metadata with model-readable app state", async () => {
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        runJxa: async () => {
+          return JSON.stringify({
+            app: "Safari",
+            snapshotId: "snap_1",
+            elements: [
+              {
+                id: "w0",
+                role: "AXWindow",
+                name: "Example",
+              },
+            ],
+          });
+        },
+        captureScreenshot: async (request) => {
+          expect(request).toStrictEqual({
+            app: "Safari",
+            windowNames: ["Example"],
+          });
+          return {
+            dataUrl: "data:image/png;base64,abc123",
+            source: "window",
+            sourceName: "Example",
+            width: 800,
+            height: 600,
+          };
+        },
+      },
+    );
+
+    expect(result.status).toBe("succeeded");
+    if (result.status !== "succeeded") {
+      throw new Error("expected app.state to succeed");
+    }
+    expect(result).toMatchObject({
+      result: {
+        app: "Safari",
+        snapshotId: "snap_1",
+        screenshot: "data:image/png;base64,abc123",
+        screenshotMimeType: "image/png",
+        screenshotSource: "window",
+        screenshotSourceName: "Example",
+        screenshotWidth: 800,
+        screenshotHeight: 600,
+      },
+    });
+    expect(result.result.text).toContain('w0 AXWindow "Example"');
+  });
+
+  it("requires screen recording permission for app state screenshots", async () => {
+    const result = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message: "macOS Screen Recording permission is required",
+      },
+    });
   });
 });

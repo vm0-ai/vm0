@@ -49,6 +49,23 @@ interface AccessibilityAppStateSnapshot {
   readonly elements: readonly AccessibilityElementSnapshot[];
 }
 
+export interface ComputerUseScreenshotCaptureRequest {
+  readonly app: string;
+  readonly windowNames: readonly string[];
+}
+
+export interface ComputerUseScreenshotCaptureResult {
+  readonly dataUrl: string;
+  readonly source: "window" | "screen";
+  readonly sourceName: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+type ComputerUseScreenshotCapture = (
+  request: ComputerUseScreenshotCaptureRequest,
+) => Promise<ComputerUseScreenshotCaptureResult>;
+
 export interface ComputerUseCommandSuccess {
   readonly status: "succeeded";
   readonly result: Record<string, unknown>;
@@ -60,6 +77,7 @@ export interface ComputerUseCommandFailure {
     readonly code:
       | "permission_denied"
       | "accessibility_unavailable"
+      | "screen_recording_unavailable"
       | "unsupported_command";
     readonly message: string;
   };
@@ -68,6 +86,14 @@ export interface ComputerUseCommandFailure {
 export type ComputerUseCommandExecutionResult =
   | ComputerUseCommandSuccess
   | ComputerUseCommandFailure;
+
+type RunJxa = (script: string) => Promise<string>;
+
+interface ComputerUseCommandExecutionDependencies {
+  readonly captureScreenshot: ComputerUseScreenshotCapture;
+  readonly platform?: NodeJS.Platform;
+  readonly runJxa?: RunJxa;
+}
 
 function payloadString(
   payload: Record<string, unknown>,
@@ -85,8 +111,9 @@ function snapshotId(): string {
 
 function requireAccessibility(
   permissions: ComputerUsePermissionState,
+  platform: NodeJS.Platform,
 ): ComputerUseCommandFailure | null {
-  if (process.platform !== "darwin") {
+  if (platform !== "darwin") {
     return {
       status: "failed",
       error: {
@@ -101,6 +128,21 @@ function requireAccessibility(
       error: {
         code: "permission_denied",
         message: "macOS Accessibility permission is required",
+      },
+    };
+  }
+  return null;
+}
+
+function requireScreenRecording(
+  permissions: ComputerUsePermissionState,
+): ComputerUseCommandFailure | null {
+  if (!permissions.screenRecording) {
+    return {
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message: "macOS Screen Recording permission is required",
       },
     };
   }
@@ -154,6 +196,34 @@ export function renderAccessibilityTree(
     visit(element, 0);
   }
   return lines.join("\n");
+}
+
+function snapshotWindowNames(
+  snapshot: AccessibilityAppStateSnapshot,
+): string[] {
+  return snapshot.elements
+    .map((element) => {
+      return element.name?.trim();
+    })
+    .filter((name): name is string => {
+      return name !== undefined && name.length > 0;
+    });
+}
+
+function buildComputerUseAppStateResult(
+  snapshot: AccessibilityAppStateSnapshot,
+  screenshot: ComputerUseScreenshotCaptureResult,
+): Record<string, unknown> {
+  return {
+    ...snapshot,
+    text: renderAccessibilityTree(snapshot),
+    screenshot: screenshot.dataUrl,
+    screenshotMimeType: "image/png",
+    screenshotSource: screenshot.source,
+    screenshotSourceName: screenshot.sourceName,
+    screenshotWidth: screenshot.width,
+    screenshotHeight: screenshot.height,
+  };
 }
 
 function appStateScript(app: string, id: string): string {
@@ -274,16 +344,30 @@ JSON.stringify(apps);
 
 async function getAppState(
   app: string,
+  runJxaCommand: RunJxa,
+  captureScreenshot: ComputerUseScreenshotCapture,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
-  const output = await runJxa(appStateScript(app, id));
+  const output = await runJxaCommand(appStateScript(app, id));
   const snapshot = JSON.parse(output) as AccessibilityAppStateSnapshot;
+  let screenshot: ComputerUseScreenshotCaptureResult;
+  try {
+    screenshot = await captureScreenshot({
+      app,
+      windowNames: snapshotWindowNames(snapshot),
+    });
+  } catch (error) {
+    return {
+      status: "failed",
+      error: {
+        code: "screen_recording_unavailable",
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
   return {
     status: "succeeded",
-    result: {
-      ...snapshot,
-      text: renderAccessibilityTree(snapshot),
-    },
+    result: buildComputerUseAppStateResult(snapshot, screenshot),
   };
 }
 
@@ -425,8 +509,12 @@ function payloadNumber(
 export async function executeComputerUseCommand(
   command: ComputerUseCommand,
   permissions: ComputerUsePermissionState,
+  dependencies: ComputerUseCommandExecutionDependencies,
 ): Promise<ComputerUseCommandExecutionResult> {
-  const permissionError = requireAccessibility(permissions);
+  const permissionError = requireAccessibility(
+    permissions,
+    dependencies.platform ?? process.platform,
+  );
   if (permissionError) {
     return permissionError;
   }
@@ -440,7 +528,15 @@ export async function executeComputerUseCommand(
       return missingField("app");
     }
     if (command.kind === "app.state") {
-      return await getAppState(app);
+      const screenRecordingError = requireScreenRecording(permissions);
+      if (screenRecordingError) {
+        return screenRecordingError;
+      }
+      return await getAppState(
+        app,
+        dependencies.runJxa ?? runJxa,
+        dependencies.captureScreenshot,
+      );
     }
     if (command.kind === "app.open") {
       return await openApp(app);

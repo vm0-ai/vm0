@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Command, Help } from "commander";
+import { formatComputerUseResultForConsole } from "../index";
 import { registerZeroCommands } from "../../../../zero";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -116,5 +117,19 @@ describe("computer-use command visibility", () => {
     expect(subNames).toContain("hosts");
     expect(subNames).toContain("revoke-host");
     expect(subNames).toContain("audit");
+  });
+
+  it("should omit screenshot data URLs from command result console output", () => {
+    const text = formatComputerUseResultForConsole({
+      app: "Safari",
+      text: "snapshot_id=snap_1\nw0 AXWindow",
+      screenshot: "data:image/png;base64,abcdefghijklmnopqrstuvwxyz",
+      screenshotSource: "window",
+    });
+
+    expect(text).toContain("snapshot_id=snap_1");
+    expect(text).toContain("screenshotSource");
+    expect(text).toContain("[omitted 48 character screenshot data URL]");
+    expect(text).not.toContain("abcdefghijklmnopqrstuvwxyz");
   });
 });

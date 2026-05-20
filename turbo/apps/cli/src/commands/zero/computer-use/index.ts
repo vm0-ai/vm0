@@ -141,11 +141,25 @@ function parseLimit(value: string | undefined): number {
   return parsed;
 }
 
+function summarizeScreenshotValue(value: string): string {
+  return `[omitted ${value.length.toString()} character screenshot data URL]`;
+}
+
+export function formatComputerUseResultForConsole(
+  result: Record<string, unknown>,
+): string {
+  const printable: Record<string, unknown> = { ...result };
+  if (typeof printable.screenshot === "string") {
+    printable.screenshot = summarizeScreenshotValue(printable.screenshot);
+  }
+  return JSON.stringify(printable, null, 2);
+}
+
 function resultText(command: ComputerUseCommandResponse): string {
   if (!command.result) {
     return "";
   }
-  return JSON.stringify(command.result, null, 2);
+  return formatComputerUseResultForConsole(command.result);
 }
 
 async function waitForCommand(
