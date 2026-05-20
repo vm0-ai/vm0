@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.62.1](https://github.com/vm0-ai/vm0/compare/api-v1.62.0...api-v1.62.1) (2026-05-20)
+
+
+### Refactoring
+
+* cut over clerk webhook route ([#14332](https://github.com/vm0-ai/vm0/issues/14332)) ([76b12c8](https://github.com/vm0-ai/vm0/commit/76b12c88894b60d26e33c75b9314c7e8e27571e0))
+
+
+### Performance Improvements
+
+* batch agent run storage manifest lookups into one query ([#14327](https://github.com/vm0-ai/vm0/issues/14327)) ([2cb13e2](https://github.com/vm0-ai/vm0/commit/2cb13e25d0dc9ced27d74a7694bafebaf404557e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.1
+    * @vm0/connectors bumped to 1.24.1
+    * @vm0/core bumped to 8.286.1
+    * @vm0/db bumped to 1.17.1
+
 ## [1.62.0](https://github.com/vm0-ai/vm0/compare/api-v1.61.1...api-v1.62.0) (2026-05-20)
 
 

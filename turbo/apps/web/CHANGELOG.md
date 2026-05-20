@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.381.2](https://github.com/vm0-ai/vm0/compare/web-v12.381.1...web-v12.381.2) (2026-05-20)
+
+
+### Refactoring
+
+* cut over clerk webhook route ([#14332](https://github.com/vm0-ai/vm0/issues/14332)) ([76b12c8](https://github.com/vm0-ai/vm0/commit/76b12c88894b60d26e33c75b9314c7e8e27571e0))
+* cut over zero integrations slack upload complete route ([#14331](https://github.com/vm0-ai/vm0/issues/14331)) ([3c6f7a1](https://github.com/vm0-ai/vm0/commit/3c6f7a1ad82f7cbc91e3d2c856f3fb3484cd1571))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.35.1
+    * @vm0/connectors bumped to 1.24.1
+    * @vm0/core bumped to 8.286.1
+    * @vm0/db bumped to 1.17.1
+
 ## [12.381.1](https://github.com/vm0-ai/vm0/compare/web-v12.381.0...web-v12.381.1) (2026-05-20)
 
 
