@@ -50,16 +50,20 @@ impl CpuTracker {
         if !first_line.starts_with("cpu ") {
             return 0.0;
         }
-        let values: Vec<u64> = first_line
+        let values: Vec<u64> = match first_line
             .split_whitespace()
             .skip(1)
-            .filter_map(|v| v.parse().ok())
-            .collect();
-        if values.len() < 5 {
+            .map(|v| v.parse())
+            .collect::<Result<_, _>>()
+        {
+            Ok(values) => values,
+            Err(_) => return 0.0,
+        };
+        // idle = field 3, iowait = field 4
+        let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
             return 0.0;
-        }
-        // idle = values[3], iowait = values[4]
-        let idle = values.get(3).copied().unwrap_or(0) + values.get(4).copied().unwrap_or(0);
+        };
+        let idle = *idle_ticks + *iowait_ticks;
         let total: u64 = values.iter().sum();
 
         let delta_idle = idle.saturating_sub(self.prev_idle);
