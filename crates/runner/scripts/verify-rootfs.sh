@@ -197,6 +197,12 @@ else
   errors+=("codex CLI not found at /usr/bin/codex")
 fi
 
+if [[ -f "${MOUNT_DIR}/usr/bin/pnpm" ]]; then
+  echo "  pnpm: found"
+else
+  errors+=("pnpm not found at /usr/bin/pnpm")
+fi
+
 # Check language runtimes
 # Some binaries use update-alternatives symlinks or versioned names (e.g.
 # php8.3 instead of php, javac under /usr/lib/jvm/). Use glob patterns

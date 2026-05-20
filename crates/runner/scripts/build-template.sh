@@ -448,7 +448,8 @@ install_runtimes() {
       @googleworkspace/cli@${GWS_CLI_VERSION} \
       @xdevplatform/xurl@${XURL_VERSION} \
       @openai/codex@${CODEX_CLI_VERSION} \
-      agent-browser@${AGENT_BROWSER_VERSION}
+      agent-browser@${AGENT_BROWSER_VERSION} \
+      pnpm@latest
     npm cache clean --force
   "
 
