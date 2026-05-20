@@ -106,6 +106,7 @@ interface DesktopComputerUseApprovalAction {
 
 interface DesktopComputerUseApi {
   readonly getState: () => Promise<DesktopComputerUseState>;
+  readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;

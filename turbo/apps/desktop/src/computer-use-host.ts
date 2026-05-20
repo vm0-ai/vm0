@@ -12,11 +12,9 @@ import type {
   ComputerUseRuntimeAuditEvent,
 } from "./computer-use-types";
 
-const START_RETRY_MS = 15_000;
 const ONLINE_POLL_MS = 2_000;
-const ERROR_RETRY_MS = 10_000;
 
-type ComputerUseHostFetch = (
+export type ComputerUseHostFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
@@ -25,7 +23,8 @@ interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
   readonly displayName: string;
   readonly appVersion: string;
-  readonly fetch: ComputerUseHostFetch;
+  readonly sessionFetch: ComputerUseHostFetch;
+  readonly hostFetch: ComputerUseHostFetch;
   readonly getPermissions: () => ComputerUsePermissionState;
   readonly executeCommand: (
     command: ComputerUseCommand,
@@ -86,7 +85,8 @@ export class ComputerUseHostRuntime {
   private readonly apiBaseUrl: string;
   private readonly displayName: string;
   private readonly appVersion: string;
-  private readonly fetch: ComputerUseHostFetch;
+  private readonly sessionFetch: ComputerUseHostFetch;
+  private readonly hostFetchRequest: ComputerUseHostFetch;
   private readonly getPermissions: () => ComputerUsePermissionState;
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
   private readonly onChange: () => void;
@@ -109,7 +109,8 @@ export class ComputerUseHostRuntime {
     this.apiBaseUrl = resolveComputerUseApiBaseUrl(options.platformUrl);
     this.displayName = options.displayName;
     this.appVersion = options.appVersion;
-    this.fetch = options.fetch;
+    this.sessionFetch = options.sessionFetch;
+    this.hostFetchRequest = options.hostFetch;
     this.getPermissions = options.getPermissions;
     this.executeCommand = options.executeCommand;
     this.onChange = options.onChange ?? (() => {});
@@ -117,12 +118,12 @@ export class ComputerUseHostRuntime {
     this.clearScheduledTimeout = options.clearTimeout ?? clearTimeout;
   }
 
-  start(): void {
+  async start(): Promise<void> {
     if (this.running) {
       return;
     }
     this.running = true;
-    this.schedule(0);
+    await this.tick();
   }
 
   stop(): void {
@@ -138,7 +139,7 @@ export class ComputerUseHostRuntime {
   }
 
   async decideCommand(args: ComputerUseApprovalAction): Promise<void> {
-    const response = await this.fetch(
+    const response = await this.sessionFetch(
       `${this.apiBaseUrl}/api/zero/computer-use/commands/${encodeURIComponent(args.commandId)}/approval`,
       {
         method: "POST",
@@ -183,13 +184,15 @@ export class ComputerUseHostRuntime {
   }
 
   private async tick(): Promise<void> {
-    let nextDelay = ONLINE_POLL_MS;
+    let nextDelay: number | null = ONLINE_POLL_MS;
     try {
       if (!this.hostToken) {
         nextDelay = await this.startHost();
       } else {
         if (await this.heartbeat()) {
           await this.claimAndExecuteCommand();
+        } else {
+          nextDelay = null;
         }
       }
     } catch (error) {
@@ -197,15 +200,19 @@ export class ComputerUseHostRuntime {
         status: "error",
         lastError: error instanceof Error ? error.message : String(error),
       });
-      nextDelay = ERROR_RETRY_MS;
+      nextDelay = null;
     } finally {
-      this.schedule(nextDelay);
+      if (nextDelay === null) {
+        this.running = false;
+      } else {
+        this.schedule(nextDelay);
+      }
     }
   }
 
-  private async startHost(): Promise<number> {
+  private async startHost(): Promise<number | null> {
     this.setState({ status: "connecting", lastError: null });
-    const response = await this.fetch(
+    const response = await this.sessionFetch(
       `${this.apiBaseUrl}/api/zero/computer-use/hosts/start`,
       {
         method: "POST",
@@ -214,12 +221,19 @@ export class ComputerUseHostRuntime {
       },
     );
     if (response.status === 401) {
-      this.setState({ status: "unauthenticated" });
-      return START_RETRY_MS;
+      this.setState({
+        status: "unauthenticated",
+        lastError:
+          "Desktop host could not authenticate with the API session. Sign in and retry.",
+      });
+      return null;
     }
     if (response.status === 403) {
-      this.setState({ status: "disabled" });
-      return START_RETRY_MS;
+      this.setState({
+        status: "disabled",
+        lastError: "Computer Use is disabled for this account.",
+      });
+      return null;
     }
     if (!response.ok) {
       throw new Error(`Failed to start Computer Use host: ${response.status}`);
@@ -243,7 +257,12 @@ export class ComputerUseHostRuntime {
     });
     if (response.status === 401) {
       this.hostToken = null;
-      this.setState({ status: "unauthenticated", hostId: null });
+      this.setState({
+        status: "unauthenticated",
+        hostId: null,
+        lastError:
+          "Desktop host could not authenticate with the API session. Sign in and retry.",
+      });
       return false;
     }
     if (!response.ok) {
@@ -270,7 +289,7 @@ export class ComputerUseHostRuntime {
     url.searchParams.set("hostId", hostId);
     url.searchParams.set("limit", "25");
 
-    const response = await this.fetch(url.toString(), { method: "GET" });
+    const response = await this.sessionFetch(url.toString(), { method: "GET" });
     if (response.status === 401 || response.status === 403) {
       this.setState({ pendingApprovals: [], recentAuditEvents: [] });
       return;
@@ -334,7 +353,7 @@ export class ComputerUseHostRuntime {
     if (!this.hostToken) {
       throw new Error("Computer Use host token is not available");
     }
-    return this.fetch(`${this.apiBaseUrl}${path}`, {
+    return this.hostFetchRequest(`${this.apiBaseUrl}${path}`, {
       ...init,
       headers: {
         "content-type": "application/json",

@@ -20,6 +20,7 @@ import {
 } from "./computer-use-permissions";
 import { resolveDesktopConfig } from "./config";
 import { createDesktopLocalAgentApiClient } from "./desktop-local-agent-api";
+import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import {
   installDesktopLocalAgentIpc,
   notifyDesktopLocalAgentsChanged,
@@ -126,28 +127,31 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
   };
 }
 
-function startComputerUseRuntime(): void {
-  if (computerUseRuntime) {
-    return;
-  }
-
+async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
   const desktopSession = session.fromPartition(config.sessionPartition);
-  computerUseRuntime = new ComputerUseHostRuntime({
-    platformUrl: config.platformUrl,
-    displayName: config.identity.displayName,
-    appVersion: app.getVersion(),
-    fetch: (input, init) => {
-      return desktopSession.fetch(input, init);
-    },
-    getPermissions: getComputerUsePermissionState,
-    executeCommand: (command, permissions) => {
-      return executeComputerUseCommand(command, permissions, {
-        captureScreenshot: captureComputerUseScreenshot,
-      });
-    },
-    onChange: notifyDesktopComputerUseChanged,
-  });
-  computerUseRuntime.start();
+  if (!computerUseRuntime) {
+    computerUseRuntime = new ComputerUseHostRuntime({
+      platformUrl: config.platformUrl,
+      displayName: config.identity.displayName,
+      appVersion: app.getVersion(),
+      sessionFetch: createDesktopComputerUseSessionFetch({
+        platformUrl: config.platformUrl,
+        session: desktopSession,
+      }),
+      hostFetch: (input, init) => {
+        return fetch(input, init);
+      },
+      getPermissions: getComputerUsePermissionState,
+      executeCommand: (command, permissions) => {
+        return executeComputerUseCommand(command, permissions, {
+          captureScreenshot: captureComputerUseScreenshot,
+        });
+      },
+      onChange: notifyDesktopComputerUseChanged,
+    });
+  }
+  await computerUseRuntime.start();
+  return getComputerUseBridgeState();
 }
 
 async function decideComputerUseCommand(
@@ -170,6 +174,7 @@ function installComputerUse(): void {
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
+      start: startComputerUseRuntime,
       requestAccessibilityPermission: requestComputerUsePermission,
       decideCommand: decideComputerUseCommand,
     },
@@ -522,7 +527,6 @@ if (!hasSingleInstanceLock) {
     installDesktopLocalAgent();
     installComputerUse();
     queueDesktopAuthCallbackArgv(process.argv);
-    startComputerUseRuntime();
 
     const pendingCode = pendingDesktopAuthCode;
     pendingDesktopAuthCode = null;

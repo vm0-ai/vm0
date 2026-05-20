@@ -45,6 +45,16 @@ export const refreshDesktopComputerUse$ = command(({ set }) => {
   });
 });
 
+export const startDesktopComputerUse$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await desktopComputerUseApi().start();
+    signal.throwIfAborted();
+    set(internalReload$, (previous) => {
+      return previous + 1;
+    });
+  },
+);
+
 export const requestDesktopComputerUseAccessibilityPermission$ = command(
   async ({ set }, signal: AbortSignal) => {
     await desktopComputerUseApi().requestAccessibilityPermission();

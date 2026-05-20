@@ -53,6 +53,9 @@ const desktopComputerUseApi = {
   getState(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.getState);
   },
+  start(): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.start);
+  },
   requestAccessibilityPermission(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(
       COMPUTER_USE_CHANNELS.requestAccessibilityPermission,

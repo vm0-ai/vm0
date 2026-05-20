@@ -6,6 +6,7 @@ import {
   IconDeviceDesktop,
   IconExternalLink,
   IconLoader2,
+  IconPlayerPlay,
   IconRefresh,
   IconShieldCheck,
 } from "@tabler/icons-react";
@@ -27,6 +28,7 @@ import {
   openDesktopComputerUseScreenRecordingSettings$,
   refreshDesktopComputerUse$,
   requestDesktopComputerUseAccessibilityPermission$,
+  startDesktopComputerUse$,
   type DesktopComputerUseState,
 } from "../../signals/desktop-computer-use-page/desktop-computer-use-signals.ts";
 
@@ -167,6 +169,29 @@ function PermissionPanel({
 }
 
 function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
+  const pageSignal = useGet(pageSignal$);
+  const [startLoadable, startComputerUse] = useLoadableSet(
+    startDesktopComputerUse$,
+  );
+  const canStart =
+    state.supported &&
+    (state.host.status === "idle" ||
+      state.host.status === "unauthenticated" ||
+      state.host.status === "error");
+  const startPending =
+    startLoadable.state === "loading" || state.host.status === "connecting";
+  const statusCopy =
+    state.host.status === "idle"
+      ? "Host is not connected."
+      : state.host.status === "connecting"
+        ? "Connecting this desktop to the Computer Use command queue."
+        : state.host.status === "online"
+          ? "Host is connected and polling for Computer Use commands."
+          : state.host.status === "unauthenticated"
+            ? "Desktop host could not authenticate with the API session. Sign in to Zero Desktop, then retry."
+            : state.host.status === "disabled"
+              ? "Computer Use is disabled for this account."
+              : "Host connection failed. Retry when the desktop session is available.";
   const rows = [
     ["Host", state.host.hostId ?? "-"],
     ["Last heartbeat", formatDateTime(state.host.lastHeartbeatAt)],
@@ -175,14 +200,37 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   ] as const;
   return (
     <section className="zero-border bg-card rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
+      <div className="flex flex-col gap-4 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Runtime</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Desktop host status for the Computer Use command queue.
+          <p className="mt-1 max-w-[640px] text-sm text-muted-foreground">
+            {statusCopy}
           </p>
         </div>
-        <StatusBadge status={state.host.status} title={state.host.lastError} />
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {canStart ? (
+            <Button
+              size="sm"
+              disabled={startPending}
+              onClick={() => {
+                detach(startComputerUse(pageSignal), Reason.DomCallback);
+              }}
+            >
+              {startPending ? (
+                <IconLoader2 size={15} className="animate-spin" />
+              ) : (
+                <IconPlayerPlay size={15} />
+              )}
+              {state.host.status === "idle"
+                ? "Start Computer Use"
+                : "Retry connection"}
+            </Button>
+          ) : null}
+          <StatusBadge
+            status={state.host.status}
+            title={state.host.lastError}
+          />
+        </div>
       </div>
       <dl className="grid grid-cols-1 divide-y text-sm sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         {rows.map(([label, value]) => {

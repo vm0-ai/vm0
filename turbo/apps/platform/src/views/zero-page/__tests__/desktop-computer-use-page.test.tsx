@@ -58,6 +58,25 @@ function computerUseState(): TestDesktopComputerUseState {
   };
 }
 
+function idleComputerUseState(): TestDesktopComputerUseState {
+  return {
+    ...computerUseState(),
+    permissions: {
+      accessibility: true,
+      screenRecording: false,
+    },
+    host: {
+      status: "idle",
+      hostId: null,
+      lastHeartbeatAt: null,
+      lastCommandAt: null,
+      lastError: null,
+      pendingApprovals: [],
+      recentAuditEvents: [],
+    },
+  };
+}
+
 function buttonByText(text: string, index = 0): HTMLButtonElement {
   const button = screen.getAllByText(text)[index]?.closest("button");
   expect(button).toBeInstanceOf(HTMLButtonElement);
@@ -77,6 +96,9 @@ describe("zero desktop Computer Use page", () => {
     });
     installDesktopComputerUseApi({
       getState() {
+        return Promise.resolve(state);
+      },
+      start() {
         return Promise.resolve(state);
       },
       requestAccessibilityPermission() {
@@ -141,6 +163,9 @@ describe("zero desktop Computer Use page", () => {
       getState() {
         return Promise.resolve(state);
       },
+      start() {
+        return Promise.resolve(state);
+      },
       requestAccessibilityPermission,
       openAccessibilitySettings,
       openScreenRecordingSettings,
@@ -183,6 +208,113 @@ describe("zero desktop Computer Use page", () => {
 
     await waitFor(() => {
       expect(openScreenRecordingSettings).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("starts the desktop host manually without making Refresh a start action", async () => {
+    const user = userEvent.setup();
+    const onlineState = computerUseState();
+    let state = idleComputerUseState();
+    const start = vi.fn(() => {
+      state = onlineState;
+      return Promise.resolve(state);
+    });
+    installDesktopComputerUseApi({
+      getState() {
+        return Promise.resolve(state);
+      },
+      start,
+      requestAccessibilityPermission() {
+        return Promise.resolve(state);
+      },
+      openAccessibilitySettings() {
+        return Promise.resolve();
+      },
+      openScreenRecordingSettings() {
+        return Promise.resolve();
+      },
+      decideCommand() {
+        return Promise.resolve(state);
+      },
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await screen.findByRole("heading", { name: "Computer Use" });
+    expect(screen.getByText("Host is not connected.")).toBeInTheDocument();
+
+    await user.click(buttonByText("Refresh"));
+    expect(start).not.toHaveBeenCalled();
+
+    await user.click(buttonByText("Start Computer Use"));
+    await waitFor(() => {
+      expect(start).toHaveBeenCalledOnce();
+    });
+    await expect(screen.findByText("host-1")).resolves.toBeInTheDocument();
+  });
+
+  it("shows an actionable unauthenticated state with manual retry", async () => {
+    const user = userEvent.setup();
+    const state = {
+      ...idleComputerUseState(),
+      host: {
+        ...idleComputerUseState().host,
+        status: "unauthenticated" as const,
+        lastError:
+          "Desktop host could not authenticate with the API session. Sign in and retry.",
+      },
+    };
+    const start = vi.fn(() => {
+      return Promise.resolve(state);
+    });
+    installDesktopComputerUseApi({
+      getState() {
+        return Promise.resolve(state);
+      },
+      start,
+      requestAccessibilityPermission() {
+        return Promise.resolve(state);
+      },
+      openAccessibilitySettings() {
+        return Promise.resolve();
+      },
+      openScreenRecordingSettings() {
+        return Promise.resolve();
+      },
+      decideCommand() {
+        return Promise.resolve(state);
+      },
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText(
+        "Desktop host could not authenticate with the API session. Sign in to Zero Desktop, then retry.",
+      ),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(buttonByText("Retry connection"));
+    await waitFor(() => {
+      expect(start).toHaveBeenCalledOnce();
     });
   });
 

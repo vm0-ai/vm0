@@ -4,6 +4,7 @@ import type {
   DesktopLocalAgentHostStartResponse,
   DesktopLocalAgentJobNextResponse,
 } from "./desktop-local-agent-types";
+import { headersWithSessionCookies } from "./desktop-session-cookies";
 
 interface ApiErrorBody {
   readonly error?: {
@@ -105,20 +106,6 @@ function bearerHeaders(hostToken: string): HeadersInit {
   };
 }
 
-async function cookieHeaderForSession(
-  electronSession: Session,
-  urls: readonly URL[],
-): Promise<string> {
-  const pairs = new Map<string, string>();
-  for (const url of urls) {
-    const cookies = await electronSession.cookies.get({ url: url.toString() });
-    for (const cookie of cookies) {
-      pairs.set(cookie.name, `${cookie.name}=${cookie.value}`);
-    }
-  }
-  return [...pairs.values()].join("; ");
-}
-
 function optionalJsonBody(body: object): string {
   return JSON.stringify(body);
 }
@@ -131,14 +118,11 @@ export function createDesktopLocalAgentApiClient(params: {
   const apiBase = normalizeBaseUrl(apiBaseUrl);
 
   const sessionHeaders = async (): Promise<HeadersInit> => {
-    const cookie = await cookieHeaderForSession(params.session, [
-      params.platformUrl,
-      apiBaseUrl,
-    ]);
-    return {
-      "content-type": "application/json",
-      ...(cookie.length > 0 ? { cookie } : {}),
-    };
+    return headersWithSessionCookies(
+      params.session,
+      [params.platformUrl, apiBaseUrl],
+      { "content-type": "application/json" },
+    );
   };
 
   return {

@@ -13,6 +13,7 @@ interface ComputerUseIpcOptions {
 
 interface ComputerUseNativeApi {
   readonly getState: () => DesktopComputerUseState;
+  readonly start: () => Promise<DesktopComputerUseState>;
   readonly requestAccessibilityPermission: () => DesktopComputerUseState;
   readonly decideCommand: (
     action: ComputerUseApprovalAction,
@@ -60,6 +61,10 @@ export function installComputerUseIpc(
   ipcMain.handle(COMPUTER_USE_CHANNELS.getState, (event) => {
     assertComputerUsePage(event);
     return api.getState();
+  });
+  ipcMain.handle(COMPUTER_USE_CHANNELS.start, async (event) => {
+    assertComputerUsePage(event);
+    return api.start();
   });
   ipcMain.handle(
     COMPUTER_USE_CHANNELS.requestAccessibilityPermission,
