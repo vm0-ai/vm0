@@ -16,11 +16,15 @@ import {
   getScopeDiff,
   isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  PROVIDER_HANDLERS,
+  providerSupportsRefresh,
+} from "@vm0/connectors/oauth-providers";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodType,
+  type ConnectorOAuthProviderType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -69,7 +73,6 @@ type StoredConnectorRow = {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
-const COMPUTER_CONNECTOR_AUTH_TOKEN_SECRET = "COMPUTER_CONNECTOR_AUTHTOKEN";
 const COMPUTER_CONNECTOR_SECRET_NAMES = [
   "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
   "COMPUTER_CONNECTOR_DOMAIN_ID",
@@ -85,13 +88,6 @@ interface ExternalUserInfo {
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
-}
-
-function getSecretNameForConnector(type: ConnectorType): string {
-  if (type === "computer") {
-    return COMPUTER_CONNECTOR_AUTH_TOKEN_SECRET;
-  }
-  return PROVIDER_HANDLERS[type].getSecretName();
 }
 
 function storedConnectorRowToResponse(
@@ -797,13 +793,10 @@ async function upsertConnectorSecret(
 }
 
 function connectorTokenExpiresAt(args: {
-  readonly type: ConnectorType;
+  readonly isRefreshable: boolean;
   readonly expiresIn: number | undefined;
 }): Date | null {
-  const isRefreshable =
-    args.type !== "computer" &&
-    Boolean(PROVIDER_HANDLERS[args.type].refreshToken);
-  const fallbackSecs = isRefreshable
+  const fallbackSecs = args.isRefreshable
     ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
     : null;
   const expiresInSecs = args.expiresIn ?? fallbackSecs;
@@ -818,7 +811,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorType;
+      readonly type: ConnectorOAuthProviderType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
@@ -832,8 +825,9 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
+    const handler = PROVIDER_HANDLERS[args.type];
     const tokenExpiresAt = connectorTokenExpiresAt({
-      type: args.type,
+      isRefreshable: providerSupportsRefresh(handler),
       expiresIn: args.expiresIn,
     });
     const apiTokenFields = getApiTokenFieldsByType(args.type);
@@ -855,7 +849,7 @@ export const upsertOAuthConnector$ = command(
     await upsertConnectorSecret(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
-      name: getSecretNameForConnector(args.type),
+      name: handler.getSecretName(),
       value: args.accessToken,
       description: `OAuth token for ${args.type} connector`,
       featureSwitchContext,

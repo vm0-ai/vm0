@@ -1,4 +1,7 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type {
+  ConnectorOAuthProviderType,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
 import { initServices } from "../../lib/init-services";
 import { connectors } from "@vm0/db/schema/connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -71,7 +74,7 @@ export async function insertTestConnectorSecret(
 export async function createTestOAuthConnectorRecord(options: {
   orgId: string;
   userId: string;
-  type: Exclude<ConnectorType, "computer">;
+  type: ConnectorOAuthProviderType;
   accessToken: string;
   externalId: string;
   externalUsername: string;

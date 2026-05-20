@@ -111,6 +111,10 @@ export interface ModelProviderRefreshHandler {
   refreshTokenWithArgs?(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
 }
 
+export function providerSupportsRefresh(handler: ProviderHandler): boolean {
+  return Boolean(handler.refreshToken || handler.refreshTokenWithArgs);
+}
+
 export async function buildProviderAuthUrl(
   handler: ProviderHandler,
   args: OAuthAuthorizeArgs,

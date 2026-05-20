@@ -19,8 +19,11 @@ import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
+  getConnectorOAuthProviderHandler,
+  isConnectorOAuthProviderType,
   PROVIDER_HANDLERS,
   providerEnvFromObject,
+  providerSupportsRefresh,
   refreshProviderToken,
 } from "@vm0/connectors/oauth-providers";
 import type {
@@ -43,6 +46,9 @@ import { publishUserSignal } from "../../infra/realtime/client";
 export type OAuthSecretSource = "connector" | "model-provider";
 
 type OAuthHandler = ConnectorProviderHandler | ModelProviderOAuthHandler;
+type RefreshableOAuthHandler = OAuthHandler & {
+  getRefreshSecretName(): string;
+};
 
 function getOAuthHandler(
   handlerKey: string,
@@ -51,13 +57,35 @@ function getOAuthHandler(
   if (sourceType === "model-provider") {
     return getModelProviderOAuthHandler(handlerKey);
   }
-  return PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+  return getConnectorOAuthProviderHandler(handlerKey);
 }
 
 function isConnectorOAuthHandler(
   handler: OAuthHandler,
 ): handler is ConnectorProviderHandler {
   return "buildAuthUrl" in handler && "exchangeCode" in handler;
+}
+
+function getRequiredConnectorOAuthHandler(
+  type: ConnectorType,
+): ConnectorProviderHandler {
+  if (!isConnectorOAuthProviderType(type)) {
+    throw new Error(`${type} connector does not use OAuth`);
+  }
+  return PROVIDER_HANDLERS[type];
+}
+
+function supportsOAuthRefresh(
+  handler: OAuthHandler | undefined,
+  sourceType: OAuthSecretSource,
+): handler is RefreshableOAuthHandler {
+  if (!handler?.getRefreshSecretName) {
+    return false;
+  }
+  if (sourceType === "model-provider") {
+    return Boolean(handler.refreshToken || handler.refreshTokenWithArgs);
+  }
+  return isConnectorOAuthHandler(handler) && providerSupportsRefresh(handler);
 }
 
 interface OAuthClientCredentials {
@@ -443,7 +471,7 @@ export async function revokeConnectorToken(
 ): Promise<void> {
   if (type === "computer") return;
 
-  const handler = PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
+  const handler = getRequiredConnectorOAuthHandler(type);
   if (!handler.revokeToken) return;
 
   const env = providerEnvFromObject(globalThis.services.env);
@@ -520,8 +548,7 @@ export async function deleteConnector(
     );
 
     if (existing.authMethod === "oauth" && type !== "computer") {
-      const handler =
-        PROVIDER_HANDLERS[type as Exclude<ConnectorType, "computer">];
+      const handler = getRequiredConnectorOAuthHandler(type);
       const refreshSecretName = handler.getRefreshSecretName?.();
       if (refreshSecretName) {
         secretNames.push(refreshSecretName);
@@ -590,7 +617,7 @@ export async function deleteConnector(
 
 /**
  * Generic connector access token refresh.
- * Looks up the connector's handler from PROVIDER_HANDLERS, calls its refreshToken
+ * Looks up the connector's OAuth handler, calls its refreshToken
  * method, persists new tokens, and updates the in-memory secrets map.
  *
  * `sourceType` selects which DB rows to read/write:
@@ -615,10 +642,7 @@ export async function refreshConnectorAccessToken(
 ): Promise<string | null> {
   const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
   const handler = getOAuthHandler(connectorType, sourceType);
-  if (
-    !handler?.getRefreshSecretName ||
-    (!handler.refreshToken && !handler.refreshTokenWithArgs)
-  ) {
+  if (!supportsOAuthRefresh(handler, sourceType)) {
     return null;
   }
   if (sourceType === "model-provider" && !options.metadataKey) {

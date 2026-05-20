@@ -6,7 +6,8 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  PROVIDER_HANDLERS,
+  getConnectorOAuthProviderHandler,
+  providerSupportsRefresh,
   refreshProviderToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
@@ -265,10 +266,7 @@ function resolveRefreshMetadata(
 function connectorProviderHandler(
   connectorType: string,
 ): ConnectorProviderHandler | null {
-  if (!Object.hasOwn(PROVIDER_HANDLERS, connectorType)) {
-    return null;
-  }
-  return PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  return getConnectorOAuthProviderHandler(connectorType) ?? null;
 }
 
 function providerHandler(
@@ -615,10 +613,7 @@ function prepareRefreshTokenContext(
   }
 
   const handler = connectorProviderHandler(args.connectorType);
-  if (
-    !handler?.getRefreshSecretName ||
-    (!handler.refreshToken && !handler.refreshTokenWithArgs)
-  ) {
+  if (!handler?.getRefreshSecretName || !providerSupportsRefresh(handler)) {
     return null;
   }
   const typeResult = connectorTypeSchema.safeParse(args.connectorType);

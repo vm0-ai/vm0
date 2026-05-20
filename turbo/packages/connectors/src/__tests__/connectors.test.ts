@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { connectorTypeSchema } from "../connectors";
+import { CONNECTOR_TYPES, connectorTypeSchema } from "../connectors";
 import {
   getApiTokenFieldStorageType,
   getAvailableConnectorAuthMethods,
@@ -20,6 +20,10 @@ import {
   resolveConnectorOAuthClientCredentials,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
+import {
+  isConnectorOAuthProviderType,
+  PROVIDER_HANDLERS,
+} from "../oauth-providers/provider-registry";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
@@ -105,6 +109,25 @@ describe("connector auth method config", () => {
     expect(getApiTokenFieldStorageType("zendesk", "UNKNOWN_FIELD")).toBe(
       "secret",
     );
+  });
+});
+
+describe("PROVIDER_HANDLERS", () => {
+  it("contains exactly the connector types that declare OAuth auth", () => {
+    const oauthConnectorTypes = connectorTypeSchema.options
+      .filter((type) => {
+        return "oauth" in CONNECTOR_TYPES[type].authMethods;
+      })
+      .sort();
+    const providerHandlerTypes = Object.keys(PROVIDER_HANDLERS).sort();
+
+    expect(providerHandlerTypes).toEqual(oauthConnectorTypes);
+
+    for (const type of connectorTypeSchema.options) {
+      expect(isConnectorOAuthProviderType(type)).toBe(
+        oauthConnectorTypes.includes(type),
+      );
+    }
   });
 });
 

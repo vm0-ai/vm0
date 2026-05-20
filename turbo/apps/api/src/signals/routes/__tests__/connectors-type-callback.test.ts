@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
-  type ConnectorType,
+  type ConnectorOAuthProviderType,
 } from "@vm0/connectors/connectors";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
@@ -69,7 +69,7 @@ const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_USERINFO_URL = "https://identity.xero.com/connect/userinfo";
 
-type OAuthConnectorType = Exclude<ConnectorType, "computer">;
+type OAuthConnectorType = ConnectorOAuthProviderType;
 
 function callbackUrl(
   type: string,

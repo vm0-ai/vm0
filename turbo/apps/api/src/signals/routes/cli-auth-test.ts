@@ -7,7 +7,10 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  isConnectorOAuthProviderType,
+  PROVIDER_HANDLERS,
+} from "@vm0/connectors/oauth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -208,10 +211,11 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    const refreshSecretName =
-      connectorType === "computer"
-        ? undefined
-        : PROVIDER_HANDLERS[connectorType].getRefreshSecretName?.();
+    if (!isConnectorOAuthProviderType(connectorType)) {
+      return stringError(400, `${connectorType} connector does not use OAuth`);
+    }
+    const handler = PROVIDER_HANDLERS[connectorType];
+    const refreshSecretName = handler.getRefreshSecretName?.();
     await set(
       upsertOAuthConnector$,
       {

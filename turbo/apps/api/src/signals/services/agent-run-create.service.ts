@@ -35,7 +35,10 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  getConnectorOAuthProviderHandler,
+  providerSupportsRefresh,
+} from "@vm0/connectors/oauth-providers";
 import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   expandHostWildcardsInBaseUrl,
@@ -1473,11 +1476,8 @@ async function loadOauthConnectorContext(
       }
     }
 
-    if (connectorType === "computer") {
-      continue;
-    }
-    const handler = PROVIDER_HANDLERS[connectorType];
-    if (!handler.refreshToken) {
+    const handler = getConnectorOAuthProviderHandler(connectorType);
+    if (!handler || !providerSupportsRefresh(handler)) {
       continue;
     }
     const secretName = handler.getSecretName();

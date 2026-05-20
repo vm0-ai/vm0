@@ -721,6 +721,11 @@ const CONNECTOR_TYPES_DEF = {
 } as const satisfies Record<string, ConnectorConfig>;
 
 export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
+export type ConnectorOAuthProviderType = {
+  [Type in ConnectorType]: "oauth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
+    ? Type
+    : never;
+}[ConnectorType];
 export type ConnectorCliAuthConnectorType = {
   [Type in ConnectorType]: "cli-auth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
     ? Type

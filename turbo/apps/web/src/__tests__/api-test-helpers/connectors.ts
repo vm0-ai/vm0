@@ -1,4 +1,7 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type {
+  ConnectorOAuthProviderType,
+  ConnectorType,
+} from "@vm0/connectors/connectors";
 import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { createTestOAuthConnectorRecord } from "../db-test-seeders/connectors";
 import { createTestSecret } from "./secrets";
@@ -53,7 +56,7 @@ async function createTestApiTokenConnector(options?: {
  * callback flow completes.
  */
 async function createTestOAuthConnector(options?: {
-  type?: Exclude<ConnectorType, "computer">;
+  type?: ConnectorOAuthProviderType;
   accessToken?: string;
   externalUsername?: string;
   externalId?: string | null;
@@ -83,21 +86,34 @@ async function createTestOAuthConnector(options?: {
  *
  * @param options - Connector configuration
  */
-export async function createTestConnector(options?: {
-  type?: Exclude<ConnectorType, "computer">;
-  authMethod?: "oauth" | "api-token";
-  accessToken?: string;
-  /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
-  secretName?: string;
-  externalUsername?: string;
-  externalId?: string | null;
-  externalEmail?: string | null;
-  oauthScopes?: string[];
-  userId?: string;
-}): Promise<void> {
-  const authMethod = options?.authMethod ?? "oauth";
+type CreateTestConnectorOptions =
+  | {
+      type?: ConnectorOAuthProviderType;
+      authMethod?: "oauth";
+      accessToken?: string;
+      externalUsername?: string;
+      externalId?: string | null;
+      externalEmail?: string | null;
+      oauthScopes?: string[];
+      userId?: string;
+    }
+  | {
+      type?: ConnectorType;
+      authMethod: "api-token";
+      accessToken?: string;
+      /** Secret name for api-token (e.g. "FIGMA_TOKEN"). Required for api-token. */
+      secretName?: string;
+      externalUsername?: string;
+      externalId?: string | null;
+      externalEmail?: string | null;
+      oauthScopes?: string[];
+      userId?: string;
+    };
 
-  if (authMethod === "api-token") {
+export async function createTestConnector(
+  options?: CreateTestConnectorOptions,
+): Promise<void> {
+  if (options?.authMethod === "api-token") {
     await createTestApiTokenConnector(options);
   } else {
     await createTestOAuthConnector(options);

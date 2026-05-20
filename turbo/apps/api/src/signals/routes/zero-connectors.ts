@@ -23,11 +23,13 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
+  type ConnectorOAuthProviderType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   buildProviderAuthUrl,
+  isConnectorOAuthProviderType,
   PROVIDER_HANDLERS,
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
@@ -316,8 +318,19 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
+function connectorDoesNotUseOAuthResponse(type: string) {
+  return jsonResponse({ error: `${type} connector does not use OAuth` }, 400);
+}
+
+function missingOAuthProviderHandlerResponse(type: string) {
+  return jsonResponse(
+    { error: `${type} OAuth provider handler not configured` },
+    500,
+  );
+}
+
 async function buildProviderAuthorizeUrl(args: {
-  readonly type: Exclude<ConnectorType, "computer">;
+  readonly type: ConnectorOAuthProviderType;
   readonly clientId?: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -580,10 +593,10 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
 
     if (!getConnectorAuthMethod(type, "oauth")) {
-      return jsonResponse(
-        { error: `${type} connector does not use OAuth` },
-        400,
-      );
+      return connectorDoesNotUseOAuthResponse(type);
+    }
+    if (!isConnectorOAuthProviderType(type)) {
+      return missingOAuthProviderHandlerResponse(type);
     }
 
     if (!auth.orgId) {
@@ -682,6 +695,11 @@ const startConnectorOauthInner$ = command(
 
     if (!getConnectorAuthMethod(type, "oauth")) {
       return badRequestMessage(`${type} connector does not use OAuth`);
+    }
+    if (!isConnectorOAuthProviderType(type)) {
+      return internalServerError(
+        `${type} OAuth provider handler not configured`,
+      );
     }
 
     if (!auth.orgId) {
