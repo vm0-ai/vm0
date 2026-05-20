@@ -679,12 +679,17 @@ pub(crate) fn wait_for_pid_exit(pid: u32, context: &str) {
     }
 }
 
-/// Returns true iff `pid` is still a live (or zombie-but-unreaped) process
-/// the test owner has permission to signal. Implemented via `kill(pid, 0)`,
-/// the canonical existence check. After bash dies via SIGPIPE the kernel
-/// reaps it (we're not its parent — it was reparented to PID 1 when its
-/// process group died), so this transitions to false.
+fn pid_state(pid: u32) -> Option<char> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let state_start = stat.rfind(") ")? + 2;
+    stat[state_start..].chars().next()
+}
+
+/// Returns true iff `pid` is still running and signalable by the test owner.
+/// Zombie processes are already dead; some CI containers leave reparented
+/// zombies visible to `kill(pid, 0)` until PID 1 reaps them, so they must not
+/// keep cleanup assertions spinning.
 pub(crate) fn pid_alive(pid: u32) -> bool {
     // SAFETY: `kill` with sig=0 is a no-op existence check.
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+    (unsafe { libc::kill(pid as i32, 0) == 0 }) && !matches!(pid_state(pid), Some('Z'))
 }
