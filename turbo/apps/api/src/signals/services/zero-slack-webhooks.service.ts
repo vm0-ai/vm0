@@ -7,6 +7,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   getVm0VisibleModels,
   isSupportedRunModel,
+  type ModelProviderCredentialScope,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
@@ -14,6 +15,7 @@ import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/inte
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
@@ -210,17 +212,20 @@ interface RunAgentParams {
   readonly threadTs: string;
   readonly callbackContext: SlackCallbackPayload;
   readonly apiStartTime: number;
-  readonly modelRoute: ModelRoutePin | undefined;
-}
-
-interface ModelRoutePin {
-  readonly modelProviderType: string;
-  readonly modelProviderId: string | null;
-  readonly modelProviderCredentialScope: "org" | "member";
-  readonly selectedModel: string;
+  readonly modelProviderId?: string;
+  readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
+  readonly modelProviderType?: string;
+  readonly selectedModelOverride?: string;
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
+
+interface SlackModelPin {
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
 
 interface SlackAgentMessageArgs {
   readonly get: ComputedGetter;
@@ -609,6 +614,65 @@ async function slackModelPickerState(
       };
     }),
     currentSelectedModel: preference.selectedModel,
+  };
+}
+
+function parseModelProviderCredentialScope(
+  value: string | null,
+): ModelProviderCredentialScope | null {
+  if (value === null || value === "org" || value === "member") {
+    return value;
+  }
+  throw new Error(`Unknown model provider credential scope "${value}"`);
+}
+
+async function resolveSlackSelectedModelPin(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly selectedModel: string | null;
+}): Promise<SlackModelPin> {
+  if (!args.selectedModel) {
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+    };
+  }
+
+  const [policy] = await args.db
+    .select({
+      model: orgModelPolicies.model,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+    })
+    .from(orgModelPolicies)
+    .where(
+      and(
+        eq(orgModelPolicies.orgId, args.orgId),
+        eq(orgModelPolicies.model, args.selectedModel),
+      ),
+    )
+    .limit(1);
+
+  if (!policy) {
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: args.selectedModel,
+    };
+  }
+
+  return {
+    modelProviderId: policy.modelProviderId ?? null,
+    modelProviderType: policy.defaultProviderType,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
+    selectedModel: policy.model,
   };
 }
 
@@ -1001,18 +1065,17 @@ async function runAgentForSlackOrg(
         prompt: params.prompt,
         agentId: params.agentId,
         sessionId: params.sessionId,
-        ...(params.modelRoute?.modelProviderType
-          ? { modelProvider: params.modelRoute.modelProviderType }
+        ...(params.modelProviderType
+          ? { modelProvider: params.modelProviderType }
           : {}),
       },
       apiStartTime: params.apiStartTime,
       triggerSource: "slack",
       appendSystemPrompt: buildSlackPrompt(params),
       userInfoExtras: params.userInfoExtras,
-      modelProviderId: params.modelRoute?.modelProviderId ?? undefined,
-      modelProviderCredentialScope:
-        params.modelRoute?.modelProviderCredentialScope,
-      selectedModelOverride: params.modelRoute?.selectedModel,
+      modelProviderId: params.modelProviderId,
+      modelProviderCredentialScope: params.modelProviderCredentialScope,
+      selectedModelOverride: params.selectedModelOverride,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/slack/org`,
@@ -1097,38 +1160,6 @@ async function resolveCompatibleThreadSession(args: {
   }
 
   return session.agentSessionId;
-}
-
-async function resolveModelRouteForUser(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  orgId: string,
-  userId: string,
-  signal: AbortSignal,
-): Promise<ModelRoutePin | undefined> {
-  const [preference, policies] = await Promise.all([
-    get(userModelPreference({ orgId, userId })),
-    set(listOrgModelPolicies$, { orgId, userId }, signal),
-  ]);
-  const selectedModel = preference.selectedModel;
-  const policy =
-    (selectedModel
-      ? policies.policies.find((candidate) => {
-          return candidate.model === selectedModel;
-        })
-      : undefined) ??
-    policies.policies.find((candidate) => {
-      return candidate.isDefault;
-    });
-  if (!policy) {
-    return undefined;
-  }
-  return {
-    modelProviderType: policy.defaultProviderType,
-    modelProviderId: policy.modelProviderId,
-    modelProviderCredentialScope: policy.credentialScope,
-    selectedModel: policy.model,
-  };
 }
 
 async function postPreDispatchErrorReply(args: {
@@ -1292,13 +1323,20 @@ async function buildRunAgentParams(
     client: resolved.client,
     userId: args.slackUserId,
   });
-  const modelRoute = await resolveModelRouteForUser(
-    args.get,
-    args.set,
-    resolved.installation.orgId,
-    resolved.connection.vm0UserId,
-    args.signal,
-  );
+  const selectedModelOverride = (
+    await args.get(
+      userModelPreference({
+        orgId: resolved.installation.orgId,
+        userId: resolved.connection.vm0UserId,
+      }),
+    )
+  ).selectedModel;
+  const modelPin = await resolveSlackSelectedModelPin({
+    db: args.db,
+    orgId: resolved.installation.orgId,
+    userId: resolved.connection.vm0UserId,
+    selectedModel: selectedModelOverride,
+  });
   const existingSessionId = await resolveCompatibleThreadSession({
     db: args.db,
     channelId: args.channelId,
@@ -1306,7 +1344,7 @@ async function buildRunAgentParams(
     connectionId: resolved.connection.id,
     userId: resolved.connection.vm0UserId,
     agentComposeId: resolved.composeId,
-    selectedModelOverride: modelRoute?.selectedModel,
+    selectedModelOverride: modelPin.selectedModel ?? undefined,
   });
   const { executionContext } = await fetchConversationContexts(
     resolved.client,
@@ -1339,7 +1377,11 @@ async function buildRunAgentParams(
     threadTs: resolved.threadTs,
     callbackContext,
     apiStartTime: args.apiStartTime,
-    modelRoute,
+    modelProviderId: modelPin.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      modelPin.modelProviderCredentialScope ?? undefined,
+    modelProviderType: modelPin.modelProviderType ?? undefined,
+    selectedModelOverride: modelPin.selectedModel ?? undefined,
   };
 }
 

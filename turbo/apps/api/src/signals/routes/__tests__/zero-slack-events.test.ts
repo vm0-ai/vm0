@@ -2,6 +2,9 @@ import { createHmac, randomBytes } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
@@ -10,6 +13,7 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
+import { decryptSecretsMap } from "../../services/crypto.utils";
 import { clearAllDetached } from "../../utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
@@ -416,5 +420,94 @@ describe("POST /api/zero/slack/events", () => {
       .limit(1);
     expect(run?.continuedFromSessionId).toBeNull();
     expect(run?.sessionId).not.toBe(previousSessionId);
+  });
+
+  it("routes Slack selected GPT models through the model policy provider", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    expect(fixture.defaultAgentId).toBeTruthy();
+    const db = store.set(writeDb$);
+    await db.insert(vm0ApiKeys).values({
+      vendor: "openai",
+      model: "gpt-5.5",
+      apiKey: "vm0-key-gpt-5.5",
+    });
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "gpt-5.5",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+    await store.set(
+      setSlackWebhookUserSelectedModel$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        selectedModel: "gpt-5.5",
+      },
+      context.signal,
+    );
+
+    const prompt = "use GPT from Slack";
+    const response = await postEvent({
+      type: "event_callback",
+      team_id: fixture.slackWorkspaceId,
+      event: {
+        type: "message",
+        channel_type: "im",
+        user: fixture.slackUserId,
+        text: prompt,
+        ts: "2500.001",
+        channel: "D-gpt",
+      },
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(agentRuns.prompt, prompt))
+      .limit(1);
+    expect(run).toMatchObject({
+      modelProvider: "vm0",
+      modelProviderId: null,
+      modelProviderCredentialScope: null,
+      selectedModel: "gpt-5.5",
+    });
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, run?.id ?? ""))
+      .limit(1);
+    const executionContext = job?.executionContext as {
+      readonly cliAgentType: string;
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.cliAgentType).toBe("codex");
+    expect(executionContext.environment).toMatchObject({
+      OPENAI_API_KEY: "vm0-key-gpt-5.5",
+      OPENAI_MODEL: "gpt-5.5",
+    });
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      OPENAI_API_KEY: "vm0-key-gpt-5.5",
+    });
   });
 });

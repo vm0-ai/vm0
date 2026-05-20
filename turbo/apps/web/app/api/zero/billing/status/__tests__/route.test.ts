@@ -109,7 +109,7 @@ describe("GET /api/zero/billing/status", () => {
   it("returns correct data for subscribed org", async () => {
     const { orgId } = await context.setupUser({ prefix: "sub-user" });
     await setOrgCredits(orgId, 100_000);
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus-status"),
@@ -136,7 +136,7 @@ describe("GET /api/zero/billing/status", () => {
 
   it("returns cancelAtPeriodEnd true when set", async () => {
     const { orgId } = await context.setupUser({ prefix: "cancel-user" });
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus-cancel"),
@@ -173,8 +173,8 @@ describe("GET /api/zero/billing/status", () => {
 
   it("includes creditExpiry data for paid org with expires records", async () => {
     const { orgId } = await context.setupUser({ prefix: "expiry-user" });
-    const periodEnd = new Date("2026-04-20T00:00:00Z");
-    const expiryDate = new Date("2026-05-20T00:00:00Z");
+    const periodEnd = new Date("2099-04-20T00:00:00Z");
+    const expiryDate = new Date("2099-05-20T00:00:00Z");
 
     await updateOrgStripeFields(orgId, {
       stripeCustomerId: uniqueId("cus-expiry"),
@@ -265,7 +265,7 @@ describe("GET /api/zero/billing/status", () => {
       stripeCustomerId: uniqueId("cus-payg"),
       stripeSubscriptionId: uniqueId("sub-payg"),
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "pro",
     });
 
@@ -274,7 +274,7 @@ describe("GET /api/zero/billing/status", () => {
       orgId,
       source: "subscription_renewal",
       amount: 20_000,
-      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      expiresAt: new Date("2099-06-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-sub"),
     });
     // Two separate auto-recharge top-ups — must merge into a single segment
@@ -322,7 +322,7 @@ describe("GET /api/zero/billing/status", () => {
       stripeCustomerId: uniqueId("cus-pro"),
       stripeSubscriptionId: uniqueId("sub-pro"),
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "pro",
     });
 
@@ -330,7 +330,7 @@ describe("GET /api/zero/billing/status", () => {
       orgId,
       source: "subscription_renewal",
       amount: 20_000,
-      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      expiresAt: new Date("2099-06-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-pro"),
     });
 
@@ -358,7 +358,7 @@ describe("GET /api/zero/billing/status", () => {
       stripeCustomerId: uniqueId("cus-team"),
       stripeSubscriptionId: uniqueId("sub-team"),
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "team",
     });
 
@@ -366,7 +366,7 @@ describe("GET /api/zero/billing/status", () => {
       orgId,
       source: "subscription_renewal",
       amount: 120_000,
-      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      expiresAt: new Date("2099-06-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-team"),
     });
 
@@ -395,7 +395,7 @@ describe("GET /api/zero/billing/status", () => {
       stripeCustomerId: uniqueId("cus-leftover"),
       stripeSubscriptionId: uniqueId("sub-leftover"),
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "pro",
     });
 
@@ -404,7 +404,7 @@ describe("GET /api/zero/billing/status", () => {
       orgId,
       source: "subscription_renewal",
       amount: 20_000,
-      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      expiresAt: new Date("2099-06-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-pro-leftover"),
     });
     // Leftover Team renewal from previous cycle
@@ -413,7 +413,7 @@ describe("GET /api/zero/billing/status", () => {
       source: "subscription_renewal",
       amount: 120_000,
       remaining: 40_000,
-      expiresAt: new Date("2026-07-20T00:00:00Z"),
+      expiresAt: new Date("2099-07-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-team-leftover"),
     });
 
@@ -505,7 +505,7 @@ describe("GET /api/zero/billing/status", () => {
       stripeCustomerId: uniqueId("cus-untracked"),
       stripeSubscriptionId: uniqueId("sub-untracked"),
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2026-05-20T00:00:00Z"),
+      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
       tier: "pro",
     });
 
@@ -514,7 +514,7 @@ describe("GET /api/zero/billing/status", () => {
       orgId,
       source: "subscription_renewal",
       amount: 20_000,
-      expiresAt: new Date("2026-06-20T00:00:00Z"),
+      expiresAt: new Date("2099-06-20T00:00:00Z"),
       stripeInvoiceId: uniqueId("inv-untracked-sub"),
     });
 
