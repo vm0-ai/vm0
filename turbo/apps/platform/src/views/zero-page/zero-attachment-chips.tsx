@@ -216,6 +216,7 @@ async function fetchBlobForDownload(
   // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
   try {
     const res = await fetch(url, {
+      cache: "reload",
       mode: "cors",
       signal,
     });
