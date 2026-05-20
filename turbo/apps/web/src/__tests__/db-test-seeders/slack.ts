@@ -9,43 +9,6 @@ import {
 import { uniqueId } from "../test-helpers";
 
 /**
- * @why-db-direct Slack OAuth callback requires real API interaction to exchange
- * authorization code for bot token; no test-friendly API endpoint exists.
- *
- * Creates an org-aware Slack installation with encrypted bot token.
- */
-export async function createTestSlackOrgInstallation(opts: {
-  workspaceId?: string;
-  workspaceName?: string;
-  orgId: string | null;
-  botScopes?: string | null;
-}): Promise<{
-  slackWorkspaceId: string;
-  slackWorkspaceName: string;
-  installation: typeof slackOrgInstallations.$inferSelect;
-}> {
-  initServices();
-
-  const workspaceId = opts.workspaceId ?? `T-${randomUUID().slice(0, 8)}`;
-  const workspaceName = opts.workspaceName ?? "Test Org Workspace";
-
-  const { installation } = await upsertSlackInstallation(globalThis.services, {
-    slackWorkspaceId: workspaceId,
-    slackWorkspaceName: workspaceName,
-    orgId: opts.orgId,
-    botUserId: `B-${randomUUID().slice(0, 8)}`,
-    botToken: "xoxb-test-bot-token",
-    botScopes: opts.botScopes ?? null,
-  });
-
-  return {
-    slackWorkspaceId: workspaceId,
-    slackWorkspaceName: workspaceName,
-    installation,
-  };
-}
-
-/**
  * @why-db-direct Minimal installation for external cleanup tests; no API path
  * creates installations without real OAuth.
  *
