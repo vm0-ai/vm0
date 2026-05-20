@@ -166,6 +166,7 @@ import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
+import { novitaFirewall } from "./novita.generated";
 import { nyneFirewall } from "./nyne.generated";
 import { onyxFirewall } from "./onyx.generated";
 import { openaiFirewall } from "./openai.generated";
@@ -389,6 +390,7 @@ const CONNECTOR_FIREWALLS = {
   n8n: n8nFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
+  novita: novitaFirewall,
   onyx: onyxFirewall,
   openai: openaiFirewall,
   "outlook-calendar": outlookCalendarFirewall,

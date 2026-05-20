@@ -143,6 +143,7 @@ import { moss } from "./connectors/moss";
 import { msg9 } from "./connectors/msg9";
 import { n8n } from "./connectors/n8n";
 import { neon } from "./connectors/neon";
+import { novita } from "./connectors/novita";
 import { nyne } from "./connectors/nyne";
 import { onyx } from "./connectors/onyx";
 import { openai } from "./connectors/openai";
@@ -643,6 +644,7 @@ const CONNECTOR_TYPES_DEF = {
   ...msg9,
   ...n8n,
   ...neon,
+  ...novita,
   ...nyne,
   ...onyx,
   ...openai,

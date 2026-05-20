@@ -132,6 +132,7 @@
     "generate:n8n": "tsx src/index.ts n8n",
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",
+    "generate:novita": "tsx src/index.ts novita",
     "generate:openai": "tsx src/index.ts openai",
     "generate:outlook-calendar": "tsx src/index.ts outlook-calendar",
     "generate:outlook-mail": "tsx src/index.ts outlook-mail",
