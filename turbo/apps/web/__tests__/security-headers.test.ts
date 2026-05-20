@@ -613,6 +613,13 @@ const ZERO_LOGS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/logs/extra",
   "/api/zero",
 ] as const;
+const ZERO_LOGS_SEARCH_REWRITE_SOURCE = "/api/zero/logs/search";
+const ZERO_LOGS_SEARCH_PATH = "/api/zero/logs/search";
+const ZERO_LOGS_SEARCH_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/logs/search/extra",
+  "/api/zero/logs/searches",
+  "/api/zero/logs",
+] as const;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
 const INTEGRATIONS_GITHUB_PATH = "/api/integrations/github";
 const INTEGRATIONS_GITHUB_NEXT_NEGATIVE_PATHS = [
@@ -1745,6 +1752,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_LOGS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/logs",
+        },
+        {
+          source: ZERO_LOGS_SEARCH_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/logs/search",
         },
         {
           source: INTEGRATIONS_GITHUB_REWRITE_SOURCE,
@@ -3691,6 +3702,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_LOGS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_LOGS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero logs search rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_LOGS_SEARCH_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_LOGS_SEARCH_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/logs/search",
+    });
+
+    const matcher = getPathMatch(ZERO_LOGS_SEARCH_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_LOGS_SEARCH_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_LOGS_SEARCH_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

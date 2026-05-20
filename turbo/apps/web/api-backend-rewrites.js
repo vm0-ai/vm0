@@ -382,6 +382,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/logs/search", "/api/logs/search"],
   ["/api/zero/logs", "/api/zero/logs"],
+  ["/api/zero/logs/search", "/api/zero/logs/search"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],
