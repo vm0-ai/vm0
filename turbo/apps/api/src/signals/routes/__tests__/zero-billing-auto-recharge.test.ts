@@ -91,6 +91,28 @@ describe("GET /api/zero/billing/auto-recharge", () => {
     });
   });
 
+  it("returns default config for a new org metadata row", async () => {
+    const fixture = await track(
+      store.set(seedAutoRechargeOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
+
+    const response = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      enabled: false,
+      threshold: null,
+      amount: null,
+    });
+  });
+
   it("returns the legacy default when the org metadata row does not exist", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

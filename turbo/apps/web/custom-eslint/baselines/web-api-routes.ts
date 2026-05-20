@@ -32,7 +32,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/webhooks/clerk/route.ts",
   "app/api/webhooks/github/route.ts",
   "app/api/webhooks/stripe/route.ts",
-  "app/api/zero/billing/auto-recharge/route.ts",
   "app/api/zero/billing/checkout/route.ts",
   "app/api/zero/billing/downgrade/route.ts",
   "app/api/zero/billing/invoices/route.ts",

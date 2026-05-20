@@ -1213,6 +1213,17 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/usages")).toBe(false);
   });
 
+  it("matches the zero billing auto-recharge rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/auto-recharge"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/auto-recharge/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
+  });
+
   it("matches the zero billing status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(
