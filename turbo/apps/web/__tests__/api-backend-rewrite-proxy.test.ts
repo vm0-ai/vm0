@@ -1575,7 +1575,24 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/webhooks/agent/storages/commit/extra"),
     ).toBe(false);
     expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/storages/commitment"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent/storages")).toBe(
+      false,
+    );
+  });
+
+  it("matches the agent storages prepare webhook rewrite path exactly", () => {
+    expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/storages/prepare"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/storages/prepare/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/storages/prepared"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/webhooks/agent/storages")).toBe(
       false,
@@ -3517,6 +3534,47 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe(
           "/api/webhooks/agent/storages/commit?from=storage-commit",
+        );
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent storages prepare webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_storage_prepare_1",
+          storageName: "artifact-storage",
+          storageType: "artifact",
+          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/storages/prepare?from=storage-prepare`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/storages/prepare?from=storage-prepare",
         );
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");

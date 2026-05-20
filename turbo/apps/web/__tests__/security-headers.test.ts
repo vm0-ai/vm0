@@ -729,7 +729,15 @@ const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
 const AGENT_STORAGES_COMMIT_PATH = "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_COMMIT_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/storages/commit/extra",
-  "/api/webhooks/agent/storages/prepare",
+  "/api/webhooks/agent/storages/commitment",
+  "/api/webhooks/agent/storages",
+] as const;
+const AGENT_STORAGES_PREPARE_REWRITE_SOURCE =
+  "/api/webhooks/agent/storages/prepare";
+const AGENT_STORAGES_PREPARE_PATH = "/api/webhooks/agent/storages/prepare";
+const AGENT_STORAGES_PREPARE_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/storages/prepare/extra",
+  "/api/webhooks/agent/storages/prepared",
   "/api/webhooks/agent/storages",
 ] as const;
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
@@ -2192,6 +2200,11 @@ describe("API backend rewrites", () => {
           source: AGENT_STORAGES_COMMIT_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/agent/storages/commit",
+        },
+        {
+          source: AGENT_STORAGES_PREPARE_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/storages/prepare",
         },
         {
           source: AGENT_CHECKPOINTS_REWRITE_SOURCE,
@@ -4952,6 +4965,30 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_STORAGES_COMMIT_PATH)).toStrictEqual({});
     for (const pathname of AGENT_STORAGES_COMMIT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent storages prepare webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_STORAGES_PREPARE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_STORAGES_PREPARE_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/agent/storages/prepare",
+    });
+
+    const matcher = getPathMatch(AGENT_STORAGES_PREPARE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_STORAGES_PREPARE_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_STORAGES_PREPARE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

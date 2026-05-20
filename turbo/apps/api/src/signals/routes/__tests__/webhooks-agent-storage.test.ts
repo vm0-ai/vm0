@@ -4,6 +4,7 @@ import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
 import { createStore } from "ccstate";
@@ -222,6 +223,26 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     );
   });
 
+  it("returns 404 when the sandbox run does not exist", async () => {
+    const fixture = await track(seedFixture());
+    const missingRunId = randomUUID();
+    const missingRunFixture = { ...fixture, runId: missingRunId };
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody(fixture, { runId: missingRunId }),
+        headers: {
+          authorization: `Bearer ${sandboxToken(missingRunFixture)}`,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
   it("creates storage metadata scoped to the sandbox run organization", async () => {
     const fixture = await track(seedFixture());
     const name = storageName("webhook-prepare");
@@ -236,6 +257,8 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     expect(response.uploads?.manifest.key).toBe(
       `${fixture.orgId}/artifact/${name}/${response.versionId}/manifest.json`,
     );
+    expect(response.uploads?.archive.presignedUrl).toMatch(/^https?:\/\//);
+    expect(response.uploads?.manifest.presignedUrl).toMatch(/^https?:\/\//);
 
     const db = store.set(writeDb$);
     const [storage] = await db
@@ -251,6 +274,85 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
       size: 0,
       fileCount: 0,
     });
+  });
+
+  it("rejects total declared file size over 100MB", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody(fixture, {
+          files: [
+            validFile({ path: "one.bin", size: MAX_FILE_SIZE_BYTES }),
+            validFile({
+              path: "two.bin",
+              hash: SECOND_TEST_HASH,
+              size: 1,
+            }),
+          ],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [413],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Upload rejected: total file size exceeds 100MB limit",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+  });
+
+  it("returns 400 when one file exceeds the per-file size schema limit", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody(fixture, {
+          files: [
+            validFile({
+              path: "large-file.bin",
+              size: MAX_FILE_SIZE_BYTES + 1,
+            }),
+          ],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns existing=true for deduplicated versions with uploaded S3 files", async () => {
+    const fixture = await track(seedFixture());
+    const name = storageName("webhook-prepare-existing");
+    const body = prepareBody(fixture, { storageName: name });
+    const prepared = await prepareOk(fixture, body);
+
+    context.mocks.s3.send.mockResolvedValue({});
+    await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          storageName: name,
+          versionId: prepared.versionId,
+          files: body.files,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    context.mocks.s3.getSignedUrl.mockClear();
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await prepareOk(fixture, body);
+
+    expect(response).toStrictEqual({
+      versionId: prepared.versionId,
+      existing: true,
+    });
+    expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
   });
 });
 

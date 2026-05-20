@@ -168,6 +168,8 @@ const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
 const AGENT_HEARTBEAT_REWRITE_SOURCE = "/api/webhooks/agent/heartbeat";
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
+const AGENT_STORAGES_PREPARE_REWRITE_SOURCE =
+  "/api/webhooks/agent/storages/prepare";
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
   "/api/webhooks/agent/checkpoints/prepare-history";
@@ -467,6 +469,10 @@ export const API_BACKEND_REWRITES = [
   [AGENT_FIREWALL_AUTH_REWRITE_SOURCE, "/api/webhooks/agent/firewall/auth"],
   [AGENT_HEARTBEAT_REWRITE_SOURCE, "/api/webhooks/agent/heartbeat"],
   [AGENT_STORAGES_COMMIT_REWRITE_SOURCE, "/api/webhooks/agent/storages/commit"],
+  [
+    AGENT_STORAGES_PREPARE_REWRITE_SOURCE,
+    "/api/webhooks/agent/storages/prepare",
+  ],
   [AGENT_CHECKPOINTS_REWRITE_SOURCE, "/api/webhooks/agent/checkpoints"],
   [TELEGRAM_INTEGRATIONS_REWRITE_SOURCE, "/api/integrations/telegram"],
   [TELEGRAM_LINK_REWRITE_SOURCE, "/api/integrations/telegram/link"],
