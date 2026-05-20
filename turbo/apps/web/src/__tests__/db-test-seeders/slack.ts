@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
@@ -44,49 +43,6 @@ export async function createTestSlackOrgInstallation(opts: {
     slackWorkspaceName: workspaceName,
     installation,
   };
-}
-
-/**
- * @why-db-direct Connect API calls Slack to send DM notifications; test setup
- * needs connections without Slack API side effects.
- *
- * Creates an org-aware Slack connection, validating the installation has an orgId.
- */
-export async function createTestSlackOrgConnection(opts: {
-  slackUserId?: string;
-  slackWorkspaceId: string;
-  vm0UserId: string;
-}): Promise<{ slackUserId: string; connectionId: string }> {
-  initServices();
-
-  const slackUserId = opts.slackUserId ?? `U-${randomUUID().slice(0, 8)}`;
-
-  const [installation] = await globalThis.services.db
-    .select({ orgId: slackOrgInstallations.orgId })
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, opts.slackWorkspaceId))
-    .limit(1);
-
-  if (!installation?.orgId) {
-    throw new Error(
-      `No installation with orgId found for workspace ${opts.slackWorkspaceId}`,
-    );
-  }
-
-  const { connectionId } = await insertSlackConnectionIfMissing(
-    globalThis.services,
-    {
-      slackUserId,
-      slackWorkspaceId: opts.slackWorkspaceId,
-      vm0UserId: opts.vm0UserId,
-    },
-  );
-
-  if (!connectionId) {
-    throw new Error("Failed to create Slack org connection");
-  }
-
-  return { slackUserId, connectionId };
 }
 
 /**

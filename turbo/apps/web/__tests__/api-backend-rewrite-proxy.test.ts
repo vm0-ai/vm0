@@ -803,7 +803,22 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/integrations/slack/message/extra",
       ),
     ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/messages"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
+    ).toBe(false);
+  });
+
+  it("matches the zero integrations Slack status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slacks")).toBe(
       false,
     );
     expect(
@@ -820,9 +835,9 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/integrations/slack/connect/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
-      false,
-    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connects"),
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/connected"),
     ).toBe(false);
@@ -918,9 +933,9 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/download"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
-      false,
-    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/downloaded"),
+    ).toBe(false);
   });
 
   it("matches the zero integrations Telegram message rewrite path exactly", () => {
@@ -935,7 +950,7 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slacks")).toBe(
       false,
     );
   });
