@@ -2308,6 +2308,8 @@ where
         }
         _ = tokio::time::sleep(request.start_timeout) => {
             let payload = vsock_proto::encode_exec_cancel();
+            shared.remove_operation(seq);
+            registration_guard.disarm();
             let cancel_result = tokio::time::timeout(
                 start_timeout_cancel_write_timeout,
                 write_frame(
@@ -2335,8 +2337,6 @@ where
                 ))
             });
             start_cancel_on_drop.disarm();
-            shared.remove_operation(seq);
-            registration_guard.disarm();
             cancel_result?;
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,

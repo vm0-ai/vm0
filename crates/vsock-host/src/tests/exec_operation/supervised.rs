@@ -1289,6 +1289,84 @@ async fn supervised_exec_late_start_frames_after_start_timeout_are_ignored() {
 }
 
 #[tokio::test]
+async fn supervised_exec_start_ack_timeout_removes_operation_before_cancel_write() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let (start_written_tx, start_written_rx) = tokio::sync::oneshot::channel();
+    let (allow_start_wait_tx, allow_start_wait_rx) = tokio::sync::oneshot::channel();
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            exec_operation_impl::test_support::start_supervised_exec_after_start_write(
+                &host.shared,
+                SupervisedExecRequest {
+                    start_timeout: Duration::ZERO,
+                    ..supervised_request("blocked-start-timeout-late-result")
+                },
+                async move {
+                    let _ = start_written_tx.send(());
+                    let _ = allow_start_wait_rx.await;
+                },
+                Duration::from_secs(5),
+            )
+            .await
+        })
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), start_written_rx)
+        .await
+        .expect("start frame write should complete")
+        .expect("start write hook should notify");
+    let writer_guard = host.shared.writer.lock().await;
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    allow_start_wait_tx
+        .send(())
+        .expect("start wait hook should still be pending");
+
+    wait_for_operation_count(&host, 0).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+
+    send_exec_started(&mut guest, start.seq, 123).await;
+    send_discarded_exec_result(
+        &mut guest,
+        start.seq,
+        ExecTermination::Exited { exit_code: 0 },
+    )
+    .await;
+
+    drop(writer_guard);
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
+    let err = match task.await.unwrap() {
+        Ok(_) => panic!("supervised exec should time out before exec_started"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_secs(5)).await })
+    };
+    let quiesce = read_guest_message(&mut guest).await;
+    assert_eq!(quiesce.msg_type, MSG_QUIESCE_OPERATIONS);
+    let response = vsock_proto::encode(MSG_OPERATIONS_QUIESCED, quiesce.seq, &[]).unwrap();
+    guest.write_all(&response).await.unwrap();
+    quiesce_task.await.unwrap().unwrap();
+
+    assert!(is_connected(&host));
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
