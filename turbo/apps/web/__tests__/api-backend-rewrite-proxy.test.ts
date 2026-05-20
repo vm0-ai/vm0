@@ -944,6 +944,11 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/link"),
     ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/integrations/telegram/123456789/avatar",
+      ),
+    ).toBe(true);
     expect(matchesApiBackendRewritePath("/api/telegram/register/extra")).toBe(
       false,
     );
@@ -963,6 +968,19 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/link/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/integrations/telegram/123456789/avatar/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/avatar"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/integrations/telegram/123456789/avatars",
+      ),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/extra"),
@@ -3003,6 +3021,16 @@ describe("API backend rewrite proxy behavior", () => {
           "application/json",
         );
         expect(linkPayload.body).toBe(linkBody);
+
+        const avatarResponse = await fetch(
+          `${origin}/api/integrations/telegram/123456789/avatar?exp=1000&sig=avatar-signature`,
+        );
+
+        const avatarPayload = (await avatarResponse.json()) as EchoPayload;
+        expect(avatarPayload.method).toBe("GET");
+        expect(avatarPayload.url).toBe(
+          "/api/integrations/telegram/123456789/avatar?exp=1000&sig=avatar-signature",
+        );
       },
     );
   });

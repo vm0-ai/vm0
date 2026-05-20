@@ -24,28 +24,3 @@ export function computeHmacSignature(
   const signaturePayload = `${timestamp}.${payload}`;
   return createHmac("sha256", secret).update(signaturePayload).digest("hex");
 }
-
-/**
- * Verify HMAC signature matches expected value
- *
- * Uses timing-safe comparison to prevent timing attacks
- */
-export function verifyHmacSignature(
-  payload: string,
-  secret: string,
-  timestamp: number,
-  signature: string,
-): boolean {
-  const expected = computeHmacSignature(payload, secret, timestamp);
-
-  // Timing-safe comparison
-  if (expected.length !== signature.length) {
-    return false;
-  }
-
-  let result = 0;
-  for (let i = 0; i < expected.length; i++) {
-    result |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  }
-  return result === 0;
-}

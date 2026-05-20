@@ -1852,6 +1852,147 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     return `${parsed.pathname}${parsed.search}`;
   }
 
+  async function seedAvatarAuthContext(): Promise<{
+    readonly orgId: string;
+    readonly userId: string;
+    readonly token: string;
+  }> {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
+
+    return {
+      orgId,
+      userId,
+      token: mintZeroToken({
+        userId,
+        orgId,
+        capabilities: ["telegram:read"],
+      }),
+    };
+  }
+
+  async function seedAvatarInstallationContext(
+    botId: string = newTelegramBotId(),
+  ): Promise<{
+    readonly orgId: string;
+    readonly userId: string;
+    readonly token: string;
+    readonly botId: string;
+  }> {
+    const auth = await seedAvatarAuthContext();
+    const builder = makeTelegramFixtureBuilder(auth.orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId: auth.orgId, ownerUserId: auth.userId, telegramBotId: botId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    return { ...auth, botId };
+  }
+
+  function mockTelegramAvatarDownload(args: {
+    readonly fileBytes: Buffer;
+    readonly botToken?: string;
+  }): void {
+    const botToken = args.botToken ?? "test-bot-token";
+    context.mocks.telegram.getUserProfilePhotos.mockResolvedValue([
+      [
+        {
+          file_id: "small-avatar",
+          width: 64,
+          height: 64,
+        },
+        {
+          file_id: "large-avatar",
+          width: 320,
+          height: 320,
+          file_size: args.fileBytes.length,
+        },
+      ],
+    ]);
+    context.mocks.telegram.getFile.mockResolvedValue({
+      file_id: "large-avatar",
+      file_size: args.fileBytes.length,
+      file_path: "photos/avatar.jpg",
+    });
+    server.use(
+      http.get(
+        `https://api.telegram.org/file/bot${botToken}/photos/avatar.jpg`,
+        () => {
+          return new HttpResponse(args.fileBytes, {
+            status: 200,
+            headers: {
+              "content-type": "image/jpeg",
+              "content-length": String(args.fileBytes.length),
+            },
+          });
+        },
+      ),
+    );
+  }
+
+  it("returns 401 when not authenticated and signature is missing", async () => {
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      "/api/integrations/telegram/tg-bot/avatar",
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expectUnauthorized(body);
+  });
+
+  it("returns 404 when the bot is not visible in the active org", async () => {
+    const { token } = await seedAvatarAuthContext();
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      "/api/integrations/telegram/missing-bot/avatar",
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body).toStrictEqual({
+      error: {
+        message: "Telegram bot not found",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("streams an authenticated custom bot avatar from the active org", async () => {
+    const { botId, token } = await seedAvatarInstallationContext();
+    const fileBytes = Buffer.from("authenticated telegram avatar bytes");
+    mockTelegramAvatarDownload({
+      fileBytes,
+    });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      `/api/integrations/telegram/${botId}/avatar`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(context.mocks.telegram.getUserProfilePhotos).toHaveBeenCalledWith(
+      "test-bot-token",
+      Number(botId),
+      1,
+    );
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
+    const receivedBytes = Buffer.from(await response.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBeTruthy();
+  });
+
   it("streams a signed custom bot avatar without auth", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -1926,6 +2067,32 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     expect(receivedBytes.equals(fileBytes)).toBeTruthy();
   });
 
+  it("streams the signed official Telegram bot avatar from the configured token", async () => {
+    const fileBytes = Buffer.from("official telegram avatar bytes");
+    mockTelegramAvatarDownload({
+      botToken: OFFICIAL_BOT_TOKEN,
+      fileBytes,
+    });
+
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(
+      requestPathFromSignedUrl(
+        buildTelegramBotAvatarUrl(OFFICIAL_TELEGRAM_BOT_ID),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(context.mocks.telegram.getUserProfilePhotos).toHaveBeenCalledWith(
+      OFFICIAL_BOT_TOKEN,
+      9876543210,
+      1,
+    );
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
+    const receivedBytes = Buffer.from(await response.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBeTruthy();
+  });
+
   it("returns fallback svg when Telegram has no avatar", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -1961,6 +2128,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
     await expect(response.text()).resolves.toContain(
       "Telegram bot avatar fallback",
     );

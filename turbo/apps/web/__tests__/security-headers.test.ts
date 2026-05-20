@@ -835,6 +835,14 @@ const TELEGRAM_LINK_NEXT_NEGATIVE_PATHS = [
   "/api/integrations/telegram/link/extra",
   "/api/integrations/telegram/links",
 ] as const;
+const TELEGRAM_AVATAR_REWRITE_SOURCE =
+  "/api/integrations/telegram/:botId/avatar";
+const TELEGRAM_AVATAR_PATH = "/api/integrations/telegram/123456789/avatar";
+const TELEGRAM_AVATAR_NEXT_NEGATIVE_PATHS = [
+  "/api/integrations/telegram/123456789/avatar/extra",
+  "/api/integrations/telegram/avatar",
+  "/api/integrations/telegram/123456789/avatars",
+] as const;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
   "/api/integrations/telegram/auth-callback";
 const TELEGRAM_AUTH_CALLBACK_PATH = "/api/integrations/telegram/auth-callback";
@@ -2064,6 +2072,11 @@ describe("API backend rewrites", () => {
           source: TELEGRAM_LINK_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/integrations/telegram/link",
+        },
+        {
+          source: TELEGRAM_AVATAR_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/integrations/telegram/:botId/avatar",
         },
         {
           source: BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
@@ -7631,6 +7644,31 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only single-segment telegram avatar rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TELEGRAM_AVATAR_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TELEGRAM_AVATAR_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/integrations/telegram/:botId/avatar",
+    });
+
+    const matcher = getPathMatch(TELEGRAM_AVATAR_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(TELEGRAM_AVATAR_PATH)).toStrictEqual({
+      botId: "123456789",
+    });
+    for (const pathname of TELEGRAM_AVATAR_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact telegram auth callback rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -7685,6 +7723,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact telegram link path", () => {
     expect(matchesApiBackendRewritePath(TELEGRAM_LINK_PATH)).toBe(true);
     for (const pathname of TELEGRAM_LINK_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for single-segment telegram avatar paths", () => {
+    expect(matchesApiBackendRewritePath(TELEGRAM_AVATAR_PATH)).toBe(true);
+    for (const pathname of TELEGRAM_AVATAR_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });
