@@ -67,18 +67,14 @@ impl CpuTracker {
 }
 
 fn parse_cpu_stat_line(line: &str) -> Option<(u64, u64)> {
-    if !line.starts_with("cpu ") {
+    let mut fields = line.split_whitespace();
+    if fields.next()? != "cpu" {
         return None;
     }
 
-    let values: Vec<u64> = line
-        .split_whitespace()
-        .skip(1)
-        .map(|v| v.parse())
-        .collect::<Result<_, _>>()
-        .ok()?;
+    let values: Vec<u64> = fields.map(|v| v.parse()).collect::<Result<_, _>>().ok()?;
 
-    // idle = field 3, iowait = field 4
+    // idle and iowait are zero-based fields 3 and 4 after the cpu label.
     let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
         return None;
     };
@@ -183,6 +179,11 @@ mod tests {
     #[test]
     fn parse_cpu_stat_line_accepts_valid_aggregate_line() {
         assert_eq!(parse_cpu_stat_line("cpu 1 2 3 4 5 6 7 8"), Some((9, 36)));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_accepts_whitespace_separated_fields() {
+        assert_eq!(parse_cpu_stat_line("cpu\t1 2 3 4 5 6"), Some((9, 21)));
     }
 
     #[test]
