@@ -733,7 +733,7 @@ fn process_group_has_live_member(pgid: u32) -> bool {
 pub(crate) fn pid_alive(pid: u32) -> bool {
     // SAFETY: `kill` with sig=0 is a no-op existence check.
     if unsafe { libc::kill(pid as i32, 0) != 0 } {
-        return false;
+        return process_group_has_live_member(pid);
     }
     match proc_stat(pid) {
         Some(stat) if stat.state == 'Z' => process_group_has_live_member(stat.pgid),
@@ -754,5 +754,40 @@ mod tests {
 
         assert_eq!(parsed.state, 'S');
         assert_eq!(parsed.pgid, 456);
+    }
+
+    #[test]
+    fn pid_alive_detects_live_group_after_leader_is_reaped() {
+        use std::os::unix::process::CommandExt;
+
+        let pid_path = unique_pid_path("reaped-leader-live-group");
+        let mut group_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "printf '%s' \"$$\" > '{}'; sleep 30 & exit 0",
+                pid_path.as_str()
+            ))
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = group_guard.read_pid();
+
+        child.wait().unwrap();
+
+        assert!(
+            pid_alive(pid),
+            "live process group should remain visible after leader is reaped"
+        );
+        kill_pid_group(pid);
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while process_group_has_live_member(pid) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "cleanup should kill remaining process group members"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        group_guard.disarm();
     }
 }
