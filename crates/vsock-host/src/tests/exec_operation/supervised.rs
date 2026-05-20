@@ -976,7 +976,7 @@ async fn supervised_exec_terminal_wait_timeout_does_not_send_cancel() {
 }
 
 #[tokio::test]
-async fn supervised_exec_start_ack_timeout_does_not_send_cancel() {
+async fn supervised_exec_start_ack_timeout_sends_cancel() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
@@ -995,15 +995,18 @@ async fn supervised_exec_start_ack_timeout_does_not_send_cancel() {
 
     let start = read_guest_message(&mut guest).await;
     assert_eq!(start.msg_type, MSG_EXEC_START);
+    let cancel = read_guest_message(&mut guest).await;
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
-        Ok(n) => panic!("start timeout must not send exec cancel; read {n} bytes"),
+        Ok(n) => panic!("start timeout must send exactly one exec cancel; read {n} extra bytes"),
         Err(err) => panic!("unexpected read error after start timeout: {err}"),
     }
 }
 
 #[tokio::test]
-async fn supervised_exec_start_wait_cancellation_cleans_registration_without_cancel() {
+async fn supervised_exec_start_wait_cancellation_sends_cancel() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
     let task = {
@@ -1025,9 +1028,16 @@ async fn supervised_exec_start_wait_cancellation_cleans_registration_without_can
     };
     assert!(err.is_cancelled());
     assert_eq!(operation_count(&host), 0);
+    let cancel = tokio::time::timeout(Duration::from_secs(5), read_guest_message(&mut guest))
+        .await
+        .expect("cancelled start wait should send exec cancel");
+    assert_eq!(cancel.msg_type, MSG_EXEC_CANCEL);
+    assert_eq!(cancel.seq, start.seq);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
-        Ok(n) => panic!("cancelled start wait must not send exec cancel; read {n} bytes"),
+        Ok(n) => {
+            panic!("cancelled start wait must send exactly one exec cancel; read {n} extra bytes")
+        }
         Err(err) => panic!("unexpected read error after cancelled start wait: {err}"),
     }
 }

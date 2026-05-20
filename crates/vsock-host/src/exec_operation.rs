@@ -1023,6 +1023,14 @@ pub(crate) struct ExecOperationCancelOnDropGuard {
 }
 
 impl ExecOperationCancelOnDropGuard {
+    fn new_for_seq(shared: Arc<Shared>, seq: u32, diagnostic: ExecOperationDiagnostic) -> Self {
+        Self {
+            shared: Some(shared),
+            seq,
+            diagnostic,
+        }
+    }
+
     pub(crate) fn new(handle: &ExecOperationHandle) -> Option<Self> {
         Some(Self {
             shared: Some(Arc::clone(&handle.shared)),
@@ -2181,7 +2189,9 @@ pub(crate) async fn start_supervised_exec_on_shared(
     }
 
     let mut registration_guard = ExecOperationRegistrationGuard::new(Arc::clone(shared), seq);
-    write_frame(
+    let mut start_cancel_on_drop =
+        ExecOperationCancelOnDropGuard::new_for_seq(Arc::clone(shared), seq, diagnostic.clone());
+    let start_write_result = write_frame(
         shared,
         MSG_EXEC_START,
         seq,
@@ -2190,23 +2200,53 @@ pub(crate) async fn start_supervised_exec_on_shared(
         Some(seq),
         FrameWriteObserver::default(),
     )
-    .await?;
+    .await;
+    if let Err(error) = start_write_result {
+        start_cancel_on_drop.disarm();
+        return Err(error);
+    }
 
     let pid = tokio::select! {
         biased;
         result = start_rx => {
-            result.map_err(|_| io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "connection closed",
-            ))??
+            match result {
+                Ok(Ok(pid)) => pid,
+                Ok(Err(error)) => {
+                    start_cancel_on_drop.disarm();
+                    return Err(error);
+                }
+                Err(_) => {
+                    start_cancel_on_drop.disarm();
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ));
+                }
+            }
         }
         _ = tokio::time::sleep(request.start_timeout) => {
+            let payload = vsock_proto::encode_exec_cancel();
+            let cancel_result = write_frame(
+                shared,
+                MSG_EXEC_CANCEL,
+                seq,
+                &payload,
+                Some(diagnostic.frame("start-timeout-cancel")),
+                None,
+                FrameWriteObserver::default(),
+            )
+            .await;
+            start_cancel_on_drop.disarm();
+            shared.remove_operation(seq);
+            registration_guard.disarm();
+            cancel_result?;
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "supervised exec start acknowledgement timeout",
             ));
         }
     };
+    start_cancel_on_drop.disarm();
     registration_guard.disarm();
 
     Ok(SupervisedExecHandle {
