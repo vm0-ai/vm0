@@ -191,6 +191,24 @@ describe("POST /api/runners/*", () => {
     });
   });
 
+  it("rejects heartbeat requests for non-vm0 runner groups", async () => {
+    const client = setupApp({ context })(runnersHeartbeatContract);
+    const response = await accept(
+      client.heartbeat({
+        body: {
+          ...runnerHeartbeatBody(randomUUID()),
+          group: "other/test",
+        },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid runner group", code: "BAD_REQUEST" },
+    });
+  });
+
   it("records runner heartbeat and removes stale runner state", async () => {
     const staleRunnerId = randomUUID();
     const activeRunnerId = randomUUID();

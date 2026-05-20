@@ -495,6 +495,13 @@ const CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS = [
   "/api/connectors/callback",
   "/api/connectors/github/callbacks",
 ] as const;
+const RUNNERS_HEARTBEAT_REWRITE_SOURCE = "/api/runners/heartbeat";
+const RUNNERS_HEARTBEAT_PATH = "/api/runners/heartbeat";
+const RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS = [
+  "/api/runners/heartbeat/extra",
+  "/api/runners",
+  "/api/runners/poll",
+] as const;
 const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_CONNECT_PATH = "/api/agentphone/connect";
 const AGENTPHONE_CONNECT_NEXT_NEGATIVE_PATHS = [
@@ -1874,6 +1881,10 @@ describe("API backend rewrites", () => {
         {
           source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
           destination: "https://api.example.test/api/connectors/:type/callback",
+        },
+        {
+          source: RUNNERS_HEARTBEAT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/runners/heartbeat",
         },
         {
           source: "/api/device-token",
@@ -3463,6 +3474,29 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of CONNECTORS_CALLBACK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact runners heartbeat rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === RUNNERS_HEARTBEAT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: RUNNERS_HEARTBEAT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/runners/heartbeat",
+    });
+
+    const matcher = getPathMatch(RUNNERS_HEARTBEAT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(RUNNERS_HEARTBEAT_PATH)).toStrictEqual({});
+    for (const pathname of RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -7555,6 +7589,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the single-segment zero billing redeem path", () => {
     expect(matchesApiBackendRewritePath(ZERO_BILLING_REDEEM_PATH)).toBe(true);
     for (const pathname of ZERO_BILLING_REDEEM_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact runners heartbeat path", () => {
+    expect(matchesApiBackendRewritePath(RUNNERS_HEARTBEAT_PATH)).toBe(true);
+    for (const pathname of RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

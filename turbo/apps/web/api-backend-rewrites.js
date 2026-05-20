@@ -407,6 +407,7 @@ export const API_BACKEND_REWRITES = [
   [AGENTPHONE_CONNECT_REWRITE_SOURCE, "/api/agentphone/connect"],
   [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
+  ["/api/runners/heartbeat", "/api/runners/heartbeat"],
   [ZERO_EMAIL_REPLY_CALLBACK_REWRITE_SOURCE, "/api/zero/email/callbacks/reply"],
   [
     ZERO_EMAIL_TRIGGER_CALLBACK_REWRITE_SOURCE,
