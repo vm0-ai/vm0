@@ -17,7 +17,6 @@ pub struct FailureDiagnostic {
     pub framework: AgentFramework,
     pub cli_exit_code: Option<i32>,
     pub claude_num_turns: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_detail_source: Option<FailureDetailSource>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
@@ -250,7 +249,7 @@ mod tests {
         assert_eq!(json["framework"], "claude_code");
         assert_eq!(json["cliExitCode"], 0);
         assert_eq!(json["claudeNumTurns"], 0);
-        assert_eq!(json.get("failureDetailSource"), None);
+        assert_eq!(json["failureDetailSource"], serde_json::Value::Null);
         assert_eq!(json["sessionHistoryStatus"], "missing");
         assert_eq!(json["promptShape"], "slash_like");
         assert_eq!(json["promptBytes"], 5);
