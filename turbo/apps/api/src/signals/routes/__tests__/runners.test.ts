@@ -4,6 +4,7 @@ import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
+  type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -15,7 +16,7 @@ import { eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { signPatJwtForTests } from "../../auth/tokens";
+import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { encryptSecretValue } from "../../services/crypto.utils";
@@ -62,7 +63,15 @@ function runnerHeartbeatBody(runnerId: string) {
   };
 }
 
-function storedExecutionContext(secretValue: string) {
+function encryptedSecretsMap(values: Record<string, string>): string {
+  return encryptSecretValue(JSON.stringify(values));
+}
+
+function storedExecutionContext(args?: {
+  readonly secretValue?: string;
+  readonly overrides?: Partial<StoredExecutionContext>;
+}): StoredExecutionContext {
+  const secretValue = args?.secretValue ?? "super-secret";
   return {
     workingDir: "/workspace",
     storageManifest: null,
@@ -71,14 +80,13 @@ function storedExecutionContext(secretValue: string) {
       OTHER_VALUE: "not-a-secret",
     },
     resumeSession: null,
-    encryptedSecrets: encryptSecretValue(
-      JSON.stringify({
-        API_KEY: secretValue,
-        UNUSED_SECRET: "hidden",
-      }),
-    ),
+    encryptedSecrets: encryptedSecretsMap({
+      API_KEY: secretValue,
+      UNUSED_SECRET: "hidden",
+    }),
     cliAgentType: "claude-code",
     apiStartTime: now() - 1000,
+    ...args?.overrides,
   };
 }
 
@@ -140,6 +148,8 @@ async function seedQueuedRun(args: {
   readonly profile?: string;
   readonly sessionId?: string | null;
   readonly secretValue?: string;
+  readonly appendSystemPrompt?: string;
+  readonly contextOverrides?: Partial<StoredExecutionContext>;
 }): Promise<{ readonly runId: string; readonly composeVersionId: string }> {
   const { composeId } = await store.set(
     seedCompose$,
@@ -158,6 +168,12 @@ async function seedQueuedRun(args: {
     context.signal,
   );
   const db = store.set(writeDb$);
+  if (args.appendSystemPrompt !== undefined) {
+    await db
+      .update(agentRuns)
+      .set({ appendSystemPrompt: args.appendSystemPrompt })
+      .where(eq(agentRuns.id, runId));
+  }
   const [run] = await db
     .select({ agentComposeVersionId: agentRuns.agentComposeVersionId })
     .from(agentRuns)
@@ -168,13 +184,30 @@ async function seedQueuedRun(args: {
     runnerGroup: args.runnerGroup ?? "vm0/test",
     profile: args.profile ?? "vm0/default",
     sessionId: args.sessionId ?? null,
-    executionContext: storedExecutionContext(
-      args.secretValue ?? "super-secret",
-    ),
+    executionContext: storedExecutionContext({
+      secretValue: args.secretValue,
+      overrides: args.contextOverrides,
+    }),
     expiresAt: new Date(now() + 60_000),
   });
 
   return { runId, composeVersionId: run?.agentComposeVersionId ?? "" };
+}
+
+function claimRunnerJob(args: {
+  readonly runId: string;
+  readonly authorization?: string;
+  readonly status: 200 | 400 | 401 | 403 | 404 | 409;
+}) {
+  const client = setupApp({ context })(runnersJobClaimContract);
+  return accept(
+    client.claim({
+      params: { id: args.runId },
+      body: {},
+      headers: args.authorization ? { authorization: args.authorization } : {},
+    }),
+    [args.status],
+  );
 }
 
 describe("POST /api/runners/*", () => {
@@ -426,6 +459,107 @@ describe("POST /api/runners/*", () => {
     expect(response.body).toStrictEqual({ job: null });
   });
 
+  it.each([
+    ["missing authorization", undefined],
+    ["non-Bearer authorization", "Basic sometoken"],
+    ["sandbox-shaped authorization", "Bearer header.payload.signature"],
+    [
+      "invalid official runner secret",
+      "Bearer vm0_official_wrong_secret_that_does_not_match_at_all_here",
+    ],
+    ["wrong-length official runner secret", "Bearer vm0_official_short"],
+    ["invalid CLI token", "Bearer invalid_nonexistent_token"],
+    ["unknown token format", "Bearer random_unknown_token"],
+  ])("rejects claim requests with %s", async (_caseName, authorization) => {
+    const response = await claimRunnerJob({
+      runId: randomUUID(),
+      authorization,
+      status: 401,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("reaches claim lookup with valid official runner authentication", async () => {
+    const response = await claimRunnerJob({
+      runId: randomUUID(),
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 404,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Job not found in queue", code: "NOT_FOUND" },
+    });
+  });
+
+  it("reaches claim lookup with valid user runner authentication", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+
+    const response = await claimRunnerJob({
+      runId: randomUUID(),
+      authorization: `Bearer ${pat.token}`,
+      status: 404,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Job not found in queue", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns a conflict when a queued job is already claimed", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({ fixture });
+    const db = store.set(writeDb$);
+    await db
+      .update(runnerJobQueue)
+      .set({ claimedAt: new Date(now()) })
+      .where(eq(runnerJobQueue.runId, queued.runId));
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 409,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Job already claimed", code: "CONFLICT" },
+    });
+  });
+
+  it("prevents official runners from claiming non-vm0 runner groups", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const queued = await seedQueuedRun({
+      fixture,
+      runnerGroup: "other/default",
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: OFFICIAL_RUNNER_TOKEN,
+      status: 403,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Official runners can only claim jobs from vm0/* groups",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("claims a queued job and returns prepared execution context", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
@@ -459,9 +593,17 @@ describe("POST /api/runners/*", () => {
         API_KEY: "runner-visible-secret",
         OTHER_VALUE: "not-a-secret",
       },
+      appendSystemPrompt: null,
       secretValues: ["runner-visible-secret"],
     });
     expect(response.body.sandboxToken).toMatch(/^vm0_sandbox_/);
+    expect(verifySandboxToken(response.body.sandboxToken)).toStrictEqual({
+      userId: fixture.userId,
+      runId: queued.runId,
+      orgId: fixture.orgId,
+    });
+    expect(response.body.settings).toBeUndefined();
+    expect(response.body.tools).toBeUndefined();
 
     const db = store.set(writeDb$);
     const [run] = await db
@@ -487,6 +629,31 @@ describe("POST /api/runners/*", () => {
     );
   });
 
+  it("returns appendSystemPrompt in claim responses", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      appendSystemPrompt: "Your name is Aria.",
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({
+      appendSystemPrompt: "Your name is Aria.",
+    });
+  });
+
   it("prevents a user runner from claiming another user's job", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
@@ -510,6 +677,132 @@ describe("POST /api/runners/*", () => {
 
     expect(response.body).toStrictEqual({
       error: { message: "Job does not belong to user", code: "FORBIDDEN" },
+    });
+  });
+
+  it("prevents user runners from claiming non-vm0 runner groups", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      runnerGroup: "wrong-org/default",
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 403,
+    });
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Only vm0/* runner groups are supported",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
+  it("returns an empty secretValues array when no secrets match the environment", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      contextOverrides: {
+        encryptedSecrets: encryptedSecretsMap({ SECRET: "not-in-env" }),
+        environment: { SOME_VAR: "other-value" },
+      },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({ secretValues: [] });
+  });
+
+  it("returns null secretValues when no encrypted secrets exist", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const queued = await seedQueuedRun({
+      fixture,
+      contextOverrides: { encryptedSecrets: null },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({ secretValues: null });
+  });
+
+  it("forwards optional stored execution context fields to the runner", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const pat = await seedPatFixture({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    patFixtures.push(pat);
+    const encryptedSecrets = encryptedSecretsMap({
+      GMAIL_ACCESS_TOKEN: "fake-access-token",
+    });
+    const secretConnectorMap = {
+      GMAIL_ACCESS_TOKEN: "gmail",
+      GMAIL_TOKEN: "gmail",
+    };
+    const secretConnectorMetadataMap = {
+      GMAIL_ACCESS_TOKEN: {
+        sourceType: "connector" as const,
+      },
+    };
+    const queued = await seedQueuedRun({
+      fixture,
+      contextOverrides: {
+        encryptedSecrets,
+        secretConnectorMap,
+        secretConnectorMetadataMap,
+        settings: '{"hooks":{}}',
+        tools: ["Bash", "Edit"],
+        modelUsageProvider: "claude-opus-4-6",
+      },
+    });
+
+    const response = await claimRunnerJob({
+      runId: queued.runId,
+      authorization: `Bearer ${pat.token}`,
+      status: 200,
+    });
+
+    expect(response.body).toMatchObject({
+      secretConnectorMap,
+      secretConnectorMetadataMap,
+      encryptedSecrets,
+      settings: '{"hooks":{}}',
+      tools: ["Bash", "Edit"],
+      modelUsageProvider: "claude-opus-4-6",
     });
   });
 

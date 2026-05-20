@@ -2523,6 +2523,21 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/runners")).toBe(false);
   });
 
+  it("matches the runners job claim rewrite path exactly", () => {
+    const runId = "11111111-1111-4111-8111-111111111111";
+    expect(
+      matchesApiBackendRewritePath(`/api/runners/jobs/${runId}/claim`),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(`/api/runners/jobs/${runId}/claim/extra`),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath(`/api/runners/jobs/${runId}`)).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/runners/jobs")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/runners")).toBe(false);
+  });
+
   it("matches the runners poll rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/runners/poll")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/runners/poll/extra")).toBe(false);

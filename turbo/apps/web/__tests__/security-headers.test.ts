@@ -502,6 +502,15 @@ const RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS = [
   "/api/runners/heartbeat/extra",
   "/api/runners",
 ] as const;
+const RUNNERS_JOB_CLAIM_REWRITE_SOURCE = "/api/runners/jobs/:id/claim";
+const RUNNERS_JOB_CLAIM_PATH =
+  "/api/runners/jobs/11111111-1111-4111-8111-111111111111/claim";
+const RUNNERS_JOB_CLAIM_NEXT_NEGATIVE_PATHS = [
+  "/api/runners/jobs/11111111-1111-4111-8111-111111111111/claim/extra",
+  "/api/runners/jobs/11111111-1111-4111-8111-111111111111",
+  "/api/runners/jobs",
+  "/api/runners",
+] as const;
 const RUNNERS_POLL_REWRITE_SOURCE = "/api/runners/poll";
 const RUNNERS_POLL_PATH = "/api/runners/poll";
 const RUNNERS_POLL_NEXT_NEGATIVE_PATHS = [
@@ -1989,6 +1998,10 @@ describe("API backend rewrites", () => {
         {
           source: RUNNERS_HEARTBEAT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/runners/heartbeat",
+        },
+        {
+          source: RUNNERS_JOB_CLAIM_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/runners/jobs/:id/claim",
         },
         {
           source: RUNNERS_POLL_REWRITE_SOURCE,
@@ -3667,6 +3680,34 @@ describe("API backend rewrites", () => {
     expect(matcher(RUNNERS_POLL_PATH)).toBe(false);
     expect(matcher(RUNNERS_REALTIME_TOKEN_PATH)).toBe(false);
     for (const pathname of RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the single-segment runners job claim rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === RUNNERS_JOB_CLAIM_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: RUNNERS_JOB_CLAIM_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/runners/jobs/:id/claim",
+    });
+
+    const matcher = getPathMatch(RUNNERS_JOB_CLAIM_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(RUNNERS_JOB_CLAIM_PATH)).toStrictEqual({
+      id: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(matcher(RUNNERS_HEARTBEAT_PATH)).toBe(false);
+    expect(matcher(RUNNERS_POLL_PATH)).toBe(false);
+    expect(matcher(RUNNERS_REALTIME_TOKEN_PATH)).toBe(false);
+    for (const pathname of RUNNERS_JOB_CLAIM_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -8169,6 +8210,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact runners heartbeat path", () => {
     expect(matchesApiBackendRewritePath(RUNNERS_HEARTBEAT_PATH)).toBe(true);
     for (const pathname of RUNNERS_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the single-segment runners job claim path", () => {
+    expect(matchesApiBackendRewritePath(RUNNERS_JOB_CLAIM_PATH)).toBe(true);
+    for (const pathname of RUNNERS_JOB_CLAIM_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

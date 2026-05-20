@@ -152,6 +152,8 @@ const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH_RE = /^\/api\/connectors\/[^/]+\/callback$/;
 const AGENTPHONE_CONNECT_REWRITE_SOURCE = "/api/agentphone/connect";
 const AGENTPHONE_WEBHOOK_REWRITE_SOURCE = "/api/agentphone/webhook";
+const RUNNERS_JOB_CLAIM_REWRITE_SOURCE = "/api/runners/jobs/:id/claim";
+const RUNNERS_JOB_CLAIM_PATH_RE = /^\/api\/runners\/jobs\/[^/]+\/claim$/;
 const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
@@ -427,6 +429,11 @@ export const API_BACKEND_REWRITES = [
   [AGENTPHONE_WEBHOOK_REWRITE_SOURCE, "/api/agentphone/webhook"],
   ["/api/email/unsubscribe", "/api/email/unsubscribe"],
   ["/api/runners/heartbeat", "/api/runners/heartbeat"],
+  [
+    RUNNERS_JOB_CLAIM_REWRITE_SOURCE,
+    "/api/runners/jobs/:id/claim",
+    RUNNERS_JOB_CLAIM_PATH_RE,
+  ],
   ["/api/runners/poll", "/api/runners/poll"],
   ["/api/runners/realtime/token", "/api/runners/realtime/token"],
   [ZERO_EMAIL_REPLY_CALLBACK_REWRITE_SOURCE, "/api/zero/email/callbacks/reply"],
