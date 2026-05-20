@@ -1,6 +1,6 @@
 import type {
-  ConnectorOAuthProviderType,
   ConnectorType,
+  OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { createTestOAuthConnectorRecord } from "../db-test-seeders/connectors";
@@ -56,7 +56,7 @@ async function createTestApiTokenConnector(options?: {
  * callback flow completes.
  */
 async function createTestOAuthConnector(options?: {
-  type?: ConnectorOAuthProviderType;
+  type?: OAuthConnectorType;
   accessToken?: string;
   externalUsername?: string;
   externalId?: string | null;
@@ -88,7 +88,7 @@ async function createTestOAuthConnector(options?: {
  */
 type CreateTestConnectorOptions =
   | {
-      type?: ConnectorOAuthProviderType;
+      type?: OAuthConnectorType;
       authMethod?: "oauth";
       accessToken?: string;
       externalUsername?: string;

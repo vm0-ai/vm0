@@ -1,6 +1,6 @@
 import type {
-  ConnectorOAuthProviderType,
   ConnectorType,
+  OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
 import {
@@ -127,13 +127,13 @@ export const PROVIDER_HANDLERS = {
   xero: xeroHandler,
   zoom: zoomHandler,
   "test-oauth": testOauthHandler,
-} satisfies Record<ConnectorOAuthProviderType, ProviderHandler>;
+} satisfies Record<OAuthConnectorType, ProviderHandler>;
 
 export type ConnectorOAuthProviderHandler = ProviderHandler;
 
 export function isConnectorOAuthProviderType(
   type: string,
-): type is ConnectorOAuthProviderType {
+): type is OAuthConnectorType {
   return Object.hasOwn(PROVIDER_HANDLERS, type);
 }
 

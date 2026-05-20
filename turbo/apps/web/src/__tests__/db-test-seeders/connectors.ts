@@ -1,6 +1,6 @@
 import type {
-  ConnectorOAuthProviderType,
   ConnectorType,
+  OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { initServices } from "../../lib/init-services";
 import { connectors } from "@vm0/db/schema/connector";
@@ -74,7 +74,7 @@ export async function insertTestConnectorSecret(
 export async function createTestOAuthConnectorRecord(options: {
   orgId: string;
   userId: string;
-  type: ConnectorOAuthProviderType;
+  type: OAuthConnectorType;
   accessToken: string;
   externalId: string;
   externalUsername: string;

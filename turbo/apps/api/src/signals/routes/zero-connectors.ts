@@ -23,8 +23,8 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type ConnectorOAuthProviderType,
   type ConnectorType,
+  type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -330,7 +330,7 @@ function missingOAuthProviderHandlerResponse(type: string) {
 }
 
 async function buildProviderAuthorizeUrl(args: {
-  readonly type: ConnectorOAuthProviderType;
+  readonly type: OAuthConnectorType;
   readonly clientId?: string;
   readonly redirectUri: string;
   readonly state: string;

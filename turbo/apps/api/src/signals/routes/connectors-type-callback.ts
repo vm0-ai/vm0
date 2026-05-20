@@ -8,8 +8,8 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type ConnectorOAuthProviderType,
   type ConnectorType,
+  type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   exchangeProviderCode,
@@ -41,7 +41,6 @@ const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 const REDIRECT_STATUS = 307;
 
-type OAuthConnectorType = ConnectorOAuthProviderType;
 type StoredOAuthState = typeof connectorOauthStates.$inferSelect;
 
 type CallbackIdentity = {

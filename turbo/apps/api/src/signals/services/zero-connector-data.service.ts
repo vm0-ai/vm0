@@ -24,8 +24,8 @@ import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodType,
-  type ConnectorOAuthProviderType,
   type ConnectorType,
+  type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -811,7 +811,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorOAuthProviderType;
+      readonly type: OAuthConnectorType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
