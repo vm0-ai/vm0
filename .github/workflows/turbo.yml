@@ -60,6 +60,47 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Not a release-please context"
 
+  detect-turbo-ts-checks:
+    needs: [detect-release]
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      turbo-ts-checks-needed: ${{ steps.detect.outputs.turbo-ts-checks-needed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect Turbo TypeScript check need
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+            echo "PR mode: comparing against merge base $BASE_REF"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE_REF="${{ github.event.merge_group.base_sha }}"
+            echo "Merge queue mode: comparing against base $BASE_REF"
+          else
+            BASE_REF="HEAD^"
+            echo "Main push mode: comparing against HEAD^"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF" HEAD)
+
+          TURBO_TS_CHECKS_NEEDED=true
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+            if [ -n "$CHANGED_FILES" ] && ! printf '%s\n' "$CHANGED_FILES" | grep -qv "^crates/"; then
+              echo "Turbo TypeScript checks not needed: crates-only ${{ github.event_name }} change set"
+              TURBO_TS_CHECKS_NEEDED=false
+            else
+              echo "Turbo TypeScript checks needed"
+            fi
+          else
+            echo "Turbo TypeScript checks needed"
+          fi
+
+          echo "turbo-ts-checks-needed=$TURBO_TS_CHECKS_NEEDED" >> "$GITHUB_OUTPUT"
+
   # Prepare: detect changes and set job-ref identifier
   prepare:
     needs: [detect-release]
@@ -314,10 +355,9 @@ jobs:
 
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:
-    needs: [detect-release]
+    needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
@@ -339,10 +379,9 @@ jobs:
         run: pnpm lint
 
   lint-types:
-    needs: [detect-release]
+    needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
@@ -353,10 +392,9 @@ jobs:
         run: pnpm check-types
 
   lint-format:
-    needs: [detect-release]
+    needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
@@ -367,10 +405,9 @@ jobs:
         run: pnpm prettier --check .
 
   lint-knip:
-    needs: [detect-release]
+    needs: [detect-turbo-ts-checks]
     runs-on: ubuntu-latest
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
     steps:
@@ -382,8 +419,9 @@ jobs:
 
   # Test jobs - split into 4 parallel jobs by project
   test-web:
-    needs: prepare
+    needs: detect-turbo-ts-checks
     runs-on: ubuntu-latest
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     strategy:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
@@ -487,9 +525,8 @@ jobs:
         run: pnpm tsx scripts/test-migration-consistency-schema.ts
 
   test-cli:
-    needs: [detect-release]
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -516,9 +553,8 @@ jobs:
           report_type: test_results
 
   test-app:
-    needs: [detect-release]
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -548,9 +584,8 @@ jobs:
           report_type: test_results
 
   test-app-browser:
-    needs: [detect-release]
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -571,9 +606,8 @@ jobs:
         run: pnpm --filter @vm0/app btest
 
   test-api:
-    needs: [detect-release]
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -618,9 +652,8 @@ jobs:
           report_type: test_results
 
   test-other:
-    needs: [detect-release]
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    needs: [detect-turbo-ts-checks]
+    if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
@@ -2077,6 +2110,7 @@ jobs:
     # Runner cleanup is handled by cleanup.yml (pull_request_target:closed).
     needs:
       - detect-release
+      - detect-turbo-ts-checks
       - prepare
       - file-size-check
       - block-generated-firewalls
@@ -2121,12 +2155,16 @@ jobs:
 
           echo "::group::CI Gate Results"
           FAILED=0
+          TS_CHECK_SKIP_ALLOWED=""
+          if [ "${{ needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed }}" = "false" ]; then
+            TS_CHECK_SKIP_ALLOWED="skipped"
+          fi
 
           check_result() {
             local job="$1" result="$2" allow_skip="$3"
             if [ "$result" = "success" ]; then
               echo "✅ $job: $result"
-            elif [ "$allow_skip" = "true" ] && [ "$result" = "skipped" ]; then
+            elif { [ "$allow_skip" = "skipped" ] || [ "$allow_skip" = "true" ]; } && [ "$result" = "skipped" ]; then
               echo "⏭️ $job: $result (allowed)"
             elif [ "$allow_skip" = "true" ] && [ "$result" = "cancelled" ]; then
               echo "⚠️ $job: $result (cancelled by concurrency group, allowed)"
@@ -2142,20 +2180,25 @@ jobs:
             fi
           }
 
-          # Must-succeed: only 'success' is acceptable
+          # Required foundation jobs: only 'success' is acceptable.
+          check_result "detect-release" "${{ needs.detect-release.result }}" ""
+          check_result "detect-turbo-ts-checks" "${{ needs.detect-turbo-ts-checks.result }}" ""
           check_result "prepare" "${{ needs.prepare.result }}" ""
           check_result "file-size-check" "${{ needs.file-size-check.result }}" ""
           check_result "block-generated-firewalls" "${{ needs.block-generated-firewalls.result }}" ""
-          check_result "lint-eslint" "${{ needs.lint-eslint.result }}" ""
-          check_result "lint-types" "${{ needs.lint-types.result }}" ""
-          check_result "lint-format" "${{ needs.lint-format.result }}" ""
-          check_result "lint-knip" "${{ needs.lint-knip.result }}" ""
-          check_result "test-web" "${{ needs.test-web.result }}" ""
-          check_result "test-cli" "${{ needs.test-cli.result }}" ""
-          check_result "test-app" "${{ needs.test-app.result }}" ""
-          check_result "test-app-browser" "${{ needs.test-app-browser.result }}" ""
-          check_result "test-api" "${{ needs.test-api.result }}" ""
-          check_result "test-other" "${{ needs.test-other.result }}" ""
+
+          # Turbo TypeScript checks: only 'success' is acceptable unless
+          # detect-turbo-ts-checks classified this as a crates-only change set.
+          check_result "lint-eslint" "${{ needs.lint-eslint.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-types" "${{ needs.lint-types.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-format" "${{ needs.lint-format.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "lint-knip" "${{ needs.lint-knip.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-web" "${{ needs.test-web.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-cli" "${{ needs.test-cli.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-app" "${{ needs.test-app.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-app-browser" "${{ needs.test-app-browser.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-api" "${{ needs.test-api.result }}" "$TS_CHECK_SKIP_ALLOWED"
+          check_result "test-other" "${{ needs.test-other.result }}" "$TS_CHECK_SKIP_ALLOWED"
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
