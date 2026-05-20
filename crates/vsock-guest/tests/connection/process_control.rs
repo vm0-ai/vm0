@@ -8,6 +8,10 @@ use vsock_proto::{
 
 use super::support::*;
 
+fn sleep_command_with_pid(pid_path: &str) -> String {
+    format!("printf '%s' \"$$\" > '{pid_path}'; sleep 60")
+}
+
 #[test]
 fn process_messages_seq_zero_return_error() {
     const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
@@ -43,6 +47,9 @@ fn process_control_validates_nonce_before_sink_dispatch() {
 
     const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
 
+    let pid_path = unique_pid_path("process-control-nonce-validates");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let command = sleep_command_with_pid(pid_path.as_str());
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
     let handle = thread::spawn(move || {
         let _ = handle_connection(guest_stream);
@@ -53,10 +60,11 @@ fn process_control_validates_nonce_before_sink_dispatch() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_process_with_control_nonce(&mut host_stream, 31, "sleep 60", NONCE);
+    send_spawn_process_with_control_nonce(&mut host_stream, 31, &command, NONCE);
     let result = read_message(&mut host_stream);
     assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
     assert_eq!(result.seq, 31);
+    let pid = child_guard.read_pid();
 
     send_process_control(&mut host_stream, 32, 31, NONCE, "message-1");
     assert_process_control_result(
@@ -71,6 +79,8 @@ fn process_control_validates_nonce_before_sink_dispatch() {
 
     drop(host_stream);
     let _ = handle.join();
+    wait_for_pid_exit(pid, "process control nonce validation cleanup");
+    child_guard.disarm();
 }
 
 #[test]
@@ -80,6 +90,9 @@ fn process_control_rejects_nonce_mismatch() {
     const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
     const WRONG_NONCE: vsock_proto::ProcessControlNonce = *b"fedcba9876543210";
 
+    let pid_path = unique_pid_path("process-control-nonce-mismatch");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let command = sleep_command_with_pid(pid_path.as_str());
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
     let handle = thread::spawn(move || {
         let _ = handle_connection(guest_stream);
@@ -90,10 +103,11 @@ fn process_control_rejects_nonce_mismatch() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_process_with_control_nonce(&mut host_stream, 33, "sleep 60", NONCE);
+    send_spawn_process_with_control_nonce(&mut host_stream, 33, &command, NONCE);
     let result = read_message(&mut host_stream);
     assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
     assert_eq!(result.seq, 33);
+    let pid = child_guard.read_pid();
 
     send_process_control(&mut host_stream, 34, 33, WRONG_NONCE, "message-2");
     assert_process_control_result(
@@ -108,6 +122,8 @@ fn process_control_rejects_nonce_mismatch() {
 
     drop(host_stream);
     let _ = handle.join();
+    wait_for_pid_exit(pid, "process control nonce mismatch cleanup");
+    child_guard.disarm();
 }
 
 #[test]
@@ -115,12 +131,16 @@ fn process_control_duplicate_spawn_seq_returns_error_without_replacing_active_no
     const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
     const DUPLICATE_NONCE: vsock_proto::ProcessControlNonce = *b"fedcba9876543210";
 
+    let pid_path = unique_pid_path("process-control-duplicate-spawn");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let command = sleep_command_with_pid(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_spawn_process_with_control_nonce(&mut host_stream, 39, "sleep 60", NONCE);
+    send_spawn_process_with_control_nonce(&mut host_stream, 39, &command, NONCE);
     let result = read_message(&mut host_stream);
     assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
     assert_eq!(result.seq, 39);
+    let pid = child_guard.read_pid();
 
     send_spawn_process_with_control_nonce(
         &mut host_stream,
@@ -146,16 +166,22 @@ fn process_control_duplicate_spawn_seq_returns_error_without_replacing_active_no
     );
 
     finish_guest_connection(handle, host_stream);
+    wait_for_pid_exit(pid, "process control duplicate spawn cleanup");
+    child_guard.disarm();
 }
 
 #[test]
 fn duplicate_spawn_seq_without_control_nonce_returns_error() {
+    let pid_path = unique_pid_path("process-control-duplicate-no-nonce");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let command = sleep_command_with_pid(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
-    send_spawn_process(&mut host_stream, 41, "sleep 60", None, 5000);
+    send_spawn_process(&mut host_stream, 41, &command, None, 5000);
     let result = read_message(&mut host_stream);
     assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
     assert_eq!(result.seq, 41);
+    let pid = child_guard.read_pid();
 
     send_spawn_process(&mut host_stream, 41, "printf duplicate", None, 5000);
     let duplicate = read_message(&mut host_stream);
@@ -165,6 +191,8 @@ fn duplicate_spawn_seq_without_control_nonce_returns_error() {
     assert!(error.contains("already active"));
 
     finish_guest_connection(handle, host_stream);
+    wait_for_pid_exit(pid, "process control duplicate no nonce cleanup");
+    child_guard.disarm();
 }
 
 #[test]
@@ -227,6 +255,9 @@ fn process_control_without_registered_nonce_returns_inactive() {
 
     const NONCE: vsock_proto::ProcessControlNonce = *b"0123456789abcdef";
 
+    let pid_path = unique_pid_path("process-control-without-nonce");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let command = sleep_command_with_pid(pid_path.as_str());
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
     let handle = thread::spawn(move || {
         let _ = handle_connection(guest_stream);
@@ -237,10 +268,11 @@ fn process_control_without_registered_nonce_returns_inactive() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    send_spawn_process(&mut host_stream, 37, "sleep 60", None, 5000);
+    send_spawn_process(&mut host_stream, 37, &command, None, 5000);
     let result = read_message(&mut host_stream);
     assert_eq!(result.msg_type, MSG_SPAWN_PROCESS_RESULT);
     assert_eq!(result.seq, 37);
+    let pid = child_guard.read_pid();
 
     send_process_control(&mut host_stream, 38, 37, NONCE, "message-4");
     assert_process_control_result(
@@ -255,6 +287,8 @@ fn process_control_without_registered_nonce_returns_inactive() {
 
     drop(host_stream);
     let _ = handle.join();
+    wait_for_pid_exit(pid, "process control without nonce cleanup");
+    child_guard.disarm();
 }
 
 #[test]
