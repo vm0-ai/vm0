@@ -294,6 +294,55 @@ fn supervised_exec_spawn_failure_returns_start_failed_without_started_ack() {
 }
 
 #[test]
+fn supervised_exec_control_spawn_failure_releases_registration() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        208,
+        "bad\0command",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+
+    let msg = read_message(&mut host_stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+    assert_eq!(msg.seq, 208);
+    let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+    assert_eq!(result.termination, ExecTermination::StartFailed);
+    assert!(result.diagnostic.contains("Failed to execute"));
+
+    send_exec_control(
+        &mut host_stream,
+        310,
+        208,
+        EXEC_CONTROL_NONCE,
+        "message-after-start-failed",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        310,
+        208,
+        EXEC_CONTROL_NONCE,
+        "message-after-start-failed",
+        ProcessControlStatus::Inactive,
+        "exec operation is not active",
+    );
+
+    send_quiesce_operations(&mut host_stream, 311);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 311);
+    assert!(quiesced.payload.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let target_seq = 203;
     let endpoint = process_control_ipc::endpoint_name(target_seq, &EXEC_CONTROL_NONCE);
