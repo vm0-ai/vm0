@@ -711,6 +711,13 @@ const AGENT_EVENTS_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/checkpoints",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
+const AGENT_FIREWALL_AUTH_PATH = "/api/webhooks/agent/firewall/auth";
+const AGENT_FIREWALL_AUTH_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/firewall/auth/extra",
+  "/api/webhooks/agent/firewall",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PATH = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_NEXT_NEGATIVE_PATHS = [
@@ -2150,6 +2157,11 @@ describe("API backend rewrites", () => {
         {
           source: AGENT_EVENTS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/agent/events",
+        },
+        {
+          source: AGENT_FIREWALL_AUTH_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/firewall/auth",
         },
         {
           source: AGENT_CHECKPOINTS_REWRITE_SOURCE,
@@ -4808,6 +4820,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_EVENTS_PATH)).toStrictEqual({});
     for (const pathname of AGENT_EVENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent firewall auth webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_FIREWALL_AUTH_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_FIREWALL_AUTH_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/agent/firewall/auth",
+    });
+
+    const matcher = getPathMatch(AGENT_FIREWALL_AUTH_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_FIREWALL_AUTH_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_FIREWALL_AUTH_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

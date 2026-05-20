@@ -164,6 +164,7 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
 );
 const AGENT_COMPLETE_REWRITE_SOURCE = "/api/webhooks/agent/complete";
 const AGENT_EVENTS_REWRITE_SOURCE = "/api/webhooks/agent/events";
+const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
   "/api/webhooks/agent/checkpoints/prepare-history";
@@ -460,6 +461,7 @@ export const API_BACKEND_REWRITES = [
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
   [AGENT_COMPLETE_REWRITE_SOURCE, "/api/webhooks/agent/complete"],
   [AGENT_EVENTS_REWRITE_SOURCE, "/api/webhooks/agent/events"],
+  [AGENT_FIREWALL_AUTH_REWRITE_SOURCE, "/api/webhooks/agent/firewall/auth"],
   [AGENT_CHECKPOINTS_REWRITE_SOURCE, "/api/webhooks/agent/checkpoints"],
   [TELEGRAM_INTEGRATIONS_REWRITE_SOURCE, "/api/integrations/telegram"],
   [TELEGRAM_LINK_REWRITE_SOURCE, "/api/integrations/telegram/link"],

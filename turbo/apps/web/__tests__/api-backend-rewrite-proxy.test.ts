@@ -1523,6 +1523,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
   });
 
+  it("matches the agent firewall auth webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/firewall/auth"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/firewall/auth/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent/firewall")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
+  });
+
   it("matches the agent checkpoints webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/checkpoints"),
@@ -3336,6 +3349,51 @@ describe("API backend rewrite proxy behavior", () => {
         const payload = (await response.json()) as EchoPayload;
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe("/api/webhooks/agent/events?from=events");
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent firewall auth webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          encryptedSecrets: "encrypted-secrets",
+          authHeaders: {
+            Authorization: "Bearer ${{ secrets.API_TOKEN }}",
+          },
+          authQuery: {
+            token: "${{ secrets.API_TOKEN }}",
+          },
+          firewallBillable: true,
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/firewall/auth?from=firewall-auth`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/firewall/auth?from=firewall-auth",
+        );
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);

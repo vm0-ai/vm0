@@ -212,8 +212,13 @@ async function readSecret(args: {
   return row ? decryptSecretValue(row.encryptedValue) : null;
 }
 
-async function seedExpiredNotionConnector(
+async function seedNotionConnector(
   fixture: FirewallFixture,
+  args: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+    readonly tokenExpiresAt: Date | null;
+  },
 ): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(connectors).values({
@@ -225,21 +230,31 @@ async function seedExpiredNotionConnector(
     externalUsername: "notion-user",
     externalEmail: "notion@example.com",
     oauthScopes: JSON.stringify([]),
-    tokenExpiresAt: new Date(now() - 60_000),
+    tokenExpiresAt: args.tokenExpiresAt,
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: fixture.userId,
     name: "NOTION_ACCESS_TOKEN",
-    value: "stale-notion-token",
+    value: args.accessToken,
     type: "connector",
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: fixture.userId,
     name: "NOTION_REFRESH_TOKEN",
-    value: "notion-refresh-token",
+    value: args.refreshToken,
     type: "connector",
+  });
+}
+
+async function seedExpiredNotionConnector(
+  fixture: FirewallFixture,
+): Promise<void> {
+  await seedNotionConnector(fixture, {
+    accessToken: "stale-notion-token",
+    refreshToken: "notion-refresh-token",
+    tokenExpiresAt: new Date(now() - 60_000),
   });
 }
 
@@ -604,6 +619,263 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       },
       expiresAt: null,
       resolvedSecrets: ["API_TOKEN", "BASIC_PASSWORD"],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
+  it("resolves query, vars, pass-through, and omitted query template cases", async () => {
+    const fixture = await track(seedFixture());
+
+    const combined = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            API_TOKEN: "secret-token",
+            CLIENT_SECRET: "client-secret",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+            "X-Client": secretTemplate("CLIENT_SECRET"),
+            "X-Workspace": varTemplate("WORKSPACE_ID"),
+            "X-Static": "static-value",
+          },
+          authQuery: {
+            token: secretTemplate("API_TOKEN"),
+            workspace: varTemplate("WORKSPACE_ID"),
+          },
+          vars: {
+            WORKSPACE_ID: "workspace-1",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    expect(combined.body).toStrictEqual({
+      headers: {
+        Authorization: "Bearer secret-token",
+        "X-Client": "client-secret",
+        "X-Workspace": "workspace-1",
+        "X-Static": "static-value",
+      },
+      query: {
+        token: "secret-token",
+        workspace: "workspace-1",
+      },
+      expiresAt: null,
+      resolvedSecrets: ["API_TOKEN", "CLIENT_SECRET"],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+
+    const withoutQuery = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ API_TOKEN: "secret-token" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("API_TOKEN")}`,
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    expect(withoutQuery.body.query).toBeUndefined();
+    expect(withoutQuery.body.headers.Authorization).toBe("Bearer secret-token");
+
+    const passThrough = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: "Bearer static-token",
+            "X-Static": "no-template",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    expect(passThrough.body).toStrictEqual({
+      headers: {
+        Authorization: "Bearer static-token",
+        "X-Static": "no-template",
+      },
+      expiresAt: null,
+      resolvedSecrets: [],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
+  it("resolves basic auth template edge cases", async () => {
+    const fixture = await track(seedFixture());
+    const encode = (value: string): string => {
+      return `Basic ${Buffer.from(value).toString("base64")}`;
+    };
+    const literalSecretTemplate = `\${{ secrets.USER }}`;
+    const malformedBasicTemplate = `\${{ basic("oops"quoted", secrets.X) }}`;
+    type BasicAuthCase = {
+      readonly template: string;
+      readonly secrets: Record<string, string>;
+      readonly vars: Record<string, string>;
+      readonly expectedHeader: string;
+      readonly expectedSecrets: readonly string[];
+    };
+    const cases: readonly BasicAuthCase[] = [
+      {
+        template: basicTemplate("secrets.USER", "secrets.PASS"),
+        secrets: { USER: "user", PASS: "pass" },
+        vars: {},
+        expectedHeader: encode("user:pass"),
+        expectedSecrets: ["PASS", "USER"],
+      },
+      {
+        template: basicTemplate("secrets.USER", ""),
+        secrets: { USER: "user" },
+        vars: {},
+        expectedHeader: encode("user:"),
+        expectedSecrets: ["USER"],
+      },
+      {
+        template: basicTemplate("", "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: {},
+        expectedHeader: encode(":pass"),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate("vars.USER", "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: { USER: "user" },
+        expectedHeader: encode("user:pass"),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate("", ""),
+        secrets: {},
+        vars: {},
+        expectedHeader: encode(":"),
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate("vars.USER", "vars.PASS"),
+        secrets: {},
+        vars: { USER: "user", PASS: "pass" },
+        expectedHeader: encode("user:pass"),
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate('"literal"', "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: {},
+        expectedHeader: encode("literal:pass"),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate("secrets.USER", '"literal"'),
+        secrets: { USER: "user" },
+        vars: {},
+        expectedHeader: encode("user:literal"),
+        expectedSecrets: ["USER"],
+      },
+      {
+        template: basicTemplate('"user"', '"pass"'),
+        secrets: {},
+        vars: {},
+        expectedHeader: encode("user:pass"),
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate('""', '""'),
+        secrets: {},
+        vars: {},
+        expectedHeader: encode(":"),
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate("vars.USER", '"literal"'),
+        secrets: {},
+        vars: { USER: "user" },
+        expectedHeader: encode("user:literal"),
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate(`"${literalSecretTemplate}"`, "secrets.PASS"),
+        secrets: { PASS: "pass", USER: "must-not-use" },
+        vars: {},
+        expectedHeader: encode(`${literalSecretTemplate}:pass`),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: basicTemplate('"secrets.USER"', "secrets.PASS"),
+        secrets: { PASS: "pass" },
+        vars: {},
+        expectedHeader: encode("secrets.USER:pass"),
+        expectedSecrets: ["PASS"],
+      },
+      {
+        template: malformedBasicTemplate,
+        secrets: { X: "x" },
+        vars: {},
+        expectedHeader: malformedBasicTemplate,
+        expectedSecrets: [],
+      },
+      {
+        template: basicTemplate('"user:name"', '"p@ss,word"'),
+        secrets: {},
+        vars: {},
+        expectedHeader: encode("user:name:p@ss,word"),
+        expectedSecrets: [],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets(testCase.secrets),
+            authHeaders: {
+              Authorization: testCase.template,
+            },
+            vars: testCase.vars,
+          },
+          headers: authHeaders(fixture),
+        }),
+        [200],
+      );
+
+      expect(response.body.headers.Authorization).toBe(testCase.expectedHeader);
+      expect(response.body.resolvedSecrets).toStrictEqual(
+        testCase.expectedSecrets,
+      );
+    }
+  });
+
+  it("skips token refresh for an empty secret connector map", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({ OPENAI_TOKEN: "sk-fake" }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("OPENAI_TOKEN")}`,
+          },
+          secretConnectorMap: {},
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      headers: {
+        Authorization: "Bearer sk-fake",
+      },
+      expiresAt: null,
+      resolvedSecrets: ["OPENAI_TOKEN"],
       refreshedConnectors: [],
       refreshedSecrets: [],
     });
@@ -990,6 +1262,163 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
       needsReconnect: true,
     });
+  });
+
+  it("proactively refreshes connector tokens inside the refresh buffer", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "stale-buffered-notion-token",
+      refreshToken: "buffered-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 30_000),
+    });
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "fresh-buffered-notion-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-buffered-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-buffered-notion-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "NOTION_ACCESS_TOKEN",
+    ]);
+  });
+
+  it("uses the current DB token when connector expiry is still valid", async () => {
+    const fixture = await track(seedFixture());
+    const futureExpiry = currentSecond() + 3600;
+    await seedNotionConnector(fixture, {
+      accessToken: "current-db-notion-token",
+      refreshToken: "notion-refresh-token",
+      tokenExpiresAt: new Date(futureExpiry * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-snapshot-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-db-notion-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+    expect(response.body.expiresAt).toBe(futureExpiry);
+  });
+
+  it("refreshes connector tokens with null expiry and forced refresh", async () => {
+    const nullExpiryFixture = await track(seedFixture());
+    await seedNotionConnector(nullExpiryFixture, {
+      accessToken: "stale-null-expiry-notion-token",
+      refreshToken: "null-expiry-refresh-token",
+      tokenExpiresAt: null,
+    });
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "fresh-null-expiry-notion-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const nullExpiryResponse = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-null-expiry-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(nullExpiryFixture),
+      }),
+      [200],
+    );
+    expect(nullExpiryResponse.body.headers.Authorization).toBe(
+      "Bearer fresh-null-expiry-notion-token",
+    );
+    expect(nullExpiryResponse.body.refreshedConnectors).toStrictEqual([
+      "notion",
+    ]);
+
+    const forcedFixture = await track(seedFixture());
+    await seedNotionConnector(forcedFixture, {
+      accessToken: "stale-force-notion-token",
+      refreshToken: "force-refresh-token",
+      tokenExpiresAt: new Date(now() + 3_600_000),
+    });
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "fresh-force-notion-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const forcedResponse = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-force-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+          forceRefresh: true,
+        },
+        headers: authHeaders(forcedFixture),
+      }),
+      [200],
+    );
+    expect(forcedResponse.body.headers.Authorization).toBe(
+      "Bearer fresh-force-notion-token",
+    );
+    expect(forcedResponse.body.refreshedConnectors).toStrictEqual(["notion"]);
   });
 
   it("refreshes expired codex model-provider OAuth tokens", async () => {
