@@ -267,7 +267,8 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 {
                     match send_attach(&mut p, &mut close_rx).await {
                         LoopAction::Stop => return,
-                        LoopAction::Reconnect => {
+                        LoopAction::Reconnect { disconnected_event } => {
+                            disconnected_sent = disconnected_event == DisconnectedEvent::Sent;
                             immediate_retry = true;
                             break;
                         }
@@ -320,8 +321,11 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                 Ok(msg) => {
                                     match handle_message(&mut p, msg, &mut close_rx).await {
                                         LoopAction::Stop => return,
-                                        LoopAction::Reconnect => {
-                                            disconnected_sent = true;
+                                        LoopAction::Reconnect {
+                                            disconnected_event,
+                                        } => {
+                                            disconnected_sent =
+                                                disconnected_event == DisconnectedEvent::Sent;
                                             immediate_retry = true;
                                             break;
                                         }
@@ -506,10 +510,19 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum LoopAction {
     Continue,
     Stop,
-    Reconnect,
+    Reconnect {
+        disconnected_event: DisconnectedEvent,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DisconnectedEvent {
+    Pending,
+    Sent,
 }
 
 enum ReconnectOutcome {
@@ -528,14 +541,18 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
         Err(e) => {
             tracing::warn!("Failed to encode attach message: {e}");
             close_websocket_transport(p);
-            return LoopAction::Reconnect;
+            return LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Pending,
+            };
         }
     };
 
     let connect_timeout = p.timing.connect_timeout;
     let Some(transport) = p.transport.as_mut() else {
         tracing::warn!("Missing websocket transport for attach");
-        return LoopAction::Reconnect;
+        return LoopAction::Reconnect {
+            disconnected_event: DisconnectedEvent::Pending,
+        };
     };
     let send_result = tokio::select! {
         biased;
@@ -554,12 +571,16 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
         Ok(Err(_)) => {
             tracing::warn!("Failed to send attach, triggering reconnect");
             close_websocket_transport(p);
-            LoopAction::Reconnect
+            LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Pending,
+            }
         }
         Err(_) => {
             tracing::warn!("Timed out sending attach, triggering reconnect");
             close_websocket_transport(p);
-            LoopAction::Reconnect
+            LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Pending,
+            }
         }
     }
 }
@@ -635,7 +656,9 @@ async fn handle_message(
             {
                 return LoopAction::Stop;
             }
-            return LoopAction::Reconnect;
+            return LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Sent,
+            };
         }
         action::ERROR => {
             let err = error_or_unknown(msg.error);
@@ -991,4 +1014,166 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
     p.channel_operation_deadline = None;
 
     Ok(reconnect_outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::ErrorInfo;
+    use crate::types::{TokenDetails, TokenRequest};
+
+    fn test_event_loop_state(event_tx: mpsc::Sender<Event>) -> EventLoopState {
+        let timing = TimingConfig::default();
+        EventLoopState {
+            transport: None,
+            event_tx,
+            conn_state: ConnState {
+                connection_id: Some("conn-1".to_string()),
+                connection_key: Some("conn-1!key".to_string()),
+                channel_serial: Some("serial-0".to_string()),
+                connection_state_ttl: timing.default_connection_state_ttl,
+                max_idle_interval: Some(timing.default_max_idle_interval),
+                disconnected_at: None,
+                token: TokenDetails {
+                    token: "token".to_string(),
+                    expires: i64::MAX,
+                    issued: 0,
+                    capability: None,
+                    client_id: None,
+                },
+                token_renewal_at: None,
+            },
+            lifecycle: RealtimeStateMachine::connected(),
+            channel: "ch".to_string(),
+            channel_params: None,
+            realtime_host: "realtime.example.com".to_string(),
+            rest_host: "rest.example.com".to_string(),
+            http: reqwest::Client::new(),
+            get_token: Box::new(|| -> TokenFuture {
+                Box::pin(async {
+                    Ok(TokenRequest {
+                        key_name: "test-key".to_string(),
+                        timestamp: 0,
+                        nonce: "nonce".to_string(),
+                        mac: "mac".to_string(),
+                        capability: "{}".to_string(),
+                        ttl: None,
+                        client_id: None,
+                    })
+                })
+            }),
+            timing,
+            token_renewal_failures: 0,
+            dropped_messages: 0,
+            channel_retry_at: None,
+            channel_retry_count: 0,
+            channel_operation_deadline: None,
+            connected_event_pending: false,
+        }
+    }
+
+    fn assert_event_channel_empty(event_rx: &mut mpsc::Receiver<Event>) {
+        assert!(
+            matches!(event_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+            "expected no status event"
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnected_message_marks_reconnect_event_sent() {
+        let (event_tx, mut event_rx) = mpsc::channel(4);
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::DISCONNECTED,
+                error: Some(ErrorInfo {
+                    code: 80003,
+                    status_code: Some(500),
+                    message: "server going away".to_string(),
+                }),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(
+            action,
+            LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Sent
+            }
+        );
+        match event_rx.try_recv().expect("disconnected event") {
+            Event::Disconnected { reason } => {
+                assert_eq!(reason.as_deref(), Some("server going away"));
+            }
+            event => panic!("expected Disconnected, got {event:?}"),
+        }
+        assert_event_channel_empty(&mut event_rx);
+    }
+
+    #[tokio::test]
+    async fn detached_reattach_missing_transport_leaves_disconnected_event_pending() {
+        let (event_tx, mut event_rx) = mpsc::channel(4);
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::DETACHED,
+                channel: Some("ch".to_string()),
+                error: Some(ErrorInfo {
+                    code: 80003,
+                    status_code: Some(500),
+                    message: "channel detached".to_string(),
+                }),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(
+            action,
+            LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Pending
+            }
+        );
+        assert_event_channel_empty(&mut event_rx);
+    }
+
+    #[tokio::test]
+    async fn superseded_error_reattach_missing_transport_leaves_disconnected_event_pending() {
+        let (event_tx, mut event_rx) = mpsc::channel(4);
+        let mut state = test_event_loop_state(event_tx);
+        let (_close_tx, mut close_rx) = oneshot::channel();
+
+        let action = handle_message(
+            &mut state,
+            ProtocolMessage {
+                action: action::ERROR,
+                channel: Some("ch".to_string()),
+                error: Some(ErrorInfo {
+                    code: 80016,
+                    status_code: Some(400),
+                    message: "operation attempted on superseded transport".to_string(),
+                }),
+                ..Default::default()
+            },
+            &mut close_rx,
+        )
+        .await;
+
+        assert_eq!(
+            action,
+            LoopAction::Reconnect {
+                disconnected_event: DisconnectedEvent::Pending
+            }
+        );
+        assert_event_channel_empty(&mut event_rx);
+    }
 }
