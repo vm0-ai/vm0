@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.59.1](https://github.com/vm0-ai/vm0/compare/api-v1.59.0...api-v1.59.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* generate fal webhooks on web origin ([#14093](https://github.com/vm0-ai/vm0/issues/14093)) ([bf81e37](https://github.com/vm0-ai/vm0/commit/bf81e370a14828f666d1476a5c6354f2d6028f8c))
+* route slack selected models via policy ([#14097](https://github.com/vm0-ai/vm0/issues/14097)) ([9ca079a](https://github.com/vm0-ai/vm0/commit/9ca079a745427adc8d4554c6a53ac7f8ab9960f2))
+
+
+### Refactoring
+
+* proxy test telegram mock route to api ([#14087](https://github.com/vm0-ai/vm0/issues/14087)) ([6f91bfa](https://github.com/vm0-ai/vm0/commit/6f91bfa59415ef4fea5e83084fa74b97c90437ef))
+
 ## [1.59.0](https://github.com/vm0-ai/vm0/compare/api-v1.58.0...api-v1.59.0) (2026-05-19)
 
 
