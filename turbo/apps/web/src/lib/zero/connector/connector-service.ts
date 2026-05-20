@@ -1,21 +1,15 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
   deriveApiTokenConnectedTypes,
-  getApiTokenFieldsByType,
   getConnectorOAuthCredentials,
-  getConnectorSecretNames,
 } from "@vm0/connectors/connector-utils";
-import type {
-  ConnectorAuthMethodType,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
@@ -34,7 +28,6 @@ import {
 } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { isChatgptRefreshError } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { publishUserSignal } from "../../infra/realtime/client";
 
 /**
  * Source for an OAuth secret bundle. "connector" (default) reads/writes
@@ -204,17 +197,6 @@ const log = logger("service:connector");
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
 
 /**
- * Validate and parse connector type from database value
- */
-function parseConnectorType(type: string): ConnectorType {
-  const result = connectorTypeSchema.safeParse(type);
-  if (!result.success) {
-    throw badRequest(`Invalid connector type: ${type}`);
-  }
-  return result.data;
-}
-
-/**
  * Derive api-token connector types from user secrets and variables.
  * API-token connectors don't have DB records — their existence is inferred
  * from matching user secrets/variables.
@@ -338,116 +320,6 @@ export async function listConnectors(
 }
 
 /**
- * Get a specific connector by type.
- * Returns the DB record for OAuth (from `connectors`) or a derived response for
- * api-token connectors whose required user secrets are all present.
- */
-export async function getConnector(
-  orgId: string,
-  userId: string,
-  type: ConnectorType,
-): Promise<ConnectorResponse | null> {
-  const db = globalThis.services.db;
-
-  const oauthResult = await db
-    .select({
-      id: connectors.id,
-      type: connectors.type,
-      authMethod: connectors.authMethod,
-      externalId: connectors.externalId,
-      externalUsername: connectors.externalUsername,
-      externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
-      needsReconnect: connectors.needsReconnect,
-      createdAt: connectors.createdAt,
-      updatedAt: connectors.updatedAt,
-    })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (oauthResult[0]) {
-    const row = oauthResult[0];
-    return {
-      id: row.id,
-      type: parseConnectorType(row.type),
-      authMethod: row.authMethod,
-      externalId: row.externalId,
-      externalUsername: row.externalUsername,
-      externalEmail: row.externalEmail,
-      oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-      needsReconnect: row.needsReconnect,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
-  }
-
-  // Check if type supports api-token and all required fields exist
-  const fields = getApiTokenFieldsByType(type);
-  if (!fields || (fields.secrets.length === 0 && fields.variables.length === 0))
-    return null;
-
-  const [userSecretRows, userVariableRows] = await Promise.all([
-    fields.secrets.length > 0
-      ? globalThis.services.db
-          .select({ name: secrets.name })
-          .from(secrets)
-          .where(
-            and(
-              eq(secrets.orgId, orgId),
-              eq(secrets.userId, userId),
-              eq(secrets.type, "user"),
-            ),
-          )
-      : Promise.resolve([]),
-    fields.variables.length > 0
-      ? globalThis.services.db
-          .select({ name: variables.name })
-          .from(variables)
-          .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId)))
-      : Promise.resolve([]),
-  ]);
-
-  const userSecretNames = new Set(
-    userSecretRows.map((r) => {
-      return r.name;
-    }),
-  );
-  const userVariableNames = new Set(
-    userVariableRows.map((r) => {
-      return r.name;
-    }),
-  );
-  const secretsOk = fields.secrets.every((name) => {
-    return userSecretNames.has(name);
-  });
-  const variablesOk = fields.variables.every((name) => {
-    return userVariableNames.has(name);
-  });
-  if (!secretsOk || !variablesOk) return null;
-
-  // Use a fixed timestamp — this connector is inferred, not explicitly created.
-  return {
-    id: null,
-    type,
-    authMethod: "api-token",
-    externalId: null,
-    externalUsername: null,
-    externalEmail: null,
-    oauthScopes: null,
-    needsReconnect: false,
-    createdAt: "1970-01-01T00:00:00.000Z",
-    updatedAt: "1970-01-01T00:00:00.000Z",
-  };
-}
-
-/**
  * Best-effort revocation of an OAuth provider's remote token/grant.
  * Looks up the connector's handler, reads the access token from DB,
  * and calls the handler's revokeToken method if available.
@@ -492,116 +364,6 @@ export async function revokeConnectorToken(
     const message = err instanceof Error ? err.message : "Unknown error";
     log.warn(`${type} token revocation failed: ${message}`);
   }
-}
-
-/**
- * Delete a connector and its associated secrets.
- * - OAuth connectors: revoke remote token (best-effort), delete DB row +
- *   connector-type secrets (access + refresh).
- * - API-token connectors (no DB row): delete user secrets/variables that
- *   match the api-token requirement for this type.
- */
-export async function deleteConnector(
-  orgId: string,
-  userId: string,
-  type: ConnectorType,
-): Promise<void> {
-  const db = globalThis.services.db;
-  let deleted = false;
-
-  // Check if connector exists in `connectors` (OAuth) table
-  const [existing] = await db
-    .select({ id: connectors.id, authMethod: connectors.authMethod })
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, orgId),
-        eq(connectors.userId, userId),
-        eq(connectors.type, type),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    // Revoke remote token before deleting local state (best-effort)
-    if (existing.authMethod === "oauth") {
-      await revokeConnectorToken(orgId, userId, type);
-    }
-
-    // OAuth connector: delete DB record + connector-type secrets
-    await db.delete(connectors).where(eq(connectors.id, existing.id));
-
-    const secretNames = getConnectorSecretNames(
-      type,
-      existing.authMethod as ConnectorAuthMethodType,
-    );
-
-    if (existing.authMethod === "oauth" && type !== "computer") {
-      const refreshSecretName =
-        getConnectorOAuthProviderHandler(type)?.getRefreshSecretName?.();
-      if (refreshSecretName) {
-        secretNames.push(refreshSecretName);
-      }
-    }
-
-    for (const name of secretNames) {
-      await db
-        .delete(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, orgId),
-            eq(secrets.userId, userId),
-            eq(secrets.name, name),
-            eq(secrets.type, "connector"),
-          ),
-        );
-    }
-
-    log.debug("connector deleted", { orgId, type });
-    deleted = true;
-  }
-
-  // Always clean up api-token secrets/variables, even if an OAuth record was
-  // already deleted above. A connector can legitimately hold both credential
-  // forms during migrations or manual repairs, so a DELETE must remove every
-  // trace or the UI will still treat the connector as connected via the
-  // leftover secret.
-  const fields = getApiTokenFieldsByType(type);
-  if (fields) {
-    for (const name of fields.secrets) {
-      const result = await db
-        .delete(secrets)
-        .where(
-          and(
-            eq(secrets.orgId, orgId),
-            eq(secrets.userId, userId),
-            eq(secrets.name, name),
-            eq(secrets.type, "user"),
-          ),
-        )
-        .returning({ id: secrets.id });
-      if (result.length > 0) deleted = true;
-    }
-    for (const name of fields.variables) {
-      const result = await db
-        .delete(variables)
-        .where(
-          and(
-            eq(variables.orgId, orgId),
-            eq(variables.userId, userId),
-            eq(variables.name, name),
-          ),
-        )
-        .returning({ id: variables.id });
-      if (result.length > 0) deleted = true;
-    }
-  }
-
-  if (!deleted) {
-    throw notFound("Connector not found");
-  }
-
-  await publishUserSignal([userId], "connector:changed");
 }
 
 /**
