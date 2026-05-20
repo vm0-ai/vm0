@@ -48,7 +48,7 @@ function replaceHostPrefix(hostname: string, target: string): string {
   return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);
 }
 
-function resolveLocalAgentApiBaseUrl(platformUrl: URL): URL {
+export function resolveLocalAgentApiBaseUrl(platformUrl: URL): URL {
   if (
     platformUrl.hostname === "localhost" ||
     platformUrl.hostname === "127.0.0.1"
