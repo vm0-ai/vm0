@@ -1,6 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import desktopIdentities from "./desktop-identities.json";
 
 const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
+const DESKTOP_RUNTIME_CONFIG_FILE = "desktop-runtime-config.json";
 
 type DesktopEnvironment = "production" | "staging" | "development";
 type DesktopIdentityKind = "production" | "development";
@@ -21,6 +24,55 @@ interface DesktopConfig {
   readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
   readonly allowedAppOrigins: ReadonlySet<string>;
+}
+
+function desktopRuntimeConfigPath(): string {
+  return join(__dirname, "..", DESKTOP_RUNTIME_CONFIG_FILE);
+}
+
+function runtimeConfigPlatformUrl(value: unknown): string {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("platformUrl" in value)
+  ) {
+    throw new Error(
+      `${DESKTOP_RUNTIME_CONFIG_FILE} must contain a platformUrl string`,
+    );
+  }
+
+  const config = value as { readonly platformUrl?: unknown };
+  if (typeof config.platformUrl !== "string") {
+    throw new Error(
+      `${DESKTOP_RUNTIME_CONFIG_FILE} must contain a platformUrl string`,
+    );
+  }
+
+  return config.platformUrl;
+}
+
+function readDesktopRuntimeConfigPlatformUrl(): string | undefined {
+  const configPath = desktopRuntimeConfigPath();
+  if (!existsSync(configPath)) {
+    return undefined;
+  }
+
+  const configValue: unknown = JSON.parse(readFileSync(configPath, "utf8"));
+  return runtimeConfigPlatformUrl(configValue);
+}
+
+function configuredPlatformUrl(
+  rawPlatformUrl: string | undefined,
+): string | undefined {
+  if (rawPlatformUrl !== undefined) {
+    return rawPlatformUrl;
+  }
+
+  if (process.env.VM0_DESKTOP_PLATFORM_URL?.trim()) {
+    return process.env.VM0_DESKTOP_PLATFORM_URL;
+  }
+
+  return readDesktopRuntimeConfigPlatformUrl();
 }
 
 function parsePlatformUrl(rawUrl: string | undefined): URL {
@@ -88,11 +140,10 @@ function allowedOriginsForPlatformUrl(platformUrl: URL): ReadonlySet<string> {
   return origins;
 }
 
-export function resolveDesktopConfig(
-  rawPlatformUrl = process.env.VM0_DESKTOP_PLATFORM_URL,
-): DesktopConfig {
-  const hasExplicitUrl = Boolean(rawPlatformUrl?.trim());
-  const platformUrl = parsePlatformUrl(rawPlatformUrl);
+export function resolveDesktopConfig(rawPlatformUrl?: string): DesktopConfig {
+  const platformUrlSource = configuredPlatformUrl(rawPlatformUrl);
+  const hasExplicitUrl = Boolean(platformUrlSource?.trim());
+  const platformUrl = parsePlatformUrl(platformUrlSource);
   const environment = environmentForPlatformUrl(platformUrl, hasExplicitUrl);
 
   return {

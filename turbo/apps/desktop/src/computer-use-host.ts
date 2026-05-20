@@ -85,15 +85,13 @@ type ComputerUseHostNextResponse =
   | ComputerUseHostNextIdleResponse
   | ComputerUseHostNextCommandResponse;
 
+function replaceHostPrefix(hostname: string, target: string): string {
+  return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);
+}
+
 export function resolveComputerUseApiBaseUrl(platformUrl: URL): string {
   const url = new URL(platformUrl.toString());
-  if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
-    url.hostname = "api.vm0.ai";
-  } else if (url.hostname.startsWith("staging-app.")) {
-    url.hostname = url.hostname.replace("staging-app.", "staging-api.");
-  } else if (url.hostname.startsWith("app.")) {
-    url.hostname = url.hostname.replace("app.", "api.");
-  }
+  url.hostname = replaceHostPrefix(url.hostname, "api");
   return url.toString().replace(/\/$/, "");
 }
 

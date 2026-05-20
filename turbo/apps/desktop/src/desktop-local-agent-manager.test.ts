@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DesktopLocalAgentApiClient } from "./desktop-local-agent-api";
+import type { Session } from "electron";
+import {
+  createDesktopLocalAgentApiClient,
+  type DesktopLocalAgentApiClient,
+} from "./desktop-local-agent-api";
 import { DesktopLocalAgentManager } from "./desktop-local-agent-manager";
 import type { executeLocalAgentBackend } from "./desktop-local-agent-runtime";
 import type {
@@ -94,6 +98,48 @@ function createHarness(
 
   return { manager, startedHosts, closedHosts, completedJobs };
 }
+
+function createCookieSession(): Session {
+  return {
+    cookies: {
+      async get() {
+        return [];
+      },
+    },
+  } as unknown as Session;
+}
+
+describe("DesktopLocalAgentApiClient", () => {
+  it("derives the API backend URL from PR preview platform URLs", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(input.toString());
+      return new Response(
+        JSON.stringify({ hostId: "host-1", hostToken: "token-1" }),
+        { status: 200 },
+      );
+    });
+
+    try {
+      const client = createDesktopLocalAgentApiClient({
+        platformUrl: new URL("https://pr-123-app.vm6.ai"),
+        session: createCookieSession(),
+      });
+
+      await client.startHost({
+        hostName: "Zero Dev",
+        supportedBackends: ["codex"],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(calls).toStrictEqual([
+      "https://pr-123-api.vm6.ai/api/zero/local-agent/hosts/start",
+    ]);
+  });
+});
 
 describe("DesktopLocalAgentManager", () => {
   it("keeps native access disabled until the feature switch enables it", async () => {

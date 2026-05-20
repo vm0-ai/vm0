@@ -78,6 +78,22 @@ describe("resolveDesktopConfig", () => {
     expect(config.allowedAppOrigins.has("https://api.vm7.ai")).toBe(true);
   });
 
+  it("derives matching origins for PR preview hostnames", () => {
+    const config = resolveDesktopConfig("https://pr-123-app.vm6.ai/");
+
+    expect(config.environment).toBe("development");
+    expect(config.identity).toMatchObject({
+      displayName: "Zero Dev",
+      bundleId: "ai.vm0.zero.desktop.dev",
+      authScheme: "ai.vm0.zero.desktop.dev",
+    });
+    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
+      "https://pr-123-api.vm6.ai",
+      "https://pr-123-app.vm6.ai",
+      "https://pr-123-www.vm6.ai",
+    ]);
+  });
+
   it("does not derive localhost companion origins", () => {
     const config = resolveDesktopConfig("http://localhost:3002");
 
@@ -425,6 +441,9 @@ describe("computer use desktop runtime", () => {
     expect(
       resolveComputerUseApiBaseUrl(new URL("https://staging-app.vm6.ai")),
     ).toBe("https://staging-api.vm6.ai");
+    expect(
+      resolveComputerUseApiBaseUrl(new URL("https://pr-123-app.vm6.ai")),
+    ).toBe("https://pr-123-api.vm6.ai");
   });
 
   it("serializes the Desktop host runtime body", () => {
