@@ -14,6 +14,13 @@ use super::support::*;
 const EXEC_CONTROL_NONCE: ProcessControlNonce = *b"exec-ctrl-000001";
 const EXEC_CONTROL_WRONG_NONCE: ProcessControlNonce = *b"exec-ctrl-999999";
 
+fn unique_exec_control_nonce(seed: u64) -> ProcessControlNonce {
+    let mut nonce = [0u8; 16];
+    nonce[..8].copy_from_slice(&u64::from(std::process::id()).to_be_bytes());
+    nonce[8..].copy_from_slice(&seed.to_be_bytes());
+    nonce
+}
+
 fn send_supervised_exec_start(
     stream: &mut impl std::io::Write,
     seq: u32,
@@ -345,7 +352,8 @@ fn supervised_exec_control_spawn_failure_releases_registration() {
 #[test]
 fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let target_seq = 203;
-    let endpoint = process_control_ipc::endpoint_name(target_seq, &EXEC_CONTROL_NONCE);
+    let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
+    let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
     let command = "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60";
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -367,7 +375,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
             control: ExecControlPolicy::Enabled {
-                control_nonce: EXEC_CONTROL_NONCE,
+                control_nonce,
                 sink: true,
             },
         },
@@ -396,18 +404,12 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         .unwrap();
     });
 
-    send_exec_control(
-        &mut host_stream,
-        303,
-        target_seq,
-        EXEC_CONTROL_NONCE,
-        "message",
-    );
+    send_exec_control(&mut host_stream, 303, target_seq, control_nonce, "message");
     assert_exec_control_result(
         &mut host_stream,
         303,
         target_seq,
-        EXEC_CONTROL_NONCE,
+        control_nonce,
         "message",
         ProcessControlStatus::Delivered,
         "ok",

@@ -1050,6 +1050,13 @@ mod tests {
 
     const NONCE: ProcessControlNonce = *b"0123456789abcdef";
 
+    fn unique_test_nonce(seed: u64) -> ProcessControlNonce {
+        let mut nonce = [0u8; 16];
+        nonce[..8].copy_from_slice(&u64::from(std::process::id()).to_be_bytes());
+        nonce[8..].copy_from_slice(&seed.to_be_bytes());
+        nonce
+    }
+
     fn resolve_error(
         registry: &ProcessControlRegistry,
         target_seq: u32,
@@ -1140,19 +1147,19 @@ mod tests {
 
     #[test]
     fn duplicate_control_sink_sequence_is_rejected_without_rebinding_endpoint() {
-        const SINK_NONCE: ProcessControlNonce = *b"8899aabbccddeeff";
+        let sink_nonce = unique_test_nonce(14);
 
         let registry = ProcessControlRegistry::default();
-        let first = registry.register(14, Some(SINK_NONCE), true).unwrap();
+        let first = registry.register(14, Some(sink_nonce), true).unwrap();
 
-        let error = match registry.register(14, Some(SINK_NONCE), true) {
+        let error = match registry.register(14, Some(sink_nonce), true) {
             Ok(_) => panic!("expected duplicate process control registration to fail"),
             Err(error) => error,
         };
 
         assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
         assert_eq!(error.to_string(), "process operation already active");
-        assert!(registry.resolve(14, SINK_NONCE).is_ok());
+        assert!(registry.resolve(14, sink_nonce).is_ok());
 
         first.guard.release();
     }
@@ -1173,19 +1180,20 @@ mod tests {
 
     #[test]
     fn control_sink_registration_exports_bootstrap_endpoint() {
+        let nonce = unique_test_nonce(7);
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(7, Some(NONCE), true).unwrap();
+        let registration = registry.register(7, Some(nonce), true).unwrap();
 
         assert!(registration.bootstrap_endpoint.is_some());
-        assert!(registry.resolve(7, NONCE).is_ok());
+        assert!(registry.resolve(7, nonce).is_ok());
     }
 
     #[test]
     fn handle_process_control_forwards_to_connected_sink() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"fedcba9876543210";
+        let forward_nonce = unique_test_nonce(8);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(8, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(8, Some(forward_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let client = std::thread::spawn(move || {
             let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
@@ -1208,7 +1216,7 @@ mod tests {
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(8, FORWARD_NONCE, "msg-1", b"payload", 5000)
+            vsock_proto::encode_process_control(8, forward_nonce, "msg-1", b"payload", 5000)
                 .unwrap();
 
         handle_process_control(11, &payload, &registry, &writer).unwrap();
@@ -1224,16 +1232,16 @@ mod tests {
 
     #[test]
     fn handle_process_control_waits_for_sink_connection() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"0123456789fedcba";
+        let forward_nonce = unique_test_nonce(9);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(9, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(9, Some(forward_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(9, FORWARD_NONCE, "msg-1", b"payload", 5000)
+            vsock_proto::encode_process_control(9, forward_nonce, "msg-1", b"payload", 5000)
                 .unwrap();
 
         handle_process_control(11, &payload, &registry, &writer).unwrap();
@@ -1293,17 +1301,17 @@ mod tests {
 
     #[test]
     fn timeout_before_sink_connection_does_not_poison_later_delivery() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"77889900aabbccdd";
+        let forward_nonce = unique_test_nonce(16);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(16, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(16, Some(forward_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload = vsock_proto::encode_process_control(
             16,
-            FORWARD_NONCE,
+            forward_nonce,
             "msg-before-connect",
             b"payload",
             0,
@@ -1338,7 +1346,7 @@ mod tests {
 
         let payload = vsock_proto::encode_process_control(
             16,
-            FORWARD_NONCE,
+            forward_nonce,
             "msg-after-timeout",
             b"payload",
             5000,
@@ -1358,10 +1366,10 @@ mod tests {
 
     #[test]
     fn non_terminal_control_responses_do_not_close_sink() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"aa22cc44ee66ff88";
+        let forward_nonce = unique_test_nonce(11);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(11, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(11, Some(forward_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
         let client = std::thread::spawn(move || {
             let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
@@ -1410,7 +1418,7 @@ mod tests {
 
         let payload = vsock_proto::encode_process_control(
             11,
-            FORWARD_NONCE,
+            forward_nonce,
             "msg-rejected",
             b"payload",
             5000,
@@ -1424,7 +1432,7 @@ mod tests {
         assert_eq!(diagnostic, "denied");
 
         let payload =
-            vsock_proto::encode_process_control(11, FORWARD_NONCE, "msg-error", b"payload", 5000)
+            vsock_proto::encode_process_control(11, forward_nonce, "msg-error", b"payload", 5000)
                 .unwrap();
         handle_process_control(22, &payload, &registry, &writer).unwrap();
         let (_, seq, status, message_id, diagnostic) = read_process_control_result(&mut host);
@@ -1435,7 +1443,7 @@ mod tests {
 
         let payload = vsock_proto::encode_process_control(
             11,
-            FORWARD_NONCE,
+            forward_nonce,
             "msg-after-error",
             b"payload",
             5000,
@@ -1453,15 +1461,15 @@ mod tests {
 
     #[test]
     fn pending_process_control_returns_inactive_when_operation_releases() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"0011223344556677";
+        let forward_nonce = unique_test_nonce(10);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(10, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(10, Some(forward_nonce), true).unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
         let writer = GuestWriter::new(guest);
         let payload =
-            vsock_proto::encode_process_control(10, FORWARD_NONCE, "msg-release", b"payload", 5000)
+            vsock_proto::encode_process_control(10, forward_nonce, "msg-release", b"payload", 5000)
                 .unwrap();
 
         handle_process_control(13, &payload, &registry, &writer).unwrap();
@@ -1686,12 +1694,12 @@ mod tests {
 
     #[test]
     fn failed_control_sink_handshake_returns_sink_error() {
-        const FORWARD_NONCE: ProcessControlNonce = *b"cc22dd44ee66aa88";
+        let forward_nonce = unique_test_nonce(13);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(13, Some(FORWARD_NONCE), true).unwrap();
+        let registration = registry.register(13, Some(forward_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
-        let sink = registry.resolve(13, FORWARD_NONCE).unwrap();
+        let sink = registry.resolve(13, forward_nonce).unwrap();
 
         let stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
         drop(stream);
@@ -1717,7 +1725,7 @@ mod tests {
         let writer = GuestWriter::new(guest);
         let payload = vsock_proto::encode_process_control(
             13,
-            FORWARD_NONCE,
+            forward_nonce,
             "msg-handshake-failed",
             b"payload",
             5000,
@@ -1737,12 +1745,12 @@ mod tests {
 
     #[test]
     fn operation_release_interrupts_control_sink_handshake() {
-        const HANDSHAKE_NONCE: ProcessControlNonce = *b"dd33ee55ff77aa99";
+        let handshake_nonce = unique_test_nonce(15);
 
         let registry = ProcessControlRegistry::default();
-        let registration = registry.register(15, Some(HANDSHAKE_NONCE), true).unwrap();
+        let registration = registry.register(15, Some(handshake_nonce), true).unwrap();
         let endpoint = registration.bootstrap_endpoint.clone().unwrap();
-        let sink = registry.resolve(15, HANDSHAKE_NONCE).unwrap();
+        let sink = registry.resolve(15, handshake_nonce).unwrap();
         let mut stream = process_control_ipc::connect_abstract(&endpoint).unwrap();
 
         let mut guard = sink.inner.lock().unwrap_or_else(|e| e.into_inner());
