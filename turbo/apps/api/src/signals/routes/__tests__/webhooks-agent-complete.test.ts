@@ -303,7 +303,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
   });
 
-  it("records runner failure output and upgrades a stale timeout", async () => {
+  it("records runner failure output and device limiter mismatch reuse outcome", async () => {
     const fixture = await track(seedFixture("timeout"));
 
     const response = await accept(
@@ -313,7 +313,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           exitCode: 1,
           error: "codex exited with status 1",
           sandboxId: "sandbox-failure",
-          sandboxReuseResult: "poolMiss",
+          sandboxReuseResult: "deviceLimitMismatch",
         },
         headers: authHeaders(fixture),
       }),
@@ -330,7 +330,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       status: "failed",
       error: "codex exited with status 1",
       sandboxId: "sandbox-failure",
-      sandboxReuseResult: "poolMiss",
+      sandboxReuseResult: "deviceLimitMismatch",
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${fixture.runId}`,

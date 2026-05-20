@@ -58,8 +58,8 @@ export const agentRuns = pgTable(
     >(),
     sandboxId: varchar("sandbox_id", { length: 255 }),
     // One of: "reused" | "featureDisabled" | "noSessionId" | "poolMiss" |
-    // "profileMismatch" | "unparkFailed". Null means unknown (old runner or
-    // historical row).
+    // "profileMismatch" | "deviceLimitMismatch" | "unparkFailed". Null means
+    // unknown (old runner or historical row).
     sandboxReuseResult: varchar("sandbox_reuse_result", { length: 50 }),
     result: jsonb("result"),
     error: text("error"),

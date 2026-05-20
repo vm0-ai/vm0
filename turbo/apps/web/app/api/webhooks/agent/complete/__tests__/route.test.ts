@@ -1234,7 +1234,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(run!.sandboxReuseResult).toBe("reused");
     });
 
-    it("should persist sandboxId and reuse outcome when reuse was blocked", async () => {
+    it("should persist sandboxId and device limiter mismatch reuse outcome", async () => {
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
       });
@@ -1252,7 +1252,7 @@ describe("POST /api/webhooks/agent/complete", () => {
             runId,
             exitCode: 1,
             sandboxId,
-            sandboxReuseResult: "poolMiss",
+            sandboxReuseResult: "deviceLimitMismatch",
           }),
         }),
       );
@@ -1260,7 +1260,7 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const run = await findTestRunRecord(runId);
       expect(run!.sandboxId).toBe(sandboxId);
-      expect(run!.sandboxReuseResult).toBe("poolMiss");
+      expect(run!.sandboxReuseResult).toBe("deviceLimitMismatch");
     });
 
     it("should leave sandboxId and reuse outcome null when fields are omitted", async () => {
