@@ -1,11 +1,14 @@
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
-import type { VolumeVersionsSnapshot } from "../../lib/infra/checkpoint/types";
+import type {
+  ArtifactSnapshotsPayload,
+  VolumeVersionsSnapshot,
+} from "../../lib/infra/checkpoint/types";
 import { getAuthContext } from "../../lib/auth/get-auth-context";
 import { resolveOrg } from "../../lib/zero/org/resolve-org";
 import {
   createDispatchedTestRun,
+  seedTestCheckpointForRun,
   type CreateDispatchedTestRunOptions,
 } from "../db-test-seeders/runs";
 import { findTestRunRecord } from "../db-test-assertions/runs";
@@ -91,52 +94,27 @@ export async function getTestRun(runId: string): Promise<{
 }
 
 /**
- * Create a test checkpoint via webhook route handler.
- * This is required before completing a run with exitCode=0.
- * Used internally by completeTestRun and exported for tests that need custom snapshots.
+ * Create checkpoint state for tests that complete or resume a run.
+ * Mirrors the persisted shape of the API-authoritative checkpoint webhook.
  */
 export async function createTestCheckpoint(
   userId: string,
   runId: string,
   options?: {
     volumeVersionsSnapshot?: VolumeVersionsSnapshot;
+    artifactSnapshots?: ArtifactSnapshotsPayload;
   },
 ): Promise<{
   checkpointId: string;
   agentSessionId: string;
   conversationId: string;
 }> {
-  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
-  const request = createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/checkpoints",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sandboxToken}`,
-      },
-      body: JSON.stringify({
-        runId,
-        // Default to "claude-code" — the codebase's default framework and
-        // what production webhooks actually persist. Keeping a placeholder
-        // like "test-agent" creates false-positive mismatches in
-        // build-zero-context's framework-compatibility check on resume.
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `test-session-${runId}`,
-        cliAgentSessionHistoryHash:
-          "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-        ...options,
-      }),
-    },
-  );
-  const response = await checkpointWebhook(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to create checkpoint: ${error.error?.message || response.status}`,
-    );
-  }
-  return response.json();
+  return seedTestCheckpointForRun({
+    userId,
+    runId,
+    volumeVersionsSnapshot: options?.volumeVersionsSnapshot,
+    artifactSnapshots: options?.artifactSnapshots,
+  });
 }
 
 /**

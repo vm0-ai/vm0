@@ -11,6 +11,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
+import { blobs } from "@vm0/db/schema/blob";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
 import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
@@ -35,6 +36,13 @@ import {
 import { uniqueId } from "../test-helpers";
 import { generateCallbackSecret } from "../../lib/infra/callback/hmac";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
+import type {
+  ArtifactSnapshotsPayload,
+  VolumeVersionsSnapshot,
+} from "../../lib/infra/checkpoint/types";
+
+const TEST_SESSION_HISTORY_HASH =
+  "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e";
 
 /**
  * Resolve both orgId and agentComposeId from a compose version ID.
@@ -177,6 +185,60 @@ type TestRunAdditionalVolume = {
   version?: string;
   mountPath: string;
 };
+
+function additionalVolumesForCheckpoint(
+  value: unknown,
+): readonly TestRunAdditionalVolume[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry): readonly TestRunAdditionalVolume[] => {
+    if (typeof entry !== "object" || entry === null) {
+      return [];
+    }
+
+    const name = "name" in entry ? entry.name : undefined;
+    const version = "version" in entry ? entry.version : undefined;
+    const mountPath = "mountPath" in entry ? entry.mountPath : undefined;
+    if (
+      typeof name !== "string" ||
+      typeof mountPath !== "string" ||
+      (version !== undefined && typeof version !== "string")
+    ) {
+      return [];
+    }
+
+    return [{ name, ...(version ? { version } : {}), mountPath }];
+  });
+}
+
+function enrichTestVolumeSnapshot(
+  snapshot: VolumeVersionsSnapshot | undefined,
+  runAdditionalVolumes: unknown,
+): VolumeVersionsSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const additionalVolumes =
+    additionalVolumesForCheckpoint(runAdditionalVolumes);
+  return {
+    versions: snapshot.versions,
+    ...(additionalVolumes.length > 0
+      ? {
+          additionalVolumes: additionalVolumes.map((volume) => {
+            return {
+              name: volume.name,
+              versionId:
+                snapshot.versions[volume.name] ?? volume.version ?? "latest",
+              mountPath: volume.mountPath,
+            };
+          }),
+        }
+      : {}),
+  };
+}
 
 export type CreateDispatchedTestRunOptions = {
   vars?: Record<string, string>;
@@ -845,6 +907,122 @@ export async function seedTestCheckpointDirect(
     })
     .returning({ id: checkpoints.id });
   return { checkpointId: row!.id };
+}
+
+/**
+ * Seed a checkpoint row matching the agent checkpoint webhook's persisted shape.
+ *
+ * @why-db-direct Tests need checkpoint state after the web checkpoint route has
+ * been migrated out of apps/web; this preserves route-test setup without
+ * importing a deleted Next.js handler.
+ */
+export async function seedTestCheckpointForRun(params: {
+  userId: string;
+  runId: string;
+  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
+  artifactSnapshots?: ArtifactSnapshotsPayload;
+}): Promise<{
+  checkpointId: string;
+  agentSessionId: string;
+  conversationId: string;
+}> {
+  initServices();
+  const [run] = await globalThis.services.db
+    .select({
+      id: agentRuns.id,
+      agentComposeVersionId: agentRuns.agentComposeVersionId,
+      additionalVolumes: agentRuns.additionalVolumes,
+      sessionId: agentRuns.sessionId,
+      userId: agentRuns.userId,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, params.runId))
+    .limit(1);
+  if (!run || run.userId !== params.userId) {
+    throw new Error(
+      `Failed to create checkpoint: run not found ${params.runId}`,
+    );
+  }
+  if (!run.agentComposeVersionId) {
+    throw new Error(
+      `Failed to create checkpoint: run has no compose version ${params.runId}`,
+    );
+  }
+  if (!run.sessionId) {
+    throw new Error(
+      `Failed to create checkpoint: run has no session ${params.runId}`,
+    );
+  }
+
+  await globalThis.services.db
+    .insert(blobs)
+    .values({ hash: TEST_SESSION_HISTORY_HASH, size: 0, refCount: 1 })
+    .onConflictDoUpdate({
+      target: blobs.hash,
+      set: { refCount: sql`${blobs.refCount} + 1` },
+    });
+
+  const conversationFields = {
+    cliAgentType: "claude-code",
+    cliAgentSessionId: `test-session-${params.runId}`,
+    cliAgentSessionHistoryHash: TEST_SESSION_HISTORY_HASH,
+  };
+  const [conversation] = await globalThis.services.db
+    .insert(conversations)
+    .values({
+      runId: params.runId,
+      ...conversationFields,
+    })
+    .onConflictDoUpdate({
+      target: conversations.runId,
+      set: conversationFields,
+    })
+    .returning({ id: conversations.id });
+  if (!conversation) {
+    throw new Error("Failed to create checkpoint: conversation insert failed");
+  }
+
+  const volumeVersionsSnapshot = enrichTestVolumeSnapshot(
+    params.volumeVersionsSnapshot,
+    run.additionalVolumes,
+  );
+  const checkpointFields = {
+    conversationId: conversation.id,
+    agentComposeSnapshot: {
+      agentComposeVersionId: run.agentComposeVersionId,
+    },
+    artifactSnapshots: params.artifactSnapshots ?? null,
+    volumeVersionsSnapshot,
+  };
+  const [checkpoint] = await globalThis.services.db
+    .insert(checkpoints)
+    .values({
+      runId: params.runId,
+      ...checkpointFields,
+    })
+    .onConflictDoUpdate({
+      target: checkpoints.runId,
+      set: checkpointFields,
+    })
+    .returning({ id: checkpoints.id });
+  if (!checkpoint) {
+    throw new Error("Failed to create checkpoint: checkpoint insert failed");
+  }
+
+  const [session] = await globalThis.services.db
+    .update(agentSessions)
+    .set({ conversationId: conversation.id })
+    .where(eq(agentSessions.id, run.sessionId))
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("Failed to create checkpoint: session update failed");
+  }
+
+  return {
+    checkpointId: checkpoint.id,
+    agentSessionId: session.id,
+    conversationId: conversation.id,
+  };
 }
 
 /**

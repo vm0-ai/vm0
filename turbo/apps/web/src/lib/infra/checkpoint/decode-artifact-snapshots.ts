@@ -12,11 +12,9 @@ import type { ContextArtifact } from "../run/types";
 
 /**
  * Is `raw` a "no artifacts" payload? Treats null/undefined, empty record, and
- * empty array all as equivalent to "persist NULL." Exported so write-paths
- * can normalise before inserting to the JSONB column without needing to know
- * which shape the caller sent.
+ * empty array all as equivalent to "persist NULL."
  */
-export function isEmptyArtifactPayload(raw: unknown): boolean {
+function isEmptyArtifactPayload(raw: unknown): boolean {
   if (raw === null || raw === undefined) return true;
   if (Array.isArray(raw)) return raw.length === 0;
   if (typeof raw === "object") return Object.keys(raw).length === 0;

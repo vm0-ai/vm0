@@ -668,6 +668,13 @@ const AGENT_CHECKPOINTS_PREPARE_HISTORY_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/checkpoints",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
+const AGENT_CHECKPOINTS_PATH = "/api/webhooks/agent/checkpoints";
+const AGENT_CHECKPOINTS_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/checkpoints/prepare-history",
+  "/api/webhooks/agent/checkpoints/extra",
+  "/api/webhooks/agent",
+] as const;
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const CLERK_WEBHOOK_PATH = "/api/webhooks/clerk";
 const CLERK_WEBHOOK_NEXT_NEGATIVE_PATHS = [
@@ -1922,6 +1929,11 @@ describe("API backend rewrites", () => {
           source: BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/built-in-generations/fal/:generationId",
+        },
+        {
+          source: AGENT_CHECKPOINTS_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/checkpoints",
         },
         {
           source: AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE,
@@ -4167,6 +4179,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_CHECKPOINTS_PREPARE_HISTORY_PATH)).toStrictEqual({});
     for (const pathname of AGENT_CHECKPOINTS_PREPARE_HISTORY_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent checkpoints webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_CHECKPOINTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_CHECKPOINTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/agent/checkpoints",
+    });
+
+    const matcher = getPathMatch(AGENT_CHECKPOINTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_CHECKPOINTS_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_CHECKPOINTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

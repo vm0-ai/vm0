@@ -5,38 +5,9 @@
  */
 
 import { downloadBlob } from "../blob/blob-service";
-import { blobs } from "@vm0/db/schema/blob";
-import { sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 
 const log = logger("session-history");
-
-/**
- * Register a session history blob that was uploaded directly to S3 via presigned URL.
- * The blob record (with correct size) is pre-created by the prepare-history endpoint;
- * this function increments refCount to track usage.
- *
- * Note: The guest-agent flow is sequential: prepare-history → S3 upload → checkpoint.
- * The blob record and S3 object are guaranteed to exist before this is called.
- *
- * @param hash SHA-256 hash of the content (already verified by the caller)
- * @returns The hash
- */
-export async function registerSessionHistoryBlob(
-  hash: string,
-): Promise<string> {
-  log.debug(`Registering session history blob, hash=${hash}`);
-
-  await globalThis.services.db
-    .insert(blobs)
-    .values({ hash, size: 0, refCount: 1 })
-    .onConflictDoUpdate({
-      target: blobs.hash,
-      set: { refCount: sql`${blobs.refCount} + 1` },
-    });
-
-  return hash;
-}
 
 /**
  * Retrieve session history content from R2 blob storage

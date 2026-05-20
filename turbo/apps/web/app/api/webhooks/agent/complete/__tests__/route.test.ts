@@ -8,6 +8,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  createTestCheckpoint,
   completeTestRun,
   createTestSchedule,
   linkRunToSchedule,
@@ -40,7 +41,6 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
 
@@ -73,33 +73,16 @@ describe("POST /api/webhooks/agent/complete", () => {
     mockClerk({ userId: null });
   });
 
-  async function createCheckpoint(runId = testRunId, token = testToken) {
-    const checkpointRequest = createTestRequest(
-      "http://localhost:3000/api/webhooks/agent/checkpoints",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+  async function createCheckpoint(runId = testRunId) {
+    await createTestCheckpoint(user.userId, runId, {
+      artifactSnapshots: [
+        {
+          name: "test-artifact",
+          version: "v1",
+          mountPath: "/home/user/workspace",
         },
-        body: JSON.stringify({
-          runId,
-          cliAgentType: "claude-code",
-          cliAgentSessionId: "test-session",
-          cliAgentSessionHistoryHash:
-            "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-          artifactSnapshots: [
-            {
-              name: "test-artifact",
-              version: "v1",
-              mountPath: "/home/user/workspace",
-            },
-          ],
-        }),
-      },
-    );
-    const checkpointResponse = await checkpointWebhook(checkpointRequest);
-    expect(checkpointResponse.status).toBe(200);
+      ],
+    });
   }
 
   describe("Authentication", () => {
@@ -426,26 +409,9 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
       ];
 
-      const checkpointRequest = createTestRequest(
-        "http://localhost:3000/api/webhooks/agent/checkpoints",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            cliAgentType: "claude-code",
-            cliAgentSessionId: "array-shape-complete",
-            cliAgentSessionHistoryHash:
-              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-            artifactSnapshots: arrayShape,
-          }),
-        },
-      );
-      const checkpointResponse = await checkpointWebhook(checkpointRequest);
-      expect(checkpointResponse.status).toBe(200);
+      await createTestCheckpoint(user.userId, testRunId, {
+        artifactSnapshots: arrayShape,
+      });
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -1391,33 +1357,15 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       // Checkpoint is required for exitCode=0 completion.
       const token = await createTestSandboxToken(user.userId, runId);
-      const checkpointResponse = await checkpointWebhook(
-        createTestRequest(
-          "http://localhost:3000/api/webhooks/agent/checkpoints",
+      await createTestCheckpoint(user.userId, runId, {
+        artifactSnapshots: [
           {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              runId,
-              cliAgentType: "claude-code",
-              cliAgentSessionId: "recovery-session",
-              cliAgentSessionHistoryHash:
-                "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
-              artifactSnapshots: [
-                {
-                  name: "recovery-artifact",
-                  version: "v1",
-                  mountPath: "/home/user/workspace",
-                },
-              ],
-            }),
+            name: "recovery-artifact",
+            version: "v1",
+            mountPath: "/home/user/workspace",
           },
-        ),
-      );
-      expect(checkpointResponse.status).toBe(200);
+        ],
+      });
 
       const response = await POST(
         createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {

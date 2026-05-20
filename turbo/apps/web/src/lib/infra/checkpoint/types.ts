@@ -40,30 +40,3 @@ export interface VolumeVersionsSnapshot {
     mountPath: string;
   }>;
 }
-
-/**
- * Request body for checkpoint webhook endpoint
- */
-export interface CheckpointRequest {
-  runId: string;
-  cliAgentType: string;
-  cliAgentSessionId: string;
-  cliAgentSessionHistoryHash: string;
-  // Multi-artifact snapshot payload. Canonical array shape only; persisted
-  // verbatim to the JSONB column. May be empty or missing when the guest
-  // snapshotted nothing.
-  artifactSnapshots?: ArtifactSnapshotsPayload;
-  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
-}
-
-/**
- * Response from checkpoint creation. `artifacts` echoes the canonical array
- * shape persisted to the JSONB column.
- */
-export interface CheckpointResponse {
-  checkpointId: string;
-  agentSessionId: string;
-  conversationId: string;
-  artifacts?: Array<{ name: string; version: string; mountPath: string }>;
-  volumes?: Record<string, string>;
-}
