@@ -1553,6 +1553,24 @@ class TestGetFirewallHeaders:
         # Consume timestamp recorded for cooldown enforcement
         assert last_force_refresh_at(cache_key) >= before
 
+    async def test_force_refresh_fetch_failure_still_consumes_marker(self, headers):
+        """A failed forced refresh burns the cooldown and does not cache headers."""
+        cache_key = ("run-1", "api-1")
+        mark_force_refresh(cache_key)
+        before = time.time()
+
+        mock_fetch = AsyncMock(side_effect=ConnectionError("server unreachable"))
+        with (
+            patch.object(auth, "fetch_firewall_headers", mock_fetch),
+            pytest.raises(ConnectionError),
+        ):
+            await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
+
+        assert mock_fetch.call_args.kwargs["force_refresh"] is True
+        assert not force_refresh_pending(cache_key)
+        assert last_force_refresh_at(cache_key) >= before
+        assert cached_headers(cache_key) is None
+
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
         mock_fetch = AsyncMock(return_value={"headers": {}})
