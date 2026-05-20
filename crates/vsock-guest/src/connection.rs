@@ -7,11 +7,12 @@ use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_PROCESS_CONTROL, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_SPAWN_PROCESS, MSG_WRITE_FILE, RawMessage,
+    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
+    MSG_WRITE_FILE, RawMessage,
 };
 
 use crate::error::to_io_error;
+use crate::exec_control::{ExecControlRegistry, handle_exec_control as route_exec_control};
 use crate::exec_operation::{
     ExecOperationRegistry, ExecOperationWorkerRequest, cancel_exec_operation, send_error_response,
     start_exec_operation,
@@ -21,11 +22,6 @@ use crate::handlers::{
     handle_decoded_write_file_message,
 };
 use crate::log::log;
-use crate::monitor::{SpawnProcessRequest, handle_spawn_process as run_spawn_process};
-use crate::process_control::{
-    ExecControlRegistry, ProcessControlRegistry, handle_exec_control as route_exec_control,
-    handle_process_control as route_process_control,
-};
 use crate::quiesce::{AcquireOperationError, OperationGuard, OperationState, QuiesceResult};
 use crate::writer::GuestWriter;
 
@@ -171,7 +167,6 @@ struct ConnectionDispatcher {
     connection_cancel: Arc<AtomicBool>,
     exec_operation_registry: ExecOperationRegistry,
     exec_control_registry: ExecControlRegistry,
-    process_control_registry: ProcessControlRegistry,
     operation_state: OperationState,
 }
 
@@ -181,8 +176,7 @@ impl ConnectionDispatcher {
             writer,
             connection_cancel,
             exec_operation_registry: ExecOperationRegistry::default(),
-            exec_control_registry: ExecControlRegistry::exec(),
-            process_control_registry: ProcessControlRegistry::default(),
+            exec_control_registry: ExecControlRegistry::default(),
             operation_state: OperationState::default(),
         }
     }
@@ -192,8 +186,6 @@ impl ConnectionDispatcher {
             MSG_EXEC_START => self.handle_exec_start(msg)?,
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
             MSG_EXEC_CONTROL => self.handle_exec_control(msg)?,
-            MSG_SPAWN_PROCESS => self.handle_spawn_process(msg)?,
-            MSG_PROCESS_CONTROL => self.handle_process_control(msg)?,
             MSG_WRITE_FILE => self.handle_write_file(msg)?,
             MSG_QUIESCE_OPERATIONS => self.handle_quiesce_operations(msg)?,
             MSG_RESUME_OPERATIONS => self.handle_resume_operations(msg)?,
@@ -279,77 +271,6 @@ impl ConnectionDispatcher {
             msg.seq,
             &msg.payload,
             &self.exec_control_registry,
-            &self.writer,
-        )
-    }
-
-    fn handle_spawn_process(&self, msg: &RawMessage) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "spawn process", &self.writer)? {
-            return Ok(());
-        }
-        if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
-            return Ok(());
-        }
-        let d = vsock_proto::decode_spawn_process(&msg.payload).map_err(to_io_error)?;
-        let Some(operation_guard) =
-            acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
-        else {
-            return Ok(());
-        };
-        let process_control_registration =
-            match self
-                .process_control_registry
-                .register(msg.seq, d.control_nonce, d.control_sink)
-            {
-                Ok(registration) => registration,
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                    operation_guard.release();
-                    send_error_response(msg.seq, "process operation already active", &self.writer)?;
-                    return Ok(());
-                }
-                Err(error) => {
-                    operation_guard.release();
-                    send_error_response(
-                        msg.seq,
-                        &format!("process control setup failed: {error}"),
-                        &self.writer,
-                    )?;
-                    return Ok(());
-                }
-            };
-        let (process_control_guard, process_control_bootstrap_endpoint) = (
-            Some(process_control_registration.guard),
-            process_control_registration.bootstrap_endpoint,
-        );
-        // handle_spawn_process writes the response itself (before spawning the
-        // streaming thread) to preserve the result-before-streaming protocol
-        // invariant.
-        run_spawn_process(
-            SpawnProcessRequest {
-                timeout_ms: d.timeout_ms,
-                command: d.command,
-                env: &d.env,
-                sudo: d.sudo,
-                stream_stdout: d.stream_stdout,
-                stdout_log_path: d.stdout_log_path,
-                process_control_guard,
-                process_control_bootstrap_endpoint,
-            },
-            msg.seq,
-            operation_guard,
-            self.writer.clone(),
-            self.connection_cancel.clone(),
-        )
-    }
-
-    fn handle_process_control(&self, msg: &RawMessage) -> io::Result<()> {
-        if !require_non_zero_sequence(msg.seq, "process control", &self.writer)? {
-            return Ok(());
-        }
-        route_process_control(
-            msg.seq,
-            &msg.payload,
-            &self.process_control_registry,
             &self.writer,
         )
     }
@@ -456,7 +377,7 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
 
 fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEnd> {
     // Clone the stream to get separate reader and writer
-    // This avoids deadlock: reader can block while writer sends process_exit
+    // This avoids deadlock: reader can block while worker threads write results.
     let mut reader = stream.try_clone()?;
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));

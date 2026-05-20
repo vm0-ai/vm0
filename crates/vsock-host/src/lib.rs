@@ -21,7 +21,6 @@
 mod exec_operation;
 mod file;
 mod operation_tracker;
-mod process;
 #[cfg(test)]
 mod tests;
 
@@ -46,8 +45,8 @@ use operation_tracker::{
 use vsock_proto::{
     Decoder, MSG_ERROR, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
     MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
-    MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN,
-    MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, RawMessage,
+    MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    RawMessage,
 };
 
 pub use exec_operation::{
@@ -57,10 +56,6 @@ pub use exec_operation::{
     SupervisedExecHandle, SupervisedExecRequest,
 };
 pub use file::{CopyFileOptions, CopyFileResult};
-pub use process::{
-    GuestProcessControlHandle, GuestProcessHandle, ProcessControlAck, ProcessControlGuestStatus,
-    ProcessControlOutcome, ProcessExitEvent,
-};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 
@@ -100,8 +95,8 @@ impl Default for FrameWriteObserver {
 
 /// Opaque guard that fences new normal guest operations on a [`VsockHost`].
 ///
-/// While this guard is alive, normal operations such as exec, file transfer, and
-/// spawn-process requests are rejected by the host-side operation tracker.
+/// While this guard is alive, normal operations such as exec and file transfer
+/// requests are rejected by the host-side operation tracker.
 /// Lifecycle requests such as quiesce/resume are not normal operations and can
 /// still be sent while the guard is held.
 #[derive(Debug)]
@@ -138,16 +133,6 @@ pub struct ExecResult {
     pub stderr_truncated: bool,
 }
 
-/// Request parameters for spawning a process on the guest.
-pub struct ProcessSpawnRequest<'a> {
-    pub command: &'a str,
-    pub timeout_ms: u32,
-    pub env: &'a [(&'a str, &'a str)],
-    pub sudo: bool,
-    pub stream_stdout: bool,
-    pub stdout_log_path: Option<&'a str>,
-}
-
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
 /// Pending requests, active exec operations, and connected process state
@@ -164,13 +149,8 @@ enum ConnectionState {
         pending: HashMap<u32, PendingResponse>,
         /// Active exec-operation state owned by the exec_operation module.
         operations: exec_operation::Operations,
-        /// Active spawn_process operation state owned by the process module.
-        process: process::ConnectedProcessState,
     },
-    Closed {
-        /// Empty process state marker after connection close.
-        _process: process::ClosedProcessState,
-    },
+    Closed,
 }
 
 /// Shared state between the reader task and public API methods.
@@ -302,16 +282,10 @@ impl Shared {
     fn close_with_reason(&self, reason: &'static str, kind: ConnectionCloseKind) {
         let maps_to_drop = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            match std::mem::replace(
-                &mut *guard,
-                ConnectionState::Closed {
-                    _process: process::ClosedProcessState::empty(),
-                },
-            ) {
+            match std::mem::replace(&mut *guard, ConnectionState::Closed) {
                 ConnectionState::Connected {
                     pending,
                     operations,
-                    process,
                 } => {
                     // Serialize tracker close/poison with terminal dispatch,
                     // which completes tracker tokens under this same state lock.
@@ -320,13 +294,10 @@ impl Shared {
                         ConnectionCloseKind::Poisoned => self.normal_operations.mark_not_parkable(),
                     }
                     let exec_operation_snapshot = operations.close_snapshot();
-                    let (closed_process, process_maps) = process.close();
-                    *guard = ConnectionState::Closed {
-                        _process: closed_process,
-                    };
-                    Some((pending, process_maps, operations, exec_operation_snapshot))
+                    *guard = ConnectionState::Closed;
+                    Some((pending, operations, exec_operation_snapshot))
                 }
-                closed @ ConnectionState::Closed { .. } => {
+                closed @ ConnectionState::Closed => {
                     // Reassign the whole variant by binding rather than by
                     // convention.
                     *guard = closed;
@@ -334,8 +305,8 @@ impl Shared {
                 }
             }
         };
-        if let Some((pending, process_maps, operations, exec_operation_snapshot)) = maps_to_drop {
-            let maps = (pending, process_maps, operations);
+        if let Some((pending, operations, exec_operation_snapshot)) = maps_to_drop {
+            let maps = (pending, operations);
             drop(maps);
             self.close_notify.notify_waiters();
             exec_operation::log_operations_closed(reason, &exec_operation_snapshot);
@@ -466,8 +437,7 @@ impl Drop for VsockHost {
 
 /// Background reader task: owns the read half and decoder exclusively.
 ///
-/// Dispatches responses, exec operations, and spawn_process lifecycle frames
-/// by seq number.
+/// Dispatches responses and exec operation lifecycle frames by seq number.
 async fn reader_loop(
     mut reader: tokio::net::unix::OwnedReadHalf,
     mut decoder: Decoder,
@@ -486,9 +456,9 @@ async fn reader_loop(
         };
         for msg in messages {
             if msg.msg_type == MSG_ERROR {
-                // Intercept active exec-operation errors before the legacy
-                // pending-request dispatch. If no exec operation owns this
-                // seq, the error falls through as a normal request response.
+                // Intercept active exec-operation errors before the
+                // pending-request dispatch. If no exec operation owns this seq,
+                // the error falls through as a normal request response.
                 match exec_operation::dispatch_error(&shared, &msg) {
                     Ok(true) => {
                         continue;
@@ -498,10 +468,6 @@ async fn reader_loop(
                         shared.poison_connection();
                         return;
                     }
-                }
-                if process::record_spawn_process_error(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
                 }
             }
 
@@ -525,30 +491,7 @@ async fn reader_loop(
                     shared.poison_connection();
                     return;
                 }
-            } else if msg.msg_type == MSG_STDOUT_CHUNK {
-                if process::dispatch_stdout_chunk(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
-            } else if msg.msg_type == MSG_PROCESS_EXIT {
-                if process::dispatch_process_exit(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
             } else {
-                if msg.msg_type == MSG_SPAWN_PROCESS_RESULT
-                    && process::record_spawn_process_result(&shared, &msg).is_err()
-                {
-                    shared.poison_connection();
-                    return;
-                }
-                if msg.msg_type != MSG_SPAWN_PROCESS_RESULT
-                    && process::reject_unexpected_process_response(&shared, msg.seq, msg.msg_type)
-                        .is_err()
-                {
-                    shared.poison_connection();
-                    return;
-                }
                 let mut normal_operation_transition_failed = false;
                 let pending_response = {
                     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -569,7 +512,7 @@ async fn reader_loop(
                                 None
                             }
                         }
-                        ConnectionState::Closed { .. } => None,
+                        ConnectionState::Closed => None,
                     }
                 };
                 if normal_operation_transition_failed {
@@ -637,7 +580,7 @@ async fn request_raw_on_shared(
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Closed { .. } => {
+            ConnectionState::Closed => {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
@@ -718,7 +661,7 @@ async fn normal_request_on_shared_with_pre_write_observer(
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Closed { .. } => {
+            ConnectionState::Closed => {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
@@ -775,7 +718,7 @@ async fn request_on_shared_with_composite_operation_and_observer(
     {
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
-            ConnectionState::Closed { .. } => {
+            ConnectionState::Closed => {
                 return Err(io::Error::new(
                     io::ErrorKind::ConnectionReset,
                     "connection closed",
@@ -840,7 +783,7 @@ fn mark_pending_normal_operation_possible_guest_write(
             };
             mark_pending_normal_operation_possible_guest_write_started(normal_operation)
         }
-        ConnectionState::Closed { .. } => Err(io::Error::new(
+        ConnectionState::Closed => Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
             "connection closed",
         )),
@@ -974,7 +917,6 @@ impl VsockHost {
             state: std::sync::Mutex::new(ConnectionState::Connected {
                 pending: HashMap::new(),
                 operations: exec_operation::Operations::new(),
-                process: process::ConnectedProcessState::new(),
             }),
             normal_operations: NormalOperationTracker::new(),
             close_notify: Notify::new(),
@@ -1185,12 +1127,10 @@ impl VsockHost {
         exec_operation::exec_operation_stream_on_shared(&self.shared, request).await
     }
 
-    /// Execute a command on the guest.
+    /// Execute a bounded capture-style command on the guest.
     ///
-    /// `timeout_ms` must be positive. Callers needing unbounded commands
-    /// should use [`spawn_process`](Self::spawn_process), which decouples the
-    /// host request/response cycle from the command's lifetime and keeps
-    /// host-side lifecycle tracking until the guest reports process exit.
+    /// `timeout_ms` must be positive. Callers needing long-running supervised
+    /// commands should use [`start_supervised_exec`](Self::start_supervised_exec).
     pub async fn exec(
         &self,
         command: &str,
@@ -1221,129 +1161,6 @@ impl VsockHost {
         .await
     }
 
-    /// Spawn a process on the guest and monitor for exit.
-    ///
-    /// Returns immediately with a handle. Use [`GuestProcessHandle::wait`] to
-    /// wait for completion. Dropping the handle does not cancel the guest
-    /// process; the host continues tracking lifecycle frames until process exit
-    /// or connection close.
-    ///
-    /// When `stream_stdout` is true, stdout chunks are streamed to the host via
-    /// `MSG_STDOUT_CHUNK`. `stdout_log_path`, when present, additionally asks
-    /// the guest to tee those chunks into the given guest-side file.
-    /// Use [`GuestProcessHandle::take_stdout_receiver`] to receive streamed chunks
-    /// when enabled. The receiver is closed when the process exits or the
-    /// connection drops.
-    pub async fn spawn_process(
-        &self,
-        command: &str,
-        timeout_ms: u32,
-        env: &[(&str, &str)],
-        sudo: bool,
-        stream_stdout: bool,
-        stdout_log_path: Option<&str>,
-    ) -> io::Result<GuestProcessHandle> {
-        self.spawn_process_with_request_and_write_observer(
-            ProcessSpawnRequest {
-                command,
-                timeout_ms,
-                env,
-                sudo,
-                stream_stdout,
-                stdout_log_path,
-            },
-            FrameWriteObserver::default(),
-        )
-        .await
-    }
-
-    /// Spawn a process and report when its request frame is about to be
-    /// written to the guest.
-    pub async fn spawn_process_with_request_and_write_observer(
-        &self,
-        request: ProcessSpawnRequest<'_>,
-        write_observer: FrameWriteObserver,
-    ) -> io::Result<GuestProcessHandle> {
-        let ProcessSpawnRequest {
-            command,
-            timeout_ms,
-            env,
-            sudo,
-            stream_stdout,
-            stdout_log_path,
-        } = request;
-        process::spawn_process_on_shared(
-            &self.shared,
-            process::SpawnProcessOnSharedRequest {
-                command,
-                timeout_ms,
-                env,
-                sudo,
-                stream_stdout,
-                stdout_log_path,
-                control_sink: false,
-                write_observer,
-            },
-        )
-        .await
-    }
-
-    /// Spawn a process with an operation-bound control sink available to the
-    /// guest process.
-    pub async fn spawn_process_with_control_sink(
-        &self,
-        command: &str,
-        timeout_ms: u32,
-        env: &[(&str, &str)],
-        sudo: bool,
-        stream_stdout: bool,
-        stdout_log_path: Option<&str>,
-    ) -> io::Result<GuestProcessHandle> {
-        self.spawn_process_with_control_sink_request_and_write_observer(
-            ProcessSpawnRequest {
-                command,
-                timeout_ms,
-                env,
-                sudo,
-                stream_stdout,
-                stdout_log_path,
-            },
-            FrameWriteObserver::default(),
-        )
-        .await
-    }
-
-    /// Spawn a process with an operation-bound control sink and report when
-    /// its request frame is about to be written to the guest.
-    pub async fn spawn_process_with_control_sink_request_and_write_observer(
-        &self,
-        request: ProcessSpawnRequest<'_>,
-        write_observer: FrameWriteObserver,
-    ) -> io::Result<GuestProcessHandle> {
-        let ProcessSpawnRequest {
-            command,
-            timeout_ms,
-            env,
-            sudo,
-            stream_stdout,
-            stdout_log_path,
-        } = request;
-        process::spawn_process_on_shared(
-            &self.shared,
-            process::SpawnProcessOnSharedRequest {
-                command,
-                timeout_ms,
-                env,
-                sudo,
-                stream_stdout,
-                stdout_log_path,
-                control_sink: true,
-                write_observer,
-            },
-        )
-        .await
-    }
-
     /// Request graceful shutdown from guest.
     ///
     /// Returns `true` if guest acknowledged, `false` on timeout.
@@ -1369,7 +1186,7 @@ impl VsockHost {
 
             if matches!(
                 &*self.shared.state.lock().unwrap_or_else(|e| e.into_inner()),
-                ConnectionState::Closed { .. }
+                ConnectionState::Closed
             ) {
                 return Ok(());
             }

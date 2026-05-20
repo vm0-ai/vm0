@@ -10,6 +10,7 @@ guest-write-file.workspace = true
 tempfile.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-host.workspace = true
+vsock-proto.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [[test]]

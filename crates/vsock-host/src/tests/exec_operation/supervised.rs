@@ -6,9 +6,10 @@ use std::time::Duration;
 
 use tokio::io::AsyncWriteExt;
 use vsock_proto::{
-    ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
-    MSG_EXEC_START, MSG_OPERATIONS_QUIESCED, MSG_QUIESCE_OPERATIONS, ProcessControlStatus,
+    ExecCapturedOutput, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy,
+    ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
+    MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
+    MSG_QUIESCE_OPERATIONS,
 };
 
 use super::super::support::{
@@ -579,7 +580,7 @@ async fn supervised_exec_control_uses_exec_control_messages() {
         decoded_control.target_seq,
         decoded_control.control_nonce,
         decoded_control.message_id,
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;
@@ -697,7 +698,7 @@ async fn supervised_exec_control_large_timeout_saturates_request_timeout_ms() {
         start.seq,
         control_nonce,
         "large-timeout",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;
@@ -873,7 +874,7 @@ async fn supervised_exec_control_reports_guest_status_and_error() {
         start.seq,
         control_nonce,
         "status",
-        ProcessControlStatus::QueueFull,
+        ExecControlStatus::QueueFull,
         "queue full",
     )
     .await;
@@ -953,7 +954,7 @@ async fn supervised_exec_control_timeout_ignores_late_result() {
         start.seq,
         control_nonce,
         "timeout",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;
@@ -1016,7 +1017,7 @@ async fn supervised_exec_control_nonce_mismatch_poisons_connection() {
         start.seq,
         control_nonce,
         "nonce-mismatch",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;
@@ -1068,7 +1069,7 @@ async fn supervised_exec_control_target_seq_mismatch_poisons_connection() {
         start.seq + 1,
         control_nonce,
         "target-mismatch",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;
@@ -1120,7 +1121,7 @@ async fn supervised_exec_control_message_id_mismatch_poisons_connection() {
         start.seq,
         control_nonce,
         "different-message-id",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "",
     )
     .await;

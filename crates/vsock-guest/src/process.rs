@@ -147,28 +147,6 @@ pub(crate) fn kill_and_reap_child(mut child: Child) {
     }
 }
 
-pub(crate) struct ChildReapGuard {
-    child: Option<Child>,
-}
-
-impl ChildReapGuard {
-    pub(crate) fn new(child: Child) -> Self {
-        Self { child: Some(child) }
-    }
-
-    pub(crate) fn into_child(mut self) -> Option<Child> {
-        self.child.take()
-    }
-}
-
-impl Drop for ChildReapGuard {
-    fn drop(&mut self) {
-        if let Some(child) = self.child.take() {
-            kill_and_reap_child(child);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

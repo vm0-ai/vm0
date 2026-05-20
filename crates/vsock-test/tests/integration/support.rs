@@ -131,16 +131,6 @@ impl Harness {
             let _ = g.join();
         }
     }
-
-    pub(crate) async fn wait_spawn(
-        &self,
-        handle: vsock_host::GuestProcessHandle,
-        timeout: Duration,
-    ) -> io::Result<vsock_host::ProcessExitEvent> {
-        tokio::time::timeout(timeout, handle.wait())
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "wait timeout"))?
-    }
 }
 
 impl Deref for Harness {

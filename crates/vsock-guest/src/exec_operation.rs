@@ -8,16 +8,16 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    self, ExecCapturedOutput, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy,
-    ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_OUTPUT,
-    MSG_EXEC_RESULT, MSG_EXEC_STARTED, ProcessControlNonce,
+    self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
+    ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
+    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_STARTED,
 };
 
 use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancellable};
 use crate::error::to_io_error;
+use crate::exec_control::ExecControlGuard;
 use crate::log::log;
 use crate::process::{extract_exit_code, kill_and_reap_child};
-use crate::process_control::ExecControlGuard;
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -226,7 +226,7 @@ impl ExecOperationWorkerRequest {
         })
     }
 
-    pub(crate) fn exec_control_registration(&self) -> Option<(ProcessControlNonce, bool)> {
+    pub(crate) fn exec_control_registration(&self) -> Option<(ExecControlNonce, bool)> {
         match self.control {
             ExecControlPolicy::Disabled => None,
             ExecControlPolicy::Enabled {

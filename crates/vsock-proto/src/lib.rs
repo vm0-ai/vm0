@@ -22,12 +22,12 @@
 //! | 0x02 | G→H       | pong              | (empty) |
 //! | 0x03 | H→G       | write_file        | `[2B path_len][path][1B flags][4B content_len][content]` (flags: `SUDO=0x01`, `APPEND=0x02`) |
 //! | 0x04 | G→H       | write_file_result | `[1B success][2B error_len][error]` |
-//! | 0x05 | H→G       | spawn_process     | `[4B timeout_ms][1B flags][4B cmd_len][command]([4B env_count]([4B key_len][key][4B val_len][value])*)([16B control_nonce])([2B log_path_len][log_path])` (flags: `SUDO=0x01`, `STREAM_STDOUT=0x02`, `CONTROL_NONCE=0x04`, `CONTROL_SINK=0x08`) |
-//! | 0x06 | G→H       | spawn_process_result | `[4B pid]` |
-//! | 0x07 | G→H       | process_exit      | `[4B pid][4B exit_code][4B stdout_len][stdout][4B stderr_len][stderr]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
+//! | 0x05 |           | retired           | reserved legacy command-start id |
+//! | 0x06 |           | retired           | reserved legacy command-start acknowledgement id |
+//! | 0x07 |           | retired           | reserved legacy command-exit id |
 //! | 0x08 | H→G       | shutdown          | (empty) |
 //! | 0x09 | G→H       | shutdown_ack      | (empty) |
-//! | 0x0A | G→H       | stdout_chunk      | `[4B pid][data]` (`spawn_process` uses the original request seq; pid is metadata, not the routing key) |
+//! | 0x0A |           | retired           | reserved legacy stdout stream id |
 //! | 0x0B | H→G       | exec_start     | `[1B lifecycle][timeout_policy][1B flags][4B cmd_len][command][4B env_count]... [2B label_len][label][stdout_policy][stderr_policy][2B expected_exit_count][4B exit_code]...[control_policy]` |
 //! | 0x0C | G→H       | exec_output    | `[1B stream][4B output_seq][1B flags][4B chunk_len][chunk]` |
 //! | 0x0D | G→H       | exec_result    | `[1B termination]...[4B duration_ms][stdout][stderr][2B diagnostic_len][diagnostic]` |
@@ -36,17 +36,16 @@
 //! | 0x10 | G→H       | operations_quiesced    | (empty) |
 //! | 0x11 | H→G       | resume_operations | (empty) |
 //! | 0x12 | G→H       | operations_resumed | (empty) |
-//! | 0x13 | H→G       | process_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
-//! | 0x14 | G→H       | process_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
+//! | 0x13 |           | retired           | reserved legacy control request id |
+//! | 0x14 |           | retired           | reserved legacy control result id |
 //! | 0x15 | G→H       | exec_started | `[4B pid]` |
 //! | 0x16 | H→G       | exec_control | `[4B target_seq][4B request_timeout_ms][16B nonce][2B message_id_len][message_id][4B payload_len][payload]` |
 //! | 0x17 | G→H       | exec_control_result | `[4B target_seq][16B nonce][2B message_id_len][message_id][1B status][2B diagnostic_len][diagnostic]` |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 //!
-//! Exec operation and process operation messages are request-scoped; host/guest
-//! dispatch layers must use a non-zero sequence number for exec
-//! start/started/output/result/cancel/control/control_result, spawn_process,
-//! and process_control messages.
+//! Exec operation messages are request-scoped; host/guest dispatch layers must
+//! use a non-zero sequence number for exec
+//! start/started/output/result/cancel/control/control_result messages.
 //! `exec_output.output_seq` is per exec operation and starts at 0,
 //! incrementing by 1 for each output frame across stdout and stderr.
 //! `exec_start.lifecycle` uses 0=one_shot and 1=supervised.
@@ -57,11 +56,10 @@
 //! always present.
 //! `exec_start.control_policy` uses 0=disabled, or 1 followed by
 //! `[1B control_flags][16B nonce]` where `control_flags` uses `SINK=0x01`.
-//! `process_control_result.status` uses 0=delivered, 1=inactive,
+//! `exec_control_result.status` uses 0=delivered, 1=inactive,
 //! 2=nonce_mismatch, 3=unsupported, 4=rejected, 5=sink_unavailable,
 //! 6=sink_timeout, 7=queue_full, and 8=sink_error.
-//! `exec_control_result.status` uses the same values.
-//! `process_control.request_timeout_ms` is the caller-visible budget, counted
+//! `exec_control.request_timeout_ms` is the caller-visible budget, counted
 //! from guest receipt through local sink connection, request write, and response
 //! read. Host encoders round non-zero sub-millisecond durations up to 1ms and
 //! saturate values that do not fit in `u32`.
@@ -76,28 +74,18 @@ pub use error::ProtocolError;
 pub use frame::{Decoder, RawMessage, encode};
 pub use payloads::empty::decode_empty_payload;
 pub use payloads::error::{decode_error, encode_error};
+pub use payloads::exec_control::{
+    EXEC_CONTROL_MAX_PAYLOAD_BYTES, EXEC_CONTROL_NONCE_LEN, ExecControlNonce, ExecControlStatus,
+};
 pub use payloads::exec_operation::{
     DecodedExecControl, DecodedExecControlResult, DecodedExecOutput, DecodedExecResult,
-    DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy, ExecControlStatus,
+    DecodedExecStart, DecodedExecStarted, ExecCapturedOutput, ExecControlPolicy,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest,
     ExecTermination, ExecTimeoutPolicy, decode_exec_cancel, decode_exec_control,
     decode_exec_control_result, decode_exec_output, decode_exec_result, decode_exec_start,
     decode_exec_started, encode_exec_cancel, encode_exec_control, encode_exec_control_result,
     encode_exec_output, encode_exec_result, encode_exec_start,
     encode_exec_start_with_expected_exit_codes, encode_exec_started,
-};
-pub use payloads::process::{
-    ProcessExit, decode_process_exit, decode_stdout_chunk, encode_process_exit, encode_stdout_chunk,
-};
-pub use payloads::process_control::{
-    DecodedProcessControl, DecodedProcessControlResult, PROCESS_CONTROL_MAX_PAYLOAD_BYTES,
-    PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce, ProcessControlStatus, decode_process_control,
-    decode_process_control_result, encode_process_control, encode_process_control_result,
-};
-pub use payloads::spawn_process::{
-    DecodedSpawnProcess, decode_spawn_process, decode_spawn_process_result, encode_spawn_process,
-    encode_spawn_process_result, encode_spawn_process_with_control_nonce,
-    encode_spawn_process_with_control_sink,
 };
 pub use payloads::write_file::{
     decode_write_file, decode_write_file_result, encode_write_file, encode_write_file_result,
@@ -106,11 +94,7 @@ pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,
     MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL,
     MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_PROCESS_CONTROL,
-    MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_QUIESCE_OPERATIONS, MSG_READY,
-    MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_PROCESS,
-    MSG_SPAWN_PROCESS_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    SPAWN_PROCESS_FLAG_CONTROL_NONCE, SPAWN_PROCESS_FLAG_CONTROL_SINK,
-    SPAWN_PROCESS_FLAG_STREAM_STDOUT, SPAWN_PROCESS_FLAG_SUDO, VSOCK_PORT, WRITE_FILE_FLAG_APPEND,
-    WRITE_FILE_FLAG_SUDO,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_QUIESCE_OPERATIONS,
+    MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE,
+    MSG_WRITE_FILE_RESULT, VSOCK_PORT, WRITE_FILE_FLAG_APPEND, WRITE_FILE_FLAG_SUDO,
 };

@@ -3,18 +3,18 @@ use std::thread;
 use std::time::Duration;
 
 use vsock_proto::{
-    self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
-    ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
-    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, ProcessControlNonce, ProcessControlStatus,
+    self, ExecControlNonce, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy,
+    ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy,
+    MSG_ERROR, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
+    MSG_EXEC_START, MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
 };
 
 use super::support::*;
 
-const EXEC_CONTROL_NONCE: ProcessControlNonce = *b"exec-ctrl-000001";
-const EXEC_CONTROL_WRONG_NONCE: ProcessControlNonce = *b"exec-ctrl-999999";
+const EXEC_CONTROL_NONCE: ExecControlNonce = *b"exec-ctrl-000001";
+const EXEC_CONTROL_WRONG_NONCE: ExecControlNonce = *b"exec-ctrl-999999";
 
-fn unique_exec_control_nonce(seed: u64) -> ProcessControlNonce {
+fn unique_exec_control_nonce(seed: u64) -> ExecControlNonce {
     let mut nonce = [0u8; 16];
     nonce[..8].copy_from_slice(&u64::from(std::process::id()).to_be_bytes());
     nonce[8..].copy_from_slice(&seed.to_be_bytes());
@@ -58,7 +58,7 @@ fn read_exec_started(stream: &mut impl std::io::Read, seq: u32) -> u32 {
     vsock_proto::decode_exec_started(&msg.payload).unwrap().pid
 }
 
-fn read_stdout_chunk(stream: &mut impl std::io::Read, seq: u32) -> Vec<u8> {
+fn read_exec_stdout_output(stream: &mut impl std::io::Read, seq: u32) -> Vec<u8> {
     let msg = read_message(stream);
     assert_eq!(msg.msg_type, MSG_EXEC_OUTPUT);
     assert_eq!(msg.seq, seq);
@@ -72,7 +72,7 @@ fn send_exec_control(
     stream: &mut impl std::io::Write,
     request_seq: u32,
     target_seq: u32,
-    control_nonce: ProcessControlNonce,
+    control_nonce: ExecControlNonce,
     message_id: &str,
 ) {
     let payload =
@@ -86,9 +86,9 @@ fn assert_exec_control_result(
     stream: &mut impl std::io::Read,
     request_seq: u32,
     expected_target_seq: u32,
-    expected_nonce: ProcessControlNonce,
+    expected_nonce: ExecControlNonce,
     expected_message_id: &str,
-    expected_status: ProcessControlStatus,
+    expected_status: ExecControlStatus,
     expected_diagnostic: &str,
 ) {
     let msg = read_message(stream);
@@ -340,7 +340,7 @@ fn supervised_exec_control_spawn_failure_releases_registration() {
         208,
         EXEC_CONTROL_NONCE,
         "message-after-start-failed",
-        ProcessControlStatus::Inactive,
+        ExecControlStatus::Inactive,
         "exec operation is not active",
     );
 
@@ -392,7 +392,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);
     let pid = child_guard.read_pid();
     assert_eq!(
-        read_stdout_chunk(&mut host_stream, target_seq),
+        read_exec_stdout_output(&mut host_stream, target_seq),
         endpoint.as_bytes()
     );
 
@@ -421,7 +421,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         target_seq,
         control_nonce,
         "message",
-        ProcessControlStatus::Delivered,
+        ExecControlStatus::Delivered,
         "ok",
     );
     client.join().unwrap();
@@ -464,7 +464,7 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
         204,
         EXEC_CONTROL_NONCE,
         "message",
-        ProcessControlStatus::Unsupported,
+        ExecControlStatus::Unsupported,
         "exec control sink is not configured",
     );
 
@@ -537,7 +537,7 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
         209,
         EXEC_CONTROL_NONCE,
         "message-first",
-        ProcessControlStatus::Unsupported,
+        ExecControlStatus::Unsupported,
         "exec control sink is not configured",
     );
     assert_exec_control_result(
@@ -546,7 +546,7 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
         209,
         EXEC_CONTROL_NONCE,
         "message-second",
-        ProcessControlStatus::Unsupported,
+        ExecControlStatus::Unsupported,
         "exec control sink is not configured",
     );
 
@@ -616,7 +616,7 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
         206,
         EXEC_CONTROL_WRONG_NONCE,
         "message-wrong-nonce",
-        ProcessControlStatus::NonceMismatch,
+        ExecControlStatus::NonceMismatch,
         "exec operation nonce mismatch",
     );
 
@@ -633,7 +633,7 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
         206,
         EXEC_CONTROL_NONCE,
         "message-original-nonce",
-        ProcessControlStatus::Unsupported,
+        ExecControlStatus::Unsupported,
         "exec control sink is not configured",
     );
 
@@ -699,7 +699,7 @@ fn supervised_exec_duplicate_start_with_control_does_not_leak_registration() {
         210,
         EXEC_CONTROL_NONCE,
         "message-duplicate-control",
-        ProcessControlStatus::Inactive,
+        ExecControlStatus::Inactive,
         "exec operation is not active",
     );
 
@@ -745,7 +745,7 @@ fn supervised_exec_control_after_exit_returns_inactive() {
         207,
         EXEC_CONTROL_NONCE,
         "message-after-exit",
-        ProcessControlStatus::Inactive,
+        ExecControlStatus::Inactive,
         "exec operation is not active",
     );
 

@@ -251,8 +251,8 @@ pub(crate) fn handle_decoded_write_file_message(
 
 /// Handle basic incoming messages and return the connection-loop outcome.
 ///
-/// Exec operation, `MSG_SPAWN_PROCESS`, and guarded write-file operations are
-/// handled separately by the connection dispatcher.
+/// Exec operation and guarded write-file operations are handled separately by
+/// the connection dispatcher.
 pub(crate) fn handle_basic_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
         "INFO",

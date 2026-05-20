@@ -6,10 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::time::Instant;
 use vsock_proto::{
-    Decoder, ExecCapturedOutput, ExecOutputStream, ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE,
-    MIN_BODY_SIZE, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START,
-    MSG_EXEC_STARTED, MSG_PING, MSG_PONG, MSG_READY, ProcessControlNonce, ProcessControlStatus,
-    RawMessage,
+    Decoder, ExecCapturedOutput, ExecControlNonce, ExecControlStatus, ExecOutputStream,
+    ExecTermination, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL_RESULT,
+    MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_PING, MSG_PONG,
+    MSG_READY, RawMessage,
 };
 
 use crate::operation_tracker::NormalOperationReadiness;
@@ -42,7 +42,7 @@ pub(crate) fn operation_count(host: &VsockHost) -> usize {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &*guard {
         ConnectionState::Connected { operations, .. } => operations.len(),
-        ConnectionState::Closed { .. } => 0,
+        ConnectionState::Closed => 0,
     }
 }
 
@@ -50,7 +50,7 @@ pub(crate) fn pending_request_count(host: &VsockHost) -> usize {
     let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
     match &*guard {
         ConnectionState::Connected { pending, .. } => pending.len(),
-        ConnectionState::Closed { .. } => 0,
+        ConnectionState::Closed => 0,
     }
 }
 
@@ -177,9 +177,9 @@ pub(crate) async fn send_exec_control_result(
     stream: &mut UnixStream,
     request_seq: u32,
     target_seq: u32,
-    control_nonce: ProcessControlNonce,
+    control_nonce: ExecControlNonce,
     message_id: &str,
-    status: ProcessControlStatus,
+    status: ExecControlStatus,
     diagnostic: &str,
 ) {
     let payload = vsock_proto::encode_exec_control_result(

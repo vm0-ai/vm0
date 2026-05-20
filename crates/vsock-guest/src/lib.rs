@@ -9,12 +9,11 @@
 mod connection;
 mod drain;
 mod error;
+mod exec_control;
 mod exec_operation;
 mod handlers;
 mod log;
-mod monitor;
 mod process;
-mod process_control;
 mod quiesce;
 mod shell_command;
 mod shutdown;

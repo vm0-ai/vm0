@@ -1,8 +1,8 @@
 use crate::error::ProtocolError;
-use crate::payloads::process_control::{
-    DecodedProcessControl, DecodedProcessControlResult, EXEC_CONTROL_CODEC_ERRORS,
-    EXEC_CONTROL_RESULT_CODEC_ERRORS, PROCESS_CONTROL_NONCE_LEN, ProcessControlNonce,
-    ProcessControlStatus, decode_control_result_with_errors, decode_control_with_errors,
+use crate::payloads::exec_control::{
+    DecodedControl, DecodedControlResult, EXEC_CONTROL_CODEC_ERRORS, EXEC_CONTROL_NONCE_LEN,
+    EXEC_CONTROL_RESULT_CODEC_ERRORS, ExecControlNonce, ExecControlStatus,
+    decode_control_result_with_errors, decode_control_with_errors,
     encode_control_result_with_errors, encode_control_with_errors,
 };
 use crate::read::{
@@ -103,7 +103,7 @@ pub enum ExecControlPolicy {
     Disabled,
     /// Enable exec control messages using a per-operation nonce.
     Enabled {
-        control_nonce: ProcessControlNonce,
+        control_nonce: ExecControlNonce,
         sink: bool,
     },
 }
@@ -160,15 +160,12 @@ pub struct DecodedExecStarted {
     pub pid: u32,
 }
 
-/// Exec control request status.
-pub type ExecControlStatus = ProcessControlStatus;
-
 /// Decoded exec_control payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedExecControl<'a> {
     pub target_seq: u32,
     pub request_timeout_ms: u32,
-    pub control_nonce: ProcessControlNonce,
+    pub control_nonce: ExecControlNonce,
     pub message_id: &'a str,
     pub payload: &'a [u8],
 }
@@ -177,7 +174,7 @@ pub struct DecodedExecControl<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodedExecControlResult<'a> {
     pub target_seq: u32,
-    pub control_nonce: ProcessControlNonce,
+    pub control_nonce: ExecControlNonce,
     pub message_id: &'a str,
     pub status: ExecControlStatus,
     pub diagnostic: &'a str,
@@ -242,7 +239,7 @@ fn exec_timeout_policy_encoded_len(timeout: ExecTimeoutPolicy) -> usize {
 fn exec_control_policy_encoded_len(control: ExecControlPolicy) -> usize {
     match control {
         ExecControlPolicy::Disabled => 1,
-        ExecControlPolicy::Enabled { .. } => 1 + 1 + PROCESS_CONTROL_NONCE_LEN,
+        ExecControlPolicy::Enabled { .. } => 1 + 1 + EXEC_CONTROL_NONCE_LEN,
     }
 }
 
@@ -436,7 +433,7 @@ pub fn encode_exec_started(pid: u32) -> Result<Vec<u8>, ProtocolError> {
 /// Encode exec_control payload.
 pub fn encode_exec_control(
     target_seq: u32,
-    control_nonce: ProcessControlNonce,
+    control_nonce: ExecControlNonce,
     message_id: &str,
     payload: &[u8],
     request_timeout_ms: u32,
@@ -454,7 +451,7 @@ pub fn encode_exec_control(
 /// Encode exec_control_result payload.
 pub fn encode_exec_control_result(
     target_seq: u32,
-    control_nonce: ProcessControlNonce,
+    control_nonce: ExecControlNonce,
     message_id: &str,
     status: ExecControlStatus,
     diagnostic: &str,
@@ -696,10 +693,10 @@ fn decode_exec_control_policy(
             let nonce_bytes = read_slice(
                 payload,
                 offset,
-                PROCESS_CONTROL_NONCE_LEN,
+                EXEC_CONTROL_NONCE_LEN,
                 "exec start control nonce truncated",
             )?;
-            let control_nonce: ProcessControlNonce = nonce_bytes
+            let control_nonce: ExecControlNonce = nonce_bytes
                 .try_into()
                 .map_err(|_| ProtocolError::InvalidPayload("exec start control nonce invalid"))?;
             Ok(ExecControlPolicy::Enabled {
@@ -833,7 +830,7 @@ pub fn decode_exec_started(payload: &[u8]) -> Result<DecodedExecStarted, Protoco
 
 /// Decode exec_control payload into a [`DecodedExecControl`] struct.
 pub fn decode_exec_control(payload: &[u8]) -> Result<DecodedExecControl<'_>, ProtocolError> {
-    let DecodedProcessControl {
+    let DecodedControl {
         target_seq,
         request_timeout_ms,
         control_nonce,
@@ -853,7 +850,7 @@ pub fn decode_exec_control(payload: &[u8]) -> Result<DecodedExecControl<'_>, Pro
 pub fn decode_exec_control_result(
     payload: &[u8],
 ) -> Result<DecodedExecControlResult<'_>, ProtocolError> {
-    let DecodedProcessControlResult {
+    let DecodedControlResult {
         target_seq,
         control_nonce,
         message_id,

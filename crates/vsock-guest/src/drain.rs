@@ -1,7 +1,7 @@
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Buffer size for reading stdout chunks from a spawned process.
+/// Buffer size for reading stdout chunks from a child process.
 const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 const DRAIN_POLL_TIMEOUT_MS: libc::c_int = 100;
 

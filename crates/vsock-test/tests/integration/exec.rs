@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use crate::support::{Harness, shell_quote_path, wait_for_path};
+use vsock_host::{SupervisedExecControl, SupervisedExecRequest};
+use vsock_proto::{ExecOutputPolicy, ExecTermination, ExecTimeoutPolicy};
 
 // ── exec ─────────────────────────────────────────────────────────────
 
@@ -122,39 +124,51 @@ async fn test_exec_sudo() {
     h.finish();
 }
 
-/// Core concurrency test: exec works while spawn wait is pending.
+/// Core concurrency test: exec works while supervised exec wait is pending.
 ///
 /// This is the exact production scenario that motivated the VsockHost refactor —
-/// runner waits for spawn exit (blocks for hours) and a separate task needs to
-/// exec into the same VM.
+/// runner waits for process exit (blocks for hours) and a separate task needs
+/// to exec into the same VM.
 #[tokio::test]
 async fn test_exec_while_waiting_for_exit() {
     let h = Harness::new().await;
 
-    // Spawn a long-running process. Use `exec` to replace the shell so the
-    // PID we get is the actual sleep process (same pattern as sigterm/sigkill tests).
+    // Start a long-running supervised process. Use `exec` to replace the shell
+    // so the PID we get is the actual sleep process.
     let handle = h
-        .spawn_process("exec sleep 60", 0, &[], false, false, None)
+        .start_supervised_exec(SupervisedExecRequest {
+            timeout: ExecTimeoutPolicy::None,
+            command: "exec sleep 60",
+            env: &[],
+            sudo: false,
+            label: "integration-long-running",
+            stdout: ExecOutputPolicy::Discard,
+            stderr: ExecOutputPolicy::Discard,
+            expected_exit_codes: &[],
+            control: SupervisedExecControl::Disabled,
+            stream_queue_capacity: None,
+            start_timeout: Duration::from_secs(5),
+        })
         .await
-        .expect("spawn_process failed");
+        .expect("supervised exec failed");
     let pid = handle.pid();
 
-    // Run spawn wait and exec concurrently on the same task via join!.
+    // Run wait and exec concurrently on the same task via join!.
     // The exec branch runs a command and then kills the long-running process,
-    // which unblocks spawn wait.
-    let (wait_result, _) = tokio::join!(h.wait_spawn(handle, Duration::from_secs(10)), async {
-        // This exec must NOT block on the pending spawn wait.
+    // which unblocks supervised wait.
+    let (wait_result, _) = tokio::join!(handle.wait(Duration::from_secs(10)), async {
+        // This exec must NOT block on the pending supervised wait.
         let result = tokio::time::timeout(
             Duration::from_secs(5),
             h.exec("echo alive", 5000, &[], false),
         )
         .await
-        .expect("exec timed out — spawn wait is blocking")
+        .expect("exec timed out — supervised wait is blocking")
         .expect("exec failed");
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, b"alive\n");
 
-        // Kill the process group so spawn wait resolves.
+        // Kill the process group so supervised wait resolves.
         h.exec(
             &format!("kill -15 -{pid} 2>/dev/null || kill -15 {pid}"),
             5000,
@@ -165,9 +179,8 @@ async fn test_exec_while_waiting_for_exit() {
         .expect("kill failed");
     });
 
-    let event = wait_result.expect("spawn wait failed");
-    assert_eq!(event.pid, pid);
-    assert_ne!(event.exit_code, 0); // killed
+    let event = wait_result.expect("supervised wait failed");
+    assert!(matches!(event.termination, ExecTermination::Exited { exit_code } if exit_code != 0));
 
     h.finish();
 }

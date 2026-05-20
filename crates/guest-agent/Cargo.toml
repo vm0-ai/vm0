@@ -33,6 +33,7 @@ httpmock.workspace = true
 nix = { workspace = true, features = ["inotify"] }
 vsock-host.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
+vsock-proto.workspace = true
 
 [lints]
 workspace = true

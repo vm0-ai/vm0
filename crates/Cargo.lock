@@ -1280,6 +1280,7 @@ dependencies = [
  "tokio-util",
  "vsock-guest",
  "vsock-host",
+ "vsock-proto",
  "zstd",
 ]
 
@@ -3689,6 +3690,7 @@ dependencies = [
  "tokio",
  "vsock-guest",
  "vsock-host",
+ "vsock-proto",
 ]
 
 [[package]]

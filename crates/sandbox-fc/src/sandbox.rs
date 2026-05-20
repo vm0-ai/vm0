@@ -470,11 +470,11 @@ impl ProcessLogReaders {
             stdout: child
                 .stdout
                 .take()
-                .map(|stdout| spawn_process_log_reader(id, ProcessLogStream::Stdout, stdout)),
+                .map(|stdout| process_log_reader(id, ProcessLogStream::Stdout, stdout)),
             stderr: child
                 .stderr
                 .take()
-                .map(|stderr| spawn_process_log_reader(id, ProcessLogStream::Stderr, stderr)),
+                .map(|stderr| process_log_reader(id, ProcessLogStream::Stderr, stderr)),
         }
     }
 
@@ -495,7 +495,7 @@ impl ProcessLogReaders {
     }
 }
 
-fn spawn_process_log_reader<R>(
+fn process_log_reader<R>(
     id: &str,
     stream: ProcessLogStream,
     reader: R,
@@ -895,53 +895,6 @@ impl FirecrackerSandbox {
             }
         };
         io::Error::other(error)
-    }
-
-    #[cfg(test)]
-    async fn process_control(
-        coordinator: ParkCoordinator,
-        state: Arc<AtomicU8>,
-        state_rx: watch::Receiver<SandboxState>,
-        control: vsock_host::GuestProcessControlHandle,
-        message_id: String,
-        payload: Vec<u8>,
-        timeout: Duration,
-    ) -> io::Result<ProcessControlAck> {
-        enum ControlOutcome {
-            Returned(io::Result<vsock_host::ProcessControlAck>),
-            BackendCrashed,
-        }
-
-        let operation = SandboxOperation::ProcessControl;
-        Self::begin_process_control(&coordinator, || Self::current_state_from(&state)).map_err(
-            |error| {
-                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
-            },
-        )?;
-
-        let outcome = tokio::select! {
-            result = control.control(
-                &message_id,
-                &payload,
-                timeout,
-            ) => ControlOutcome::Returned(result),
-            () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
-        };
-
-        match outcome {
-            ControlOutcome::Returned(Ok(ack)) => Ok(ProcessControlAck {
-                message_id: ack.message_id,
-            }),
-            ControlOutcome::Returned(Err(error)) => {
-                if Self::current_state_from(&state) == SandboxState::Crashed {
-                    return Err(io::Error::other(Self::backend_crashed_error(operation)));
-                }
-                Err(error)
-            }
-            ControlOutcome::BackendCrashed => {
-                Err(io::Error::other(Self::backend_crashed_error(operation)))
-            }
-        }
     }
 
     async fn exec_process_control(
@@ -2936,9 +2889,8 @@ mod tests {
     use tokio::net::UnixStream;
     use tokio::time::Instant;
     use vsock_proto::{
-        Decoder, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_PING, MSG_PONG,
-        MSG_PROCESS_CONTROL, MSG_PROCESS_CONTROL_RESULT, MSG_PROCESS_EXIT, MSG_READY,
-        MSG_SPAWN_PROCESS, MSG_SPAWN_PROCESS_RESULT, ProcessControlStatus, RawMessage,
+        Decoder, ExecControlStatus, HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE, MSG_EXEC_CONTROL,
+        MSG_EXEC_CONTROL_RESULT, MSG_PING, MSG_PONG, MSG_READY, RawMessage,
     };
 
     struct TestNormalOperationFence;
@@ -2986,14 +2938,6 @@ mod tests {
             || {},
         )
         .await
-    }
-
-    struct ProcessControlFixture {
-        host: Arc<VsockHost>,
-        handle: vsock_host::GuestProcessHandle,
-        guest: UnixStream,
-        spawn_seq: u32,
-        pid: u32,
     }
 
     struct ExecProcessControlFixture {
@@ -3050,49 +2994,6 @@ mod tests {
 
         let pong = vsock_proto::encode(MSG_PONG, msgs[0].seq, &[]).unwrap();
         stream.write_all(&pong).await.unwrap();
-    }
-
-    async fn setup_process_control_fixture() -> ProcessControlFixture {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let vsock_path = temp_dir
-            .path()
-            .join("process-control")
-            .to_string_lossy()
-            .into_owned();
-        let wait_vsock_path = vsock_path.clone();
-        let host_task = tokio::spawn(async move {
-            VsockHost::wait_for_connection(&wait_vsock_path, Duration::from_secs(5))
-                .await
-                .unwrap()
-        });
-        let mut guest = connect_mock_guest(&vsock_path).await;
-        let mut decoder = Decoder::new();
-        mock_vsock_handshake(&mut guest, &mut decoder).await;
-        let host = Arc::new(host_task.await.unwrap());
-
-        let spawn_host = Arc::clone(&host);
-        let spawn_task = tokio::spawn(async move {
-            spawn_host
-                .spawn_process("sleep 60", 0, &[], false, false, None)
-                .await
-                .unwrap()
-        });
-        let spawn = read_vsock_message(&mut guest).await;
-        assert_eq!(spawn.msg_type, MSG_SPAWN_PROCESS);
-
-        let pid = 73;
-        let payload = vsock_proto::encode_spawn_process_result(pid);
-        let response = vsock_proto::encode(MSG_SPAWN_PROCESS_RESULT, spawn.seq, &payload).unwrap();
-        guest.write_all(&response).await.unwrap();
-        let handle = spawn_task.await.unwrap();
-
-        ProcessControlFixture {
-            host,
-            handle,
-            guest,
-            spawn_seq: spawn.seq,
-            pid,
-        }
     }
 
     async fn setup_exec_process_control_fixture() -> ExecProcessControlFixture {
@@ -3217,34 +3118,13 @@ mod tests {
         assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
-    async fn send_process_control_result(
-        stream: &mut UnixStream,
-        request: RawMessage,
-        status: ProcessControlStatus,
-        diagnostic: &str,
-    ) {
-        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
-        let decoded = vsock_proto::decode_process_control(&request.payload).unwrap();
-        let payload = vsock_proto::encode_process_control_result(
-            decoded.target_seq,
-            decoded.control_nonce,
-            decoded.message_id,
-            status,
-            diagnostic,
-        )
-        .unwrap();
-        let response =
-            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request.seq, &payload).unwrap();
-        stream.write_all(&response).await.unwrap();
-    }
-
     async fn send_exec_control_result(
         stream: &mut UnixStream,
         request: RawMessage,
-        status: ProcessControlStatus,
+        status: ExecControlStatus,
         diagnostic: &str,
     ) {
-        assert_eq!(request.msg_type, vsock_proto::MSG_EXEC_CONTROL);
+        assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
         let decoded = vsock_proto::decode_exec_control(&request.payload).unwrap();
         let payload = vsock_proto::encode_exec_control_result(
             decoded.target_seq,
@@ -3254,42 +3134,29 @@ mod tests {
             diagnostic,
         )
         .unwrap();
-        let response =
-            vsock_proto::encode(vsock_proto::MSG_EXEC_CONTROL_RESULT, request.seq, &payload)
-                .unwrap();
+        let response = vsock_proto::encode(MSG_EXEC_CONTROL_RESULT, request.seq, &payload).unwrap();
         stream.write_all(&response).await.unwrap();
     }
 
-    async fn send_process_control_error(
-        stream: &mut UnixStream,
-        request: RawMessage,
-        message: &str,
-    ) {
-        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+    async fn send_exec_control_error(stream: &mut UnixStream, request: RawMessage, message: &str) {
+        assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
         let payload = vsock_proto::encode_error(message);
         let response = vsock_proto::encode(vsock_proto::MSG_ERROR, request.seq, &payload).unwrap();
         stream.write_all(&response).await.unwrap();
     }
 
-    async fn send_mismatched_process_control_result(stream: &mut UnixStream, request: RawMessage) {
-        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
-        let decoded = vsock_proto::decode_process_control(&request.payload).unwrap();
-        let payload = vsock_proto::encode_process_control_result(
+    async fn send_mismatched_exec_control_result(stream: &mut UnixStream, request: RawMessage) {
+        assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
+        let decoded = vsock_proto::decode_exec_control(&request.payload).unwrap();
+        let payload = vsock_proto::encode_exec_control_result(
             decoded.target_seq + 1,
             decoded.control_nonce,
             decoded.message_id,
-            ProcessControlStatus::Delivered,
+            ExecControlStatus::Delivered,
             "",
         )
         .unwrap();
-        let response =
-            vsock_proto::encode(MSG_PROCESS_CONTROL_RESULT, request.seq, &payload).unwrap();
-        stream.write_all(&response).await.unwrap();
-    }
-
-    async fn send_process_exit(stream: &mut UnixStream, spawn_seq: u32, pid: u32) {
-        let payload = vsock_proto::encode_process_exit(pid, 0, b"", b"");
-        let response = vsock_proto::encode(MSG_PROCESS_EXIT, spawn_seq, &payload).unwrap();
+        let response = vsock_proto::encode(MSG_EXEC_CONTROL_RESULT, request.seq, &payload).unwrap();
         stream.write_all(&response).await.unwrap();
     }
 
@@ -4789,7 +4656,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn supervised_stdout_receiver_forwards_only_stdout_chunks() {
+    async fn supervised_stdout_receiver_forwards_only_stdout_output() {
         let (stream_tx, stream_rx) = mpsc::channel(4);
         let (mut stdout_rx, _close) = supervised_stdout_receiver(stream_rx, 2);
 
@@ -4981,21 +4848,20 @@ mod tests {
 
     #[tokio::test]
     async fn process_control_rejects_closed_policy_gate_without_dirtying() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let attempt = coordinator
             .begin_prepare_park()
             .expect("begin prepare park");
         let (state, state_tx) = running_process_state();
 
-        let error = FirecrackerSandbox::process_control(
+        let error = FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5014,24 +4880,23 @@ mod tests {
         coordinator.abort_prepare_park(&attempt).unwrap();
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
     async fn process_control_rejects_stopped_state_without_dirtying() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = process_state(SandboxState::Stopped);
 
-        let error = FirecrackerSandbox::process_control(
+        let error = FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5049,25 +4914,24 @@ mod tests {
         );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
     async fn process_control_local_validation_failure_keeps_gate_clean() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
-        let too_large = vec![0; vsock_proto::PROCESS_CONTROL_MAX_PAYLOAD_BYTES + 1];
+        let too_large = vec![0; vsock_proto::EXEC_CONTROL_MAX_PAYLOAD_BYTES + 1];
 
-        let error = FirecrackerSandbox::process_control(
+        let error = FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             Arc::clone(&state),
             state_tx.subscribe(),
@@ -5082,7 +4946,7 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5092,30 +4956,29 @@ mod tests {
             Duration::from_secs(5),
         ));
         let request = read_vsock_message(&mut guest).await;
-        send_process_control_result(&mut guest, request, ProcessControlStatus::Delivered, "").await;
+        send_exec_control_result(&mut guest, request, ExecControlStatus::Delivered, "").await;
 
         let ack = control_task.await.unwrap().unwrap();
         assert_eq!(ack.message_id, "valid-after-local-failure");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
     async fn process_control_guest_status_keeps_policy_open() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5125,10 +4988,10 @@ mod tests {
             Duration::from_secs(5),
         ));
         let request = read_vsock_message(&mut guest).await;
-        send_process_control_result(
+        send_exec_control_result(
             &mut guest,
             request,
-            ProcessControlStatus::SinkTimeout,
+            ExecControlStatus::SinkTimeout,
             "guest sink timed out",
         )
         .await;
@@ -5138,8 +5001,8 @@ mod tests {
         assert_eq!(error.to_string(), "guest sink timed out");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
@@ -5167,7 +5030,7 @@ mod tests {
         send_exec_control_result(
             &mut guest,
             request,
-            ProcessControlStatus::SinkTimeout,
+            ExecControlStatus::SinkTimeout,
             "guest sink timed out",
         )
         .await;
@@ -5183,18 +5046,17 @@ mod tests {
 
     #[tokio::test]
     async fn process_control_guest_error_keeps_policy_open() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5204,15 +5066,15 @@ mod tests {
             Duration::from_secs(5),
         ));
         let request = read_vsock_message(&mut guest).await;
-        send_process_control_error(&mut guest, request, "guest rejected control").await;
+        send_exec_control_error(&mut guest, request, "guest rejected control").await;
 
         let error = control_task.await.unwrap().unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "guest rejected control");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
@@ -5259,18 +5121,17 @@ mod tests {
 
     #[tokio::test]
     async fn process_control_allows_concurrent_requests_while_policy_open() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let first_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let first_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             Arc::clone(&state),
             state_tx.subscribe(),
@@ -5279,7 +5140,7 @@ mod tests {
             b"payload-a".to_vec(),
             Duration::from_secs(5),
         ));
-        let second_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let second_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5292,11 +5153,11 @@ mod tests {
         let first_request = read_vsock_message(&mut guest).await;
         let second_request = read_vsock_message(&mut guest).await;
         let mut message_ids = [
-            vsock_proto::decode_process_control(&first_request.payload)
+            vsock_proto::decode_exec_control(&first_request.payload)
                 .unwrap()
                 .message_id
                 .to_owned(),
-            vsock_proto::decode_process_control(&second_request.payload)
+            vsock_proto::decode_exec_control(&second_request.payload)
                 .unwrap()
                 .message_id
                 .to_owned(),
@@ -5304,20 +5165,9 @@ mod tests {
         message_ids.sort();
         assert_eq!(message_ids, ["concurrent-a", "concurrent-b"]);
 
-        send_process_control_result(
-            &mut guest,
-            second_request,
-            ProcessControlStatus::Delivered,
-            "",
-        )
-        .await;
-        send_process_control_result(
-            &mut guest,
-            first_request,
-            ProcessControlStatus::Delivered,
-            "",
-        )
-        .await;
+        send_exec_control_result(&mut guest, second_request, ExecControlStatus::Delivered, "")
+            .await;
+        send_exec_control_result(&mut guest, first_request, ExecControlStatus::Delivered, "").await;
 
         let first_ack = first_task.await.unwrap().unwrap();
         let second_ack = second_task.await.unwrap().unwrap();
@@ -5325,24 +5175,23 @@ mod tests {
         assert_eq!(second_ack.message_id, "concurrent-b");
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
-    async fn process_control_protocol_error_after_guest_write_keeps_policy_open() {
-        let ProcessControlFixture {
+    async fn process_control_protocol_poison_after_guest_write_keeps_policy_open() {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq: _,
-            pid: _,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq: _,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5352,33 +5201,26 @@ mod tests {
             Duration::from_secs(5),
         ));
         let request = read_vsock_message(&mut guest).await;
-        send_mismatched_process_control_result(&mut guest, request).await;
+        send_mismatched_exec_control_result(&mut guest, request).await;
 
         let error = control_task.await.unwrap().unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert!(
-            error
-                .to_string()
-                .contains("process_control_result target seq mismatch"),
-            "unexpected error: {error}",
-        );
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionReset);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
     }
 
     #[tokio::test]
     async fn process_control_backend_crash_after_guest_write_keeps_policy_open() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             Arc::clone(&state),
             state_tx.subscribe(),
@@ -5388,7 +5230,7 @@ mod tests {
             Duration::from_secs(5),
         ));
         let request = read_vsock_message(&mut guest).await;
-        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
 
         state.store(SandboxState::Crashed as u8, Ordering::Release);
         state_tx.send(SandboxState::Crashed).unwrap();
@@ -5404,24 +5246,23 @@ mod tests {
         );
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     #[tokio::test]
     async fn process_control_timeout_after_guest_write_keeps_policy_open() {
-        let ProcessControlFixture {
+        let ExecProcessControlFixture {
             host: _host,
             handle,
             mut guest,
-            spawn_seq,
-            pid,
-        } = setup_process_control_fixture().await;
-        let control = handle.control_handle();
+            exec_seq,
+        } = setup_exec_process_control_fixture().await;
+        let control = handle.control_handle().unwrap();
         let coordinator = ParkCoordinator::new();
         let (state, state_tx) = running_process_state();
 
-        let control_task = tokio::spawn(FirecrackerSandbox::process_control(
+        let control_task = tokio::spawn(FirecrackerSandbox::exec_process_control(
             coordinator.clone(),
             state,
             state_tx.subscribe(),
@@ -5431,7 +5272,7 @@ mod tests {
             Duration::ZERO,
         ));
         let request = read_vsock_message(&mut guest).await;
-        assert_eq!(request.msg_type, MSG_PROCESS_CONTROL);
+        assert_eq!(request.msg_type, MSG_EXEC_CONTROL);
 
         let error = tokio::time::timeout(Duration::from_secs(1), control_task)
             .await
@@ -5441,8 +5282,8 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
         assert_eq!(coordinator.state(), CoordinatorState::Open);
 
-        send_process_exit(&mut guest, spawn_seq, pid).await;
-        handle.wait().await.unwrap();
+        send_exec_exit(&mut guest, exec_seq).await;
+        handle.wait(Duration::from_secs(5)).await.unwrap();
     }
 
     /// Exercise the `monitor_process` crash detection flow through real child
@@ -5748,9 +5589,10 @@ mod tests {
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
         let mut child = stdout_closing_process();
         let stdout = child.stdout.take().expect("stdout should be piped");
-        let stderr = child.stderr.take().map(|stderr| {
-            spawn_process_log_reader("test-sandbox", ProcessLogStream::Stderr, stderr)
-        });
+        let stderr = child
+            .stderr
+            .take()
+            .map(|stderr| process_log_reader("test-sandbox", ProcessLogStream::Stderr, stderr));
         let (stdout_reader, stdout_eof_rx) =
             stdout_eof_notifying_log_reader_for_test("test-sandbox", stdout);
         let readers = ProcessLogReaders::new_for_test(Some(stdout_reader), stderr);

@@ -16,6 +16,8 @@ use std::{fs::File, thread};
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use tokio::io::unix::AsyncFd;
+use vsock_host::{ExecOwnedCapturedOutput, SupervisedExecControl, SupervisedExecRequest};
+use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
 const PRE_READY_CONTROL_MESSAGE_ID: &str = "process-control-before-cli-ready";
 const READY_CONTROL_MESSAGE_ID: &str = "process-control-after-cli-ready";
@@ -176,13 +178,31 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
 
     let mut fifo_gate = FifoGate::open(fifo.path())?;
     let connection = start_host_and_guest(tmp.path()).await?;
+    let command = shell_quote(guest_agent);
     let mut handle = connection
         .host()
-        .spawn_process_with_control_sink(&shell_quote(guest_agent), 30_000, &env, false, true, None)
+        .start_supervised_exec(SupervisedExecRequest {
+            timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
+            command: &command,
+            env: &env,
+            sudo: false,
+            label: "guest-agent-process-control-channel",
+            stdout: ExecOutputPolicy::Stream {
+                limit_bytes: 1024 * 1024,
+                chunk_limit_bytes: 8192,
+            },
+            stderr: ExecOutputPolicy::Capture {
+                limit_bytes: 1024 * 1024,
+            },
+            expected_exit_codes: &[],
+            control: SupervisedExecControl::Enabled { sink: true },
+            stream_queue_capacity: None,
+            start_timeout: Duration::from_secs(10),
+        })
         .await?;
     let mut stdout_rx = handle
-        .take_stdout_receiver()
-        .ok_or("spawned process should expose stdout stream")?;
+        .take_stream_receiver()
+        .ok_or("supervised exec should expose stdout stream")?;
 
     let pre_ready_ack = handle
         .control(
@@ -204,18 +224,19 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         .await?;
 
     fifo_gate.release(b"release\n")?;
-    let exit = tokio::time::timeout(Duration::from_secs(20), handle.wait()).await??;
+    let exit = handle.wait(Duration::from_secs(20)).await?;
     let stdout = collect_stdout(&mut stdout_rx, Duration::from_secs(5)).await?;
 
     connection.finish()?;
 
     assert_eq!(pre_ready_ack.message_id, PRE_READY_CONTROL_MESSAGE_ID);
     assert_eq!(ack.message_id, READY_CONTROL_MESSAGE_ID);
-    assert_eq!(
-        exit.exit_code,
-        0,
-        "guest-agent failed, stderr: {}",
-        String::from_utf8_lossy(&exit.stderr)
+    assert!(
+        matches!(exit.termination, ExecTermination::Exited { exit_code: 0 }),
+        "guest-agent failed: termination={:?} diagnostic={} stderr={}",
+        exit.termination,
+        exit.diagnostic,
+        captured_output_lossy(&exit.stderr)
     );
     assert!(
         String::from_utf8_lossy(&stdout).contains("process-control-channel-done"),
@@ -270,18 +291,27 @@ async fn start_host_and_guest(dir: &Path) -> TestResult<ConnectionHarness> {
 }
 
 async fn collect_stdout(
-    stdout_rx: &mut tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    stdout_rx: &mut tokio::sync::mpsc::Receiver<vsock_host::ExecOutputEvent>,
     timeout: Duration,
 ) -> io::Result<Vec<u8>> {
     tokio::time::timeout(timeout, async {
         let mut stdout = Vec::new();
-        while let Some(chunk) = stdout_rx.recv().await {
-            stdout.extend_from_slice(&chunk);
+        while let Some(event) = stdout_rx.recv().await {
+            if event.stream == ExecOutputStream::Stdout && !event.truncated {
+                stdout.extend_from_slice(&event.chunk);
+            }
         }
         stdout
     })
     .await
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "timed out draining stdout"))
+}
+
+fn captured_output_lossy(output: &ExecOwnedCapturedOutput) -> String {
+    match output {
+        ExecOwnedCapturedOutput::Discarded => String::new(),
+        ExecOwnedCapturedOutput::Captured { bytes, .. } => String::from_utf8_lossy(bytes).into(),
+    }
 }
 
 async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

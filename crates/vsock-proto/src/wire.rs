@@ -22,14 +22,7 @@ pub const MSG_WRITE_FILE: u8 = 0x03;
 /// Guest-to-host write-file completion response.
 pub const MSG_WRITE_FILE_RESULT: u8 = 0x04;
 
-/// Host-to-guest process spawn request.
-pub const MSG_SPAWN_PROCESS: u8 = 0x05;
-
-/// Guest-to-host process spawn response containing the spawned pid.
-pub const MSG_SPAWN_PROCESS_RESULT: u8 = 0x06;
-
-/// Guest-to-host process exit notification for a spawn request.
-pub const MSG_PROCESS_EXIT: u8 = 0x07;
+// 0x05, 0x06, and 0x07 are retired legacy command lifecycle ids.
 
 /// Host-to-guest shutdown request with an empty payload.
 pub const MSG_SHUTDOWN: u8 = 0x08;
@@ -37,8 +30,7 @@ pub const MSG_SHUTDOWN: u8 = 0x08;
 /// Guest-to-host shutdown acknowledgement with an empty payload.
 pub const MSG_SHUTDOWN_ACK: u8 = 0x09;
 
-/// Guest-to-host stdout stream chunk for a spawn request.
-pub const MSG_STDOUT_CHUNK: u8 = 0x0A;
+// 0x0A is a retired legacy stdout stream id.
 
 /// Host-to-guest exec operation start request.
 pub const MSG_EXEC_START: u8 = 0x0B;
@@ -64,11 +56,7 @@ pub const MSG_RESUME_OPERATIONS: u8 = 0x11;
 /// Guest-to-host acknowledgement that operations resumed.
 pub const MSG_OPERATIONS_RESUMED: u8 = 0x12;
 
-/// Host-to-guest control message for an active spawn request.
-pub const MSG_PROCESS_CONTROL: u8 = 0x13;
-
-/// Guest-to-host process control delivery result.
-pub const MSG_PROCESS_CONTROL_RESULT: u8 = 0x14;
+// 0x13 and 0x14 are retired legacy control ids.
 
 /// Guest-to-host exec operation start acknowledgement.
 pub const MSG_EXEC_STARTED: u8 = 0x15;
@@ -84,18 +72,6 @@ pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
 pub const VSOCK_PORT: u32 = 1000;
-
-/// Spawn-process payload flag requesting sudo execution.
-pub const SPAWN_PROCESS_FLAG_SUDO: u8 = 0x01;
-
-/// Spawn-process payload flag requesting stdout streaming.
-pub const SPAWN_PROCESS_FLAG_STREAM_STDOUT: u8 = 0x02;
-
-/// Spawn-process payload flag indicating a control nonce is present.
-pub const SPAWN_PROCESS_FLAG_CONTROL_NONCE: u8 = 0x04;
-
-/// Spawn-process payload flag requesting a process-control sink.
-pub const SPAWN_PROCESS_FLAG_CONTROL_SINK: u8 = 0x08;
 
 /// Exec-start payload flag requesting sudo execution.
 pub const EXEC_FLAG_SUDO: u8 = 0x01;
@@ -117,18 +93,6 @@ pub(crate) const MAX_PAYLOAD_SIZE: usize = MAX_MESSAGE_SIZE - MIN_BODY_SIZE;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn spawn_process_keeps_existing_wire_values() {
-        assert_eq!(MSG_SPAWN_PROCESS, 0x05);
-        assert_eq!(MSG_SPAWN_PROCESS_RESULT, 0x06);
-    }
-
-    #[test]
-    fn process_control_keeps_wire_values() {
-        assert_eq!(MSG_PROCESS_CONTROL, 0x13);
-        assert_eq!(MSG_PROCESS_CONTROL_RESULT, 0x14);
-    }
 
     #[test]
     fn exec_operation_keeps_existing_wire_values() {
