@@ -500,7 +500,7 @@ async function resolveStorageVersion(
 ): Promise<StorageResolution> {
   return version === undefined || version === "latest"
     ? resolveLatestVersion(index, lookup)
-    : resolvePinnedVersion(db, index, lookup, version);
+    : await resolvePinnedVersion(db, index, lookup, version);
 }
 
 function isMissingStorageError(error: unknown): boolean {
