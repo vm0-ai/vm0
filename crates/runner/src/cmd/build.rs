@@ -222,18 +222,6 @@ enum RemoteTemplateDecision {
     BuildAndUpload(TemplateUploadIntent),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TemplateMaterializationMode {
-    FullImage,
-    WarmRootfsCache,
-}
-
-impl TemplateMaterializationMode {
-    fn is_warm_cache(self) -> bool {
-        matches!(self, Self::WarmRootfsCache)
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 enum TemplateMaterializationTarget<'a> {
     RootfsStaging(&'a Path),
@@ -241,13 +229,6 @@ enum TemplateMaterializationTarget<'a> {
 }
 
 impl TemplateMaterializationTarget<'_> {
-    fn mode(self) -> TemplateMaterializationMode {
-        match self {
-            Self::RootfsStaging(_) => TemplateMaterializationMode::FullImage,
-            Self::RemoteCacheOnly => TemplateMaterializationMode::WarmRootfsCache,
-        }
-    }
-
     fn materialize_downloaded(
         self,
         input: &TemplateInput<'_>,
@@ -1116,7 +1097,7 @@ async fn materialize_template_from_r2_or_build(
     })?;
 
     let downloaded_template = attempt_dir.join(TEMPLATE_DOWNLOAD_FILE);
-    match resolve_remote_template(input, &downloaded_template, work_dir, target.mode()).await? {
+    match resolve_remote_template(input, &downloaded_template, work_dir).await? {
         RemoteTemplateDecision::UseDownloaded => {
             target.materialize_downloaded(input, &downloaded_template)
         }
@@ -1133,7 +1114,6 @@ async fn resolve_remote_template(
     input: &TemplateInput<'_>,
     downloaded_template: &Path,
     work_dir: &Path,
-    mode: TemplateMaterializationMode,
 ) -> RunnerResult<RemoteTemplateDecision> {
     let Some(cache) = input.cache.as_cache() else {
         return Ok(RemoteTemplateDecision::BuildAndUpload(
@@ -1148,9 +1128,9 @@ async fn resolve_remote_template(
         Ok(true) => match verify_template_file(downloaded_template, work_dir).await {
             Ok(()) => Ok(RemoteTemplateDecision::UseDownloaded),
             Err(e) => {
-                if mode.is_warm_cache() {
+                if input.cache.is_required() {
                     tracing::warn!(
-                        "R2 template object for {} failed warm validation ({e}) — \
+                        "R2 template object for {} failed required-cache validation ({e}) — \
                          rebuilding locally and force-overwriting the bad object",
                         input.template_hash
                     );
@@ -1176,9 +1156,9 @@ async fn resolve_remote_template(
             ))
         }
         Err(e) if e.is_invalid_object() => {
-            if mode.is_warm_cache() {
+            if input.cache.is_required() {
                 tracing::warn!(
-                    "R2 template object for {} is invalid during warm ({e}) — \
+                    "R2 template object for {} is invalid in required-cache mode ({e}) — \
                      rebuilding locally and force-overwriting the bad object",
                     input.template_hash
                 );
@@ -1194,7 +1174,7 @@ async fn resolve_remote_template(
             ))
         }
         Err(e) if input.cache.is_required() => Err(RunnerError::Internal(format!(
-            "R2 template download failed while warming cache: {e}"
+            "R2 template download failed while template cache is required: {e}"
         ))),
         Err(e) => {
             tracing::warn!("R2 template download failed: {e} — falling back to local build");
@@ -1421,7 +1401,7 @@ async fn upload_template_to_r2(
             Ok(())
         }
         Err(e) if required => Err(RunnerError::Internal(format!(
-            "R2 upload failed while warming template cache: {e}"
+            "R2 upload failed while template cache is required: {e}"
         ))),
         Err(e) => {
             tracing::warn!("R2 upload failed: {e} — template is on local disk");
@@ -2923,7 +2903,7 @@ exit 1
 
         assert!(
             err.to_string()
-                .contains("R2 template download failed while warming cache"),
+                .contains("R2 template download failed while template cache is required"),
             "got {err}"
         );
         assert!(
@@ -3102,7 +3082,7 @@ exit 1
 
         assert!(
             err.to_string()
-                .contains("R2 upload failed while warming template cache"),
+                .contains("R2 upload failed while template cache is required"),
             "got {err}"
         );
         assert!(work_dir.join("build-template-called").exists());
