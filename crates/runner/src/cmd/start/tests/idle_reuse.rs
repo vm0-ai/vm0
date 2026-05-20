@@ -376,6 +376,102 @@ async fn disabled_io_limiter_feature_reuses_unlimited_idle_vm() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn missing_io_limiter_feature_reuses_unlimited_idle_vm() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let (mut config, env) =
+        mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
+    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.budget);
+    config.device_rate_limits = Some(device_rate_limits());
+
+    let seeded_sandbox_id = seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &overrides,
+        "sess-missing-io-flag",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-missing-io-flag")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(completion.sandbox_id, Some(seeded_sandbox_id));
+    assert!(
+        overrides
+            .create_configs()
+            .iter()
+            .all(|config| config.device_rate_limits.is_none()),
+        "missing feature flag should never pass limiter config to sandbox create"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn enabled_io_limiter_feature_without_host_capacity_reuses_unlimited_idle_vm() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
+    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.budget);
+
+    let seeded_sandbox_id = seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &overrides,
+        "sess-enabled-io-no-capacity",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_io_limiter_flag(
+            run_id,
+            "sess-enabled-io-no-capacity",
+        )),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    assert_eq!(completion.sandbox_id, Some(seeded_sandbox_id));
+    assert!(
+        overrides
+            .create_configs()
+            .iter()
+            .all(|config| config.device_rate_limits.is_none()),
+        "enabled feature without host capacity should not apply limiter config"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn device_limit_mismatch_destroys_idle_vm_and_fresh_creates() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
