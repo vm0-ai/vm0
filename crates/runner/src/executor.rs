@@ -15,7 +15,9 @@
 //! user-visible completion signal is not blocked on best-effort uploads.
 
 use std::collections::HashMap;
+use std::io;
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -24,9 +26,9 @@ use agent_diagnostics::{
 };
 use futures_util::FutureExt;
 use sandbox::{
-    CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox,
-    SandboxConfig, SandboxFactory, SandboxId, SpawnProcessControl, SpawnProcessOutputMode,
-    SpawnProcessRequest,
+    CopyFileOptions, EXEC_OUTPUT_LIMIT_1_MIB, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest,
+    ProcessControlMode, ProcessOutputMode, ProcessOutputReceiver, Sandbox, SandboxConfig,
+    SandboxFactory, SandboxId, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -690,19 +692,17 @@ async fn run_in_sandbox(
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
-    // JOB_TIMEOUT is used for both spawn_process (guest-side kill) and wait_exit
-    // (host-side watchdog) so neither side outlives the other.
+    // JOB_TIMEOUT configures both the guest-side process timeout and the
+    // host-side wait watchdog. They remain separate protocol mechanisms.
     let t = Instant::now();
     let handle = sandbox
-        .spawn_process(&SpawnProcessRequest {
+        .start_process(&StartProcessRequest {
             cmd: &agent_cmd,
             timeout: JOB_TIMEOUT,
             env: &env_refs,
             sudo: false,
-            output: SpawnProcessOutputMode::Stream {
-                guest_log_path: None,
-            },
-            control: SpawnProcessControl::Enabled,
+            output: ProcessOutputMode::stream(),
+            control: ProcessControlMode::Enabled,
         })
         .await;
 
@@ -728,15 +728,10 @@ async fn run_in_sandbox(
     // On cancel we return immediately — the caller (execute_new_sandbox) will
     // call sandbox.stop() + factory.destroy() in its cleanup path.
     let result = tokio::select! {
-        result = sandbox.wait_exit(handle, JOB_TIMEOUT) => result,
+        result = sandbox.wait_process(handle, JOB_TIMEOUT) => result,
         () = cancel.cancelled() => {
             info!(run_id = %context.run_id, "cancel received, aborting sandbox wait");
-            Ok(sandbox::ProcessExit {
-                pid: 0,
-                exit_code: EXIT_SIGKILL,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-            })
+            Ok(sandbox::ProcessExit::new(0, EXIT_SIGKILL, Vec::new(), Vec::new()))
         }
     };
 
@@ -747,8 +742,16 @@ async fn run_in_sandbox(
         if cancel.is_cancelled() || result.is_err() {
             task.abort();
             let _ = task.await;
-        } else if let Err(e) = task.await {
-            warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+        } else {
+            match task.await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+                }
+                Err(e) => {
+                    warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
+                }
+            }
         }
     }
     let exit = match result {
@@ -771,6 +774,16 @@ async fn run_in_sandbox(
             return Err(e.into());
         }
     };
+    if exit.stream_overflowed {
+        warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");
+    }
+    if !exit.diagnostic.is_empty() {
+        warn!(
+            run_id = %context.run_id,
+            diagnostic = %exit.diagnostic,
+            "agent process reported diagnostic"
+        );
+    }
 
     info!(
         run_id = %context.run_id,
@@ -989,11 +1002,21 @@ fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
     false
 }
 
-/// Drain stdout chunks from the vsock receiver and write them to a host file.
+#[derive(Debug, thiserror::Error)]
+enum StdoutDrainError {
+    #[error("failed to open host log file {path}: {source}")]
+    Open { path: PathBuf, source: io::Error },
+    #[error("failed to write stdout chunk to host log {path}: {source}")]
+    Write { path: PathBuf, source: io::Error },
+    #[error("failed to flush stdout log {path}: {source}")]
+    Flush { path: PathBuf, source: io::Error },
+}
+
+/// Drain stdout chunks from the process receiver and write them to a host file.
 async fn drain_stdout_to_file(
-    mut rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
-    path: std::path::PathBuf,
-) {
+    mut rx: ProcessOutputReceiver,
+    path: PathBuf,
+) -> Result<(), StdoutDrainError> {
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -1002,22 +1025,24 @@ async fn drain_stdout_to_file(
     let mut file = match file {
         Ok(f) => f,
         Err(e) => {
-            warn!(error = %e, path = %path.display(), "failed to open host log file for streaming");
-            return;
+            return Err(StdoutDrainError::Open { path, source: e });
         }
     };
     while let Some(chunk) = rx.recv().await {
-        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
-            warn!(error = %e, path = %path.display(), "failed to write stdout chunk to host log");
-            break;
+        if chunk.truncated {
+            warn!(path = %path.display(), "stdout stream chunk was truncated before host log write");
+        }
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk.bytes).await {
+            return Err(StdoutDrainError::Write { path, source: e });
         }
     }
-    // Flush to ensure the last spawn_blocking write completes before we return.
+    // Flush to ensure the last blocking write completes before we return.
     // tokio::fs::File::poll_write returns Ready before the blocking write finishes,
     // so without flush the caller may observe incomplete file contents.
     if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
-        warn!(error = %e, path = %path.display(), "failed to flush stdout log");
+        return Err(StdoutDrainError::Flush { path, source: e });
     }
+    Ok(())
 }
 
 /// Guest log file path prefixes. Each turn creates files named
@@ -2681,7 +2706,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use sandbox::{
-        ExecResult, SandboxError, SandboxInitializationPhase, SandboxOperation,
+        ExecResult, ProcessOutputChunk, SandboxError, SandboxInitializationPhase, SandboxOperation,
         SandboxOperationReason,
     };
     use sandbox_mock::MockSandbox;
@@ -3240,12 +3265,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("stdout.log");
 
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        tx.send(b"chunk 1\n".to_vec()).unwrap();
-        tx.send(b"chunk 2\n".to_vec()).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::channel(2);
+        tx.send(ProcessOutputChunk {
+            bytes: b"chunk 1\n".to_vec(),
+            truncated: false,
+        })
+        .await
+        .unwrap();
+        tx.send(ProcessOutputChunk {
+            bytes: b"chunk 2\n".to_vec(),
+            truncated: false,
+        })
+        .await
+        .unwrap();
         drop(tx); // close channel
 
-        drain_stdout_to_file(rx, path.clone()).await;
+        drain_stdout_to_file(rx, path.clone()).await.unwrap();
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(content, "chunk 1\nchunk 2\n");
@@ -3256,21 +3291,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("empty.log");
 
-        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let (_tx, rx) = tokio::sync::mpsc::channel::<ProcessOutputChunk>(1);
         drop(_tx);
 
-        drain_stdout_to_file(rx, path.clone()).await;
+        drain_stdout_to_file(rx, path.clone()).await.unwrap();
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         assert!(content.is_empty());
     }
 
     #[tokio::test]
-    async fn drain_stdout_invalid_path_does_not_panic() {
-        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    async fn drain_stdout_invalid_path_returns_error() {
+        let (_tx, rx) = tokio::sync::mpsc::channel::<ProcessOutputChunk>(1);
         drop(_tx);
-        // /dev/null/impossible cannot be created — should handle gracefully
-        drain_stdout_to_file(rx, std::path::PathBuf::from("/dev/null/impossible/file")).await;
+        let error = drain_stdout_to_file(rx, PathBuf::from("/dev/null/impossible/file"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, StdoutDrainError::Open { .. }));
     }
 
     // -----------------------------------------------------------------------
@@ -3483,11 +3520,10 @@ mod tests {
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
 
-        let calls = overrides.spawn_process_calls();
+        let calls = overrides.start_process_calls();
         assert_eq!(calls.len(), 1);
-        assert!(calls[0].streams_stdout);
-        assert!(calls[0].guest_log_path.is_none());
-        assert_eq!(calls[0].control, SpawnProcessControl::Enabled);
+        assert_eq!(calls[0].output, ProcessOutputMode::stream());
+        assert_eq!(calls[0].control, ProcessControlMode::Enabled);
     }
 
     #[tokio::test]
@@ -3559,14 +3595,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_inner_aborts_drain_task_on_wait_exit_error() {
-        // Simulate wait_exit timeout: stdout channel stays open (sender held
-        // alive by MockSandbox), wait_exit returns error.
+    async fn execute_inner_aborts_drain_task_on_wait_process_error() {
+        // Simulate wait_process timeout: stdout channel stays open (sender held
+        // alive by MockSandbox), wait_process returns error.
         // Without the fix, task.await blocks forever → test times out.
         // With the fix, task is aborted immediately → test completes.
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_error(
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_error(
             "wait timeout",
         ));
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
@@ -3584,7 +3620,9 @@ mod tests {
     async fn execute_inner_nonzero_without_guest_error_returns_failure_message() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(7));
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_code(
+            7,
+        ));
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
 
         let (exit_code, error) =
@@ -3600,7 +3638,9 @@ mod tests {
     async fn execute_inner_nonzero_records_agent_execute_error() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
-        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(7));
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_code(
+            7,
+        ));
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
         let mut telemetry = test_telemetry(&config, &ctx);

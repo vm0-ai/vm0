@@ -10,15 +10,20 @@ use std::time::Duration;
 use async_trait::async_trait;
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessControlHandle,
-    GuestProcessHandle, ProcessControlAck, ProcessExit, Sandbox, SandboxConfig, SandboxError,
+    GuestProcessHandle, GuestProcessWaiter, ProcessControlAck, ProcessControlMode, ProcessExit,
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxError,
     SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
-    SpawnProcessControl, SpawnProcessRequest,
+    StartProcessRequest,
 };
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
-use vsock_host::{NormalOperationFence, NormalOperationFenceRejection, VsockHost};
+use vsock_host::{
+    ExecOutputEvent, ExecOwnedCapturedOutput, NormalOperationFence, NormalOperationFenceRejection,
+    SupervisedExecControl, SupervisedExecRequest, VsockHost,
+};
+use vsock_proto::{ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy};
 
 use crate::api::ApiError;
 use nbd_cow::PooledNbdCowDevice;
@@ -40,6 +45,10 @@ use crate::process::{kill_process_group, kill_process_group_by_pid};
 
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for receiving a process start acknowledgement from the guest.
+const PROCESS_START_ACK_TIMEOUT: Duration = Duration::from_secs(30);
+/// Exit code returned by guest exec timeout handling.
+const EXEC_TIMEOUT_EXIT_CODE: i32 = 124;
 
 /// Timeout for graceful shutdown via vsock.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -888,6 +897,7 @@ impl FirecrackerSandbox {
         io::Error::other(error)
     }
 
+    #[cfg(test)]
     async fn process_control(
         coordinator: ParkCoordinator,
         state: Arc<AtomicU8>,
@@ -899,6 +909,52 @@ impl FirecrackerSandbox {
     ) -> io::Result<ProcessControlAck> {
         enum ControlOutcome {
             Returned(io::Result<vsock_host::ProcessControlAck>),
+            BackendCrashed,
+        }
+
+        let operation = SandboxOperation::ProcessControl;
+        Self::begin_process_control(&coordinator, || Self::current_state_from(&state)).map_err(
+            |error| {
+                Self::operation_start_io_error(operation, error, Self::current_state_from(&state))
+            },
+        )?;
+
+        let outcome = tokio::select! {
+            result = control.control(
+                &message_id,
+                &payload,
+                timeout,
+            ) => ControlOutcome::Returned(result),
+            () = wait_for_backend_crash(state_rx) => ControlOutcome::BackendCrashed,
+        };
+
+        match outcome {
+            ControlOutcome::Returned(Ok(ack)) => Ok(ProcessControlAck {
+                message_id: ack.message_id,
+            }),
+            ControlOutcome::Returned(Err(error)) => {
+                if Self::current_state_from(&state) == SandboxState::Crashed {
+                    return Err(io::Error::other(Self::backend_crashed_error(operation)));
+                }
+                Err(error)
+            }
+            ControlOutcome::BackendCrashed => {
+                Err(io::Error::other(Self::backend_crashed_error(operation)))
+            }
+        }
+    }
+
+    async fn exec_process_control(
+        coordinator: ParkCoordinator,
+        state: Arc<AtomicU8>,
+        state_rx: watch::Receiver<SandboxState>,
+        control: vsock_host::ExecControlHandle,
+        message_id: String,
+        payload: Vec<u8>,
+        timeout: Duration,
+    ) -> io::Result<ProcessControlAck> {
+        enum ControlOutcome {
+            Returned(io::Result<vsock_host::ExecControlAck>),
             BackendCrashed,
         }
 
@@ -1363,6 +1419,156 @@ fn monitor_process_with_log_readers(
     ProcessMonitorHandle { kill_tx, task }
 }
 
+fn process_timeout_policy(timeout: Duration) -> ExecTimeoutPolicy {
+    if timeout.is_zero() {
+        ExecTimeoutPolicy::None
+    } else {
+        ExecTimeoutPolicy::Duration {
+            timeout_ms: u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX),
+        }
+    }
+}
+
+fn process_stdout_policy(output: ProcessOutputMode) -> ExecOutputPolicy {
+    match output {
+        ProcessOutputMode::Buffered { output_limits } => ExecOutputPolicy::Capture {
+            limit_bytes: output_limits.stdout_limit_bytes,
+        },
+        ProcessOutputMode::Stream {
+            stream_limit_bytes,
+            chunk_limit_bytes,
+            ..
+        } => ExecOutputPolicy::Stream {
+            limit_bytes: stream_limit_bytes,
+            chunk_limit_bytes,
+        },
+    }
+}
+
+fn process_stderr_policy(output: ProcessOutputMode) -> ExecOutputPolicy {
+    match output {
+        ProcessOutputMode::Buffered { output_limits } => ExecOutputPolicy::Capture {
+            limit_bytes: output_limits.stderr_limit_bytes,
+        },
+        ProcessOutputMode::Stream { .. } => ExecOutputPolicy::Discard,
+    }
+}
+
+fn process_stream_queue_capacity(output: ProcessOutputMode) -> Option<usize> {
+    match output {
+        ProcessOutputMode::Buffered { .. } => None,
+        ProcessOutputMode::Stream { queue_capacity, .. } => Some(queue_capacity),
+    }
+}
+
+fn captured_output_bytes(output: ExecOwnedCapturedOutput) -> (Vec<u8>, bool) {
+    match output {
+        ExecOwnedCapturedOutput::Discarded => (Vec::new(), false),
+        ExecOwnedCapturedOutput::Captured { bytes, truncated } => (bytes, truncated),
+    }
+}
+
+fn append_diagnostic(stderr: &mut Vec<u8>, diagnostic: &str) {
+    if diagnostic.is_empty() {
+        return;
+    }
+    if !stderr.is_empty() && !stderr.ends_with(b"\n") {
+        stderr.push(b'\n');
+    }
+    stderr.extend_from_slice(diagnostic.as_bytes());
+}
+
+fn supervised_exec_result_to_process_exit(
+    pid: u32,
+    result: vsock_host::ExecOperationResult,
+) -> ProcessExit {
+    let (stdout, stdout_truncated) = captured_output_bytes(result.stdout);
+    let (mut stderr, stderr_truncated) = captured_output_bytes(result.stderr);
+    let exit_code = match result.termination {
+        ExecTermination::Exited { exit_code } => exit_code,
+        ExecTermination::TimedOut => {
+            if stderr.is_empty() {
+                stderr.extend_from_slice(b"Timeout");
+            }
+            EXEC_TIMEOUT_EXIT_CODE
+        }
+        ExecTermination::Cancelled => {
+            if stderr.is_empty() {
+                stderr.extend_from_slice(b"Cancelled");
+            }
+            append_diagnostic(&mut stderr, &result.diagnostic);
+            1
+        }
+        ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            append_diagnostic(&mut stderr, &result.diagnostic);
+            1
+        }
+    };
+
+    ProcessExit {
+        pid,
+        exit_code,
+        stdout,
+        stderr,
+        stdout_truncated,
+        stderr_truncated,
+        diagnostic: result.diagnostic,
+        stream_overflowed: result.stream_overflowed,
+    }
+}
+
+fn supervised_stdout_receiver(
+    mut stream_rx: mpsc::Receiver<ExecOutputEvent>,
+    queue_capacity: usize,
+) -> (
+    sandbox::ProcessOutputReceiver,
+    Box<dyn FnOnce() + Send + 'static>,
+) {
+    let (stdout_tx, stdout_rx) = mpsc::channel(queue_capacity.max(1));
+    let (close_tx, mut close_rx) = watch::channel(false);
+
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                changed = close_rx.changed() => {
+                    if changed.is_err() || *close_rx.borrow() {
+                        break;
+                    }
+                }
+                event = stream_rx.recv() => {
+                    let Some(event) = event else {
+                        break;
+                    };
+                    match event.stream {
+                        ExecOutputStream::Stdout => {
+                            let chunk = ProcessOutputChunk {
+                                bytes: event.chunk,
+                                truncated: event.truncated,
+                            };
+                            if stdout_tx.send(chunk).await.is_err() {
+                                break;
+                            }
+                        }
+                        ExecOutputStream::Stderr => {
+                            warn!(
+                                output_seq = event.output_seq,
+                                "discarding unexpected stderr event from stdout-only process stream"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    (
+        stdout_rx,
+        Box::new(move || {
+            close_tx.send_replace(true);
+        }),
+    )
+}
+
 #[async_trait]
 impl Sandbox for FirecrackerSandbox {
     // -- identity --
@@ -1773,44 +1979,38 @@ impl Sandbox for FirecrackerSandbox {
         .await
     }
 
-    async fn spawn_process(
+    async fn start_process(
         &self,
-        request: &SpawnProcessRequest<'_>,
+        request: &StartProcessRequest<'_>,
     ) -> sandbox::Result<GuestProcessHandle> {
-        let operation = SandboxOperation::SpawnProcess;
+        let operation = SandboxOperation::StartProcess;
         let vsock = self.begin_guest_operation(operation).await?;
 
-        let spawn_future = async move {
-            match request.control {
-                SpawnProcessControl::None => {
-                    vsock
-                        .spawn_process(
-                            request.cmd,
-                            request.timeout_ms(),
-                            request.env,
-                            request.sudo,
-                            request.output.streams_stdout(),
-                            request.output.guest_log_path(),
-                        )
-                        .await
-                }
-                SpawnProcessControl::Enabled => {
-                    vsock
-                        .spawn_process_with_control_sink(
-                            request.cmd,
-                            request.timeout_ms(),
-                            request.env,
-                            request.sudo,
-                            request.output.streams_stdout(),
-                            request.output.guest_log_path(),
-                        )
-                        .await
-                }
-            }
+        let start_future = async move {
+            vsock
+                .start_supervised_exec(SupervisedExecRequest {
+                    timeout: process_timeout_policy(request.timeout),
+                    command: request.cmd,
+                    env: request.env,
+                    sudo: request.sudo,
+                    label: request.cmd,
+                    stdout: process_stdout_policy(request.output),
+                    stderr: process_stderr_policy(request.output),
+                    expected_exit_codes: &[],
+                    control: match request.control {
+                        ProcessControlMode::None => SupervisedExecControl::Disabled,
+                        ProcessControlMode::Enabled => {
+                            SupervisedExecControl::Enabled { sink: true }
+                        }
+                    },
+                    stream_queue_capacity: process_stream_queue_capacity(request.output),
+                    start_timeout: PROCESS_START_ACK_TIMEOUT,
+                })
+                .await
         };
 
         tokio::select! {
-            result = spawn_future => {
+            result = start_future => {
                 let mut handle = match result {
                     Ok(handle) => handle,
                     Err(error) => {
@@ -1819,8 +2019,7 @@ impl Sandbox for FirecrackerSandbox {
                     }
                 };
                 let pid = handle.pid();
-                let process_control = (request.control == SpawnProcessControl::Enabled).then(|| {
-                    let control = handle.control_handle();
+                let process_control = handle.control_handle().map(|control| {
                     let coordinator = self.park_coordinator.clone();
                     let state = Arc::clone(&self.state);
                     let state_rx = self.state_tx.subscribe();
@@ -1830,28 +2029,38 @@ impl Sandbox for FirecrackerSandbox {
                         let state = Arc::clone(&state);
                         let state_rx = state_rx.clone();
                         Box::pin(async move {
-                            Self::process_control(
+                            Self::exec_process_control(
                                 coordinator, state, state_rx, control, message_id, payload, timeout,
                             )
                             .await
                         })
                     })
                 });
-                let stdout_rx = request
-                    .output
-                    .streams_stdout()
-                    .then(|| handle.take_stdout_receiver())
-                    .flatten();
-                let exit = Box::pin(async move {
-                    let event = handle.wait().await?;
-                    Ok(ProcessExit {
-                        pid: event.pid,
-                        exit_code: event.exit_code,
-                        stdout: event.stdout,
-                        stderr: event.stderr,
+                let (stdout_rx, close_stdout) = if request.output.streams_stdout() {
+                    match handle.take_stream_receiver() {
+                        Some(stream_rx) => {
+                            let queue_capacity = process_stream_queue_capacity(request.output)
+                                .unwrap_or(ProcessOutputMode::DEFAULT_QUEUE_CAPACITY);
+                            let (stdout_rx, close_stdout) =
+                                supervised_stdout_receiver(stream_rx, queue_capacity);
+                            (Some(stdout_rx), Some(close_stdout))
+                        }
+                        None => (None, None),
+                    }
+                } else {
+                    (None, None)
+                };
+                let wait = GuestProcessWaiter::new(move |timeout| {
+                    Box::pin(async move {
+                        let result = handle.wait(timeout).await?;
+                        Ok(supervised_exec_result_to_process_exit(pid, result))
                     })
                 });
-                Ok(GuestProcessHandle::new(pid, stdout_rx, process_control, exit))
+                let public_handle = GuestProcessHandle::new(pid, stdout_rx, process_control, wait);
+                Ok(match close_stdout {
+                    Some(close_stdout) => public_handle.with_unclaimed_stdout_cleanup(close_stdout),
+                    None => public_handle,
+                })
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -1859,37 +2068,31 @@ impl Sandbox for FirecrackerSandbox {
         }
     }
 
-    async fn wait_exit(
+    async fn wait_process(
         &self,
         mut handle: GuestProcessHandle,
         timeout: Duration,
     ) -> sandbox::Result<ProcessExit> {
-        let operation = SandboxOperation::WaitExit;
-        let mut exit = handle.take_exit_future().ok_or_else(|| {
+        let operation = SandboxOperation::WaitProcess;
+        let waiter = handle.take_waiter().ok_or_else(|| {
             Self::operation_error(
                 operation,
                 std::io::Error::new(
                     std::io::ErrorKind::ConnectionReset,
-                    "spawn_process handle already consumed",
+                    "start_process handle already consumed",
                 ),
                 self.has_backend_crashed(),
             )
         })?;
-        // `wait_exit` consumes the handle; an unclaimed stream receiver can no
+        // `wait_process` consumes the handle; an unclaimed stream receiver can no
         // longer be observed by the caller and would otherwise buffer forever.
-        drop(handle.stdout_rx.take());
+        handle.drop_unclaimed_stdout();
+        let mut wait = waiter.wait(timeout);
 
         tokio::select! {
             biased;
-            result = &mut exit => {
+            result = &mut wait => {
                 result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
-            }
-            _ = tokio::time::sleep(timeout) => {
-                Err(Self::operation_error(
-                    operation,
-                    std::io::Error::new(std::io::ErrorKind::TimedOut, "wait_exit timeout"),
-                    self.has_backend_crashed(),
-                ))
             }
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
@@ -4322,7 +4525,7 @@ mod tests {
     #[test]
     fn operation_error_classifies_io_timeout() {
         let err = FirecrackerSandbox::operation_error(
-            SandboxOperation::WaitExit,
+            SandboxOperation::WaitProcess,
             io::Error::new(io::ErrorKind::TimedOut, "wait timeout"),
             false,
         );
@@ -4342,13 +4545,136 @@ mod tests {
     }
 
     #[test]
+    fn process_timeout_policy_maps_zero_to_none_and_durations_to_millis() {
+        assert_eq!(
+            process_timeout_policy(Duration::ZERO),
+            ExecTimeoutPolicy::None
+        );
+        assert_eq!(
+            process_timeout_policy(Duration::from_millis(2500)),
+            ExecTimeoutPolicy::Duration { timeout_ms: 2500 }
+        );
+    }
+
+    #[test]
+    fn process_output_stream_maps_to_supervised_stdout_only() {
+        let output = ProcessOutputMode::Stream {
+            stream_limit_bytes: 123,
+            chunk_limit_bytes: 45,
+            queue_capacity: 7,
+        };
+
+        assert_eq!(
+            process_stdout_policy(output),
+            ExecOutputPolicy::Stream {
+                limit_bytes: 123,
+                chunk_limit_bytes: 45,
+            }
+        );
+        assert_eq!(process_stderr_policy(output), ExecOutputPolicy::Discard);
+        assert_eq!(process_stream_queue_capacity(output), Some(7));
+    }
+
+    #[test]
+    fn process_output_buffered_maps_to_bounded_capture() {
+        let output = ProcessOutputMode::buffered(sandbox::ExecOutputLimits::separate(11, 13));
+
+        assert_eq!(
+            process_stdout_policy(output),
+            ExecOutputPolicy::Capture { limit_bytes: 11 }
+        );
+        assert_eq!(
+            process_stderr_policy(output),
+            ExecOutputPolicy::Capture { limit_bytes: 13 }
+        );
+        assert_eq!(process_stream_queue_capacity(output), None);
+    }
+
+    #[test]
+    fn supervised_exec_result_to_process_exit_preserves_terminal_metadata() {
+        let exit = supervised_exec_result_to_process_exit(
+            42,
+            vsock_host::ExecOperationResult {
+                termination: ExecTermination::WaitFailed,
+                duration_ms: 10,
+                stdout: ExecOwnedCapturedOutput::Captured {
+                    bytes: b"out".to_vec(),
+                    truncated: true,
+                },
+                stderr: ExecOwnedCapturedOutput::Captured {
+                    bytes: b"err".to_vec(),
+                    truncated: false,
+                },
+                diagnostic: "wait failed".to_string(),
+                stream_overflowed: true,
+            },
+        );
+
+        assert_eq!(exit.pid, 42);
+        assert_eq!(exit.exit_code, 1);
+        assert_eq!(exit.stdout, b"out");
+        assert_eq!(exit.stderr, b"err\nwait failed");
+        assert!(exit.stdout_truncated);
+        assert!(!exit.stderr_truncated);
+        assert_eq!(exit.diagnostic, "wait failed");
+        assert!(exit.stream_overflowed);
+    }
+
+    #[tokio::test]
+    async fn supervised_stdout_receiver_forwards_only_stdout_chunks() {
+        let (stream_tx, stream_rx) = mpsc::channel(4);
+        let (mut stdout_rx, _close) = supervised_stdout_receiver(stream_rx, 2);
+
+        stream_tx
+            .send(ExecOutputEvent {
+                stream: ExecOutputStream::Stderr,
+                output_seq: 1,
+                chunk: b"stderr".to_vec(),
+                truncated: false,
+            })
+            .await
+            .unwrap();
+        stream_tx
+            .send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 2,
+                chunk: b"stdout".to_vec(),
+                truncated: true,
+            })
+            .await
+            .unwrap();
+        drop(stream_tx);
+
+        let chunk = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("stdout chunk was not forwarded")
+            .expect("stdout stream closed before forwarded chunk");
+        assert_eq!(chunk.bytes, b"stdout");
+        assert!(chunk.truncated);
+        assert!(stdout_rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn supervised_stdout_receiver_cleanup_closes_unclaimed_adapter() {
+        let (_stream_tx, stream_rx) = mpsc::channel(1);
+        let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
+
+        close();
+
+        let received = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("stdout adapter did not close");
+        assert!(received.is_none());
+    }
+
+    #[test]
     fn operation_error_classifies_observed_backend_crash_for_all_operations() {
         for operation in [
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
-            SandboxOperation::SpawnProcess,
+            SandboxOperation::StartProcess,
             SandboxOperation::ProcessControl,
-            SandboxOperation::WaitExit,
+            SandboxOperation::WaitProcess,
         ] {
             let err = FirecrackerSandbox::operation_error(
                 operation,
@@ -4365,9 +4691,9 @@ mod tests {
         for operation in [
             SandboxOperation::Exec,
             SandboxOperation::WriteFile,
-            SandboxOperation::SpawnProcess,
+            SandboxOperation::StartProcess,
             SandboxOperation::ProcessControl,
-            SandboxOperation::WaitExit,
+            SandboxOperation::WaitProcess,
         ] {
             let err =
                 FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Crashed);

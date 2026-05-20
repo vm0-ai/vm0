@@ -92,7 +92,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
 #[tokio::test(start_paused = true)]
 async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let counter = Arc::clone(&overrides);

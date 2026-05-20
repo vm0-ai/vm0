@@ -86,12 +86,12 @@ pub enum SandboxOperation {
     Exec,
     /// [`Sandbox::write_file`](crate::Sandbox::write_file).
     WriteFile,
-    /// [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
-    SpawnProcess,
+    /// [`Sandbox::start_process`](crate::Sandbox::start_process).
+    StartProcess,
     /// [`GuestProcessControlHandle::control`](crate::GuestProcessControlHandle::control).
     ProcessControl,
-    /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit).
-    WaitExit,
+    /// [`Sandbox::wait_process`](crate::Sandbox::wait_process).
+    WaitProcess,
 }
 
 impl fmt::Display for SandboxOperation {
@@ -99,9 +99,9 @@ impl fmt::Display for SandboxOperation {
         match self {
             Self::Exec => f.write_str("exec"),
             Self::WriteFile => f.write_str("write file"),
-            Self::SpawnProcess => f.write_str("spawn process"),
+            Self::StartProcess => f.write_str("start process"),
             Self::ProcessControl => f.write_str("process control"),
-            Self::WaitExit => f.write_str("wait exit"),
+            Self::WaitProcess => f.write_str("wait process"),
         }
     }
 }

@@ -7,7 +7,7 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, shared lifecycle behavior queues, custom `wait_exit` exit codes,
+//! results, shared lifecycle behavior queues, custom `wait_process` exit codes,
 //! and durable [`MockLifecycleGate`] gates for lifecycle and cancellation
 //! testing.
 //!
@@ -52,10 +52,9 @@ pub struct ExecMatcher {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SpawnProcessCall {
-    pub streams_stdout: bool,
-    pub guest_log_path: Option<String>,
-    pub control: SpawnProcessControl,
+pub struct StartProcessCall {
+    pub output: ProcessOutputMode,
+    pub control: ProcessControlMode,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -275,15 +274,15 @@ pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
-    /// When `Some`, `wait_exit` returns this exit code instead of 0.
-    wait_exit_code: Option<i32>,
-    /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
+    /// When `Some`, `wait_process` returns this exit code instead of 0.
+    wait_process_code: Option<i32>,
+    /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
-    wait_exit_gate: Option<Arc<tokio::sync::Notify>>,
-    /// When `Some`, `wait_exit` returns a wait-exit operation error to
+    wait_process_gate: Option<Arc<tokio::sync::Notify>>,
+    /// When `Some`, `wait_process` returns a wait-process operation error to
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
-    wait_exit_error: Option<String>,
+    wait_process_error: Option<String>,
     /// FIFO queue of create results consumed by every factory built with
     /// these overrides. Empty queue → default Ok(()).
     create_results: Mutex<VecDeque<Result<()>>>,
@@ -309,9 +308,9 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of destroy behaviours consumed by every factory built with
     /// these overrides. Empty queue → default successful destroy.
     destroy_behaviors: Mutex<VecDeque<DestroyBehavior>>,
-    /// Recorded spawn_process output modes across all sandboxes built from
+    /// Recorded start_process output modes across all sandboxes built from
     /// this override set.
-    spawn_process_calls: Mutex<Vec<SpawnProcessCall>>,
+    start_process_calls: Mutex<Vec<StartProcessCall>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -325,9 +324,9 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: None,
-            wait_exit_gate: None,
-            wait_exit_error: None,
+            wait_process_code: None,
+            wait_process_gate: None,
+            wait_process_error: None,
             create_results: Mutex::new(VecDeque::new()),
             create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
@@ -337,35 +336,35 @@ impl MockSandboxOverrides {
             unpark_behaviors: Mutex::new(VecDeque::new()),
             destroy_gate: Mutex::new(None),
             destroy_behaviors: Mutex::new(VecDeque::new()),
-            spawn_process_calls: Mutex::new(Vec::new()),
+            start_process_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
         }
     }
 
-    /// Create overrides that make `wait_exit` return a custom exit code.
-    pub fn with_wait_exit_code(code: i32) -> Self {
+    /// Create overrides that make `wait_process` return a custom exit code.
+    pub fn with_wait_process_code(code: i32) -> Self {
         Self {
-            wait_exit_code: Some(code),
+            wait_process_code: Some(code),
             ..Self::new()
         }
     }
 
-    /// Create overrides that block `wait_exit` until the gate is notified.
-    pub fn with_wait_exit_gate(gate: Arc<tokio::sync::Notify>) -> Self {
+    /// Create overrides that block `wait_process` until the gate is notified.
+    pub fn with_wait_process_gate(gate: Arc<tokio::sync::Notify>) -> Self {
         Self {
-            wait_exit_gate: Some(gate),
+            wait_process_gate: Some(gate),
             ..Self::new()
         }
     }
 
-    /// Create overrides that make `wait_exit` return an error (simulating
+    /// Create overrides that make `wait_process` return an error (simulating
     /// timeout or crash). The stdout channel sender is kept alive so the
     /// drain task blocks unless the caller aborts it.
-    pub fn with_wait_exit_error(msg: impl Into<String>) -> Self {
+    pub fn with_wait_process_error(msg: impl Into<String>) -> Self {
         Self {
-            wait_exit_error: Some(msg.into()),
+            wait_process_error: Some(msg.into()),
             ..Self::new()
         }
     }
@@ -508,10 +507,10 @@ impl MockSandboxOverrides {
         *self.destroy_calls.lock_ignoring_poison()
     }
 
-    /// Recorded spawn_process calls across all sandboxes built from this
+    /// Recorded start_process calls across all sandboxes built from this
     /// override set, in call order.
-    pub fn spawn_process_calls(&self) -> Vec<SpawnProcessCall> {
-        self.spawn_process_calls.lock_ignoring_poison().clone()
+    pub fn start_process_calls(&self) -> Vec<StartProcessCall> {
+        self.start_process_calls.lock_ignoring_poison().clone()
     }
 }
 
@@ -555,9 +554,9 @@ pub struct MockSandbox {
     write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
-    /// channel (e.g. wait_exit_error override). Without this, the sender is
-    /// dropped immediately in `spawn_process` and the drain task exits.
-    stdout_tx: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
+    /// channel (e.g. wait_process_error override). Without this, the sender is
+    /// dropped immediately in `start_process` and the drain task exits.
+    stdout_tx: Mutex<Option<tokio::sync::mpsc::Sender<ProcessOutputChunk>>>,
 }
 
 impl MockSandbox {
@@ -866,28 +865,34 @@ impl Sandbox for MockSandbox {
             .unwrap_or(Ok(()))
     }
 
-    async fn spawn_process(&self, request: &SpawnProcessRequest<'_>) -> Result<GuestProcessHandle> {
+    async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle> {
         if let Some(overrides) = &self.overrides {
             overrides
-                .spawn_process_calls
+                .start_process_calls
                 .lock_ignoring_poison()
-                .push(SpawnProcessCall {
-                    streams_stdout: request.output.streams_stdout(),
-                    guest_log_path: request.output.guest_log_path().map(str::to_owned),
+                .push(StartProcessCall {
+                    output: request.output,
                     control: request.control,
                 });
         }
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        // When simulating wait_exit error (timeout/crash), keep the sender
+        let (tx, rx) = match request.output {
+            ProcessOutputMode::Stream { queue_capacity, .. } => {
+                let (tx, rx) = tokio::sync::mpsc::channel(queue_capacity.max(1));
+                (Some(tx), Some(rx))
+            }
+            ProcessOutputMode::Buffered { .. } => (None, None),
+        };
+        // When simulating wait_process error (timeout/crash), keep the sender
         // alive so the stdout channel never closes — reproducing the real bug.
         if self
             .overrides
             .as_ref()
-            .is_some_and(|o| o.wait_exit_error.is_some())
+            .is_some_and(|o| o.wait_process_error.is_some())
+            && let Some(tx) = tx
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
-        let control = (request.control == SpawnProcessControl::Enabled).then(|| {
+        let control = (request.control == ProcessControlMode::Enabled).then(|| {
             GuestProcessControlHandle::new(|message_id, _payload, _timeout| {
                 Box::pin(async move { Ok(ProcessControlAck { message_id }) })
             })
@@ -895,57 +900,49 @@ impl Sandbox for MockSandbox {
 
         Ok(GuestProcessHandle::new(
             1,
-            request.output.streams_stdout().then_some(rx),
+            rx,
             control,
-            Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
+            GuestProcessWaiter::new(|_timeout| {
+                Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
+            }),
         ))
     }
 
-    async fn wait_exit(
+    async fn wait_process(
         &self,
         mut handle: GuestProcessHandle,
         _timeout: Duration,
     ) -> Result<ProcessExit> {
-        let Some(_exit) = handle.take_exit_future() else {
+        let Some(_waiter) = handle.take_waiter() else {
             return Err(SandboxError::Operation {
-                operation: SandboxOperation::WaitExit,
+                operation: SandboxOperation::WaitProcess,
                 reason: SandboxOperationReason::Other,
-                message: "spawn_process handle already consumed".to_string(),
+                message: "start_process handle already consumed".to_string(),
             });
         };
-        // `wait_exit` consumes the handle; an unclaimed stream receiver can no
+        // `wait_process` consumes the handle; an unclaimed stream receiver can no
         // longer be observed by the caller and would otherwise buffer forever.
-        drop(handle.stdout_rx.take());
+        handle.drop_unclaimed_stdout();
 
         if let Some(overrides) = &self.overrides {
             // Block until the test signals (gives a window for cancellation).
-            if let Some(gate) = &overrides.wait_exit_gate {
+            if let Some(gate) = &overrides.wait_process_gate {
                 gate.notified().await;
             }
             // Return error when configured (simulates timeout or crash).
-            if let Some(ref msg) = overrides.wait_exit_error {
+            if let Some(ref msg) = overrides.wait_process_error {
                 return Err(SandboxError::Operation {
-                    operation: SandboxOperation::WaitExit,
+                    operation: SandboxOperation::WaitProcess,
                     reason: SandboxOperationReason::Timeout,
                     message: msg.clone(),
                 });
             }
             // Return override exit code when configured.
-            if let Some(code) = overrides.wait_exit_code {
-                return Ok(ProcessExit {
-                    pid: handle.pid,
-                    exit_code: code,
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
-                });
+            if let Some(code) = overrides.wait_process_code {
+                return Ok(ProcessExit::new(handle.pid, code, Vec::new(), Vec::new()));
             }
         }
-        Ok(ProcessExit {
-            pid: handle.pid,
-            exit_code: 0,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        })
+        Ok(ProcessExit::new(handle.pid, 0, Vec::new(), Vec::new()))
     }
 }
 
@@ -2186,102 +2183,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn overrides_record_spawn_process_output_modes_in_order() {
+    async fn overrides_record_start_process_output_modes_in_order() {
         let overrides = Arc::new(MockSandboxOverrides::new());
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let buffered = sandbox
-            .spawn_process(&SpawnProcessRequest {
+            .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnProcessOutputMode::Buffered,
-                control: SpawnProcessControl::None,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
             })
             .await
             .unwrap();
         assert!(buffered.stdout_rx.is_none());
 
         let streamed = sandbox
-            .spawn_process(&SpawnProcessRequest {
+            .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnProcessOutputMode::Stream {
-                    guest_log_path: None,
-                },
-                control: SpawnProcessControl::None,
+                output: ProcessOutputMode::stream(),
+                control: ProcessControlMode::None,
             })
             .await
             .unwrap();
         assert!(streamed.stdout_rx.is_some());
 
-        let tee = sandbox
-            .spawn_process(&SpawnProcessRequest {
-                cmd: "agent",
-                timeout: Duration::from_secs(5),
-                env: &[],
-                sudo: false,
-                output: SpawnProcessOutputMode::Stream {
-                    guest_log_path: Some("/tmp/guest.log"),
-                },
-                control: SpawnProcessControl::None,
-            })
-            .await
-            .unwrap();
-        assert!(tee.stdout_rx.is_some());
-
         assert_eq!(
-            overrides.spawn_process_calls(),
+            overrides.start_process_calls(),
             vec![
-                SpawnProcessCall {
-                    streams_stdout: false,
-                    guest_log_path: None,
-                    control: SpawnProcessControl::None,
+                StartProcessCall {
+                    output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                    control: ProcessControlMode::None,
                 },
-                SpawnProcessCall {
-                    streams_stdout: true,
-                    guest_log_path: None,
-                    control: SpawnProcessControl::None,
-                },
-                SpawnProcessCall {
-                    streams_stdout: true,
-                    guest_log_path: Some("/tmp/guest.log".to_string()),
-                    control: SpawnProcessControl::None,
+                StartProcessCall {
+                    output: ProcessOutputMode::stream(),
+                    control: ProcessControlMode::None,
                 },
             ]
         );
     }
 
     #[tokio::test]
-    async fn spawn_process_returns_control_handle_when_requested() {
+    async fn start_process_returns_control_handle_when_requested() {
         let runtime = MockSandboxRuntime::new();
         let factory = runtime.create_factory(test_factory_config()).await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
 
         let without_control = sandbox
-            .spawn_process(&SpawnProcessRequest {
+            .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnProcessOutputMode::Buffered,
-                control: SpawnProcessControl::None,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
             })
             .await
             .unwrap();
         assert!(without_control.control_handle().is_none());
 
         let with_control = sandbox
-            .spawn_process(&SpawnProcessRequest {
+            .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnProcessOutputMode::Buffered,
-                control: SpawnProcessControl::Enabled,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::Enabled,
             })
             .await
             .unwrap();
@@ -2296,61 +2269,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wait_exit_rejects_consumed_guest_process_handle() {
+    async fn wait_process_rejects_consumed_guest_process_handle() {
         let runtime = MockSandboxRuntime::new();
         let factory = runtime.create_factory(test_factory_config()).await.unwrap();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         let mut handle = sandbox
-            .spawn_process(&SpawnProcessRequest {
+            .start_process(&StartProcessRequest {
                 cmd: "agent",
                 timeout: Duration::from_secs(5),
                 env: &[],
                 sudo: false,
-                output: SpawnProcessOutputMode::Buffered,
-                control: SpawnProcessControl::None,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
             })
             .await
             .unwrap();
 
-        let consumed = handle.take_exit_future();
+        let consumed = handle.take_waiter();
         assert!(consumed.is_some());
-        match sandbox.wait_exit(handle, Duration::from_secs(5)).await {
-            Ok(_) => panic!("wait_exit should reject an already consumed handle"),
+        match sandbox.wait_process(handle, Duration::from_secs(5)).await {
+            Ok(_) => panic!("wait_process should reject an already consumed handle"),
             Err(SandboxError::Operation {
                 operation,
                 reason,
                 message,
             }) => {
-                assert_eq!(operation, SandboxOperation::WaitExit);
+                assert_eq!(operation, SandboxOperation::WaitProcess);
                 assert_eq!(reason, SandboxOperationReason::Other);
                 assert!(message.contains("already consumed"));
             }
-            Err(other) => panic!("expected wait_exit operation error, got {other:?}"),
+            Err(other) => panic!("expected wait_process operation error, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn wait_exit_drops_unclaimed_stdout_receiver_before_waiting() {
+    async fn wait_process_drops_unclaimed_stdout_receiver_before_waiting() {
         let gate = Arc::new(tokio::sync::Notify::new());
-        let overrides = Arc::new(MockSandboxOverrides::with_wait_exit_gate(Arc::clone(&gate)));
+        let overrides = Arc::new(MockSandboxOverrides::with_wait_process_gate(Arc::clone(
+            &gate,
+        )));
         let sandbox = MockSandbox::with_overrides("test", overrides);
-        let (stdout_tx, stdout_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (stdout_tx, stdout_rx) = tokio::sync::mpsc::channel(1);
         let handle = GuestProcessHandle::new(
             1,
             Some(stdout_rx),
             None,
-            Box::pin(std::future::pending::<std::io::Result<ProcessExit>>()),
+            GuestProcessWaiter::new(|_timeout| {
+                Box::pin(std::future::pending::<std::io::Result<ProcessExit>>())
+            }),
         );
 
         let wait =
-            tokio::spawn(async move { sandbox.wait_exit(handle, Duration::from_secs(5)).await });
+            tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
         tokio::time::timeout(test_timeout(), async {
             while !stdout_tx.is_closed() {
                 tokio::task::yield_now().await;
             }
         })
         .await
-        .expect("wait_exit should drop an unclaimed stdout receiver before blocking");
+        .expect("wait_process should drop an unclaimed stdout receiver before blocking");
 
         gate.notify_waiters();
         wait.await.unwrap().unwrap();

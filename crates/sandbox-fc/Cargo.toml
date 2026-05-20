@@ -21,6 +21,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 vsock-host.workspace = true
+vsock-proto.workspace = true
 which.workspace = true
 
 [dev-dependencies]
@@ -28,7 +29,6 @@ clap = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
-vsock-proto.workspace = true
 
 [lints]
 workspace = true

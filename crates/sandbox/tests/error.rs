@@ -88,13 +88,13 @@ fn idle_transition_error_exposes_transition() {
 #[test]
 fn display_includes_category_and_message() {
     let err = SandboxError::Operation {
-        operation: SandboxOperation::WaitExit,
+        operation: SandboxOperation::WaitProcess,
         reason: SandboxOperationReason::BackendCrashed,
         message: "firecracker process crashed".into(),
     };
 
     let text = err.to_string();
-    assert!(text.contains("wait exit"), "got: {text}");
+    assert!(text.contains("wait process"), "got: {text}");
     assert!(text.contains("backend crashed"), "got: {text}");
     assert!(text.contains("firecracker process crashed"), "got: {text}");
 }

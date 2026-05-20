@@ -33,11 +33,13 @@ async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
 
 /// Test 20: Failed job with session context is not parked.
 ///
-/// When `wait_exit` returns a non-zero exit code, `spawn_job()` skips
+/// When `wait_process` returns a non-zero exit code, `spawn_job()` skips
 /// parking (because `exit_code == 0` is false) and destroys the sandbox.
 #[tokio::test(start_paused = true)]
 async fn failed_job_with_session_not_parked() {
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(1));
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_code(
+        1,
+    ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
     let budget = Arc::clone(&config.budget);
     let idle_pool = Arc::clone(&config.idle_pool);
@@ -66,14 +68,14 @@ async fn failed_job_with_session_not_parked() {
 
 /// Test 21: Cancelled job is not parked.
 ///
-/// `wait_exit_gate` blocks the agent execution. The test cancels the job
+/// `wait_process_gate` blocks the agent execution. The test cancels the job
 /// via the cancel token, causing `select!` in the executor to take the
 /// cancellation branch. `job_cancel.is_cancelled()` is true, so
 /// `parkable_session` is `None` → sandbox destroyed.
 #[tokio::test(start_paused = true)]
 async fn cancelled_job_not_parked() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         gate,
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);

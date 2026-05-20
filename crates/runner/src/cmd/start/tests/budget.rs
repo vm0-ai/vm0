@@ -19,7 +19,7 @@ use super::support::{
 #[tokio::test(start_paused = true)]
 async fn budget_full_skips_then_resumes() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     // Budget for exactly 1 job (2 vcpu, 4096 MB).
@@ -69,7 +69,7 @@ async fn budget_full_skips_then_resumes() {
 #[tokio::test(start_paused = true)]
 async fn budget_exhausted_buffers_discovery_until_budget_frees() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);

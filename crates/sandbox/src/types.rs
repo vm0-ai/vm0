@@ -58,9 +58,9 @@ impl ExecRequest<'_> {
     }
 }
 
-/// Request for a guest process that can outlive the initial spawn request and
+/// Request for a guest process that can outlive the initial start request and
 /// is supervised through [`GuestProcessHandle`].
-pub struct SpawnProcessRequest<'a> {
+pub struct StartProcessRequest<'a> {
     /// Shell command to run inside the guest.
     pub cmd: &'a str,
     /// Guest-side process timeout.
@@ -70,12 +70,12 @@ pub struct SpawnProcessRequest<'a> {
     /// Run the command with guest-side sudo privileges.
     pub sudo: bool,
     /// Buffered or streamed stdout behavior.
-    pub output: SpawnProcessOutputMode<'a>,
-    /// Optional operation-bound control sink requested for the spawned process.
-    pub control: SpawnProcessControl,
+    pub output: ProcessOutputMode,
+    /// Optional operation-bound control sink requested for the started process.
+    pub control: ProcessControlMode,
 }
 
-impl SpawnProcessRequest<'_> {
+impl StartProcessRequest<'_> {
     /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
     pub fn timeout_ms(&self) -> u32 {
         duration_ms(self.timeout)
@@ -130,13 +130,47 @@ pub struct CopyFileResult {
     pub bytes_copied: u64,
 }
 
-/// Backend-owned future that resolves when a spawned process exits.
+/// Process stdout stream event delivered to sandbox callers.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ProcessOutputChunk {
+    /// Output bytes from the guest process stdout stream.
+    pub bytes: Vec<u8>,
+    /// True when this chunk was truncated by the guest stream budget.
+    pub truncated: bool,
+}
+
+/// Bounded receiver for process stdout chunks.
+pub type ProcessOutputReceiver = tokio::sync::mpsc::Receiver<ProcessOutputChunk>;
+
+/// Backend-owned future that resolves when a started process exits.
 ///
 /// Sandbox implementations store this in [`GuestProcessHandle`] so
-/// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit) can consume the exact
-/// backend operation created by [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
-pub type GuestProcessExitFuture =
+/// [`Sandbox::wait_process`](crate::Sandbox::wait_process) can consume the exact
+/// backend operation created by [`Sandbox::start_process`](crate::Sandbox::start_process).
+pub type GuestProcessWaitFuture =
     Pin<Box<dyn Future<Output = std::io::Result<ProcessExit>> + Send + 'static>>;
+
+type GuestProcessWaitFn = dyn FnOnce(Duration) -> GuestProcessWaitFuture + Send + 'static;
+
+/// Backend-owned process waiter that accepts the host-side wait timeout.
+pub struct GuestProcessWaiter {
+    wait: Box<GuestProcessWaitFn>,
+}
+
+impl GuestProcessWaiter {
+    pub fn new<F>(wait: F) -> Self
+    where
+        F: FnOnce(Duration) -> GuestProcessWaitFuture + Send + 'static,
+    {
+        Self {
+            wait: Box::new(wait),
+        }
+    }
+
+    pub fn wait(self, timeout: Duration) -> GuestProcessWaitFuture {
+        (self.wait)(timeout)
+    }
+}
 
 /// Backend-owned future that resolves when a process-control message is acknowledged.
 pub type GuestProcessControlFuture =
@@ -177,75 +211,113 @@ impl GuestProcessControlHandle {
     }
 }
 
-/// Handle returned by [`Sandbox::spawn_process`](crate::Sandbox::spawn_process).
+/// Handle returned by [`Sandbox::start_process`](crate::Sandbox::start_process).
 ///
 /// The handle owns backend-specific exit state and must be consumed by
-/// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit). When stdout streaming is
+/// [`Sandbox::wait_process`](crate::Sandbox::wait_process). When stdout streaming is
 /// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting; if
 /// they do, they must drain it while the process runs.
 pub struct GuestProcessHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
-    pub stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+    pub stdout_rx: Option<ProcessOutputReceiver>,
     control: Option<GuestProcessControlHandle>,
-    exit: Option<GuestProcessExitFuture>,
+    wait: Option<GuestProcessWaiter>,
+    close_unclaimed_stdout: Option<Box<dyn FnOnce() + Send + 'static>>,
 }
 
 impl GuestProcessHandle {
     /// Construct a guest process handle from backend-owned process state.
     pub fn new(
         pid: u32,
-        stdout_rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+        stdout_rx: Option<ProcessOutputReceiver>,
         control: Option<GuestProcessControlHandle>,
-        exit: GuestProcessExitFuture,
+        wait: GuestProcessWaiter,
     ) -> Self {
         Self {
             pid,
             stdout_rx,
             control,
-            exit: Some(exit),
+            wait: Some(wait),
+            close_unclaimed_stdout: None,
         }
     }
 
-    /// Return a cloneable control handle when this process was spawned with a
+    /// Register backend cleanup for an unclaimed stdout receiver.
+    pub fn with_unclaimed_stdout_cleanup<F>(mut self, close: F) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.close_unclaimed_stdout = Some(Box::new(close));
+        self
+    }
+
+    /// Return a cloneable control handle when this process was started with a
     /// control sink.
     pub fn control_handle(&self) -> Option<GuestProcessControlHandle> {
         self.control.clone()
     }
 
-    /// Consume the backend exit future.
+    /// Consume the backend process waiter.
     ///
     /// This is intended for sandbox backend implementations of
-    /// [`Sandbox::wait_exit`](crate::Sandbox::wait_exit); ordinary callers should
+    /// [`Sandbox::wait_process`](crate::Sandbox::wait_process); ordinary callers should
     /// pass the handle to that trait method instead.
-    pub fn take_exit_future(&mut self) -> Option<GuestProcessExitFuture> {
-        self.exit.take()
+    pub fn take_waiter(&mut self) -> Option<GuestProcessWaiter> {
+        self.wait.take()
+    }
+
+    /// Drop a stdout receiver that the caller did not take before waiting.
+    pub fn drop_unclaimed_stdout(&mut self) {
+        if self.stdout_rx.take().is_some()
+            && let Some(close) = self.close_unclaimed_stdout.take()
+        {
+            close();
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpawnProcessOutputMode<'a> {
-    Buffered,
-    Stream { guest_log_path: Option<&'a str> },
+pub enum ProcessOutputMode {
+    Buffered {
+        output_limits: ExecOutputLimits,
+    },
+    Stream {
+        stream_limit_bytes: u32,
+        chunk_limit_bytes: u32,
+        queue_capacity: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SpawnProcessControl {
+pub enum ProcessControlMode {
     None,
     Enabled,
 }
 
-impl<'a> SpawnProcessOutputMode<'a> {
-    pub fn streams_stdout(self) -> bool {
-        matches!(self, Self::Stream { .. })
+impl ProcessOutputMode {
+    /// Default stream byte budget for long-running process logs.
+    pub const DEFAULT_STREAM_LIMIT_BYTES: u32 = 64 * 1024 * 1024;
+    /// Default maximum size of each streamed process stdout chunk.
+    pub const DEFAULT_CHUNK_LIMIT_BYTES: u32 = 8 * 1024;
+    /// Default bounded host queue capacity for process stdout chunks.
+    pub const DEFAULT_QUEUE_CAPACITY: usize = 8192;
+
+    pub const fn buffered(output_limits: ExecOutputLimits) -> Self {
+        Self::Buffered { output_limits }
     }
 
-    pub fn guest_log_path(self) -> Option<&'a str> {
-        match self {
-            Self::Buffered => None,
-            Self::Stream { guest_log_path } => guest_log_path,
+    pub const fn stream() -> Self {
+        Self::Stream {
+            stream_limit_bytes: Self::DEFAULT_STREAM_LIMIT_BYTES,
+            chunk_limit_bytes: Self::DEFAULT_CHUNK_LIMIT_BYTES,
+            queue_capacity: Self::DEFAULT_QUEUE_CAPACITY,
         }
+    }
+
+    pub fn streams_stdout(self) -> bool {
+        matches!(self, Self::Stream { .. })
     }
 }
 
@@ -254,11 +326,31 @@ pub struct ProcessExit {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub diagnostic: String,
+    pub stream_overflowed: bool,
+}
+
+impl ProcessExit {
+    pub fn new(pid: u32, exit_code: i32, stdout: Vec<u8>, stderr: Vec<u8>) -> Self {
+        Self {
+            pid,
+            exit_code,
+            stdout,
+            stderr,
+            stdout_truncated: false,
+            stderr_truncated: false,
+            diagnostic: String::new(),
+            stream_overflowed: false,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
     fn timeout_ms_normal() {
@@ -306,5 +398,76 @@ mod tests {
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
+    }
+
+    #[test]
+    fn process_output_mode_stream_uses_bounded_defaults() {
+        assert_eq!(
+            ProcessOutputMode::stream(),
+            ProcessOutputMode::Stream {
+                stream_limit_bytes: ProcessOutputMode::DEFAULT_STREAM_LIMIT_BYTES,
+                chunk_limit_bytes: ProcessOutputMode::DEFAULT_CHUNK_LIMIT_BYTES,
+                queue_capacity: ProcessOutputMode::DEFAULT_QUEUE_CAPACITY,
+            }
+        );
+    }
+
+    #[test]
+    fn process_exit_new_defaults_supervised_metadata() {
+        let exit = ProcessExit::new(42, 7, b"out".to_vec(), b"err".to_vec());
+
+        assert_eq!(exit.pid, 42);
+        assert_eq!(exit.exit_code, 7);
+        assert_eq!(exit.stdout, b"out");
+        assert_eq!(exit.stderr, b"err");
+        assert!(!exit.stdout_truncated);
+        assert!(!exit.stderr_truncated);
+        assert!(exit.diagnostic.is_empty());
+        assert!(!exit.stream_overflowed);
+    }
+
+    #[test]
+    fn guest_process_handle_closes_only_unclaimed_stdout() {
+        let (_tx, stdout_rx) = tokio::sync::mpsc::channel(1);
+        let closed = Arc::new(AtomicBool::new(false));
+        let close_observed = Arc::clone(&closed);
+        let mut handle = GuestProcessHandle::new(
+            42,
+            Some(stdout_rx),
+            None,
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        )
+        .with_unclaimed_stdout_cleanup(move || {
+            close_observed.store(true, Ordering::SeqCst);
+        });
+
+        let _claimed_stdout = handle.stdout_rx.take();
+        handle.drop_unclaimed_stdout();
+
+        assert!(!closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn guest_process_handle_closes_unclaimed_stdout() {
+        let (_tx, stdout_rx) = tokio::sync::mpsc::channel(1);
+        let closed = Arc::new(AtomicBool::new(false));
+        let close_observed = Arc::clone(&closed);
+        let mut handle = GuestProcessHandle::new(
+            42,
+            Some(stdout_rx),
+            None,
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        )
+        .with_unclaimed_stdout_cleanup(move || {
+            close_observed.store(true, Ordering::SeqCst);
+        });
+
+        handle.drop_unclaimed_stdout();
+
+        assert!(closed.load(Ordering::SeqCst));
     }
 }

@@ -531,7 +531,7 @@ async fn device_limit_mismatch_destroys_idle_vm_and_fresh_creates() {
 #[tokio::test(start_paused = true)]
 async fn reuse_take_clears_idle_status_while_job_is_active() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) =
@@ -683,7 +683,7 @@ async fn profile_mismatch_destroys_stale_vm() {
 #[tokio::test(start_paused = true)]
 async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(two_profiles(), 16, 32768, 4, overrides);
@@ -767,7 +767,7 @@ async fn shutdown_drains_idle_pool() {
 #[tokio::test]
 async fn job_completing_during_active_draining_is_not_parked() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
@@ -844,7 +844,7 @@ async fn job_completing_during_active_draining_is_not_parked() {
 #[tokio::test]
 async fn soft_drain_resume_opens_parking_before_running_ack() {
     let gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
