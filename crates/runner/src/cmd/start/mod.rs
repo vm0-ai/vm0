@@ -370,7 +370,7 @@ pub async fn run_start(
         "resource budget initialized"
     );
     let io_limit_resolution =
-        crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env)?;
+        crate::io_limits::resolve_io_limits(&runner_config.profiles, &budget, &runner_host_env);
     let device_rate_limits = io_limit_resolution.device_rate_limits();
     match &io_limit_resolution {
         crate::io_limits::IoLimitResolution::Disabled => {
