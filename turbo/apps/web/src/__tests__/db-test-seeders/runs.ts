@@ -472,55 +472,6 @@ export async function seedTestRun(
 }
 
 /**
- * Create a run with no compose version (simulates deleted compose).
- *
- * @why-db-direct The API requires a valid compose version to create a run.
- * A run whose compose has been deleted (agentComposeVersionId: null) cannot
- * be reproduced through normal API flows. Tests for orphan-run graceful
- * handling need this DB-direct seeder.
- */
-export async function seedOrphanTestRun(
-  userId: string,
-  orgId: string,
-  options?: { status?: string; prompt?: string },
-): Promise<{ runId: string }> {
-  initServices();
-
-  // An orphan run still needs a valid session_id (NOT NULL + FK). Seed a
-  // throwaway compose + session to back the FK; the "orphan" semantics are
-  // about the null agent_compose_version_id, not the session.
-  const [compose] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId,
-      orgId,
-      name: uniqueId("orphan-compose"),
-    })
-    .returning({ id: agentComposes.id });
-  if (!compose) {
-    throw new Error("Failed to seed orphan compose");
-  }
-  const sessionId = await ensureTestAgentSession({
-    userId,
-    orgId,
-    agentComposeId: compose.id,
-  });
-
-  const [run] = await globalThis.services.db
-    .insert(agentRuns)
-    .values({
-      userId,
-      orgId,
-      agentComposeVersionId: null,
-      status: options?.status ?? "completed",
-      prompt: options?.prompt ?? "orphan run prompt",
-      sessionId,
-    })
-    .returning({ id: agentRuns.id });
-  return { runId: run!.id };
-}
-
-/**
  * Mark all running/pending runs as completed for a user.
  *
  * @why-db-direct Bulk status update for cleanup; no API endpoint exists for

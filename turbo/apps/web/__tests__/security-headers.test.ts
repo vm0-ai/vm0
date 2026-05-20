@@ -24,6 +24,7 @@ const { getPathMatch } =
 
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_LOG_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_API_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -626,6 +627,15 @@ const ZERO_LOGS_SEARCH_NEXT_NEGATIVE_PATHS = [
   "/api/zero/logs/search/extra",
   "/api/zero/logs/searches",
   "/api/zero/logs",
+] as const;
+const ZERO_LOGS_BY_ID_REWRITE_SOURCE =
+  "/api/zero/logs/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const ZERO_LOGS_BY_ID_PATH = `/api/zero/logs/${ZERO_LOG_ID}`;
+const ZERO_LOGS_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/logs",
+  "/api/zero/logs/search",
+  "/api/zero/logs/not-a-uuid",
+  `/api/zero/logs/${ZERO_LOG_ID}/extra`,
 ] as const;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
 const INTEGRATIONS_GITHUB_PATH = "/api/integrations/github";
@@ -1777,6 +1787,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_LOGS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/logs",
+        },
+        {
+          source: ZERO_LOGS_BY_ID_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/logs/:id",
         },
         {
           source: ZERO_LOGS_SEARCH_REWRITE_SOURCE,
@@ -3765,6 +3779,31 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_LOGS_SEARCH_PATH)).toStrictEqual({});
     for (const pathname of ZERO_LOGS_SEARCH_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped zero logs by-id rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_LOGS_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_LOGS_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/logs/:id",
+    });
+
+    const matcher = getPathMatch(ZERO_LOGS_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_LOGS_BY_ID_PATH)).toStrictEqual({
+      id: ZERO_LOG_ID,
+    });
+    for (const pathname of ZERO_LOGS_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

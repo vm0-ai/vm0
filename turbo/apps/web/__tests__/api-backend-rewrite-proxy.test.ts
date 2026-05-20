@@ -38,6 +38,7 @@ const { proxyRequest } =
 const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_LOG_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -1154,6 +1155,19 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/logs")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/logs/extra")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero")).toBe(false);
+  });
+
+  it("matches the zero logs by-id rewrite path only for UUID log IDs", () => {
+    expect(matchesApiBackendRewritePath(`/api/zero/logs/${ZERO_LOG_ID}`)).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/logs/not-a-uuid")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(`/api/zero/logs/${ZERO_LOG_ID}/extra`),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/logs/search")).toBe(true);
   });
 
   it("matches the zero logs search rewrite path exactly", () => {

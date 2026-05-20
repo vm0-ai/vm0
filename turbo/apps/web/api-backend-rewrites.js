@@ -51,6 +51,10 @@ const ZERO_RUNS_AGENT_EVENTS_REWRITE_SOURCE = `/api/zero/runs/:id(${UUID_PATH_SE
 const ZERO_RUNS_AGENT_EVENTS_PATH_RE = new RegExp(
   `^/api/zero/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/agent$`,
 );
+const ZERO_LOGS_BY_ID_REWRITE_SOURCE = `/api/zero/logs/:id(${UUID_PATH_SEGMENT_PATTERN})`;
+const ZERO_LOGS_BY_ID_PATH_RE = new RegExp(
+  `^/api/zero/logs/${UUID_PATH_SEGMENT_PATTERN}$`,
+);
 const ZERO_SCHEDULES_BY_NAME_REWRITE_SOURCE = "/api/zero/schedules/:name";
 const ZERO_SCHEDULES_BY_NAME_PATH_RE = /^\/api\/zero\/schedules\/[^/]+$/;
 const TEST_TELEGRAM_MOCK_REWRITE_SOURCE =
@@ -387,6 +391,11 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/logs/search", "/api/logs/search"],
   ["/api/zero/logs", "/api/zero/logs"],
+  [
+    ZERO_LOGS_BY_ID_REWRITE_SOURCE,
+    "/api/zero/logs/:id",
+    ZERO_LOGS_BY_ID_PATH_RE,
+  ],
   ["/api/zero/logs/search", "/api/zero/logs/search"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
