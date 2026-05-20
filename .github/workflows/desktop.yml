@@ -87,7 +87,7 @@ jobs:
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
           forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero-darwin-arm64-$version.zip"
-          artifact_path="$desktop_dir/out/Zero-darwin-arm64.zip"
+          artifact_path="apps/desktop/out/Zero-darwin-arm64.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge zip artifact found: $forge_zip"
@@ -182,7 +182,7 @@ jobs:
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
           forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Zero Dev-darwin-arm64-$version.zip"
-          artifact_path="$desktop_dir/out/ZeroDev-darwin-arm64-preview.zip"
+          artifact_path="apps/desktop/out/ZeroDev-darwin-arm64-preview.zip"
 
           if [ ! -f "$forge_zip" ]; then
             echo "No Forge preview zip artifact found: $forge_zip"
