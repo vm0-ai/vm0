@@ -2171,6 +2171,24 @@ async fn start_supervised_exec_on_shared_with_after_start_write<F>(
 where
     F: Future<Output = ()>,
 {
+    start_supervised_exec_on_shared_with_after_start_write_and_cancel_timeout(
+        shared,
+        request,
+        after_start_write,
+        EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+    )
+    .await
+}
+
+async fn start_supervised_exec_on_shared_with_after_start_write_and_cancel_timeout<F>(
+    shared: &Arc<Shared>,
+    request: SupervisedExecRequest<'_>,
+    after_start_write: F,
+    start_timeout_cancel_write_timeout: Duration,
+) -> io::Result<SupervisedExecHandle>
+where
+    F: Future<Output = ()>,
+{
     let stream_queue_capacity = stream_queue_capacity_for(
         request.stdout,
         request.stderr,
@@ -2291,7 +2309,7 @@ where
         _ = tokio::time::sleep(request.start_timeout) => {
             let payload = vsock_proto::encode_exec_cancel();
             let cancel_result = tokio::time::timeout(
-                EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+                start_timeout_cancel_write_timeout,
                 write_frame(
                     shared,
                     MSG_EXEC_CANCEL,
@@ -2601,12 +2619,18 @@ pub(crate) mod test_support {
         shared: &Arc<Shared>,
         request: SupervisedExecRequest<'_>,
         after_start_write: F,
+        start_timeout_cancel_write_timeout: Duration,
     ) -> io::Result<SupervisedExecHandle>
     where
         F: Future<Output = ()>,
     {
-        start_supervised_exec_on_shared_with_after_start_write(shared, request, after_start_write)
-            .await
+        start_supervised_exec_on_shared_with_after_start_write_and_cancel_timeout(
+            shared,
+            request,
+            after_start_write,
+            start_timeout_cancel_write_timeout,
+        )
+        .await
     }
 }
 

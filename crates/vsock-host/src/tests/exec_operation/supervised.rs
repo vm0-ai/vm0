@@ -1189,6 +1189,7 @@ async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
                     let _ = start_written_tx.send(());
                     let _ = allow_start_wait_rx.await;
                 },
+                Duration::ZERO,
             )
             .await
         })
