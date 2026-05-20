@@ -483,11 +483,16 @@ function renderText(params: {
     console.log("");
   }
 
-  console.log("Connectors:");
-  if (ready.length > 0) {
-    renderRows(ready);
-  } else {
-    console.log(`  No ready ${generationType} generation connectors found.`);
+  const hasBuiltInCommand = getBuiltInCommand(generationType) !== null;
+  const showConnectorSummary =
+    ready.length > 0 || !hasBuiltInCommand || showAll;
+  if (showConnectorSummary) {
+    console.log("Connectors:");
+    if (ready.length > 0) {
+      renderRows(ready);
+    } else {
+      console.log(`  No ready ${generationType} generation connectors found.`);
+    }
   }
 
   renderBuiltInProvider(generationType);
@@ -580,7 +585,11 @@ export const generateCommand = new Command()
         showAll: options.all === true,
       });
 
-      if (!options.all && other.length > 0) {
+      const shouldShowOtherHint =
+        !options.all &&
+        other.length > 0 &&
+        (ready.length > 0 || getBuiltInCommand(generationType) === null);
+      if (shouldShowOtherHint) {
         console.log("");
         console.log(
           chalk.dim(

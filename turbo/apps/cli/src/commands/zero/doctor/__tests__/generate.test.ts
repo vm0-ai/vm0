@@ -218,8 +218,8 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Video generation choices for current agent");
-    expect(text).toContain("Connectors:");
-    expect(text).toContain("No ready video generation connectors found.");
+    expect(text).not.toContain("Connectors:");
+    expect(text).not.toContain("No ready video generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in video generation");
     expect(text).toContain(
@@ -235,6 +235,9 @@ describe("zero doctor generate command", () => {
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
+    expect(text).not.toContain(
+      "Use --all to see every video generation candidate.",
+    );
   });
 
   it("suggests the built-in presentation command", async () => {
@@ -247,8 +250,8 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Presentation generation choices for current agent");
-    expect(text).toContain("Connectors:");
-    expect(text).toContain(
+    expect(text).not.toContain("Connectors:");
+    expect(text).not.toContain(
       "No ready presentation generation connectors found.",
     );
     expect(text).toContain("Built-in command:");
@@ -270,8 +273,8 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Website generation choices for current agent");
-    expect(text).toContain("Connectors:");
-    expect(text).toContain("No ready website generation connectors found.");
+    expect(text).not.toContain("Connectors:");
+    expect(text).not.toContain("No ready website generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
@@ -294,8 +297,8 @@ describe("zero doctor generate command", () => {
 
     const text = output();
     expect(text).toContain("Voice generation choices for current agent");
-    expect(text).toContain("Connectors:");
-    expect(text).toContain("No ready voice generation connectors found.");
+    expect(text).not.toContain("Connectors:");
+    expect(text).not.toContain("No ready voice generation connectors found.");
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
