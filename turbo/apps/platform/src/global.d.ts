@@ -115,6 +115,10 @@ interface DesktopComputerUseApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+interface DesktopWindowChromeApi {
+  readonly setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
+}
+
 interface DesktopLocalAgentApi {
   readonly setEnabled: (enabled: boolean) => Promise<void>;
   readonly list: () => Promise<DesktopLocalAgentEntry[]>;
@@ -134,6 +138,7 @@ declare global {
     _vm0: VM0Global | undefined;
     vm0DesktopLocalAgent?: DesktopLocalAgentApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
+    vm0DesktopWindowChrome?: DesktopWindowChromeApi;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
      * `captureFirstSkeletonHide` to measure total time from page entry to

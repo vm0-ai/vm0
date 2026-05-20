@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_LOCAL_AGENT_CHANNELS } from "./desktop-local-agent-ipc-channels";
+import { DESKTOP_WINDOW_CHROME_CHANNELS } from "./desktop-window-chrome-ipc-channels";
 import type {
   ComputerUseApprovalAction,
   DesktopComputerUseState,
@@ -82,5 +83,18 @@ const desktopComputerUseApi = {
   },
 };
 
+const desktopWindowChromeApi = {
+  setSidebarCollapsed(collapsed: boolean): Promise<void> {
+    return ipcRenderer.invoke(
+      DESKTOP_WINDOW_CHROME_CHANNELS.setSidebarCollapsed,
+      collapsed,
+    );
+  },
+};
+
 contextBridge.exposeInMainWorld("vm0DesktopLocalAgent", desktopLocalAgentApi);
 contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
+contextBridge.exposeInMainWorld(
+  "vm0DesktopWindowChrome",
+  desktopWindowChromeApi,
+);

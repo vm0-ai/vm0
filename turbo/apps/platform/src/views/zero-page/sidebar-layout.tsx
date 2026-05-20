@@ -272,7 +272,10 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
   const isDesktopShell =
-    typeof window !== "undefined" && window.vm0DesktopLocalAgent !== undefined;
+    typeof window !== "undefined" &&
+    (window.vm0DesktopLocalAgent !== undefined ||
+      window.vm0DesktopComputerUse !== undefined ||
+      window.vm0DesktopWindowChrome !== undefined);
 
   return (
     <div
@@ -291,10 +294,6 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
-        <div
-          className="zero-desktop-workspace-drag-region"
-          aria-hidden="true"
-        />
         <InstallBanner />
         <IosInstallModal />
         <MobileTopBar />

@@ -67,6 +67,30 @@ export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
+function syncDesktopTrafficLights(collapsed: boolean): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const promise = window.vm0DesktopWindowChrome?.setSidebarCollapsed(collapsed);
+  if (promise) {
+    detach(promise, Reason.DomCallback);
+  }
+}
+
+function syncCollapsedDesktopTrafficLightsRef(element: HTMLDivElement | null) {
+  if (!element) {
+    return;
+  }
+  syncDesktopTrafficLights(true);
+}
+
+function syncExpandedDesktopTrafficLightsRef(element: HTMLDivElement | null) {
+  if (!element) {
+    return;
+  }
+  syncDesktopTrafficLights(false);
+}
+
 interface ManageNavItem {
   readonly id: SidebarNavId;
   readonly activeKeys: readonly RouteKey[];
@@ -256,7 +280,11 @@ function CollapsedSidebar() {
   }
   return (
     <aside className="zero-nav zero-collapsed-sidebar box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div
+        ref={syncCollapsedDesktopTrafficLightsRef}
+        className="zero-desktop-titlebar-drag-region"
+        aria-hidden="true"
+      />
       <CollapsedExpandButton />
       <CollapsedNavList />
       <CollapsedFooter />
@@ -418,7 +446,11 @@ function ExpandedHeader() {
   const onCollapse = useSidebarCollapseToggle();
   return (
     <div className="zero-sidebar-header shrink-0 px-2 pb-0">
-      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
+      <div
+        ref={syncExpandedDesktopTrafficLightsRef}
+        className="zero-desktop-titlebar-drag-region"
+        aria-hidden="true"
+      />
       <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
         <div className="min-w-0 flex-1">
           <ZeroOrgSwitcher />

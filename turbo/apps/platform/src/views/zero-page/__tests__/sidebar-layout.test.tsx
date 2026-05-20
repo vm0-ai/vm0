@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -30,6 +30,8 @@ const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 afterEach(() => {
   Reflect.deleteProperty(window, "vm0DesktopLocalAgent");
+  Reflect.deleteProperty(window, "vm0DesktopComputerUse");
+  Reflect.deleteProperty(window, "vm0DesktopWindowChrome");
 });
 
 function mockBaseAPIs() {
@@ -237,6 +239,36 @@ describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", 
       expect(document.querySelector(".zero-app")).not.toHaveAttribute(
         "data-desktop-shell",
       );
+    });
+  });
+
+  it("syncs collapsed sidebar state to the desktop window chrome bridge", async () => {
+    const user = userEvent.setup();
+    const setSidebarCollapsed = vi.fn(() => {
+      return Promise.resolve();
+    });
+    mockBaseAPIs();
+    Object.defineProperty(window, "vm0DesktopWindowChrome", {
+      configurable: true,
+      value: { setSidebarCollapsed },
+    });
+
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(setSidebarCollapsed).toHaveBeenCalledWith(false);
+    });
+
+    await user.keyboard("{Control>}b{/Control}");
+
+    await waitFor(() => {
+      expect(setSidebarCollapsed).toHaveBeenCalledWith(true);
+    });
+
+    await user.keyboard("{Control>}b{/Control}");
+
+    await waitFor(() => {
+      expect(setSidebarCollapsed).toHaveBeenCalledWith(false);
     });
   });
 });

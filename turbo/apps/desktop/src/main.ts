@@ -46,6 +46,7 @@ import {
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
 } from "./desktop-window-lifecycle";
+import { installDesktopWindowChromeIpc } from "./desktop-window-chrome-electron";
 import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 import { buildSignedOutPageUrl } from "./signed-out-page";
 import { decideWindowOpen, isAllowedAppNavigation } from "./window-policy";
@@ -519,6 +520,10 @@ if (!hasSingleInstanceLock) {
     applyDockIcon();
     applyApplicationMenu();
     registerDesktopAuthProtocol();
+    installDesktopWindowChromeIpc({
+      allowedAppOrigins: config.allowedAppOrigins,
+      platform: process.platform,
+    });
     installDesktopLocalAgent();
     installComputerUse();
     queueDesktopAuthCallbackArgv(process.argv);
