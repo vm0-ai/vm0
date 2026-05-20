@@ -1110,10 +1110,15 @@ async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
         "supervised exec start timeout cancel write timed out"
     );
     assert_eq!(operation_count(&host), 0);
+    host.wait_until_closed(Duration::from_secs(5))
+        .await
+        .unwrap();
+    assert!(!is_connected(&host));
 
     drop(writer_guard);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(0) => {}
         Ok(n) => panic!("bounded cancel write must not send after timing out; read {n} bytes"),
         Err(err) => panic!("unexpected read error after bounded cancel timeout: {err}"),
     }

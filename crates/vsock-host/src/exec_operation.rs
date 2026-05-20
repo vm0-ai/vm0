@@ -160,6 +160,9 @@ pub struct SupervisedExecRequest<'a> {
     ///
     /// If this elapses after the start frame is written, the host sends
     /// `MSG_EXEC_CANCEL` for the operation before returning a timeout error.
+    /// If that cancel frame cannot be written within the bounded fallback
+    /// window, the connection is poisoned because the guest process state is
+    /// no longer known.
     pub start_timeout: Duration,
 }
 
@@ -2288,6 +2291,7 @@ pub(crate) async fn start_supervised_exec_on_shared(
                     elapsed_ms = diagnostic.elapsed_ms(),
                     "supervised exec start timeout cancel write timed out"
                 );
+                shared.poison_connection();
                 Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "supervised exec start timeout cancel write timed out",
