@@ -679,17 +679,80 @@ pub(crate) fn wait_for_pid_exit(pid: u32, context: &str) {
     }
 }
 
-fn pid_state(pid: u32) -> Option<char> {
+#[derive(Clone, Copy)]
+struct ProcStat {
+    state: char,
+    pgid: u32,
+}
+
+fn parse_proc_stat(stat: &str) -> Option<ProcStat> {
+    let fields_start = stat.rfind(") ")? + 2;
+    let mut fields = stat[fields_start..].split_whitespace();
+    let state = fields.next()?.chars().next()?;
+    let _ppid = fields.next()?;
+    let pgid = fields.next()?.parse().ok()?;
+    Some(ProcStat { state, pgid })
+}
+
+fn proc_stat(pid: u32) -> Option<ProcStat> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-    let state_start = stat.rfind(") ")? + 2;
-    stat[state_start..].chars().next()
+    parse_proc_stat(&stat)
+}
+
+fn process_group_has_live_member(pgid: u32) -> bool {
+    if pgid == 0 {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return true;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        let file_name = entry.file_name();
+        let Some(pid_text) = file_name.to_str() else {
+            return false;
+        };
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            return false;
+        };
+        let Some(stat) = proc_stat(pid) else {
+            return false;
+        };
+        if stat.pgid != pgid || stat.state == 'Z' {
+            return false;
+        }
+        // SAFETY: `kill` with sig=0 is a no-op existence check.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    })
 }
 
 /// Returns true iff `pid` is still running and signalable by the test owner.
-/// Zombie processes are already dead; some CI containers leave reparented
-/// zombies visible to `kill(pid, 0)` until PID 1 reaps them, so they must not
-/// keep cleanup assertions spinning.
+/// Zombie leaders are dead, but their process group can still contain live
+/// children, so wait/cleanup only treat the group as exited once no live member
+/// remains. Some CI containers leave reparented zombies visible to
+/// `kill(pid, 0)` until PID 1 reaps them.
 pub(crate) fn pid_alive(pid: u32) -> bool {
     // SAFETY: `kill` with sig=0 is a no-op existence check.
-    (unsafe { libc::kill(pid as i32, 0) == 0 }) && !matches!(pid_state(pid), Some('Z'))
+    if unsafe { libc::kill(pid as i32, 0) != 0 } {
+        return false;
+    }
+    match proc_stat(pid) {
+        Some(stat) if stat.state == 'Z' => process_group_has_live_member(stat.pgid),
+        Some(_) => true,
+        None => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_proc_stat_handles_process_names_with_parentheses() {
+        let stat = "123 (name ) with parens) S 1 456 456 0 -1 4194304 1 2 3 4 5 6 7 8 20 0 1 0 0";
+
+        let parsed = parse_proc_stat(stat).unwrap();
+
+        assert_eq!(parsed.state, 'S');
+        assert_eq!(parsed.pgid, 456);
+    }
 }
