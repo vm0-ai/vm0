@@ -2084,7 +2084,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
     expect(response.status).toBe(200);
     expect(context.mocks.telegram.getUserProfilePhotos).toHaveBeenCalledWith(
       OFFICIAL_BOT_TOKEN,
-      9876543210,
+      9_876_543_210,
       1,
     );
     expect(response.headers.get("content-type")).toBe("image/jpeg");
