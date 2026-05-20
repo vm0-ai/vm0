@@ -411,6 +411,20 @@ describe("createApp", () => {
       );
     });
 
+    it("echoes exact vm7 app origin with port on registered route responses", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://app.vm7.ai:8443" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm7.ai:8443",
+      );
+    });
+
     it("answers preflight without invoking the route handler", async () => {
       mockEnv("ENV", "production");
       const app = createApp({ signal: context.signal });

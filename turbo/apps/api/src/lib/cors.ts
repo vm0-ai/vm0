@@ -11,7 +11,7 @@ import { env } from "./env";
 // own CORS headers — the web proxy fallthrough is no longer in the request
 // path for migrated endpoints.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
-  new Set(["https://www.vm0.ai", "https://vm0.ai"]),
+  new Set(["https://www.vm0.ai", "https://vm0.ai", "https://app.vm7.ai:8443"]),
 );
 
 function getAllowedOrigin(origin: string | undefined): string | null {

@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { env } from "./src/env";
 
-// Define allowed origins
+// Define exact allowed origins
 const allowedOrigins = [
-  // Production domains
   "https://www.vm0.ai",
   "https://vm0.ai",
+  "https://app.vm7.ai:8443",
 ];
 
 /**

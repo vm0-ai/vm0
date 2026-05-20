@@ -50,6 +50,19 @@ describe("handleCors", () => {
       );
     });
 
+    it("should accept exact match: https://app.vm7.ai:8443", async () => {
+      const handleCors = await getHandleCors("production");
+      const request = new NextRequest("https://api.vm0.ai/api/runs", {
+        headers: { origin: "https://app.vm7.ai:8443" },
+      });
+
+      const response = handleCors(request);
+
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://app.vm7.ai:8443",
+      );
+    });
+
     it("should accept *.vm0.ai subdomain: https://app.vm0.ai", async () => {
       const handleCors = await getHandleCors("production");
       const request = new NextRequest("https://api.vm0.ai/api/runs", {
