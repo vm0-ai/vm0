@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.381.1](https://github.com/vm0-ai/vm0/compare/web-v12.381.0...web-v12.381.1) (2026-05-20)
+
+
+### Refactoring
+
+* cut over zero integrations slack route ([#14326](https://github.com/vm0-ai/vm0/issues/14326)) ([7a60417](https://github.com/vm0-ai/vm0/commit/7a60417ceb0dd44e830278af8ee704cd713ef119))
+
 ## [12.381.0](https://github.com/vm0-ai/vm0/compare/web-v12.380.1...web-v12.381.0) (2026-05-20)
 
 
