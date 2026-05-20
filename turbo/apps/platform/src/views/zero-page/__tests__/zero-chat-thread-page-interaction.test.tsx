@@ -19,6 +19,8 @@ const context = testContext();
 const THREAD_ID = "thread-test-1";
 
 beforeEach(() => {
+  vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
+  vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
   server.use(
     http.get("https://example.com/avatar.png", () => {
       return new HttpResponse("avatar", {
@@ -147,6 +149,8 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
   it("clicking html platform file url preview opens the shared attachment lightbox", async () => {
     const htmlUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
+    const publicHtmlUrl =
+      "https://cdn.vm7.io/artifacts/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
     const writeTextSpy = vi
       .spyOn(navigator.clipboard, "writeText")
       .mockResolvedValue(undefined);
@@ -199,7 +203,7 @@ describe("zero chat thread page - document preview opens global lightbox", () =>
     });
 
     await userEvent.click(screen.getByLabelText("Copy link"));
-    expect(writeTextSpy).toHaveBeenCalledWith(htmlUrl);
+    expect(writeTextSpy).toHaveBeenCalledWith(publicHtmlUrl);
   });
 });
 

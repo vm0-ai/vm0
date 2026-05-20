@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -18,14 +18,63 @@ import {
   PLACEHOLDER,
   sendMessageInUI,
 } from "./chat-test-helpers.ts";
-import { downloadAttachmentUrl } from "../zero-attachment-chips.tsx";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "../zero-attachment-chips.tsx";
 
 const context = testContext();
 const mockApi = createMockApi(context);
 
+beforeEach(() => {
+  vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
+  vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
+});
+
 function mockChatAPI() {
   server.use();
 }
+
+describe("publicAttachmentUrl", () => {
+  it("converts legacy platform file URLs to public CDN artifact URLs", () => {
+    expect(
+      publicAttachmentUrl(
+        "https://www.vm0.ai/f/38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+      ),
+    ).toBe(
+      "https://cdn.vm7.io/artifacts/user_38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+    );
+  });
+
+  it("converts legacy API file URLs when the configured endpoint is web", () => {
+    expect(
+      publicAttachmentUrl(
+        "https://api.vm0.ai/f/38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+      ),
+    ).toBe(
+      "https://cdn.vm7.io/artifacts/user_38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+    );
+  });
+
+  it("converts legacy web file URLs when the configured endpoint is API", () => {
+    vi.stubEnv("VITE_API_URL", "https://api.vm0.ai");
+
+    expect(
+      publicAttachmentUrl(
+        "https://www.vm0.ai/f/38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+      ),
+    ).toBe(
+      "https://cdn.vm7.io/artifacts/user_38bPAf83mxpw8vvVYy0M6PPTq2B/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png",
+    );
+  });
+
+  it("keeps external legacy-looking file URLs unchanged", () => {
+    const externalUrl =
+      "https://example.com/f/user_123/65084eb6-1d42-45ae-9038-c80102d7a4c1/kitten.png";
+
+    expect(publicAttachmentUrl(externalUrl)).toBe(externalUrl);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // CHAT-D-056: File type icons render based on getFileTypeIcon(filename)
@@ -403,13 +452,19 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 // ---------------------------------------------------------------------------
 
 describe("chat-i-066: lightbox download fetches blobs", () => {
-  it("fetches legacy file URLs through the compatibility route", async () => {
+  it("fetches legacy platform file URLs through the public artifact CDN", async () => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://tunnel-yuma-vm0-app.vm7.ai/chats/thread-test-1"),
+    );
     const legacyUrl =
       "https://tunnel-yuma-vm0-www.vm7.ai/f/3BennfUepyJwP3OaiYD0rK8CZKs/9c4c6df4-f0ed-4c25-af3a-b58bc40faf0f/image-9c4c6df4.png";
-    let legacyRequests = 0;
+    const cdnUrl =
+      "https://cdn.vm7.io/artifacts/user_3BennfUepyJwP3OaiYD0rK8CZKs/9c4c6df4-f0ed-4c25-af3a-b58bc40faf0f/image-9c4c6df4.png";
+    let cdnRequests = 0;
     server.use(
-      http.get(legacyUrl, () => {
-        legacyRequests += 1;
+      http.get(cdnUrl, () => {
+        cdnRequests += 1;
         return HttpResponse.text("img", {
           headers: { "content-type": "image/png" },
         });
@@ -430,7 +485,7 @@ describe("chat-i-066: lightbox download fetches blobs", () => {
     try {
       await downloadAttachmentUrl(legacyUrl, context.signal, "image.png");
 
-      expect(legacyRequests).toBe(1);
+      expect(cdnRequests).toBe(1);
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
       expect(anchorClickSpy).toHaveBeenCalledOnce();
       expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:download");

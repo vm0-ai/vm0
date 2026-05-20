@@ -88,10 +88,16 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
   it("falls through to provider resolution for non-claude-code framework when no explicit config", async () => {
     // Pre-#11526 behavior: returned silently with framework gate. Post-#11526:
-    // resolver runs to model-first default materialization. With no VM0 key
-    // seeded for the default Anthropic model, that materialization fails.
+    // resolver runs to model-first default materialization. Use a VM0 model
+    // whose vendor is not seeded elsewhere in the suite so this remains
+    // isolated from parallel key-pool fixtures.
     const userId = uniqueId("codex-noprov");
     const orgId = await setupOrg(userId);
+    await insertOrgModelPolicy({
+      orgId,
+      model: "MiniMax-M2.7",
+      isDefault: true,
+    });
 
     await expect(
       resolveModelProviderSecrets(orgId, userId, "codex", false),
@@ -891,7 +897,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     const orgId = await setupOrg(userId);
     await insertOrgModelPolicy({
       orgId,
-      model: "gpt-5.5",
+      model: "MiniMax-M2.7",
       isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
@@ -905,7 +911,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
         false,
         undefined,
         undefined,
-        "gpt-5.5",
+        "MiniMax-M2.7",
       ),
     ).rejects.toSatisfy((err: unknown) => {
       return isBadRequest(err);
@@ -917,14 +923,14 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     const orgId = await setupOrg(userId);
     await insertVm0ApiKeys([
       {
-        vendor: "openai",
-        model: "gpt-5.5",
-        apiKey: "vm0-openai-key",
+        vendor: "minimax",
+        model: "MiniMax-M2.7",
+        apiKey: "vm0-minimax-key",
       },
     ]);
     await insertOrgModelPolicy({
       orgId,
-      model: "gpt-5.5",
+      model: "MiniMax-M2.7",
       isDefault: true,
     });
 
@@ -936,7 +942,7 @@ describe("resolveModelProviderSecrets — model-first policy (#12130)", () => {
     );
 
     expect(result.resolvedModelProvider).toBe("vm0");
-    expect(result.selectedModel).toBe("gpt-5.5");
-    expect(result.secrets?.OPENAI_API_KEY).toBe("vm0-openai-key");
+    expect(result.selectedModel).toBe("MiniMax-M2.7");
+    expect(result.secrets?.MINIMAX_API_KEY).toBe("vm0-minimax-key");
   });
 });
