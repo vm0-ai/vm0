@@ -615,6 +615,60 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
 }
 
 #[test]
+fn supervised_exec_duplicate_start_with_control_does_not_leak_registration() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        210,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Disabled,
+    );
+    assert!(read_exec_started(&mut host_stream, 210) > 0);
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        210,
+        "printf duplicate",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 210),
+        "exec operation already active"
+    );
+
+    send_exec_control(
+        &mut host_stream,
+        313,
+        210,
+        EXEC_CONTROL_NONCE,
+        "message-duplicate-control",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        313,
+        210,
+        EXEC_CONTROL_NONCE,
+        "message-duplicate-control",
+        ProcessControlStatus::Inactive,
+        "exec operation is not active",
+    );
+
+    send_exec_cancel(&mut host_stream, 210);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 210);
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
 fn supervised_exec_control_after_exit_returns_inactive() {
     let (handle, mut host_stream) = start_guest_connection();
 
@@ -656,22 +710,32 @@ fn supervised_exec_control_after_exit_returns_inactive() {
 
 #[test]
 fn supervised_exec_none_timeout_runs_until_cancelled() {
+    let pid_path = unique_pid_path("supervised-exec-cancel");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
 
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
     send_supervised_exec_start(
         &mut host_stream,
         205,
-        "sleep 60",
+        &command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Disabled,
     );
     assert!(read_exec_started(&mut host_stream, 205) > 0);
+    let pid = child_guard.read_pid();
+    assert!(
+        pid_alive(pid),
+        "supervised exec child should be running before cancel"
+    );
 
     send_exec_cancel(&mut host_stream, 205);
     let (_chunks, result) = read_exec_result(&mut host_stream, 205);
     assert_eq!(result.termination, ExecTermination::Cancelled);
     assert_eq!(result.stdout, None);
+    wait_for_pid_exit(pid, "supervised exec explicit cancel");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
