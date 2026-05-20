@@ -58,6 +58,12 @@ function computerUseState(): TestDesktopComputerUseState {
   };
 }
 
+function buttonByText(text: string, index = 0): HTMLButtonElement {
+  const button = screen.getAllByText(text)[index]?.closest("button");
+  expect(button).toBeInstanceOf(HTMLButtonElement);
+  return button as HTMLButtonElement;
+}
+
 afterEach(() => {
   Reflect.deleteProperty(window, "vm0DesktopComputerUse");
 });
@@ -116,6 +122,67 @@ describe("zero desktop Computer Use page", () => {
         commandId: "command-1",
         decision: "approve",
       });
+    });
+  });
+
+  it("runs native permission onboarding actions", async () => {
+    const user = userEvent.setup();
+    const state = computerUseState();
+    const requestAccessibilityPermission = vi.fn(() => {
+      return Promise.resolve(state);
+    });
+    const openAccessibilitySettings = vi.fn(() => {
+      return Promise.resolve();
+    });
+    const openScreenRecordingSettings = vi.fn(() => {
+      return Promise.resolve();
+    });
+    installDesktopComputerUseApi({
+      getState() {
+        return Promise.resolve(state);
+      },
+      requestAccessibilityPermission,
+      openAccessibilitySettings,
+      openScreenRecordingSettings,
+      decideCommand() {
+        return Promise.resolve(state);
+      },
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await screen.findByRole("heading", { name: "Computer Use" });
+
+    await user.click(buttonByText("Request access"));
+    await waitFor(() => {
+      expect(requestAccessibilityPermission).toHaveBeenCalledOnce();
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Open settings")).toBeEnabled();
+    });
+    await user.click(buttonByText("Open settings"));
+
+    await waitFor(() => {
+      expect(openAccessibilitySettings).toHaveBeenCalledOnce();
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Open settings", 1)).toBeEnabled();
+    });
+    await user.click(buttonByText("Open settings", 1));
+
+    await waitFor(() => {
+      expect(openScreenRecordingSettings).toHaveBeenCalledOnce();
     });
   });
 
