@@ -554,7 +554,7 @@ function RequestModeView() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermissions = isAdmin;
 
   return (
     <RequestStatusView
@@ -869,7 +869,7 @@ export function PermissionAllowPage() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermissions = isAdmin;
   const userName = resolveUserName(currentUser);
   const focusedPermission = findPermission(ref, permission);
 
