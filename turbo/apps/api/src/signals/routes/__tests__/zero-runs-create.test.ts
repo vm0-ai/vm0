@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type {
+  FirewallConfig,
   FirewallPolicyValue,
   RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
@@ -1151,7 +1152,7 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly FirewallConfig[];
       readonly billableFirewalls: readonly string[];
     };
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
@@ -1217,7 +1218,7 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
-      readonly firewalls: readonly { readonly name: string }[];
+      readonly firewalls: readonly FirewallConfig[];
       readonly billableFirewalls: readonly string[];
     };
     const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
@@ -1234,6 +1235,13 @@ describe("POST /api/zero/runs", () => {
         return firewall.name;
       }),
     ).toContain("base44");
+    const base44Firewall = executionContext.firewalls.find((firewall) => {
+      return firewall.name === "base44";
+    });
+    expect(base44Firewall?.apis[0]?.base).toBe("https://app.base44.com/mcp");
+    expect(base44Firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
+      "Bearer ${{ secrets.BASE44_TOKEN }}",
+    );
     expect(executionContext.billableFirewalls).not.toContain("base44");
   });
 
