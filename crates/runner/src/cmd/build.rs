@@ -4058,6 +4058,22 @@ exit 1
     }
 
     #[test]
+    fn template_installs_and_verifies_pnpm() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("PNPM_VERSION=\"10.33.4\""),
+            "build-template.sh should pin the pnpm version so template cache inputs are deterministic"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("pnpm@${PNPM_VERSION}"),
+            "build-template.sh should install pnpm into sandbox templates"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(r#""${MOUNT_DIR}/usr/bin/pnpm""#),
+            "verify-rootfs.sh should verify pnpm is present in sandbox images"
+        );
+    }
+
+    #[test]
     fn build_script_publishes_debootstrap_cache_atomically() {
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar}.tmp.$$""#),

@@ -381,6 +381,7 @@ export const API_BACKEND_REWRITES = [
     "/api/integrations/telegram/auth-callback",
   ],
   ["/api/logs/search", "/api/logs/search"],
+  ["/api/zero/logs", "/api/zero/logs"],
   ["/api/storages/commit", "/api/storages/commit"],
   ["/api/storages/download", "/api/storages/download"],
   ["/api/storages/list", "/api/storages/list"],

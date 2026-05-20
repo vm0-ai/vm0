@@ -238,6 +238,23 @@ describe("zero job detail page - connector display", () => {
       screen.getByLabelText(/Manage Slack permissions/i),
     ).toBeInTheDocument();
   });
+
+  it("should hide connector permission management for non-admin members", async () => {
+    mockAPIsWithConnectors();
+    setMockOrg({ role: "member" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("switch", { name: /Slack access/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Manage Slack permissions/i),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("zero job detail page - tab visibility", () => {

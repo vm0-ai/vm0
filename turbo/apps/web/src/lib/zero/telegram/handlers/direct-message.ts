@@ -167,6 +167,7 @@ export async function handleTelegramDirectMessage(
     rootMessageId,
     messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
+    orgId: installation.orgId,
     apiStartTime,
     callbackContext: {
       installationId,

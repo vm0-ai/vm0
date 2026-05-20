@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { command, type Getter, type Setter } from "ccstate";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -228,7 +228,14 @@ interface RunAgentParams {
   readonly userInfoExtras: TelegramUserInfoExtras;
   readonly callbackPayload: TelegramCallbackPayload;
   readonly apiStartTime: number;
-  readonly selectedModelOverride: string | undefined;
+  readonly modelRoute: ModelRoutePin | undefined;
+}
+
+interface ModelRoutePin {
+  readonly modelProviderType: string;
+  readonly modelProviderId: string | null;
+  readonly modelProviderCredentialScope: "org" | "member";
+  readonly selectedModel: string;
 }
 
 interface TelegramCallbackPayload {
@@ -1669,13 +1676,31 @@ function buildTelegramPrompt(
   return [headerParts.join("\n"), threadContext].filter(Boolean).join("\n\n");
 }
 
-async function selectedModelOverrideForUser(
+async function resolveModelRouteForUser(
   get: ComputedGetter,
+  set: ComputedSetter,
   orgId: string,
   userId: string,
-): Promise<string | undefined> {
-  const preference = await get(userModelPreference({ orgId, userId }));
-  return preference.selectedModel ?? undefined;
+  signal: AbortSignal,
+): Promise<ModelRoutePin | undefined> {
+  const selectedModel = (await get(userModelPreference({ orgId, userId })))
+    .selectedModel;
+  if (!selectedModel) {
+    return undefined;
+  }
+  const policies = await set(listOrgModelPolicies$, { orgId, userId }, signal);
+  const policy = policies.policies.find((candidate) => {
+    return candidate.model === selectedModel;
+  });
+  if (!policy) {
+    return undefined;
+  }
+  return {
+    modelProviderType: policy.defaultProviderType,
+    modelProviderId: policy.modelProviderId,
+    modelProviderCredentialScope: policy.credentialScope,
+    selectedModel: policy.model,
+  };
 }
 
 async function runAgentForTelegram(
@@ -1691,12 +1716,18 @@ async function runAgentForTelegram(
         prompt: args.prompt,
         agentId: args.agentId,
         sessionId: args.sessionId,
+        ...(args.modelRoute?.modelProviderType
+          ? { modelProvider: args.modelRoute.modelProviderType }
+          : {}),
       },
       apiStartTime: args.apiStartTime,
       triggerSource: "telegram",
       appendSystemPrompt: args.appendSystemPrompt,
       userInfoExtras: args.userInfoExtras,
-      selectedModelOverride: args.selectedModelOverride,
+      modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        args.modelRoute?.modelProviderCredentialScope,
+      selectedModelOverride: args.modelRoute?.selectedModel,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/telegram`,
@@ -1716,12 +1747,12 @@ async function runAgentForTelegram(
     };
   }
 
-  const guidance = RUN_ERROR_GUIDANCE[result.body.error.code];
   return {
     status: "failed",
-    response: guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : result.body.error.message,
+    response: formatRunErrorForExternalSurface({
+      code: result.body.error.code,
+      message: result.body.error.message,
+    }),
   };
 }
 
@@ -1828,7 +1859,7 @@ function buildRunAgentParams(args: {
   readonly context: string;
   readonly prompt: string;
   readonly userInfoExtras: TelegramUserInfoExtras;
-  readonly selectedModelOverride: string | undefined;
+  readonly modelRoute: ModelRoutePin | undefined;
 }): RunAgentParams {
   return {
     auth: {
@@ -1864,7 +1895,7 @@ function buildRunAgentParams(args: {
       isDM: args.source.isDM,
     },
     apiStartTime: args.source.apiStartTime,
-    selectedModelOverride: args.selectedModelOverride,
+    modelRoute: args.modelRoute,
   };
 }
 
@@ -1937,10 +1968,12 @@ async function handleTelegramAgentMessage(args: {
   args.signal.throwIfAborted();
 
   const runPrompt = buildTelegramAgentPrompt(args);
-  const selectedModelOverride = await selectedModelOverrideForUser(
+  const modelRoute = await resolveModelRouteForUser(
     args.get,
+    args.set,
     args.orgId,
     args.userLink.vm0UserId,
+    args.signal,
   );
   args.signal.throwIfAborted();
 
@@ -1955,7 +1988,7 @@ async function handleTelegramAgentMessage(args: {
       context,
       prompt: runPrompt.prompt,
       userInfoExtras: runPrompt.userInfoExtras,
-      selectedModelOverride,
+      modelRoute,
     }),
     args.signal,
   );

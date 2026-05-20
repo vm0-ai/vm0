@@ -11,8 +11,9 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   formatChatgptCodexUsageLimitError,
-  RUN_ERROR_GUIDANCE,
+  isActionableRunError,
 } from "@vm0/api-contracts/contracts/errors";
 import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -50,22 +51,7 @@ import { listS3Objects } from "../external/s3";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
-const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
-  "Oops, something went wrong. Please try again later.";
 const CHAT_RUN_REPORTABLE_ERROR_MESSAGE = "An unexpected error occurred.";
-
-const ACTIONABLE_ERROR_SNIPPETS = [
-  ...Object.values(RUN_ERROR_GUIDANCE).flatMap((guidance) => {
-    return [guidance.title, guidance.guidance];
-  }),
-  "Cannot continue session",
-  "Invalid signature in thinking block",
-  "Run cancelled",
-  "usage limit",
-  "usage_limit",
-  "usage-limit",
-  "UsageLimit",
-] as const;
 
 const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   png: "image/png",
@@ -218,13 +204,6 @@ function hasAgentSessionId(
     typeof (value as { readonly agentSessionId: unknown }).agentSessionId ===
       "string"
   );
-}
-
-function isActionableRunError(errorMessage: string): boolean {
-  const normalized = errorMessage.toLowerCase();
-  return ACTIONABLE_ERROR_SNIPPETS.some((snippet) => {
-    return normalized.includes(snippet.toLowerCase());
-  });
 }
 
 function buildReportableErrorMessage(runId: string): string {

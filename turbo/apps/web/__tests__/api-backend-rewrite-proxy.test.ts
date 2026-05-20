@@ -1132,6 +1132,13 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/logs")).toBe(false);
   });
 
+  it("matches the zero logs list rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/logs")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/logs/search")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/logs/extra")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero")).toBe(false);
+  });
+
   it("matches the GitHub integration rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/integrations/github")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/integrations/github/extra")).toBe(

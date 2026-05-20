@@ -1,9 +1,11 @@
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { isRunDispatchError } from "../../../infra/run";
 import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
 import { isApiError } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type { UserInfoOptions } from "../../integration-prompt";
+import { resolveModelFirstRouteDescriptor } from "../../model-policy/model-first-route-service";
+import { getUserModelPreferenceModel } from "../../model-policy/user-model-preference-service";
 import { createZeroRun } from "../../zero-run-service";
 import { adaptSlackTrigger } from "./adapt-slack-trigger";
 
@@ -40,6 +42,38 @@ interface LogContext {
   userId: string;
 }
 
+async function resolveSlackRunModelRoute(params: {
+  orgId: string;
+  userId: string;
+}): Promise<
+  | {
+      modelProviderType: string;
+      modelProviderId: string | null;
+      modelProviderCredentialScope: string;
+      selectedModel: string;
+    }
+  | undefined
+> {
+  const selectedModel = await getUserModelPreferenceModel(
+    params.orgId,
+    params.userId,
+  );
+  if (!selectedModel) {
+    return undefined;
+  }
+  const route = await resolveModelFirstRouteDescriptor({
+    orgId: params.orgId,
+    userId: params.userId,
+    selectedModel,
+  });
+  return {
+    modelProviderType: route.providerType,
+    modelProviderId: route.modelProviderId,
+    modelProviderCredentialScope: route.credentialScope,
+    selectedModel: route.selectedModel,
+  };
+}
+
 /**
  * Execute an agent run for org-aware Slack integration.
  *
@@ -54,6 +88,10 @@ export async function runAgentForSlackOrg(
   const logContext: LogContext = { composeId, agentName, userId };
 
   try {
+    const modelRoute = await resolveSlackRunModelRoute({
+      orgId: params.orgId,
+      userId: params.userId,
+    });
     const result = await createZeroRun(
       adaptSlackTrigger({
         userId: params.userId,
@@ -68,6 +106,7 @@ export async function runAgentForSlackOrg(
         threadTs: params.threadTs,
         callbackContext: params.callbackContext,
         apiStartTime: params.apiStartTime,
+        ...(modelRoute ?? {}),
       }),
     );
 
@@ -85,14 +124,13 @@ function translateSlackRunError(
   logContext: LogContext,
 ): RunAgentResult {
   if (isApiError(error)) {
-    const guidance = RUN_ERROR_GUIDANCE[error.code];
-    const response = guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : error.message;
     log.warn(`Pre-run check failed: ${error.code}`, logContext);
     return {
       status: "failed",
-      response,
+      response: formatRunErrorForExternalSurface({
+        code: error.code,
+        message: error.message,
+      }),
       runId: undefined,
       errorCode: error.code,
     };
@@ -101,8 +139,13 @@ function translateSlackRunError(
   log.error("Error running agent for Slack org:", error);
   return {
     status: "failed",
-    response:
-      "Something went wrong while starting the agent. Please try again later.",
+    response: formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while starting the agent.",
+    }),
     runId,
   };
 }

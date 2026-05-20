@@ -409,11 +409,9 @@ function PermissionRow({
 function JobPermissionsTab({
   agentId,
   displayName,
-  ownerId,
 }: {
   agentId: string;
   displayName: string;
-  ownerId: string;
 }) {
   // Use useLastLoadable so the list keeps showing the previous data while the
   // signal refetches after a toggle/save or a permission-policy reload. This
@@ -438,16 +436,13 @@ function JobPermissionsTab({
   const savingType = useGet(permSavingType$);
   const setSavingType = useSet(setPermSavingType$);
 
-  const userLoadable = useLoadable(user$);
-  const currentUserId =
-    userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
-  const isOwner = currentUserId === ownerId;
-
   const connectorsLoading = connectorsLoadable.state === "loading";
 
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
@@ -601,7 +596,7 @@ function JobPermissionsTab({
                       await handleToggle(c.type, checked);
                     })}
                     loading={savingType === c.type}
-                    showManage={hasConnectorPermissions(c.type)}
+                    showManage={isAdmin && hasConnectorPermissions(c.type)}
                     onManage={() => {
                       return setConnectorType(c.type);
                     }}
@@ -623,7 +618,7 @@ function JobPermissionsTab({
               connectorType={connectorType}
               displayName={displayName}
               initialPolicies={permissionPolicies ?? {}}
-              readOnly={!isOwner}
+              readOnly={!isAdmin}
               onApply={async (policies) => {
                 const saved = await savePermPol(agentId, policies, pageSignal);
                 if (saved !== undefined) {
@@ -824,7 +819,6 @@ function AgentTabContent({
   avatarUrl,
   resolvedSound,
   isDefaultAgent,
-  ownerId,
   visibility,
   canEditVisibility,
 }: {
@@ -835,7 +829,6 @@ function AgentTabContent({
   avatarUrl: string | null;
   resolvedSound: Tone;
   isDefaultAgent: boolean;
-  ownerId: string;
   visibility: "public" | "private";
   canEditVisibility: boolean;
 }) {
@@ -850,13 +843,7 @@ function AgentTabContent({
 
   switch (activeTab) {
     case "authorization": {
-      return (
-        <JobPermissionsTab
-          agentId={agentId}
-          displayName={displayName}
-          ownerId={ownerId}
-        />
-      );
+      return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
     case "schedule": {
       return <JobScheduleTab displayName={displayName} />;
@@ -984,7 +971,6 @@ export function ZeroJobDetailPage() {
           avatarUrl={fields.avatarUrl}
           resolvedSound={fields.resolvedSound}
           isDefaultAgent={isDefaultAgent}
-          ownerId={fields.ownerId}
           visibility={fields.visibility}
           canEditVisibility={isOwner}
         />

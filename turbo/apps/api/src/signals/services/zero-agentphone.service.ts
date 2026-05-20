@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 import { command, type Getter, type Setter } from "ccstate";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -111,6 +111,13 @@ interface RunAgentResult {
   readonly status: "accepted" | "queued" | "failed";
   readonly response?: string;
   readonly runId?: string;
+}
+
+interface ModelRoutePin {
+  readonly modelProviderType: string;
+  readonly modelProviderId: string | null;
+  readonly modelProviderCredentialScope: "org" | "member";
+  readonly selectedModel: string;
 }
 
 type ComputedGetter = Getter;
@@ -1507,13 +1514,31 @@ async function dispatchAgentPhoneCommand(args: {
   }
 }
 
-async function selectedModelOverrideForUser(
+async function resolveModelRouteForUser(
   get: ComputedGetter,
+  set: ComputedSetter,
   orgId: string,
   userId: string,
-): Promise<string | undefined> {
-  const preference = await get(userModelPreference({ orgId, userId }));
-  return preference.selectedModel ?? undefined;
+  signal: AbortSignal,
+): Promise<ModelRoutePin | undefined> {
+  const selectedModel = (await get(userModelPreference({ orgId, userId })))
+    .selectedModel;
+  if (!selectedModel) {
+    return undefined;
+  }
+  const policies = await set(listOrgModelPolicies$, { orgId, userId }, signal);
+  const policy = policies.policies.find((candidate) => {
+    return candidate.model === selectedModel;
+  });
+  if (!policy) {
+    return undefined;
+  }
+  return {
+    modelProviderType: policy.defaultProviderType,
+    modelProviderId: policy.modelProviderId,
+    modelProviderCredentialScope: policy.credentialScope,
+    selectedModel: policy.model,
+  };
 }
 
 async function runAgentForAgentPhone(
@@ -1533,7 +1558,7 @@ async function runAgentForAgentPhone(
     readonly event: AgentPhoneMessageEvent;
     readonly callbackContext: AgentPhoneCallbackContext;
     readonly apiStartTime: number;
-    readonly selectedModelOverride: string | undefined;
+    readonly modelRoute: ModelRoutePin | undefined;
   },
   signal: AbortSignal,
 ): Promise<RunAgentResult> {
@@ -1545,6 +1570,9 @@ async function runAgentForAgentPhone(
         prompt: args.prompt,
         agentId: args.agent.agentId,
         sessionId: args.sessionId,
+        ...(args.modelRoute?.modelProviderType
+          ? { modelProvider: args.modelRoute.modelProviderType }
+          : {}),
       },
       apiStartTime: args.apiStartTime,
       triggerSource: "agentphone",
@@ -1560,7 +1588,10 @@ async function runAgentForAgentPhone(
         args.threadContext,
       ),
       userInfoExtras: args.userInfoExtras,
-      selectedModelOverride: args.selectedModelOverride,
+      modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        args.modelRoute?.modelProviderCredentialScope,
+      selectedModelOverride: args.modelRoute?.selectedModel,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/agentphone`,
@@ -1580,12 +1611,12 @@ async function runAgentForAgentPhone(
     };
   }
 
-  const guidance = RUN_ERROR_GUIDANCE[result.body.error.code];
   return {
     status: "failed",
-    response: guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : result.body.error.message,
+    response: formatRunErrorForExternalSurface({
+      code: result.body.error.code,
+      message: result.body.error.message,
+    }),
   };
 }
 
@@ -1690,10 +1721,12 @@ export const handleAgentPhoneMessage$ = command(
     await refreshTypingIfSupported(params.event, signal);
     signal.throwIfAborted();
 
-    const selectedModelOverride = await selectedModelOverrideForUser(
+    const modelRoute = await resolveModelRouteForUser(
       get,
+      set,
       params.userLink.orgId,
       params.userLink.vm0UserId,
+      signal,
     );
     signal.throwIfAborted();
 
@@ -1702,7 +1735,7 @@ export const handleAgentPhoneMessage$ = command(
       userLinkId: params.userLink.id,
       userId: params.userLink.vm0UserId,
       agentComposeId: agent.composeId,
-      selectedModelOverride,
+      selectedModelOverride: modelRoute?.selectedModel,
     });
     signal.throwIfAborted();
 
@@ -1738,7 +1771,7 @@ export const handleAgentPhoneMessage$ = command(
         userInfoExtras,
         event: params.event,
         apiStartTime: params.apiStartTime,
-        selectedModelOverride,
+        modelRoute,
         callbackContext: {
           messageId: params.event.messageId,
           conversationId: params.event.conversationId,

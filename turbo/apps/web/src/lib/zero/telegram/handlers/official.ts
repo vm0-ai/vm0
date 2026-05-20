@@ -286,6 +286,7 @@ export async function handleOfficialTelegramDirectMessage(
     rootMessageId,
     messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
+    orgId: userLink.orgId,
     apiStartTime,
     callbackContext: {
       installationId: OFFICIAL_TELEGRAM_BOT_ID,
@@ -407,6 +408,7 @@ export async function handleOfficialTelegramMention(
     rootMessageId: rootMessageId ?? null,
     messageThreadId: message.message_thread_id,
     userId: userLink.vm0UserId,
+    orgId: userLink.orgId,
     apiStartTime,
     callbackContext: {
       installationId: OFFICIAL_TELEGRAM_BOT_ID,

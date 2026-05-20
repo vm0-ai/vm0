@@ -17,6 +17,10 @@ interface SlackTriggerContext {
   threadTs?: string;
   callbackContext: SlackOrgCallbackPayload;
   apiStartTime: number;
+  modelProviderType?: string;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: string;
+  selectedModel?: string;
 }
 
 /**
@@ -45,6 +49,11 @@ export function adaptSlackTrigger(
     triggerSource: "slack",
     apiStartTime: ctx.apiStartTime,
     userInfoExtras: ctx.userInfoExtras,
+    modelProvider: ctx.modelProviderType,
+    modelProviderId: ctx.modelProviderId ?? undefined,
+    modelProviderCredentialScope: ctx.modelProviderCredentialScope,
+    selectedModelOverride: ctx.selectedModel,
+    explicitModelFirstModelSelection: Boolean(ctx.selectedModel),
     callbacks: [
       {
         url: `${getApiUrl()}/api/internal/callbacks/slack/org`,
