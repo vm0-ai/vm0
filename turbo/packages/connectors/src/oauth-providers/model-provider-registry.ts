@@ -1,9 +1,9 @@
-import type { ProviderHandler } from "./provider-types";
+import type { ModelProviderRefreshHandler } from "./provider-types";
 import { codexOauthHandler } from "./providers/codex-oauth-handler";
 
 export const MODEL_PROVIDER_OAUTH_HANDLERS = {
   "codex-oauth-token": codexOauthHandler,
-} as const satisfies Record<string, ProviderHandler>;
+} as const satisfies Record<string, ModelProviderRefreshHandler>;
 
 export type ModelProviderOAuthHandlerKey =
   keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS;

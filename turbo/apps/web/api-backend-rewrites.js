@@ -534,14 +534,6 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/me/model-providers/:type",
     ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE,
   ],
-  [
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-  ],
-  [
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-    "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-  ],
   ["/api/zero/model-providers", "/api/zero/model-providers"],
   [
     ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,

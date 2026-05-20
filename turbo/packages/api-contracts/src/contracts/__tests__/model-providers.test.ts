@@ -419,17 +419,10 @@ describe("codex-oauth-token codex provider", () => {
     expect(getSelectableProviderTypes()).toContain("codex-oauth-token");
   });
 
-  it("supports OAuth and auth_json multi-auth shapes with CHATGPT_* fields", () => {
+  it("supports only the auth_json multi-auth shape with CHATGPT_* fields", () => {
     const methods = getAuthMethodsForType("codex-oauth-token");
     expect(methods).toBeDefined();
-    expect(Object.keys(methods!)).toEqual(["oauth", "auth_json"]);
-    const oauthSecrets = methods!.oauth!.secrets;
-    expect(Object.keys(oauthSecrets).sort()).toEqual([
-      "CHATGPT_ACCESS_TOKEN",
-      "CHATGPT_ACCOUNT_ID",
-      "CHATGPT_ID_TOKEN",
-      "CHATGPT_REFRESH_TOKEN",
-    ]);
+    expect(Object.keys(methods!)).toEqual(["auth_json"]);
     const authJsonSecrets = methods!.auth_json!.secrets;
     expect(Object.keys(authJsonSecrets).sort()).toEqual([
       "CHATGPT_ACCESS_TOKEN",

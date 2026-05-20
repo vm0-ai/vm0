@@ -2128,6 +2128,16 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
         "/api/zero/me/model-providers/claude-code-oauth-token/extra",
       ),
     ).toBe(false);
@@ -2724,42 +2734,6 @@ describe("API backend rewrite proxy behavior", () => {
         );
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);
-      },
-    );
-  });
-
-  it("preserves OAuth redirects and multiple Set-Cookie headers", async () => {
-    await withRewriteProxy(
-      async () => {
-        return new Response(null, {
-          status: 307,
-          headers: [
-            ["location", "https://auth.example.test/oauth?state=abc"],
-            [
-              "set-cookie",
-              "model_provider_oauth_state=abc; Max-Age=900; Path=/; HttpOnly",
-            ],
-            [
-              "set-cookie",
-              "model_provider_oauth_pkce=verifier; Max-Age=900; Path=/; HttpOnly",
-            ],
-          ],
-        });
-      },
-      async (origin) => {
-        const response = await fetch(
-          `${origin}/api/zero/me/model-providers/codex-oauth-token/oauth/authorize?from=settings`,
-          { redirect: "manual" },
-        );
-
-        expect(response.status).toBe(307);
-        expect(response.headers.get("location")).toBe(
-          "https://auth.example.test/oauth?state=abc",
-        );
-        expect(response.headers.getSetCookie()).toStrictEqual([
-          "model_provider_oauth_state=abc; Max-Age=900; Path=/; HttpOnly",
-          "model_provider_oauth_pkce=verifier; Max-Age=900; Path=/; HttpOnly",
-        ]);
       },
     );
   });

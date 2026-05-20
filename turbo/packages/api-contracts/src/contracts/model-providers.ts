@@ -596,35 +596,6 @@ export const MODEL_PROVIDER_TYPES = {
       "~/.codex/auth.json contents to authorize ChatGPT (Plus / Pro / " +
       "Business / Edu / Enterprise) for Codex.",
     authMethods: {
-      oauth: {
-        label: "OpenAI OAuth",
-        helpText:
-          "Sign in with OpenAI to authorize ChatGPT (Plus / Pro / Business / Edu / Enterprise) for Codex.",
-        secrets: {
-          CHATGPT_ACCESS_TOKEN: {
-            label: "CHATGPT_ACCESS_TOKEN",
-            required: true,
-            derived: true,
-          },
-          CHATGPT_REFRESH_TOKEN: {
-            label: "CHATGPT_REFRESH_TOKEN",
-            required: true,
-            serverOnly: true,
-            derived: true,
-          },
-          CHATGPT_ACCOUNT_ID: {
-            label: "CHATGPT_ACCOUNT_ID",
-            required: true,
-            derived: true,
-          },
-          CHATGPT_ID_TOKEN: {
-            label: "CHATGPT_ID_TOKEN",
-            required: true,
-            serverOnly: true,
-            derived: true,
-          },
-        },
-      },
       // Paste-based auth: client posts CODEX_AUTH_JSON, server parses it via
       // codex-auth-json-parser.ts and persists the four derived CHATGPT_*
       // fields. The raw blob is NEVER stored. The wire-shape secret
@@ -1489,11 +1460,8 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  // ChatGPT-only metadata populated by the codex-oauth-token callback.
-  // Other provider types omit these. Mirrors the server-side connector
-  // shape in apps/web/src/lib/zero/connector/providers/codex-oauth.ts.
-  // The corresponding server route lands in #11909; declared here so the
-  // platform UI does not have to bypass schema validation to read them.
+  // ChatGPT-only metadata populated by the codex-oauth-token auth.json paste
+  // flow. Other provider types omit these.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's

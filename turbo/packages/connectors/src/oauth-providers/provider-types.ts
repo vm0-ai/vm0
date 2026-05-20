@@ -98,6 +98,19 @@ export interface ProviderHandler {
   ): Promise<void>;
 }
 
+export interface ModelProviderRefreshHandler {
+  getClientId(currentEnv: ProviderEnv): string | undefined;
+  getClientSecret(currentEnv: ProviderEnv): string | undefined;
+  getSecretName(): string;
+  getRefreshSecretName(): string;
+  refreshToken?(
+    clientId: string,
+    clientSecret: string,
+    refreshToken: string,
+  ): Promise<OAuthRefreshResult>;
+  refreshTokenWithArgs?(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
+}
+
 export async function buildProviderAuthUrl(
   handler: ProviderHandler,
   args: OAuthAuthorizeArgs,

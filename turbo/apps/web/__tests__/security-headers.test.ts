@@ -1916,18 +1916,6 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/devices/bb0/confirm",
         },
         {
-          source:
-            "/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-          destination:
-            "https://api.example.test/api/zero/me/model-providers/codex-oauth-token/oauth/authorize",
-        },
-        {
-          source:
-            "/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-          destination:
-            "https://api.example.test/api/zero/me/model-providers/codex-oauth-token/oauth/callback",
-        },
-        {
           source: "/api/zero/built-in-generations/:path*",
           destination:
             "https://api.example.test/api/zero/built-in-generations/:path*",

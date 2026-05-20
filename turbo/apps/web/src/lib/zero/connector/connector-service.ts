@@ -23,6 +23,10 @@ import {
   providerEnvFromObject,
   refreshProviderToken,
 } from "@vm0/connectors/oauth-providers";
+import type {
+  OAuthRefreshResult,
+  ProviderHandler as ConnectorProviderHandler,
+} from "@vm0/connectors/oauth-providers/provider-types";
 import {
   getModelProviderOAuthHandler,
   type ModelProviderOAuthHandler,
@@ -38,9 +42,7 @@ import { publishUserSignal } from "../../infra/realtime/client";
  */
 export type OAuthSecretSource = "connector" | "model-provider";
 
-type OAuthHandler =
-  | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
-  | ModelProviderOAuthHandler;
+type OAuthHandler = ConnectorProviderHandler | ModelProviderOAuthHandler;
 
 function getOAuthHandler(
   handlerKey: string,
@@ -50,6 +52,12 @@ function getOAuthHandler(
     return getModelProviderOAuthHandler(handlerKey);
   }
   return PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+}
+
+function isConnectorOAuthHandler(
+  handler: OAuthHandler,
+): handler is ConnectorProviderHandler {
+  return "buildAuthUrl" in handler && "exchangeCode" in handler;
 }
 
 interface OAuthClientCredentials {
@@ -121,13 +129,27 @@ async function refreshOAuthToken(args: {
   readonly handler: OAuthHandler;
   readonly credentials: OAuthClientCredentials;
   readonly refreshToken: string;
-}) {
-  if (args.sourceType === "model-provider" && args.handler.refreshToken) {
+}): Promise<OAuthRefreshResult> {
+  if (args.sourceType === "model-provider") {
+    if (args.handler.refreshTokenWithArgs) {
+      return await args.handler.refreshTokenWithArgs({
+        clientId: args.credentials.clientId,
+        clientSecret: args.credentials.clientSecret,
+        refreshToken: args.refreshToken,
+      });
+    }
+    if (!args.handler.refreshToken) {
+      throw new Error("Model provider handler does not support token refresh");
+    }
     return await args.handler.refreshToken(
       args.credentials.clientId ?? "",
       args.credentials.clientSecret ?? "",
       args.refreshToken,
     );
+  }
+
+  if (!isConnectorOAuthHandler(args.handler)) {
+    throw new Error("Connector OAuth handler missing authorization methods");
   }
 
   return await refreshProviderToken(args.handler, {

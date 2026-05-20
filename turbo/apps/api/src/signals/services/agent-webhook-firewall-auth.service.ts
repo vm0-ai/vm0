@@ -10,6 +10,10 @@ import {
   refreshProviderToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
+import type {
+  OAuthRefreshResult,
+  ProviderHandler as ConnectorProviderHandler,
+} from "@vm0/connectors/oauth-providers/provider-types";
 import {
   getModelProviderOAuthHandler,
   isModelProviderOAuthHandlerKey,
@@ -39,9 +43,7 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
-type ProviderHandler =
-  | (typeof PROVIDER_HANDLERS)[keyof typeof PROVIDER_HANDLERS]
-  | ModelProviderOAuthHandler;
+type OAuthHandler = ConnectorProviderHandler | ModelProviderOAuthHandler;
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
@@ -151,11 +153,29 @@ interface RefreshTokenContext {
   readonly secretUserId: string;
 }
 
-type RefreshableProviderHandler = ProviderHandler & {
+type RefreshableConnectorProviderHandler = ConnectorProviderHandler & {
   readonly getRefreshSecretName: NonNullable<
-    ProviderHandler["getRefreshSecretName"]
+    ConnectorProviderHandler["getRefreshSecretName"]
   >;
 };
+
+type RefreshableModelProviderHandler = ModelProviderOAuthHandler & {
+  readonly getRefreshSecretName: NonNullable<
+    ModelProviderOAuthHandler["getRefreshSecretName"]
+  >;
+};
+
+type PreparedRefreshTokenContext =
+  | {
+      readonly sourceType: "connector";
+      readonly handler: RefreshableConnectorProviderHandler;
+      readonly context: RefreshTokenContext;
+    }
+  | {
+      readonly sourceType: "model-provider";
+      readonly handler: RefreshableModelProviderHandler;
+      readonly context: RefreshTokenContext;
+    };
 
 interface SyncRefreshTokensArgs {
   readonly db: Db;
@@ -242,15 +262,24 @@ function resolveRefreshMetadata(
   };
 }
 
-function providerHandler(connectorType: string) {
-  const modelProviderHandler = getModelProviderOAuthHandler(connectorType);
-  if (modelProviderHandler) {
-    return modelProviderHandler;
-  }
+function connectorProviderHandler(
+  connectorType: string,
+): ConnectorProviderHandler | null {
   if (!Object.hasOwn(PROVIDER_HANDLERS, connectorType)) {
     return null;
   }
   return PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+}
+
+function providerHandler(
+  connectorType: string,
+  sourceType: OAuthSecretSource,
+): OAuthHandler | null {
+  if (sourceType === "model-provider") {
+    return getModelProviderOAuthHandler(connectorType) ?? null;
+  }
+
+  return connectorProviderHandler(connectorType);
 }
 
 function currentProviderEnv(): ProviderEnv {
@@ -337,7 +366,7 @@ async function upsertSecretValue(
 async function getConnectorRefreshToken(
   args: SecretTokenLookupArgs,
 ): Promise<{ readonly secretName: string; readonly token: string } | null> {
-  const handler = providerHandler(args.connectorType);
+  const handler = providerHandler(args.connectorType, args.sourceType);
   if (!handler?.getRefreshSecretName) {
     return null;
   }
@@ -361,7 +390,7 @@ async function getConnectorRefreshToken(
 async function getConnectorAccessToken(
   args: SecretTokenLookupArgs,
 ): Promise<string | null> {
-  const handler = providerHandler(args.connectorType);
+  const handler = providerHandler(args.connectorType, args.sourceType);
   if (!handler) {
     return null;
   }
@@ -529,82 +558,111 @@ async function getExpiryByHandlerKey(
   return merged;
 }
 
-function prepareRefreshTokenContext(args: RefreshAccessTokenArgs): {
-  readonly handler: RefreshableProviderHandler;
-  readonly context: RefreshTokenContext;
-} | null {
-  const handler = providerHandler(args.connectorType);
-  if (
-    !handler?.getRefreshSecretName ||
-    (!handler.refreshToken && !handler.refreshTokenWithArgs)
-  ) {
-    return null;
-  }
-  const refreshableHandler: RefreshableProviderHandler = {
-    ...handler,
-    getRefreshSecretName: handler.getRefreshSecretName,
-  };
-  if (args.sourceType === "model-provider" && !args.metadataKey) {
-    throw new Error(
-      `metadataKey required for model-provider source on ${args.connectorType}`,
-    );
-  }
-
-  const refreshTokenSecret = refreshableHandler.getRefreshSecretName();
-  const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
-  if (!currentRefreshToken) {
-    L.debug(`No ${args.connectorType} refresh token available, skipping`);
-    return null;
-  }
-
-  let clientId: string | undefined;
-  let clientSecret: string | undefined;
-  const env = currentProviderEnv();
-  if (args.sourceType === "connector") {
-    const typeResult = connectorTypeSchema.safeParse(args.connectorType);
-    if (!typeResult.success) {
-      L.debug(`${args.connectorType} is not a connector type, skipping`);
+function prepareRefreshTokenContext(
+  args: RefreshAccessTokenArgs,
+): PreparedRefreshTokenContext | null {
+  if (args.sourceType === "model-provider") {
+    const handler = getModelProviderOAuthHandler(args.connectorType);
+    if (
+      !handler?.getRefreshSecretName ||
+      (!handler.refreshToken && !handler.refreshTokenWithArgs)
+    ) {
       return null;
     }
-    const credentials = getConnectorOAuthCredentials(
-      typeResult.data,
-      (name) => {
-        return optionalEnv(name);
-      },
-    );
-    if (!credentials?.configured) {
-      L.debug(
-        `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
+    if (!args.metadataKey) {
+      throw new Error(
+        `metadataKey required for model-provider source on ${args.connectorType}`,
       );
+    }
+
+    const refreshTokenSecret = handler.getRefreshSecretName();
+    const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
+    if (!currentRefreshToken) {
+      L.debug(`No ${args.connectorType} refresh token available, skipping`);
       return null;
     }
-    clientId = credentials.clientId;
-    clientSecret = credentials.clientSecret;
-  } else {
-    clientId = handler.getClientId(env);
+
+    const env = currentProviderEnv();
+    const clientId = handler.getClientId(env);
     if (!clientId) {
       L.debug(
         `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
       );
       return null;
     }
-    clientSecret = refreshableHandler.getClientSecret(env);
-  }
 
-  return {
-    handler: refreshableHandler,
-    context: {
+    const context: RefreshTokenContext = {
       refreshTokenSecret,
       currentRefreshToken,
       clientId,
-      clientSecret,
-      accessTokenSecret: refreshableHandler.getSecretName(),
+      clientSecret: handler.getClientSecret(env),
+      accessTokenSecret: handler.getSecretName(),
       secretUserId: resolveSecretUserId(
         args.sourceType,
         args.userId,
         args.sourceUserId,
       ),
+    };
+
+    return {
+      sourceType: args.sourceType,
+      handler: {
+        ...handler,
+        getRefreshSecretName: handler.getRefreshSecretName,
+      },
+      context,
+    };
+  }
+
+  const handler = connectorProviderHandler(args.connectorType);
+  if (
+    !handler?.getRefreshSecretName ||
+    (!handler.refreshToken && !handler.refreshTokenWithArgs)
+  ) {
+    return null;
+  }
+  const typeResult = connectorTypeSchema.safeParse(args.connectorType);
+  if (!typeResult.success) {
+    L.debug(`${args.connectorType} is not a connector type, skipping`);
+    return null;
+  }
+  const credentials = getConnectorOAuthCredentials(typeResult.data, (name) => {
+    return optionalEnv(name);
+  });
+  if (!credentials?.configured) {
+    L.debug(
+      `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
+    );
+    return null;
+  }
+
+  const refreshTokenSecret = handler.getRefreshSecretName();
+  const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
+  if (!currentRefreshToken) {
+    L.debug(`No ${args.connectorType} refresh token available, skipping`);
+    return null;
+  }
+
+  const context: RefreshTokenContext = {
+    refreshTokenSecret,
+    currentRefreshToken,
+    clientId: credentials.clientId,
+    clientSecret: credentials.clientSecret,
+    accessTokenSecret: handler.getSecretName(),
+    secretUserId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+  };
+
+  return {
+    sourceType: args.sourceType,
+    handler: {
+      ...handler,
+      getRefreshSecretName: handler.getRefreshSecretName,
     },
+    context,
   };
 }
 
@@ -712,6 +770,27 @@ async function markRefreshFailure(
     );
 }
 
+async function refreshModelProviderToken(
+  handler: RefreshableModelProviderHandler,
+  context: RefreshTokenContext,
+): Promise<OAuthRefreshResult> {
+  if (handler.refreshTokenWithArgs) {
+    return await handler.refreshTokenWithArgs({
+      clientId: context.clientId,
+      clientSecret: context.clientSecret,
+      refreshToken: context.currentRefreshToken,
+    });
+  }
+  if (!handler.refreshToken) {
+    throw new Error("Model provider handler does not support token refresh");
+  }
+  return await handler.refreshToken(
+    context.clientId ?? "",
+    context.clientSecret ?? "",
+    context.currentRefreshToken,
+  );
+}
+
 async function refreshConnectorAccessToken(
   args: RefreshAccessTokenArgs,
 ): Promise<string | null> {
@@ -721,12 +800,8 @@ async function refreshConnectorAccessToken(
   }
 
   const refreshPromise =
-    args.sourceType === "model-provider" && prepared.handler.refreshToken
-      ? prepared.handler.refreshToken(
-          prepared.context.clientId ?? "",
-          prepared.context.clientSecret ?? "",
-          prepared.context.currentRefreshToken,
-        )
+    prepared.sourceType === "model-provider"
+      ? refreshModelProviderToken(prepared.handler, prepared.context)
       : refreshProviderToken(prepared.handler, {
           clientId: prepared.context.clientId,
           clientSecret: prepared.context.clientSecret,

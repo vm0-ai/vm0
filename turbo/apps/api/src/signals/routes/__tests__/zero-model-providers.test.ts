@@ -947,7 +947,7 @@ describe("DELETE /api/zero/model-providers/:type", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("deletes a multi-auth provider row and its auth-method secrets", async () => {
+  it("deletes a codex auth_json provider row and its auth-method secrets", async () => {
     const fixture = uniqueOrgUser("zmp-delete-multiauth");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     await store.set(
@@ -955,7 +955,7 @@ describe("DELETE /api/zero/model-providers/:type", () => {
       {
         orgId: fixture.orgId,
         type: "codex-oauth-token",
-        authMethod: "oauth",
+        authMethod: "auth_json",
       },
       context.signal,
     );
