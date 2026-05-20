@@ -782,6 +782,13 @@ const TELEGRAM_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/telegram/webhook/123456789:telegram-bot-token/extra",
   "/api/telegram/webhooks/123456789:telegram-bot-token",
 ] as const;
+const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
+  "/api/integrations/telegram/auth-callback";
+const TELEGRAM_AUTH_CALLBACK_PATH = "/api/integrations/telegram/auth-callback";
+const TELEGRAM_AUTH_CALLBACK_NEXT_NEGATIVE_PATHS = [
+  "/api/integrations/telegram/auth-callback/extra",
+  "/api/integrations/telegram/auth",
+] as const;
 const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
@@ -6914,6 +6921,29 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact telegram auth callback rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/integrations/telegram/auth-callback",
+    });
+
+    const matcher = getPathMatch(TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(TELEGRAM_AUTH_CALLBACK_PATH)).toStrictEqual({});
+    for (const pathname of TELEGRAM_AUTH_CALLBACK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should bypass web middleware only for the exact telegram register path", () => {
     expect(matchesApiBackendRewritePath(TELEGRAM_REGISTER_PATH)).toBe(true);
     for (const pathname of TELEGRAM_REGISTER_NEXT_NEGATIVE_PATHS) {
@@ -6931,6 +6961,15 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for single-segment telegram webhook paths", () => {
     expect(matchesApiBackendRewritePath(TELEGRAM_WEBHOOK_PATH)).toBe(true);
     for (const pathname of TELEGRAM_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact telegram auth callback path", () => {
+    expect(matchesApiBackendRewritePath(TELEGRAM_AUTH_CALLBACK_PATH)).toBe(
+      true,
+    );
+    for (const pathname of TELEGRAM_AUTH_CALLBACK_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

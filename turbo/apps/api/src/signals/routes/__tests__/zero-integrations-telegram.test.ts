@@ -1359,7 +1359,19 @@ describe("GET /api/integrations/telegram/auth-callback", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    await expect(response.text()).resolves.toContain("telegram-auth");
+    const html = await response.text();
+    expect(html).toContain("<title>Telegram Auth</title>");
+    expect(html).toContain(
+      'new URLSearchParams(window.location.hash.replace(/^#/, ""))',
+    );
+    expect(html).toContain(
+      'new URLSearchParams(window.location.search).get("targetOrigin")',
+    );
+    expect(html).toContain(
+      '["id","first_name","last_name","username","photo_url","auth_date","hash"]',
+    );
+    expect(html).toContain('{ type: "telegram-auth", data: data }');
+    expect(html).toContain("window.close()");
   });
 });
 

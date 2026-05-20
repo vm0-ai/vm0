@@ -9,7 +9,6 @@
 export const WEB_API_ROUTE_BASELINE = [
   "app/api/integrations/telegram/[botId]/avatar/route.ts",
   "app/api/integrations/telegram/[botId]/route.ts",
-  "app/api/integrations/telegram/auth-callback/route.ts",
   "app/api/integrations/telegram/link/route.ts",
   "app/api/integrations/telegram/route.ts",
   "app/api/runners/heartbeat/route.ts",
