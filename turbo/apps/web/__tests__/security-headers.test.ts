@@ -1489,6 +1489,13 @@ const ZERO_SLACK_CHANNELS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/slack/channel",
   "/api/zero/slack/channels-list",
 ] as const;
+const ZERO_SLACK_CONNECT_REWRITE_SOURCE = "/api/zero/slack/connect";
+const ZERO_SLACK_CONNECT_PATH = "/api/zero/slack/connect";
+const ZERO_SLACK_CONNECT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/slack/connect/extra",
+  "/api/zero/slack/connection",
+  "/api/zero/slack/connect/oauth",
+] as const;
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -2162,6 +2169,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SLACK_CHANNELS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/slack/channels",
+        },
+        {
+          source: ZERO_SLACK_CONNECT_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/slack/connect",
         },
         {
           source: "/api/zero/devices/bb0/confirm",
@@ -3843,6 +3854,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SLACK_CHANNELS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SLACK_CHANNELS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero Slack browser connect rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SLACK_CONNECT_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SLACK_CONNECT_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/slack/connect",
+    });
+
+    const matcher = getPathMatch(ZERO_SLACK_CONNECT_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SLACK_CONNECT_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_SLACK_CONNECT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

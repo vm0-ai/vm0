@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { storageVersions, storages } from "@vm0/db/schema/storage";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
 import { encryptSecretForTests } from "./encrypt-secret";
@@ -89,6 +89,22 @@ export const findSlackOrgConnection$ = command(
       .limit(1);
     signal.throwIfAborted();
     return connection;
+  },
+);
+
+export const countSlackOrgConnections$ = command(
+  async (
+    { set },
+    slackWorkspaceId: string,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    const writeDb = set(writeDb$);
+    const [row] = await writeDb
+      .select({ value: count() })
+      .from(slackOrgConnections)
+      .where(eq(slackOrgConnections.slackWorkspaceId, slackWorkspaceId));
+    signal.throwIfAborted();
+    return row?.value ?? 0;
   },
 );
 

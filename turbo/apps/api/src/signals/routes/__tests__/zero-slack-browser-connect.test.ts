@@ -9,6 +9,7 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
+  countSlackOrgConnections$,
   deleteSlackConnectOrg$,
   findSlackOrgConnection$,
   seedSlackConnectOrg$,
@@ -130,6 +131,79 @@ describe("GET /api/zero/slack/connect", () => {
     });
   });
 
+  it("redirects missing workspace installs to the legacy Slack connect error", async () => {
+    mocks.clerk.session(
+      "user_missing_workspace",
+      "org_missing_workspace",
+      "org:admin",
+    );
+
+    const response = await requestConnect(
+      connectUrl({
+        workspaceId: "T_MISSING_WORKSPACE",
+        slackUserId: "U_MISSING_WORKSPACE",
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toContain("/slack/connect?error=");
+    expect(decodeURIComponent(location ?? "")).toContain("Workspace not found");
+  });
+
+  it("rejects a non-admin connecting an unbound workspace", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await requestConnect(
+      connectUrl({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).toContain("/slack/connect?error=");
+    expect(decodeURIComponent(location ?? "")).toContain("admin");
+  });
+
+  it("keeps reconnecting the same Slack user idempotent", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const url = connectUrl({
+      workspaceId: fixture.slackWorkspaceId,
+      slackUserId: fixture.slackUserId,
+    });
+
+    const first = await requestConnect(url);
+    const second = await requestConnect(url);
+
+    expect(first.status).toBe(307);
+    expect(first.headers.get("location")).toContain("status=connected");
+    expect(second.status).toBe(307);
+    expect(second.headers.get("location")).toContain("status=connected");
+    await expect(
+      store.set(
+        countSlackOrgConnections$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      ),
+    ).resolves.toBe(1);
+  });
+
   it("allows a member to connect to a bound workspace", async () => {
     const fixture = await track(
       store.set(seedSlackConnectOrg$, {}, context.signal),
@@ -225,5 +299,60 @@ describe("GET /api/zero/slack/connect", () => {
     expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ channel: fixture.slackUserId }),
     );
+  });
+
+  it("sends a connect DM and welcome thread when no channel context is present", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackConnectOrg$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await requestConnect(
+      connectUrl({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+      }),
+    );
+    expect(response.status).toBe(307);
+
+    await clearAllDetached();
+    expect(context.mocks.slack.chat.postEphemeral).not.toHaveBeenCalled();
+    expect(
+      context.mocks.slack.chat.postMessage.mock.calls.length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not send a pending prompt DM from the browser connect flow", async () => {
+    const fixture = await track(
+      store.set(seedSlackConnectOrg$, { withConnection: true }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await requestConnect(
+      connectUrl({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        orgId: fixture.orgId,
+      }),
+    );
+    expect(response.status).toBe(307);
+
+    await clearAllDetached();
+    const promptCall = context.mocks.slack.chat.postMessage.mock.calls.find(
+      ([message]) => {
+        return (
+          typeof message === "object" &&
+          message !== null &&
+          "text" in message &&
+          typeof message.text === "string" &&
+          message.text.includes("would you like me to run")
+        );
+      },
+    );
+    expect(promptCall).toBeUndefined();
   });
 });

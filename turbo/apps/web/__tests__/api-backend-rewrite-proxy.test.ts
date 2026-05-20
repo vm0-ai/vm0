@@ -807,6 +807,19 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the Slack browser connect rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/slack/connect")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/connect/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/connection")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/connect/oauth")).toBe(
+      false,
+    );
+  });
+
   it("matches Slack provider callback rewrite paths exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/slack/events")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/slack/commands")).toBe(true);
