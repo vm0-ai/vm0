@@ -458,6 +458,83 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
 }
 
 #[test]
+fn supervised_exec_control_registries_are_isolated_per_connection() {
+    let (first_handle, mut first_stream) = start_guest_connection();
+    let (second_handle, mut second_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut first_stream,
+        209,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+    send_supervised_exec_start(
+        &mut second_stream,
+        209,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+
+    assert!(read_exec_started(&mut first_stream, 209) > 0);
+    assert!(read_exec_started(&mut second_stream, 209) > 0);
+
+    send_exec_control(
+        &mut first_stream,
+        312,
+        209,
+        EXEC_CONTROL_NONCE,
+        "message-first",
+    );
+    send_exec_control(
+        &mut second_stream,
+        312,
+        209,
+        EXEC_CONTROL_NONCE,
+        "message-second",
+    );
+
+    assert_exec_control_result(
+        &mut first_stream,
+        312,
+        209,
+        EXEC_CONTROL_NONCE,
+        "message-first",
+        ProcessControlStatus::Unsupported,
+        "exec control sink is not configured",
+    );
+    assert_exec_control_result(
+        &mut second_stream,
+        312,
+        209,
+        EXEC_CONTROL_NONCE,
+        "message-second",
+        ProcessControlStatus::Unsupported,
+        "exec control sink is not configured",
+    );
+
+    send_exec_cancel(&mut first_stream, 209);
+    send_exec_cancel(&mut second_stream, 209);
+
+    let (_chunks, first_result) = read_exec_result(&mut first_stream, 209);
+    let (_chunks, second_result) = read_exec_result(&mut second_stream, 209);
+    assert_eq!(first_result.termination, ExecTermination::Cancelled);
+    assert_eq!(second_result.termination, ExecTermination::Cancelled);
+
+    finish_guest_connection(first_handle, first_stream);
+    finish_guest_connection(second_handle, second_stream);
+}
+
+#[test]
 fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
     let (handle, mut host_stream) = start_guest_connection();
 
