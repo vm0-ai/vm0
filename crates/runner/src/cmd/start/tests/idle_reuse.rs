@@ -1,10 +1,11 @@
 use super::super::*;
 use super::support::{
-    context_with_session, minimal_context, mock_run_config, mock_run_config_with_overrides,
-    publish_idle_status, push_job, seed_idle_pool, seed_idle_pool_with_overrides, shutdown,
-    status_idle_sessions, test_profiles, two_profiles, wait_budget_count, wait_cancel_token,
-    wait_idle_pool_len, wait_idle_pool_sessions, wait_parking_state, wait_sandbox_lifecycle_counts,
-    wait_status_idle_empty_with_active_run, wait_status_idle_sessions_and_active_runs,
+    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
+    mock_run_config_with_overrides, publish_idle_status, push_job, seed_idle_pool,
+    seed_idle_pool_with_overrides, shutdown, status_idle_sessions, test_profiles, two_profiles,
+    wait_budget_count, wait_cancel_token, wait_idle_pool_len, wait_idle_pool_sessions,
+    wait_parking_state, wait_sandbox_lifecycle_counts, wait_status_idle_empty_with_active_run,
+    wait_status_idle_sessions_and_active_runs,
 };
 
 use crate::idle_pool::ParkingState;
@@ -817,12 +818,12 @@ async fn job_completing_during_active_draining_is_not_parked() {
     );
 
     // Draining mode observes jobs.is_empty → auto-Stop → teardown.
-    match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("natural drain should exit within 5s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "natural drain should exit within 5s",
+    )
+    .await;
 
     // Leak proof: pool empty, budget fully released.
     assert_eq!(
@@ -899,12 +900,12 @@ async fn soft_drain_resume_opens_parking_before_running_ack() {
     );
 
     env.trigger_stopping().await;
-    match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("hard shutdown should exit within 5s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s",
+    )
+    .await;
 }
 
 /// Regression (G2): on SIGTERM from Running, teardown's
@@ -953,12 +954,12 @@ async fn shutdown_clears_idle_vms_in_status_json() {
     // SIGTERM path: Draining mode is bypassed, so teardown's
     // drain_idle_pool is the only site that can clear idle_vms.
     env.trigger_stopping().await;
-    match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("hard shutdown should exit within 5s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "hard shutdown should exit within 5s",
+    )
+    .await;
 
     // Post-shutdown: mode=stopped, idle_vms empty/absent.
     let post: serde_json::Value =

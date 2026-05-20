@@ -28,6 +28,19 @@ where
     }
 }
 
+pub(in super::super) async fn assert_run_exits_within(
+    run_handle: tokio::task::JoinHandle<RunnerResult<()>>,
+    timeout: Duration,
+    timeout_msg: &str,
+) {
+    match tokio::time::timeout(timeout, run_handle).await {
+        Ok(Ok(Ok(()))) => {}
+        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+        Ok(Err(e)) => panic!("task panicked: {e}"),
+        Err(_) => panic!("{timeout_msg}"),
+    }
+}
+
 /// Poll until `budget.allocated().2` (running_count) reaches `expected`.
 ///
 /// The active budget lease is dropped after `provider.complete()` in the

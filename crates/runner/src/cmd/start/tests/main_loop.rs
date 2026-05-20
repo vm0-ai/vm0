@@ -1,9 +1,10 @@
 use super::super::*;
 use super::support::{
-    context_with_session, minimal_context, mock_run_config, mock_run_config_with_api_url,
-    mock_run_config_with_delay, mock_run_config_with_overrides, push_job, shutdown, test_profiles,
-    wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
-    wait_discover_entered, wait_parking_state, wait_status_mode,
+    assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
+    mock_run_config_with_api_url, mock_run_config_with_delay, mock_run_config_with_overrides,
+    push_job, shutdown, test_profiles, wait_budget_count, wait_budget_exhausted_reactor,
+    wait_cancel_token, wait_cancel_token_removed, wait_discover_entered, wait_parking_state,
+    wait_status_mode,
 };
 
 use super::super::signals::{SignalController, SignalHandlerTask, handle_resume_signal};
@@ -259,14 +260,12 @@ async fn shutdown_completes_without_deadlock() {
     // `provider.shutdown()`. Without that drop → deadlock (regression #8898).
     env.drain();
 
-    match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => {
-            panic!("deadlock detected: run() did not finish within 2s (regression #8898)")
-        }
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(2),
+        "deadlock detected: run() did not finish within 2s (regression #8898)",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -432,12 +431,12 @@ async fn drain_resume_then_second_drain_drains_idle_pool() {
     );
 
     env.drain();
-    match tokio::time::timeout(Duration::from_secs(5), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("second drain should exit within 5s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "second drain should exit within 5s",
+    )
+    .await;
 
     assert_eq!(
         idle_pool.lock().await.len(),
@@ -558,12 +557,12 @@ async fn drain_without_active_jobs_exits_promptly() {
     wait_discover_entered(&env, Duration::from_secs(2)).await;
     env.drain();
 
-    match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("drain with no active jobs should exit within 2s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(2),
+        "drain with no active jobs should exit within 2s",
+    )
+    .await;
 }
 
 /// SIGUSR2 on an already-Running runner is a no-op: it does not disturb
@@ -613,12 +612,12 @@ async fn hard_shutdown_cancels_active_jobs() {
     // SIGTERM equivalent: latch hard-shutdown, cancel all in-flight jobs.
     env.trigger_stopping().await;
 
-    match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("hard shutdown should exit within 3s — got stuck"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "hard shutdown should exit within 3s — got stuck",
+    )
+    .await;
 
     // The cancelled job reports the synthetic "cancelled by user" error.
     let comps = env.handle.completions.lock().unwrap();
@@ -725,12 +724,12 @@ async fn assert_signal_handler_task_end_cancels_active_jobs(
 
     trigger_handler_task_end();
 
-    match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("signal handler exit should cancel active jobs and stop promptly"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "signal handler exit should cancel active jobs and stop promptly",
+    )
+    .await;
 
     let comps = env.handle.completions.lock().unwrap();
     let c = comps
@@ -763,12 +762,12 @@ async fn drain_then_hard_shutdown_upgrades() {
     // Upgrade to hard shutdown.
     env.trigger_stopping().await;
 
-    match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("Draining → hard shutdown should exit within 3s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "Draining → hard shutdown should exit within 3s",
+    )
+    .await;
 }
 
 /// TOCTOU regression: a SIGTERM that iterates `cancel_tokens` *before*
@@ -869,12 +868,12 @@ async fn resume_after_stopping_is_ignored() {
         "mode must remain Stopping after ignored SIGUSR2"
     );
 
-    match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("hard shutdown should exit within 2s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(2),
+        "hard shutdown should exit within 2s",
+    )
+    .await;
 }
 
 /// Regression for #10146 / #10223: the main-loop `idle_cleanup` and
@@ -946,12 +945,12 @@ async fn drain_with_jobs_transitions_to_stopping_when_empty() {
 
     // Draining mode should observe jobs.is_empty() and self-send
     // Stopping, leading to teardown and run() exit.
-    match tokio::time::timeout(Duration::from_secs(3), run_handle).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
-        Ok(Err(e)) => panic!("task panicked: {e}"),
-        Err(_) => panic!("Draining natural drain should exit within 3s"),
-    }
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "Draining natural drain should exit within 3s",
+    )
+    .await;
 
     assert_eq!(
         *env.mode_tx.borrow(),

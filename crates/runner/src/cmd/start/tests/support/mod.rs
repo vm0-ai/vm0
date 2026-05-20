@@ -19,7 +19,8 @@ pub(super) use self::status::{
     wait_status_mode,
 };
 pub(super) use self::wait::{
-    wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token, wait_cancel_token_removed,
-    wait_discover_entered, wait_idle_cleanup_processed_with_expired_entries, wait_idle_pool_len,
-    wait_idle_pool_sessions, wait_parking_state, wait_sandbox_lifecycle_counts,
+    assert_run_exits_within, wait_budget_count, wait_budget_exhausted_reactor, wait_cancel_token,
+    wait_cancel_token_removed, wait_discover_entered,
+    wait_idle_cleanup_processed_with_expired_entries, wait_idle_pool_len, wait_idle_pool_sessions,
+    wait_parking_state, wait_sandbox_lifecycle_counts,
 };
