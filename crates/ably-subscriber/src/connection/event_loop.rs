@@ -268,7 +268,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     match send_attach(&mut p, &mut close_rx).await {
                         LoopAction::Stop => return,
                         LoopAction::Reconnect { disconnected_event } => {
-                            disconnected_sent = disconnected_event == DisconnectedEvent::Sent;
+                            record_reconnect_disconnected_event(
+                                &mut disconnected_sent,
+                                disconnected_event,
+                            );
                             immediate_retry = true;
                             break;
                         }
@@ -324,8 +327,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                                         LoopAction::Reconnect {
                                             disconnected_event,
                                         } => {
-                                            disconnected_sent =
-                                                disconnected_event == DisconnectedEvent::Sent;
+                                            record_reconnect_disconnected_event(
+                                                &mut disconnected_sent,
+                                                disconnected_event,
+                                            );
                                             immediate_retry = true;
                                             break;
                                         }
@@ -523,6 +528,13 @@ enum LoopAction {
 enum DisconnectedEvent {
     Pending,
     Sent,
+}
+
+fn record_reconnect_disconnected_event(
+    disconnected_sent: &mut bool,
+    disconnected_event: DisconnectedEvent,
+) {
+    *disconnected_sent = disconnected_event == DisconnectedEvent::Sent;
 }
 
 enum ReconnectOutcome {
@@ -1076,6 +1088,30 @@ mod tests {
         assert!(
             matches!(event_rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
             "expected no status event"
+        );
+    }
+
+    #[test]
+    fn pending_reconnect_keeps_outer_disconnected_event_pending() {
+        let mut disconnected_sent = true;
+
+        record_reconnect_disconnected_event(&mut disconnected_sent, DisconnectedEvent::Pending);
+
+        assert!(
+            !disconnected_sent,
+            "outer loop must emit Disconnected when reconnect did not send one"
+        );
+    }
+
+    #[test]
+    fn sent_reconnect_marks_outer_disconnected_event_sent() {
+        let mut disconnected_sent = false;
+
+        record_reconnect_disconnected_event(&mut disconnected_sent, DisconnectedEvent::Sent);
+
+        assert!(
+            disconnected_sent,
+            "outer loop must not duplicate a Disconnected event sent by reconnect handling"
         );
     }
 
