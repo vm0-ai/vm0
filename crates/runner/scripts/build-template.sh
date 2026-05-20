@@ -116,6 +116,7 @@ CODEX_CLI_VERSION="0.131.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
 AGENT_BROWSER_VERSION="0.27.0"
+PNPM_VERSION="10.33.4"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -449,7 +450,7 @@ install_runtimes() {
       @xdevplatform/xurl@${XURL_VERSION} \
       @openai/codex@${CODEX_CLI_VERSION} \
       agent-browser@${AGENT_BROWSER_VERSION} \
-      pnpm@latest
+      pnpm@${PNPM_VERSION}
     npm cache clean --force
   "
 

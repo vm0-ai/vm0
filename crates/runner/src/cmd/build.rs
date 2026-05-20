@@ -4060,7 +4060,11 @@ exit 1
     #[test]
     fn template_installs_and_verifies_pnpm() {
         assert!(
-            TEMPLATE_BUILD_SCRIPT.contains("pnpm@latest"),
+            TEMPLATE_BUILD_SCRIPT.contains("PNPM_VERSION=\"10.33.4\""),
+            "build-template.sh should pin the pnpm version so template cache inputs are deterministic"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("pnpm@${PNPM_VERSION}"),
             "build-template.sh should install pnpm into sandbox templates"
         );
         assert!(
