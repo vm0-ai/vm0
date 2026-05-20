@@ -6,6 +6,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -66,6 +67,29 @@ function authHeaders(fixture: {
 
 function webhookClient() {
   return setupApp({ context })(webhookEventsContract);
+}
+
+async function postRawWebhook(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/webhooks/agent/events", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
 }
 
 async function forwardToApi(request: Request): Promise<Response> {
@@ -137,6 +161,18 @@ function readAssistantMessages(runId: string): Promise<
     );
 }
 
+function readUsageEvents(runId: string): Promise<
+  readonly {
+    readonly id: string;
+  }[]
+> {
+  const writeDb = store.set(writeDb$);
+  return writeDb
+    .select({ id: usageEvent.id })
+    .from(usageEvent)
+    .where(eq(usageEvent.runId, runId));
+}
+
 beforeEach(() => {
   mockEnv("VM0_API_URL", "http://api.test");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
@@ -165,6 +201,61 @@ describe("POST /api/webhooks/agent/events", () => {
     });
   });
 
+  it("rejects invalid sandbox tokens", async () => {
+    const fixture = await seedFixture();
+    const response = await accept(
+      webhookClient().send({
+        body: {
+          runId: fixture.runId,
+          events: [{ type: "assistant", sequenceNumber: 1 }],
+        },
+        headers: { authorization: "Bearer invalid-token-not-jwt" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated or runId mismatch",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("rejects missing runId before dispatch", async () => {
+    const fixture = await seedFixture();
+    const response = await postRawWebhook(
+      {
+        events: [{ type: "assistant", sequenceNumber: 1 }],
+      },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("runId");
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing events before dispatch", async () => {
+    const fixture = await seedFixture();
+    const response = await postRawWebhook(
+      {
+        runId: fixture.runId,
+      },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("events");
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid event payloads before dispatch", async () => {
     const fixture = await seedFixture();
     const response = await accept(
@@ -176,6 +267,42 @@ describe("POST /api/webhooks/agent/events", () => {
     );
 
     expect(response.body.error.message).toContain("events");
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative event sequence numbers before dispatch", async () => {
+    const fixture = await seedFixture();
+    const response = await postRawWebhook(
+      {
+        runId: fixture.runId,
+        events: [{ type: "assistant", sequenceNumber: -1 }],
+      },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("sequenceNumber");
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+  });
+
+  it("rejects event sequence numbers outside the database integer range", async () => {
+    const fixture = await seedFixture();
+    const response = await postRawWebhook(
+      {
+        runId: fixture.runId,
+        events: [{ type: "assistant", sequenceNumber: 2_147_483_648 }],
+      },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("sequenceNumber");
     expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
   });
 
@@ -193,6 +320,42 @@ describe("POST /api/webhooks/agent/events", () => {
           events: [{ type: "assistant", sequenceNumber: 1 }],
         },
         headers: authHeaders(missing),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+  });
+
+  it("returns 404 when the sandbox user does not own the run", async () => {
+    const fixture = await seedFixture();
+    const otherFixture = await trackChatFixture(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    const { runId: otherRunId } = await store.set(
+      seedRun$,
+      {
+        orgId: otherFixture.orgId,
+        userId: otherFixture.userId,
+        composeId: otherFixture.composeId,
+        status: "running",
+      },
+      context.signal,
+    );
+
+    const response = await accept(
+      webhookClient().send({
+        body: {
+          runId: otherRunId,
+          events: [{ type: "assistant", sequenceNumber: 1 }],
+        },
+        headers: authHeaders({
+          runId: otherRunId,
+          userId: fixture.userId,
+          orgId: fixture.orgId,
+        }),
       }),
       [404],
     );
@@ -265,6 +428,50 @@ describe("POST /api/webhooks/agent/events", () => {
     );
   });
 
+  it("handles a batch of events while preserving event data", async () => {
+    const fixture = await seedFixture();
+    const events = Array.from({ length: 15 }, (_, index) => {
+      return {
+        type: `event_${index}`,
+        sequenceNumber: index,
+        timestamp: 1_234_567_890 + index,
+        data: { index, message: `Event number ${index}` },
+      };
+    });
+
+    const response = await accept(
+      webhookClient().send({
+        body: { runId: fixture.runId, events },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      received: 15,
+      firstSequence: 0,
+      lastSequence: 14,
+    });
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith(
+      "agent-run-events",
+      expect.arrayContaining(
+        events.map((event) => {
+          return expect.objectContaining({
+            runId: fixture.runId,
+            userId: fixture.userId,
+            sequenceNumber: event.sequenceNumber,
+            eventType: event.type,
+            eventData: event,
+          });
+        }),
+      ),
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${fixture.runId}`,
+      { firstSequence: 0, lastSequence: 14 },
+    );
+  });
+
   it("does not dispatch optional consumers when required Axiom dispatch fails", async () => {
     const fixture = await seedFixture();
     context.mocks.axiom.ingest.mockReturnValue(false);
@@ -297,6 +504,29 @@ describe("POST /api/webhooks/agent/events", () => {
       },
     });
     expect(chatAssistantCalls).toBe(0);
+  });
+
+  it("rejects events when Axiom flush fails", async () => {
+    const fixture = await seedFixture();
+    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("flush failed"));
+
+    const response = await accept(
+      webhookClient().send({
+        body: {
+          runId: fixture.runId,
+          events: [{ type: "assistant", sequenceNumber: 1 }],
+        },
+        headers: authHeaders(fixture),
+      }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Required event consumer dispatch failed: axiom",
+        code: "INTERNAL_SERVER_ERROR",
+      },
+    });
   });
 
   it("accepts events when an optional consumer fails", async () => {
@@ -377,5 +607,38 @@ describe("POST /api/webhooks/agent/events", () => {
     );
 
     expect(typingConsumerCalls).toStrictEqual([]);
+  });
+
+  it("does not write usage_event rows for result events", async () => {
+    const fixture = await seedFixture();
+
+    const response = await accept(
+      webhookClient().send({
+        body: {
+          runId: fixture.runId,
+          events: [
+            {
+              type: "result",
+              uuid: randomUUID(),
+              sequenceNumber: 1,
+              timestamp: 1_234_567_890,
+              usage: {
+                input_tokens: 100,
+                output_tokens: 50,
+              },
+            },
+          ],
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 1,
+      lastSequence: 1,
+    });
+    await expect(readUsageEvents(fixture.runId)).resolves.toStrictEqual([]);
   });
 });

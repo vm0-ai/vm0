@@ -695,6 +695,13 @@ const AGENT_COMPLETE_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/checkpoints",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_EVENTS_REWRITE_SOURCE = "/api/webhooks/agent/events";
+const AGENT_EVENTS_PATH = "/api/webhooks/agent/events";
+const AGENT_EVENTS_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/events/extra",
+  "/api/webhooks/agent/checkpoints",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PATH = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_NEXT_NEGATIVE_PATHS = [
@@ -2048,6 +2055,10 @@ describe("API backend rewrites", () => {
         {
           source: AGENT_COMPLETE_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/agent/complete",
+        },
+        {
+          source: AGENT_EVENTS_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/webhooks/agent/events",
         },
         {
           source: AGENT_CHECKPOINTS_REWRITE_SOURCE,
@@ -4553,6 +4564,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_COMPLETE_PATH)).toStrictEqual({});
     for (const pathname of AGENT_COMPLETE_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent events webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_EVENTS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_EVENTS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/agent/events",
+    });
+
+    const matcher = getPathMatch(AGENT_EVENTS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_EVENTS_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_EVENTS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

@@ -1406,6 +1406,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
   });
 
+  it("matches the agent events webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent/events")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/events/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
+  });
+
   it("matches the agent checkpoints webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/checkpoints"),
@@ -3103,6 +3113,49 @@ describe("API backend rewrite proxy behavior", () => {
         const payload = (await response.json()) as EchoPayload;
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe("/api/webhooks/agent/complete?from=complete");
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent events webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_events_1",
+          events: [
+            {
+              type: "tool_result",
+              sequenceNumber: 12,
+              data: { exitCode: 0 },
+            },
+          ],
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/events?from=events`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe("/api/webhooks/agent/events?from=events");
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);
