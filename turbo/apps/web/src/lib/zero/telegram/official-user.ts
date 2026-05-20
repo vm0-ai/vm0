@@ -153,25 +153,6 @@ export async function linkOfficialTelegramUserToVm0User(params: {
   return { ok: false, reason: "conflict" };
 }
 
-export async function resolveOfficialUserLink(
-  telegramUserId: string,
-  telegramUsername?: string | null,
-  telegramDisplayName?: string | null,
-): Promise<OfficialTelegramUserLink | null> {
-  const [userLink] = await globalThis.services.db
-    .select()
-    .from(telegramOfficialUserLinks)
-    .where(eq(telegramOfficialUserLinks.telegramUserId, telegramUserId))
-    .limit(1);
-
-  if (!userLink) return null;
-  return touchOfficialTelegramUserLink(
-    userLink,
-    telegramUsername,
-    telegramDisplayName,
-  );
-}
-
 export async function ensureOfficialOrgAndArtifact(
   vm0UserId: string,
   orgId: string,

@@ -249,12 +249,6 @@ export function extractTelegramFileForContext(
   return undefined;
 }
 
-export function hasTelegramFileForContext(
-  message: TelegramAttachmentMessageLike,
-): boolean {
-  return extractTelegramFileForContext(message) !== undefined;
-}
-
 /**
  * Format a Telegram file reference for the agent prompt.
  *

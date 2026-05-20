@@ -83,16 +83,16 @@ export interface TelegramClient {
   token: string;
 }
 
-export interface TelegramInlineKeyboardButton {
+interface TelegramInlineKeyboardButton {
   text: string;
   url: string;
 }
 
-export interface TelegramInlineKeyboardMarkup {
+interface TelegramInlineKeyboardMarkup {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 }
 
-export interface TelegramSendMessageOptions {
+interface TelegramSendMessageOptions {
   replyToMessageId?: number;
   messageThreadId?: number;
   replyMarkup?: TelegramInlineKeyboardMarkup;

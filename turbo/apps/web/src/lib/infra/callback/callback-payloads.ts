@@ -6,19 +6,6 @@
  * the parsePayload() functions in each route provide runtime validation.
  */
 
-export interface TelegramCallbackPayload {
-  installationId: string;
-  chatId: string;
-  messageId: string;
-  rootMessageId: string | null;
-  userLinkId: string;
-  agentId: string;
-  existingSessionId: string | null;
-  isDM: boolean;
-  /** @deprecated Legacy placeholder cleanup only. New Telegram runs use typing. */
-  thinkingMessageId?: string | null;
-}
-
 export interface SlackOrgCallbackPayload {
   workspaceId: string;
   channelId: string;
