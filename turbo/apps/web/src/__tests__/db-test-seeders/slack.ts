@@ -90,33 +90,6 @@ export async function createTestSlackOrgConnection(opts: {
 }
 
 /**
- * @why-db-direct Direct insert without installation-orgId validation; needed
- * for cleanup/disconnect tests where installation may lack orgId.
- *
- * Delegates to the shared `insertSlackConnectionIfMissing` helper so the
- * schema-aware insert lives in one place.
- */
-export async function seedTestSlackOrgConnection(opts: {
-  slackUserId: string;
-  slackWorkspaceId: string;
-  vm0UserId: string;
-}): Promise<{ connectionId: string }> {
-  initServices();
-  const { connectionId } = await insertSlackConnectionIfMissing(
-    globalThis.services,
-    {
-      slackUserId: opts.slackUserId,
-      slackWorkspaceId: opts.slackWorkspaceId,
-      vm0UserId: opts.vm0UserId,
-    },
-  );
-  if (!connectionId) {
-    throw new Error("Failed to seed Slack org connection");
-  }
-  return { connectionId };
-}
-
-/**
  * @why-db-direct Minimal installation for external cleanup tests; no API path
  * creates installations without real OAuth.
  *

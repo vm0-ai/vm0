@@ -202,22 +202,6 @@ export async function memberConnect(params: {
 }
 
 /**
- * Disconnect a user from Slack.
- */
-export async function disconnect(params: {
-  connectionId: string;
-  userId: string;
-}): Promise<void> {
-  const { connectionId } = params;
-
-  await globalThis.services.db
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.id, connectionId));
-
-  log.info("User disconnected from Slack", params);
-}
-
-/**
  * Remove a workspace installation and all associated data.
  *
  * Deletes: connections (cascades thread sessions) → installation.

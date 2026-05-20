@@ -1,7 +1,5 @@
-import { eq, and, desc } from "drizzle-orm";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { eq, and } from "drizzle-orm";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 
 /**
  * Resolve zero_agents.id by org + compose name.
@@ -17,40 +15,4 @@ export async function resolveAgentId(
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, composeName)))
     .limit(1);
   return row?.id ?? null;
-}
-
-/**
- * List all composes for an org with metadata from zero_agents.
- */
-export async function listComposes(
-  orgId: string,
-): Promise<{ composes: ComposeListItem[] }> {
-  const ownComposes = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      updatedAt: agentComposes.updatedAt,
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.orgId, orgId))
-    .orderBy(desc(agentComposes.updatedAt));
-
-  const composes = ownComposes.map((c) => {
-    return {
-      id: c.id,
-      name: c.name,
-      displayName: c.displayName ?? null,
-      description: c.description ?? null,
-      sound: c.sound ?? null,
-      headVersionId: c.headVersionId,
-      updatedAt: c.updatedAt.toISOString(),
-    };
-  });
-
-  return { composes };
 }

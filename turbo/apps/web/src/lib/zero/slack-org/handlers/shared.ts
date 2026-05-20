@@ -54,36 +54,6 @@ export async function getUserAgentPreference(
 }
 
 /**
- * Persist (or clear) a user's agent override.
- *
- * Passing `null` for `composeId` clears the override so the user reverts to
- * the org default.
- */
-export async function setUserAgentPreference(opts: {
-  vm0UserId: string;
-  orgId: string;
-  composeId: string | null;
-}): Promise<void> {
-  await globalThis.services.db
-    .insert(slackUserAgentPreferences)
-    .values({
-      vm0UserId: opts.vm0UserId,
-      orgId: opts.orgId,
-      selectedComposeId: opts.composeId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        slackUserAgentPreferences.vm0UserId,
-        slackUserAgentPreferences.orgId,
-      ],
-      set: {
-        selectedComposeId: opts.composeId,
-        updatedAt: new Date(),
-      },
-    });
-}
-
-/**
  * Resolve the compose that should respond for this user.
  *
  * Resolution order:

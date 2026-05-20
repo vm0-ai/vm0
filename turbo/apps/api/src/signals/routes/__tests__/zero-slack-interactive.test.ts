@@ -13,6 +13,8 @@ import {
   findSlackAgentPreference$,
   findUserSelectedModel$,
   seedSlackWebhookFixture$,
+  setSlackWebhookUserAgentPreference$,
+  setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
 
@@ -37,9 +39,12 @@ function configureSlackWebhookTest(): void {
   });
 }
 
-function signedHeaders(body: string): Record<string, string> {
+function signedHeaders(
+  body: string,
+  signingSecret: string = SIGNING_SECRET,
+): Record<string, string> {
   const timestamp = Math.floor(now() / 1000).toString();
-  const signature = `v0=${createHmac("sha256", SIGNING_SECRET)
+  const signature = `v0=${createHmac("sha256", signingSecret)
     .update(`v0:${timestamp}:${body}`)
     .digest("hex")}`;
   return {
@@ -168,6 +173,36 @@ describe("POST /api/zero/slack/interactive", () => {
     expect(missingPayload.body).toStrictEqual({ error: "Missing payload" });
   });
 
+  it("rejects unconfigured Slack, invalid signatures, and invalid payloads", async () => {
+    const body = new URLSearchParams({
+      payload: JSON.stringify({ type: "block_actions" }),
+    }).toString();
+
+    mockOptionalEnv("SLACK_SIGNING_SECRET", undefined);
+    const unconfigured = await postInteractiveBody(body);
+    expect(unconfigured.status).toBe(503);
+    expect(unconfigured.body).toStrictEqual({
+      error: "Slack integration is not configured",
+    });
+
+    mockOptionalEnv("SLACK_SIGNING_SECRET", SIGNING_SECRET);
+    const invalidSignature = await postInteractiveBody(
+      body,
+      signedHeaders(body, "wrong-secret"),
+    );
+    expect(invalidSignature.status).toBe(401);
+    expect(invalidSignature.body).toStrictEqual({
+      error: "Invalid signature",
+    });
+
+    const invalidPayloadBody = new URLSearchParams({
+      payload: "{not-json",
+    }).toString();
+    const invalidPayload = await postInteractiveBody(invalidPayloadBody);
+    expect(invalidPayload.status).toBe(400);
+    expect(invalidPayload.body).toStrictEqual({ error: "Invalid payload" });
+  });
+
   it("returns an empty 200 response for empty block actions", async () => {
     const response = await postInteractive({
       type: "block_actions",
@@ -209,6 +244,38 @@ describe("POST /api/zero/slack/interactive", () => {
       ),
     ).resolves.toBe(0);
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
+  });
+
+  it("silently returns when App Home disconnect has no connection", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: false, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    context.mocks.slack.views.publish.mockClear();
+
+    const response = await postInteractive({
+      type: "block_actions",
+      user: {
+        id: fixture.slackUserId,
+        username: "testuser",
+        team_id: fixture.slackWorkspaceId,
+      },
+      team: { id: fixture.slackWorkspaceId, domain: "test" },
+      actions: [{ action_id: "home_disconnect", block_id: "home" }],
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      store.set(
+        countSlackWebhookConnections$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      ),
+    ).resolves.toBe(0);
+    expect(context.mocks.slack.views.publish).not.toHaveBeenCalled();
   });
 
   it("persists the selected agent and rejects agents from other orgs", async () => {
@@ -272,6 +339,70 @@ describe("POST /api/zero/slack/interactive", () => {
       errors: {
         agent_select_block: "You don't have access to that agent.",
       },
+    });
+  });
+
+  it("clears the selected agent when user picks the org default", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: true,
+          withSwitchAgent: true,
+        },
+        context.signal,
+      ),
+    );
+    expect(fixture.switchAgentId).toBeTruthy();
+    await store.set(
+      setSlackWebhookUserAgentPreference$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId: fixture.switchAgentId ?? "",
+      },
+      context.signal,
+    );
+
+    const response = await postInteractive(
+      agentPickerSubmission({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        selectedValue: "__org_default__",
+        channelId: "C-test",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(
+      store.set(
+        findSlackAgentPreference$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    ).resolves.toBeNull();
+    expect(context.mocks.slack.chat.postEphemeral).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        text: expect.stringMatching(/^Switched to \*default-agent-/),
+      }),
+    );
+  });
+
+  it("returns an inline error when no agent is selected", async () => {
+    const response = await postInteractive(
+      agentPickerSubmission({
+        workspaceId: "T-test",
+        slackUserId: "U-test",
+        selectedValue: "",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      response_action: "errors",
+      errors: { agent_select_block: "Please choose an agent." },
     });
   });
 
@@ -356,5 +487,84 @@ describe("POST /api/zero/slack/interactive", () => {
 
     expect(switchResponse.status).toBe(200);
     expect(context.mocks.slack.views.open).toHaveBeenCalledOnce();
+  });
+
+  it("replaces an existing model preference with the workspace default", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: true,
+          withSwitchAgent: true,
+        },
+        context.signal,
+      ),
+    );
+    await store.set(
+      setSlackWebhookUserSelectedModel$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        selectedModel: "deepseek-v4-pro",
+      },
+      context.signal,
+    );
+
+    const response = await postInteractive(
+      modelPickerSubmission({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        selectedValue: "claude-sonnet-4-6",
+        channelId: "C-test",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(
+      store.set(
+        findUserSelectedModel$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    ).resolves.toBe("claude-sonnet-4-6");
+  });
+
+  it("rejects selected models absent from the picker options", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: true,
+          withSwitchAgent: true,
+        },
+        context.signal,
+      ),
+    );
+
+    const response = await postInteractive(
+      modelPickerSubmission({
+        workspaceId: fixture.slackWorkspaceId,
+        slackUserId: fixture.slackUserId,
+        selectedValue: "model-outside-policy",
+        channelId: "C-test",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      response_action: "errors",
+      errors: {
+        model_select_block: "You don't have access to that model.",
+      },
+    });
+    await expect(
+      store.set(
+        findUserSelectedModel$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    ).resolves.toBeNull();
   });
 });

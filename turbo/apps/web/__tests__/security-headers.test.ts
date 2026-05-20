@@ -1626,6 +1626,13 @@ const ZERO_SLACK_EVENTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/slack/event",
   "/api/zero/slack/oauth/events",
 ] as const;
+const ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE = "/api/zero/slack/interactive";
+const ZERO_SLACK_INTERACTIVE_PATH = "/api/zero/slack/interactive";
+const ZERO_SLACK_INTERACTIVE_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/slack/interactive/extra",
+  "/api/zero/slack/interactions",
+  "/api/zero/slack/oauth/interactive",
+] as const;
 const VOICE_CHAT_ITEM_APPEND_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-chat/token",
   "/api/zero/voice-chat/token/items",
@@ -2366,6 +2373,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_SLACK_EVENTS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/slack/events",
+        },
+        {
+          source: ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/slack/interactive",
         },
         {
           source: "/api/zero/devices/bb0/confirm",
@@ -4343,6 +4354,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SLACK_EVENTS_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SLACK_EVENTS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact zero Slack interactive rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/slack/interactive",
+    });
+
+    const matcher = getPathMatch(ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_SLACK_INTERACTIVE_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_SLACK_INTERACTIVE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
