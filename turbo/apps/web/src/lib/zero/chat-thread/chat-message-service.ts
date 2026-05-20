@@ -7,8 +7,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { publishUserSignal } from "../../infra/realtime/client";
-import { recordChatSpan, type ChatSpanDimensions } from "../../infra/metrics";
-import { CHAT_REQUEST_OPS, timed } from "./request-span-ops";
 
 function effectiveChatMessageRunId() {
   return chatMessages.runId;
@@ -47,93 +45,6 @@ type MessageRow = {
   goalRemainingTurns: number | null;
   goalOriginMessageId: string | null;
 };
-
-/**
- * Insert a chat message (user row on send, or assistant row on terminal
- * callback / direct integration) and fan out the `chatThreadMessageCreated`
- * realtime signal to the thread owner.
- *
- * When `id` is provided, it is used as the primary key so the client can
- * reconcile an optimistic row by matching on id. Otherwise the DB default
- * (`defaultRandom()`) is used.
- *
- * Publishing the signal here (instead of at each call site) ensures the
- * cancel / failure paths — which insert via the chat callback — also notify
- * the frontend, so the cancelled message surfaces without a page refresh.
- */
-export async function insertChatMessage(params: {
-  chatThreadId: string;
-  userId: string;
-  role: "user" | "assistant";
-  content: string | null;
-  runId: string | null;
-  error?: string | null;
-  attachFiles?: ChatMessageAttachFiles;
-  revokesMessageId?: string | null;
-  interruptsRunId?: string | null;
-  goalRemainingTurns?: number | null;
-  goalOriginMessageId?: string | null;
-  id?: string;
-  spanDims?: ChatSpanDimensions;
-}): Promise<{ id: string; createdAt: Date }> {
-  const { result: insertedRow, ms: insertMs } = await timed(async () => {
-    return globalThis.services.db
-      .insert(chatMessages)
-      .values({
-        ...(params.id ? { id: params.id } : {}),
-        chatThreadId: params.chatThreadId,
-        role: params.role,
-        content: params.content,
-        runId: params.runId,
-        revokesMessageId: params.revokesMessageId ?? null,
-        interruptsRunId: params.interruptsRunId ?? null,
-        goalRemainingTurns: params.goalRemainingTurns ?? null,
-        goalOriginMessageId: params.goalOriginMessageId ?? null,
-        error: params.error ?? null,
-        attachFiles: params.attachFiles ?? null,
-      })
-      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
-  });
-  const [row] = insertedRow;
-  if (params.spanDims) {
-    recordChatSpan(
-      CHAT_REQUEST_OPS.insert_chat_message_insert,
-      insertMs,
-      params.spanDims,
-    );
-  }
-
-  if (!row) {
-    throw new Error("Failed to insert chat message");
-  }
-
-  const { ms: publishSignalMs } = await timed(async () => {
-    await publishUserSignal(
-      [params.userId],
-      `chatThreadMessageCreated:${params.chatThreadId}`,
-    );
-  });
-  if (params.spanDims) {
-    recordChatSpan(
-      CHAT_REQUEST_OPS.insert_chat_message_publish_signal,
-      publishSignalMs,
-      params.spanDims,
-    );
-  }
-
-  const { ms: publishListMs } = await timed(async () => {
-    await publishThreadListChanged(params.userId);
-  });
-  if (params.spanDims) {
-    recordChatSpan(
-      CHAT_REQUEST_OPS.insert_chat_message_publish_list,
-      publishListMs,
-      params.spanDims,
-    );
-  }
-
-  return row;
-}
 
 /**
  * Resolve the chat_thread_id and owner user_id for a run from the zero_runs

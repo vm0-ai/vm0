@@ -786,6 +786,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/phone/:path*",
     "/api/zero/integrations/phone/:path*",
   ],
+  [
+    "/api/zero/integrations/chat/message",
+    "/api/zero/integrations/chat/message",
+  ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
   [

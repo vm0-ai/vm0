@@ -202,6 +202,30 @@ describe("POST /api/zero/integrations/chat/message", () => {
     });
   });
 
+  it("returns 401 when the token has no active organization membership", async () => {
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const client = setupApp({ context })(integrationsChatMessageContract);
+    const response = await accept(
+      client.sendMessage({
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: `user_${randomUUID()}`,
+            orgId: `org_${randomUUID()}`,
+          })}`,
+        },
+        body: { thread: randomUUID(), text: "hello" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 403 when sandbox token lacks chat-message:write", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
