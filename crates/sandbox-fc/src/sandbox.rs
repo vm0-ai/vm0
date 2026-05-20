@@ -1525,6 +1525,7 @@ fn supervised_stdout_receiver(
     Box<dyn FnOnce() + Send + 'static>,
 ) {
     let (stdout_tx, stdout_rx) = mpsc::channel(queue_capacity.max(1));
+    let stdout_closed = stdout_tx.clone();
     let close = CancellationToken::new();
     let task_close = close.clone();
 
@@ -1533,6 +1534,9 @@ fn supervised_stdout_receiver(
             tokio::select! {
                 biased;
                 () = task_close.cancelled() => {
+                    break;
+                }
+                () = stdout_closed.closed() => {
                     break;
                 }
                 event = stream_rx.recv() => {
@@ -4884,6 +4888,19 @@ mod tests {
         assert_eq!(first.bytes, b"before");
         assert_eq!(second.bytes, b"after");
         assert!(stdout_rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn supervised_stdout_receiver_dropping_output_receiver_stops_adapter() {
+        let (stream_tx, stream_rx) = mpsc::channel(1);
+        let (stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
+
+        drop(close);
+        drop(stdout_rx);
+
+        tokio::time::timeout(Duration::from_secs(1), stream_tx.closed())
+            .await
+            .expect("stdout adapter kept the supervised stream receiver alive");
     }
 
     #[test]
