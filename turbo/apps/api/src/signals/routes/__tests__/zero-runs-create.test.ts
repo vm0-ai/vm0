@@ -212,6 +212,9 @@ async function fixture(): Promise<UsageInsightFixture> {
     ],
   });
   context.mocks.s3.send.mockResolvedValue({});
+  context.mocks.s3.getSignedUrl.mockResolvedValue(
+    "https://r2.example.com/archive.tar.gz?sig=test",
+  );
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   return created;
 }
@@ -486,7 +489,10 @@ describe("POST /api/zero/runs", () => {
         [FeatureSwitchKey.SandboxIoLimiters]: true,
       },
     });
-    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      framework: "codex",
+    });
     const first = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
