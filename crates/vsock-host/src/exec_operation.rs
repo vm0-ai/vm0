@@ -116,22 +116,49 @@ pub struct ExecStreamRequest<'a> {
 /// Exec control policy for supervised host operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SupervisedExecControl {
+    /// Do not register an exec-control route for the operation.
     Disabled,
+    /// Register an exec-control route.
+    ///
+    /// When `sink` is true, the guest also exposes the bootstrap endpoint to
+    /// the child process through the process-control environment variable.
     Enabled { sink: bool },
 }
 
 /// Request parameters for starting a supervised exec operation.
 pub struct SupervisedExecRequest<'a> {
+    /// Guest-side process timeout policy.
+    ///
+    /// `ExecTimeoutPolicy::None` lets the process run until it exits, is
+    /// cancelled, or the connection closes.
     pub timeout: ExecTimeoutPolicy,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Stdout output policy requested from the guest.
     pub stdout: ExecOutputPolicy,
+    /// Stderr output policy requested from the guest.
     pub stderr: ExecOutputPolicy,
+    /// Exit codes that should not be treated as notable in diagnostics.
     pub expected_exit_codes: &'a [i32],
+    /// Optional exec-control route for this supervised operation.
     pub control: SupervisedExecControl,
+    /// Optional bounded host-side output event queue override.
+    ///
+    /// `None` uses the default queue capacity when either output policy
+    /// streams, and creates no queue when neither output policy streams.
+    /// `Some` is valid only when stdout or stderr streams; zero and oversized
+    /// capacities are rejected.
     pub stream_queue_capacity: Option<usize>,
+    /// Maximum time to wait for the guest `exec_started` acknowledgement.
+    ///
+    /// If this elapses after the start frame is written, the host sends
+    /// `MSG_EXEC_CANCEL` for the operation before returning a timeout error.
     pub start_timeout: Duration,
 }
 
@@ -784,14 +811,17 @@ pub struct SupervisedExecHandle {
 }
 
 impl SupervisedExecHandle {
+    /// Guest process id reported by the `exec_started` acknowledgement.
     pub fn pid(&self) -> u32 {
         self.pid
     }
 
+    /// Return a cloneable exec-control handle when control was enabled.
     pub fn control_handle(&self) -> Option<ExecControlHandle> {
         self.control.clone()
     }
 
+    /// Send an exec-control request for this supervised operation.
     pub async fn control(
         &self,
         message_id: &str,
@@ -810,6 +840,7 @@ impl SupervisedExecHandle {
             .await
     }
 
+    /// Take the bounded output event receiver for streaming operations.
     pub fn take_stream_receiver(&mut self) -> Option<mpsc::Receiver<ExecOutputEvent>> {
         self.stream_rx.take()
     }
@@ -823,10 +854,18 @@ impl SupervisedExecHandle {
         }
     }
 
+    /// Wait for the terminal exec result.
+    ///
+    /// On timeout, this abandons the host-side operation registration but does
+    /// not send `MSG_EXEC_CANCEL`.
     pub async fn wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         self.wait_with_timeout(timeout, false).await
     }
 
+    /// Send `MSG_EXEC_CANCEL` and wait for the terminal exec result.
+    ///
+    /// If the terminal result is already available before cancel is sent, this
+    /// returns that result without sending a duplicate cancel frame.
     pub async fn cancel_and_wait(self, timeout: Duration) -> io::Result<ExecOperationResult> {
         let cancel_label_log = self.diagnostic.label_log.clone();
         let registered_at = self.diagnostic.registered_at;
@@ -980,6 +1019,7 @@ pub struct ExecControlHandle {
 }
 
 impl ExecControlHandle {
+    /// Send an exec-control request and require a delivered acknowledgement.
     pub async fn control(
         &self,
         message_id: &str,
@@ -996,6 +1036,7 @@ impl ExecControlHandle {
         .into_ack()
     }
 
+    /// Send an exec-control request and return the raw guest outcome.
     pub async fn control_with_write_observer(
         &self,
         message_id: &str,
