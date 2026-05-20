@@ -118,31 +118,14 @@ export function buildTelegramResponse(
 }
 
 /**
- * Build a structured error response for Telegram.
+ * Build an error response for Telegram without adding a title wrapper.
  */
 export function buildTelegramErrorResponse(
   errorDetail: string,
   logsUrl?: string,
   footerText?: string,
 ): string {
-  const header = `❌ <b>Agent Execution Error</b>`;
-  const content = markdownToTelegramHtml(errorDetail);
-  const footers: string[] = [];
-
-  if (logsUrl) {
-    footers.push(
-      mutedTelegramFooter(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`),
-    );
-  }
-  if (footerText) {
-    footers.push(mutedTelegramFooter(footerText));
-  }
-
-  if (footers.length === 0) {
-    return `${header}\n\n${content}`;
-  }
-
-  return `${header}\n\n${content}\n\n${footers.join("\n")}`;
+  return buildTelegramResponse(errorDetail, logsUrl, footerText);
 }
 
 /**

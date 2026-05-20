@@ -178,6 +178,13 @@ describe("buildTelegramResponse", () => {
 });
 
 describe("buildTelegramErrorResponse", () => {
+  it("should not add an error title wrapper", () => {
+    const result = buildTelegramErrorResponse("failed");
+
+    expect(result).toBe("failed");
+    expect(result).not.toContain("Agent Execution Error");
+  });
+
   it("should use the Slack-aligned audit label for error footers", () => {
     const result = buildTelegramErrorResponse(
       "failed",
@@ -199,8 +206,6 @@ describe("buildTelegramErrorResponse", () => {
 
     expect(result).toBe(
       [
-        "❌ <b>Agent Execution Error</b>",
-        "",
         "failed",
         "",
         '<i><a href="https://example.com/logs">📋 Audit</a></i>',

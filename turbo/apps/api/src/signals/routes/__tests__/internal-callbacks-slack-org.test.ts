@@ -514,7 +514,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(firstPostMessageCall().text).toContain(
+    expect(firstPostMessageCall().text).toBe(
       "Oops, something went wrong. Please try again later.",
     );
     await expect(findThreadSession(fixture)).resolves.toBeNull();
@@ -532,7 +532,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(firstPostMessageCall().text).toContain(
+    expect(firstPostMessageCall().text).toBe(
       "Cannot continue session from checkpoint",
     );
   });

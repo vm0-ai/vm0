@@ -31,6 +31,7 @@ export {
   formatChatgptCodexUsageLimitError,
   formatRunErrorForExternalSurface,
   isActionableRunError,
+  isGenericRunErrorForDisplay,
   RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,

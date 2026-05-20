@@ -6,7 +6,6 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   internalCallbacksSlackOrgContract,
   slackOrgCallbackPayloadSchema,
@@ -41,6 +40,7 @@ import { decryptSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
+import { formatRunErrorLikeWebMessage } from "../services/zero-chat-thread.service";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
 
@@ -55,6 +55,7 @@ interface RunContext {
   readonly prompt: string;
   readonly sessionId: string | null;
   readonly lastEventSequence: number | null;
+  readonly chatThreadId: string | null;
 }
 
 interface SlackInstallation {
@@ -120,8 +121,10 @@ async function loadRunContext(args: {
       prompt: agentRuns.prompt,
       sessionId: agentRuns.sessionId,
       lastEventSequence: agentRuns.lastEventSequence,
+      chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(eq(agentRuns.id, args.runId))
     .limit(1);
   args.signal.throwIfAborted();
@@ -352,15 +355,11 @@ async function saveOrgThreadSession(args: {
 
 function buildResponseText(args: {
   readonly status: TerminalStatus;
-  readonly error: string | undefined;
+  readonly errorText: string | undefined;
   readonly output: string | undefined;
 }): string {
   if (args.status === "failed") {
-    const error = formatRunErrorForExternalSurface({
-      code: "INTERNAL_SERVER_ERROR",
-      message: args.error ?? "Agent execution failed.",
-    });
-    return `Error: ${error}`;
+    return args.errorText ?? "Agent execution failed.";
   }
   return args.output ?? "Task completed successfully.";
 }
@@ -439,6 +438,11 @@ async function handleCompletion(args: {
     orgId: string,
     userId: string,
   ) => Promise<Record<string, boolean>>;
+  readonly formatRunError: (params: {
+    readonly runId: string;
+    readonly chatThreadId: string | null | undefined;
+    readonly errorMessage: string;
+  }) => Promise<string>;
   readonly saveRunSummary: (
     runId: string,
     prompt: string,
@@ -495,9 +499,19 @@ async function handleCompletion(args: {
     : undefined;
   args.signal.throwIfAborted();
 
+  const errorText =
+    args.status === "failed"
+      ? await args.formatRunError({
+          runId: args.runId,
+          chatThreadId: run?.chatThreadId,
+          errorMessage: args.error ?? "Agent execution failed.",
+        })
+      : undefined;
+  args.signal.throwIfAborted();
+
   const responseText = buildResponseText({
     status: args.status,
-    error: args.error,
+    errorText,
     output,
   });
   const client = createSlackClient(botToken);
@@ -565,6 +579,9 @@ const handleSlackOrgCallback$ = command(
       payload,
       getFeatureOverrides: (orgId, userId) => {
         return get(userFeatureSwitchOverrides(orgId, userId));
+      },
+      formatRunError: (params) => {
+        return get(formatRunErrorLikeWebMessage(params));
       },
       saveRunSummary: (runId, prompt, resultText) => {
         return set(

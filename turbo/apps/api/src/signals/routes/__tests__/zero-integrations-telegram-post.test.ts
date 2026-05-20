@@ -390,7 +390,7 @@ async function postWebhook(args: {
 }
 
 function callbackHeaders(rawBody: string) {
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = Math.floor(nowDate().getTime() / 1000);
   return {
     "content-type": "application/json",
     "X-VM0-Timestamp": String(timestamp),

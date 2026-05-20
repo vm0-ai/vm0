@@ -683,7 +683,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(text).toContain("<i>Responded by Responder · Claude Opus 4.7</i>");
   });
 
-  it("deletes legacy thinking placeholders and renders failed callbacks", async () => {
+  it("deletes legacy thinking placeholders and formats generic failed callbacks like Web", async () => {
     const fixture = await track(seedFixture());
     const telegram = telegramApiMocks();
 
@@ -698,10 +698,29 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(response.status).toBe(200);
     expect(telegram.deleteMessages).toHaveLength(1);
     const text = telegram.sentMessages[0]?.text ?? "";
-    expect(text).toContain("<b>Agent Execution Error</b>");
+    expect(text).not.toContain("Agent Execution Error");
     expect(text).toContain(
-      '<a href="https://example.com/connect?agentId=123">连接 Notion</a>',
+      "Oops, something went wrong. Please try again later.",
     );
+    expect(text).not.toContain("连接 Notion");
+  });
+
+  it("preserves actionable failed callback errors like Web", async () => {
+    const fixture = await track(seedFixture());
+    const telegram = telegramApiMocks();
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "Cannot continue session from checkpoint",
+      payload: fixture.payload,
+    });
+
+    expect(response.status).toBe(200);
+    const text = telegram.sentMessages[0]?.text ?? "";
+    expect(text).not.toContain("Agent Execution Error");
+    expect(text).toContain("Cannot continue session from checkpoint");
   });
 
   it("does not quote DM replies and replaces the DM thread mapping", async () => {

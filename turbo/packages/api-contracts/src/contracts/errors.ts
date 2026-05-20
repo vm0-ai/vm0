@@ -139,10 +139,18 @@ export function isActionableRunError(errorMessage: string): boolean {
   });
 }
 
+export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
+  const normalizedErrorMessage = errorMessage.trim() || "Run failed";
+  return (
+    !formatChatgptCodexUsageLimitError(normalizedErrorMessage) &&
+    !isActionableRunError(normalizedErrorMessage)
+  );
+}
+
 /**
- * Plain-text run error copy that matches the Web chat error behavior.
- * Actionable allowlisted errors are shown as-is; generic failures are hidden
- * behind the same transient "Oops" message Web chat uses.
+ * Plain-text run error copy shared by Web chat and external integrations.
+ * Web may wrap generic failures with its report-link affordance after this
+ * shared classification step.
  */
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
@@ -155,9 +163,9 @@ export function formatRunErrorForExternalSurface(params: {
     return chatgptCodexUsageLimitMessage;
   }
 
-  return isActionableRunError(errorMessage)
-    ? errorMessage
-    : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+  return isGenericRunErrorForDisplay(errorMessage)
+    ? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
+    : errorMessage;
 }
 
 const CHATGPT_CODEX_USAGE_DETAILS_URL =

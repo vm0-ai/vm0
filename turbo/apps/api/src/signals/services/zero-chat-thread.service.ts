@@ -11,9 +11,9 @@ import {
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
-  formatChatgptCodexUsageLimitError,
+  formatRunErrorForExternalSurface,
   isActionableRunError,
+  isGenericRunErrorForDisplay,
 } from "@vm0/api-contracts/contracts/errors";
 import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -392,21 +392,22 @@ function genericErrorStreakForRun(params: {
   });
 }
 
-export function formatChatRunErrorMessage(params: {
-  readonly chatThreadId: string;
+export function formatRunErrorLikeWebMessage(params: {
+  readonly chatThreadId?: string | null;
   readonly runId: string;
   readonly errorMessage: string;
 }): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const errorMessage = params.errorMessage.trim() || "Run failed";
-    const chatgptCodexUsageLimitMessage =
-      formatChatgptCodexUsageLimitError(errorMessage);
-    if (chatgptCodexUsageLimitMessage) {
-      return chatgptCodexUsageLimitMessage;
+    const displayErrorMessage = formatRunErrorForExternalSurface({
+      code: "INTERNAL_SERVER_ERROR",
+      message: errorMessage,
+    });
+    if (!isGenericRunErrorForDisplay(errorMessage)) {
+      return displayErrorMessage;
     }
-
-    if (isActionableRunError(errorMessage)) {
-      return errorMessage;
+    if (!params.chatThreadId) {
+      return displayErrorMessage;
     }
 
     const streak = await get(
@@ -419,8 +420,16 @@ export function formatChatRunErrorMessage(params: {
 
     return streak >= REPORT_ERROR_STREAK_THRESHOLD
       ? buildReportableErrorMessage(params.runId)
-      : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+      : displayErrorMessage;
   });
+}
+
+export function formatChatRunErrorMessage(params: {
+  readonly chatThreadId: string;
+  readonly runId: string;
+  readonly errorMessage: string;
+}): Computed<Promise<string>> {
+  return formatRunErrorLikeWebMessage(params);
 }
 
 function chatMessageStatus(row: ChatMessageRow): string | undefined {
