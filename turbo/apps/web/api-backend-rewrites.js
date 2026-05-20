@@ -857,6 +857,10 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/integrations/slack/message",
   ],
   [
+    "/api/zero/integrations/telegram/bots",
+    "/api/zero/integrations/telegram/bots",
+  ],
+  [
     "/api/zero/integrations/telegram/message",
     "/api/zero/integrations/telegram/message",
   ],

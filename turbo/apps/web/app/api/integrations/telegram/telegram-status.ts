@@ -253,29 +253,6 @@ async function checkTelegramTokenStatus(
   }
 }
 
-export async function buildTelegramBot(
-  installation: TelegramInstallation,
-  userId: string,
-  tokenStatusOverride?: TelegramTokenStatus,
-): Promise<TelegramBot> {
-  const [compose, userLink, tokenStatus] = await Promise.all([
-    getDefaultCompose(installation),
-    getTelegramUserLink(installation.telegramBotId, userId),
-    tokenStatusOverride ?? checkTelegramTokenStatus(installation),
-  ]);
-
-  return {
-    id: installation.telegramBotId,
-    username: installation.botUsername,
-    avatarUrl: buildTelegramBotAvatarUrl(installation.telegramBotId),
-    agent: compose ? { id: compose.id, name: compose.name } : null,
-    isOwner: installation.ownerUserId === userId,
-    isConnected: !!userLink,
-    connectedUser: userLink,
-    tokenStatus,
-  };
-}
-
 export async function buildOfficialTelegramBot(params: {
   orgId: string;
   userId: string;

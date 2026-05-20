@@ -240,6 +240,28 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the token has no active organization membership", async () => {
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const token = mintZeroToken({
+      userId,
+      orgId,
+      capabilities: ["telegram:read"],
+    });
+    const client = setupApp({ context })(integrationsTelegramBotListContract);
+
+    const response = await accept(
+      client.listBots({ headers: { authorization: `Bearer ${token}` } }),
+      [401],
+    );
+
+    expectUnauthorized(response.body);
+  });
+
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({ context })(integrationsTelegramBotListContract);
@@ -271,7 +293,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const otherOrgBotId = newTelegramBotId();
 
     context.mocks.telegram.getMe.mockResolvedValue({
-      id: 1,
+      id: Number(ownerBotId),
       is_bot: true,
       first_name: "Bot",
       username: "x",
@@ -287,6 +309,17 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     );
     builderA.composeIds.push(ownerInstall.composeId);
     builderA.telegramBotIds.push(ownerInstall.telegramBotId);
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: ownerInstall.telegramBotId,
+        telegramUserId: "tg-owner",
+        telegramUsername: "owner_tg",
+        telegramDisplayName: "Owner Telegram",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
 
     const orgInstall = await store.set(
       seedTelegramInstallation$,
@@ -333,9 +366,29 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
         expect.objectContaining({
           id: OFFICIAL_TELEGRAM_BOT_ID,
           kind: "official",
+          isOwner: false,
+          official: expect.objectContaining({
+            linkedTelegramUserId: null,
+          }),
         }),
-        expect.objectContaining({ id: ownerBotId, isOwner: true }),
-        expect.objectContaining({ id: orgBotId, isOwner: false }),
+        expect.objectContaining({
+          id: ownerBotId,
+          username: `bot_${ownerBotId}`,
+          isOwner: true,
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg-owner",
+            telegramUsername: "owner_tg",
+            telegramDisplayName: "Owner Telegram",
+          },
+          tokenStatus: "valid",
+          agent: expect.objectContaining({ id: ownerInstall.composeId }),
+        }),
+        expect.objectContaining({
+          id: orgBotId,
+          isOwner: false,
+          isConnected: false,
+        }),
       ]),
     );
     expect(

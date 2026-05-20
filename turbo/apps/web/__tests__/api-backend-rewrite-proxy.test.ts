@@ -830,6 +830,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero integrations Telegram bots rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram/bots"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/bots/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram/bot"),
+    ).toBe(false);
+  });
+
   it("matches the zero integrations Telegram message rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/telegram/message"),
