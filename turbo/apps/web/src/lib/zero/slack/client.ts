@@ -67,24 +67,6 @@ export function createSlackClient(token: string): WebClient {
 }
 
 /**
- * Open a DM channel with a Slack user
- *
- * @param client - Slack WebClient
- * @param userId - Slack user ID
- * @returns The DM channel ID
- */
-export async function openDMChannel(
-  client: WebClient,
-  userId: string,
-): Promise<string> {
-  const result = await client.conversations.open({ users: userId });
-  if (!result.channel?.id) {
-    throw new Error("Failed to open DM channel");
-  }
-  return result.channel.id;
-}
-
-/**
  * Post a message to a Slack channel or thread
  *
  * @param client - Slack WebClient

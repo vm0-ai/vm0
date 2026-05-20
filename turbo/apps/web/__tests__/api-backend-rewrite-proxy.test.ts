@@ -756,7 +756,24 @@ describe("API backend rewrite proxy behavior", () => {
       false,
     );
     expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram/message"),
+    ).toBe(false);
+  });
+
+  it("matches the zero integrations Slack message rewrite path exactly", () => {
+    expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/message"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/slack/message/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram/message"),
     ).toBe(false);
   });
 

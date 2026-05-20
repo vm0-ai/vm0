@@ -162,6 +162,28 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the token has no active organization membership", async () => {
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const token = zeroToken({ userId, orgId, runId: "run-1" });
+
+    const client = setupApp({ context })(integrationsSlackMessageContract);
+    const response = await accept(
+      client.sendMessage({
+        body: { channel: "C123", text: "hello" },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 403 when sandbox token lacks slack:write", async () => {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
