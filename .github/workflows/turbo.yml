@@ -333,17 +333,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Ensure no generated firewall files are tracked
-        run: |
-          MATCHES=$(git ls-files \
-            'turbo/packages/connectors/src/firewalls/*.generated.ts')
-          if [ -n "$MATCHES" ]; then
-            echo "::error::Generated firewall files must not be committed:"
-            echo "$MATCHES"
-            echo ""
-            echo "These files are produced by @vm0/firewalls-generator on postinstall"
-            echo "(see package .gitignore files). Fix: git rm --cached <files>"
-            exit 1
-          fi
+        run: ./scripts/block-generated-firewalls.sh
 
   # Lint jobs - split into 4 parallel jobs for faster CI
   lint-eslint:

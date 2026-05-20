@@ -67,3 +67,8 @@ pre-commit:
       fail_text: |
         File size check failed. Some staged files exceed the 1MB limit.
         Run 'git diff --cached --name-only' to see staged files.
+    - name: block-generated-firewalls
+      run: ./scripts/block-generated-firewalls.sh
+      fail_text: |
+        Generated firewall files must not be committed.
+        Run 'git rm --cached -- <file>' for each generated firewall file.
