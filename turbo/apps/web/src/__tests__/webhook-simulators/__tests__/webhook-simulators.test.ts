@@ -1,10 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { reloadEnv } from "../../../env";
+import { describe, it, expect, vi } from "vitest";
 import { invokeCron } from "../cron";
-import {
-  simulateGitHubInstallation,
-  simulateGitHubIssueOpened,
-} from "../github";
 
 describe("webhook-simulators", () => {
   describe("cron", () => {
@@ -20,32 +15,6 @@ describe("webhook-simulators", () => {
       const request = handler.mock.calls[0]![0] as Request;
       expect(request.method).toBe("GET");
       expect(request.headers.get("authorization")).toMatch(/^Bearer .+$/);
-    });
-  });
-
-  describe("github", () => {
-    beforeEach(() => {
-      vi.stubEnv("GITHUB_APP_WEBHOOK_SECRET", "test-github-webhook-secret");
-      vi.stubEnv("GITHUB_APP_SLUG", "vm0-bot");
-      reloadEnv();
-    });
-
-    it("simulateGitHubInstallation produces valid signature", async () => {
-      const response = await simulateGitHubInstallation(
-        99999,
-        55555,
-        "created",
-      );
-      // If signature was invalid, we'd get 401
-      expect(response.status).not.toBe(401);
-    });
-
-    it("simulateGitHubIssueOpened produces valid signature", async () => {
-      const response = await simulateGitHubIssueOpened(99999, {
-        number: 42,
-        title: "Test Issue",
-      });
-      expect(response.status).not.toBe(401);
     });
   });
 });

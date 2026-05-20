@@ -7,9 +7,4 @@ export {
   simulateStripeSubscriptionDeleted,
 } from "./stripe";
 
-export {
-  simulateGitHubInstallation,
-  simulateGitHubIssueOpened,
-} from "./github";
-
 export { invokeCron } from "./cron";

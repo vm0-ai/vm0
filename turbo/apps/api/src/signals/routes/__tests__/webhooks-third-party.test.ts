@@ -1,4 +1,10 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
+import {
+  createHmac,
+  generateKeyPairSync,
+  randomInt,
+  randomUUID,
+} from "node:crypto";
 
 import {
   agentComposes,
@@ -21,11 +27,13 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { storages } from "@vm0/db/schema/storage";
 import { command, createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { clearAllDetached } from "../../utils";
 import {
@@ -42,6 +50,11 @@ const context = testContext();
 const store = createStore();
 createZeroRouteMocks(context);
 
+const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
+const GITHUB_WEBHOOK_SECRET = "github-secret";
+const GITHUB_APP_SLUG = "vm0-agent";
+const GITHUB_APP_ID = "123456";
+
 interface AppResponse {
   readonly status: number;
   readonly body: unknown;
@@ -51,6 +64,8 @@ interface AppResponse {
 interface GitHubWebhookFixture extends UsageInsightFixture {
   readonly composeId: string;
   readonly installationDbId: string;
+  readonly remoteInstallationId: string;
+  readonly githubUserId: string;
 }
 
 interface StripeFixture {
@@ -63,8 +78,342 @@ interface ClerkFixture {
   readonly userId: string;
 }
 
+interface GitHubUserPayload {
+  readonly id: number;
+  readonly login: string;
+  readonly type: string;
+}
+
+interface GitHubLabelPayload {
+  readonly id: number;
+  readonly name: string;
+}
+
+interface GitHubIssuePayload {
+  readonly number: number;
+  readonly title: string;
+  readonly body: string | null;
+  readonly labels: readonly GitHubLabelPayload[];
+  readonly user: GitHubUserPayload;
+}
+
+interface GitHubRepositoryPayload {
+  readonly full_name: string;
+}
+
+interface GitHubInstallationRefPayload {
+  readonly id: number;
+}
+
+interface GitHubIssuesPayload {
+  readonly action: string;
+  readonly issue: GitHubIssuePayload;
+  readonly label?: GitHubLabelPayload;
+  readonly repository: GitHubRepositoryPayload;
+  readonly installation: GitHubInstallationRefPayload;
+  readonly sender: GitHubUserPayload;
+}
+
+interface GitHubCommentPayload {
+  readonly id: number;
+  readonly body: string;
+  readonly user: GitHubUserPayload;
+}
+
+interface GitHubIssueCommentPayload {
+  readonly action: string;
+  readonly issue: GitHubIssuePayload;
+  readonly comment: GitHubCommentPayload;
+  readonly repository: GitHubRepositoryPayload;
+  readonly installation: GitHubInstallationRefPayload;
+  readonly sender: GitHubUserPayload;
+}
+
+interface GitHubInstallationPayload {
+  readonly action: string;
+  readonly installation: {
+    readonly id: number;
+    readonly account: {
+      readonly id: number;
+      readonly login: string;
+      readonly type: string;
+    };
+  };
+  readonly sender?: {
+    readonly id: number;
+    readonly login: string;
+  };
+}
+
+interface GitHubApiComment {
+  readonly id: number;
+  readonly user: {
+    readonly login: string;
+    readonly type: string;
+  };
+  readonly body: string;
+  readonly created_at: string;
+}
+
+interface GitHubIssuesPayloadOverrides {
+  readonly action?: string;
+  readonly labels?: readonly GitHubLabelPayload[];
+  readonly label?: GitHubLabelPayload;
+  readonly installationId?: string;
+  readonly repo?: string;
+  readonly issueBody?: string | null;
+  readonly issueTitle?: string;
+  readonly senderId?: string;
+}
+
+interface GitHubIssueCommentPayloadOverrides {
+  readonly action?: string;
+  readonly labels?: readonly GitHubLabelPayload[];
+  readonly commentBody?: string;
+  readonly commentId?: number;
+  readonly installationId?: string;
+  readonly repo?: string;
+  readonly senderId?: string;
+  readonly senderLogin?: string;
+  readonly senderType?: string;
+}
+
 function signGithub(secret: string, body: string): string {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+}
+
+function newPrivateKeyBase64(): string {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" });
+  return Buffer.from(pem).toString("base64");
+}
+
+function mockGitHubWebhookEnv(): void {
+  mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+  mockOptionalEnv("GITHUB_APP_SLUG", GITHUB_APP_SLUG);
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  context.mocks.s3.send.mockResolvedValue({});
+}
+
+function mockGitHubAppCredentials(): void {
+  mockOptionalEnv("GITHUB_APP_ID", GITHUB_APP_ID);
+  mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", newPrivateKeyBase64());
+}
+
+function setupGitHubApiMocks(args: {
+  readonly installationId: string;
+  readonly comments?: readonly GitHubApiComment[];
+}): void {
+  server.use(
+    http.post(
+      `https://api.github.com/app/installations/${args.installationId}/access_tokens`,
+      () => {
+        return HttpResponse.json({
+          token: "ghs_test_token",
+          expires_at: "2099-01-01T00:00:00Z",
+        });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
+      () => {
+        return HttpResponse.json(args.comments ?? []);
+      },
+    ),
+    http.post(
+      "https://api.github.com/repos/:owner/:repo/issues/comments/:commentId/reactions",
+      () => {
+        return HttpResponse.json({ id: 2468 });
+      },
+    ),
+  );
+}
+
+function gitHubWebhookHeaders(args: {
+  readonly event: string;
+  readonly body: string;
+  readonly secret?: string;
+}): Record<string, string> {
+  const secret = args.secret ?? GITHUB_WEBHOOK_SECRET;
+  return {
+    "content-type": "application/json",
+    "x-hub-signature-256": signGithub(secret, args.body),
+    "x-github-event": args.event,
+    "x-github-delivery": `delivery-${randomUUID()}`,
+  };
+}
+
+async function postGitHubWebhookBody(args: {
+  readonly event: string;
+  readonly body: string;
+  readonly includeGitHubHeaders?: boolean;
+  readonly headers?: HeadersInit;
+}): Promise<AppResponse> {
+  const headers =
+    args.includeGitHubHeaders === false
+      ? { "content-type": "application/json" }
+      : gitHubWebhookHeaders({ event: args.event, body: args.body });
+  const mergedHeaders: Record<string, string> = { ...headers };
+  if (args.headers) {
+    for (const [key, value] of new Headers(args.headers)) {
+      mergedHeaders[key] = value;
+    }
+  }
+
+  return await postRaw({
+    path: GITHUB_WEBHOOK_PATH,
+    body: args.body,
+    headers: mergedHeaders,
+  });
+}
+
+async function postGitHubWebhook(args: {
+  readonly event: string;
+  readonly payload: unknown;
+  readonly includeGitHubHeaders?: boolean;
+  readonly headers?: HeadersInit;
+}): Promise<AppResponse> {
+  return await postGitHubWebhookBody({
+    event: args.event,
+    body: JSON.stringify(args.payload),
+    includeGitHubHeaders: args.includeGitHubHeaders,
+    headers: args.headers,
+  });
+}
+
+function githubUser(args: {
+  readonly id: string;
+  readonly login?: string;
+  readonly type?: string;
+}): GitHubUserPayload {
+  return {
+    id: Number(args.id),
+    login: args.login ?? "linked-user",
+    type: args.type ?? "User",
+  };
+}
+
+function buildGitHubIssuePayload(
+  fixture: GitHubWebhookFixture,
+  overrides: GitHubIssuesPayloadOverrides = {},
+): GitHubIssuePayload {
+  const sender = githubUser({ id: overrides.senderId ?? fixture.githubUserId });
+  return {
+    number: 42,
+    title: overrides.issueTitle ?? "Test Issue",
+    body:
+      overrides.issueBody !== undefined
+        ? overrides.issueBody
+        : "This is a test issue body",
+    labels: overrides.labels ?? [{ id: 1, name: GITHUB_APP_SLUG }],
+    user: sender,
+  };
+}
+
+function buildGitHubIssuesPayload(
+  fixture: GitHubWebhookFixture,
+  overrides: GitHubIssuesPayloadOverrides = {},
+): GitHubIssuesPayload {
+  const sender = githubUser({ id: overrides.senderId ?? fixture.githubUserId });
+  return {
+    action: overrides.action ?? "opened",
+    issue: buildGitHubIssuePayload(fixture, overrides),
+    ...(overrides.label ? { label: overrides.label } : {}),
+    repository: { full_name: overrides.repo ?? "vm0-ai/vm0" },
+    installation: {
+      id: Number(overrides.installationId ?? fixture.remoteInstallationId),
+    },
+    sender,
+  };
+}
+
+function buildGitHubIssueCommentPayload(
+  fixture: GitHubWebhookFixture,
+  overrides: GitHubIssueCommentPayloadOverrides = {},
+): GitHubIssueCommentPayload {
+  const sender = githubUser({
+    id: overrides.senderId ?? fixture.githubUserId,
+    login: overrides.senderLogin,
+    type: overrides.senderType,
+  });
+  return {
+    action: overrides.action ?? "created",
+    issue: buildGitHubIssuePayload(fixture, {
+      labels: overrides.labels ?? [],
+      repo: overrides.repo,
+      senderId: overrides.senderId,
+    }),
+    comment: {
+      id: overrides.commentId ?? 77,
+      body:
+        overrides.commentBody ?? `@${GITHUB_APP_SLUG}[bot] please handle this`,
+      user: sender,
+    },
+    repository: { full_name: overrides.repo ?? "vm0-ai/vm0" },
+    installation: {
+      id: Number(overrides.installationId ?? fixture.remoteInstallationId),
+    },
+    sender,
+  };
+}
+
+function buildGitHubInstallationPayload(args: {
+  readonly action?: string;
+  readonly installationId: string;
+  readonly targetId: string;
+  readonly accountLogin?: string;
+  readonly senderId?: string;
+}): GitHubInstallationPayload {
+  return {
+    action: args.action ?? "created",
+    installation: {
+      id: Number(args.installationId),
+      account: {
+        id: Number(args.targetId),
+        login: args.accountLogin ?? "test-org",
+        type: "Organization",
+      },
+    },
+    sender: {
+      id: Number(args.senderId ?? "12345"),
+      login: "installer-user",
+    },
+  };
+}
+
+async function selectGitHubRuns(fixture: GitHubWebhookFixture) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      id: agentRuns.id,
+      prompt: agentRuns.prompt,
+      appendSystemPrompt: agentRuns.appendSystemPrompt,
+      triggerSource: zeroRuns.triggerSource,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.orgId, fixture.orgId),
+        eq(agentRuns.userId, fixture.userId),
+      ),
+    );
+}
+
+async function selectGitHubCallbacks(runId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select({
+      id: agentRunCallbacks.id,
+      url: agentRunCallbacks.url,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+}
+
+function remoteGitHubId(): string {
+  return String(randomInt(1_000_000, 999_999_999));
 }
 
 async function postRaw(args: {
@@ -119,13 +468,24 @@ const deleteGitHubFixture$ = command(
       await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
       signal.throwIfAborted();
     }
-    await db
-      .delete(githubUserLinks)
-      .where(eq(githubUserLinks.installationId, fixture.installationDbId));
+    const installationRows = await db
+      .select({ id: githubInstallations.id })
+      .from(githubInstallations)
+      .where(eq(githubInstallations.defaultComposeId, fixture.composeId));
     signal.throwIfAborted();
-    await db
-      .delete(githubInstallations)
-      .where(eq(githubInstallations.id, fixture.installationDbId));
+    const installationIds = installationRows.map((row) => {
+      return row.id;
+    });
+    if (installationIds.length > 0) {
+      await db
+        .delete(githubUserLinks)
+        .where(inArray(githubUserLinks.installationId, installationIds));
+      signal.throwIfAborted();
+      await db
+        .delete(githubInstallations)
+        .where(inArray(githubInstallations.id, installationIds));
+      signal.throwIfAborted();
+    }
     signal.throwIfAborted();
     await set(deleteUsageInsightFixture$, fixture, signal);
     signal.throwIfAborted();
@@ -143,6 +503,8 @@ const seedGitHubWebhookFixture$ = command(
     signal.throwIfAborted();
     const name = `github-webhook-${randomUUID().slice(0, 8)}`;
     const versionId = randomUUID();
+    const remoteInstallationId = remoteGitHubId();
+    const githubUserId = remoteGitHubId();
 
     const [compose] = await db
       .insert(agentComposes)
@@ -206,7 +568,7 @@ const seedGitHubWebhookFixture$ = command(
     const [installation] = await db
       .insert(githubInstallations)
       .values({
-        installationId: "123456",
+        installationId: remoteInstallationId,
         status: "active",
         defaultComposeId: compose.id,
       })
@@ -217,7 +579,7 @@ const seedGitHubWebhookFixture$ = command(
     }
 
     await db.insert(githubUserLinks).values({
-      githubUserId: "98765",
+      githubUserId,
       installationId: installation.id,
       vm0UserId: fixture.userId,
     });
@@ -227,6 +589,8 @@ const seedGitHubWebhookFixture$ = command(
       ...fixture,
       composeId: compose.id,
       installationDbId: installation.id,
+      remoteInstallationId,
+      githubUserId,
     };
   },
 );
@@ -337,7 +701,7 @@ const trackClerk = createFixtureTracker<ClerkFixture>((fixture) => {
 describe("POST /api/webhooks/github", () => {
   it("returns 503 when GitHub webhook secret is not configured", async () => {
     const response = await postRaw({
-      path: "/api/webhooks/github",
+      path: GITHUB_WEBHOOK_PATH,
       body: "{}",
     });
 
@@ -347,10 +711,25 @@ describe("POST /api/webhooks/github", () => {
     });
   });
 
+  it("rejects requests with missing GitHub webhook headers", async () => {
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: {},
+      includeGitHubHeaders: false,
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toStrictEqual({
+      error: "Missing GitHub webhook headers",
+    });
+  });
+
   it("rejects invalid GitHub signatures", async () => {
-    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", "github-secret");
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     const response = await postRaw({
-      path: "/api/webhooks/github",
+      path: GITHUB_WEBHOOK_PATH,
       body: "{}",
       headers: {
         "x-hub-signature-256": "sha256=bad",
@@ -363,91 +742,375 @@ describe("POST /api/webhooks/github", () => {
     expect(response.body).toStrictEqual({ error: "Invalid signature" });
   });
 
-  it("responds to GitHub ping", async () => {
-    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", "github-secret");
-    const body = JSON.stringify({ zen: "testing" });
+  it("rejects invalid JSON payloads", async () => {
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
 
-    const response = await postRaw({
-      path: "/api/webhooks/github",
-      body,
-      headers: {
-        "x-hub-signature-256": signGithub("github-secret", body),
-        "x-github-event": "ping",
-        "x-github-delivery": "delivery-1",
-      },
+    const response = await postGitHubWebhookBody({
+      event: "issues",
+      body: "not-json",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({ error: "Invalid JSON payload" });
+  });
+
+  it("rejects invalid event payload structures", async () => {
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: { action: "opened" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toStrictEqual({ error: "Invalid payload structure" });
+  });
+
+  it("responds to GitHub ping", async () => {
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+
+    const response = await postGitHubWebhook({
+      event: "ping",
+      payload: { zen: "testing" },
     });
 
     expect(response.status).toBe(200);
     expect(response.body).toStrictEqual({ message: "pong" });
   });
 
-  it("dispatches GitHub issue comments through API-native run creation", async () => {
+  it("dispatches opened issues with the app slug label and GitHub context", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
-    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", "github-secret");
-    mockOptionalEnv("GITHUB_APP_SLUG", "vm0-agent");
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-    context.mocks.s3.send.mockResolvedValue({});
-
-    const body = JSON.stringify({
-      action: "created",
-      issue: {
-        number: 7,
-        title: "Investigate API route",
-        body: "Move the route to apps/api",
-        labels: [],
-        user: { id: 123, login: "reporter", type: "User" },
-      },
-      comment: {
-        id: 77,
-        body: "@vm0-agent[bot] please handle this",
-        user: { id: 98_765, login: "linked-user", type: "User" },
-      },
-      repository: { full_name: "vm0-ai/vm0" },
-      installation: { id: 123_456 },
-      sender: { id: 98_765, login: "linked-user", type: "User" },
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [
+        {
+          id: 12,
+          user: { login: "maintainer", type: "User" },
+          body: "Earlier discussion",
+          created_at: "2026-05-20T00:00:00Z",
+        },
+      ],
     });
 
-    const response = await postRaw({
-      path: "/api/webhooks/github",
-      body,
-      headers: {
-        "x-hub-signature-256": signGithub("github-secret", body),
-        "x-github-event": "issue_comment",
-        "x-github-delivery": "delivery-2",
-      },
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, { action: "opened" }),
     });
     await clearAllDetached();
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({
-        id: agentRuns.id,
-        prompt: agentRuns.prompt,
-        triggerSource: zeroRuns.triggerSource,
-      })
-      .from(agentRuns)
-      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(
-        and(
-          eq(agentRuns.orgId, fixture.orgId),
-          eq(agentRuns.userId, fixture.userId),
-        ),
-      );
-
+    const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.prompt).toBe("@vm0-agent[bot] please handle this");
+    expect(runs[0]?.prompt).toContain(
+      "Based on the GitHub issue above and its discussion",
+    );
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "You are currently running inside: GitHub",
+    );
+    expect(runs[0]?.appendSystemPrompt).toContain("This is a test issue body");
+    expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
     expect(runs[0]?.triggerSource).toBe("github");
 
-    const callbacks = await db
-      .select({ id: agentRunCallbacks.id })
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, runs[0]?.id ?? ""));
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
     expect(callbacks).toHaveLength(1);
+    expect(callbacks[0]?.url).toContain("/api/internal/callbacks/github");
+    expect(callbacks[0]?.payload).toMatchObject({
+      installationId: fixture.installationDbId,
+      repo: "vm0-ai/vm0",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+    });
+  });
+
+  it("dispatches labeled issues only when the added label is the app slug", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "labeled",
+        labels: [
+          { id: 1, name: GITHUB_APP_SLUG },
+          { id: 2, name: "enhancement" },
+        ],
+        label: { id: 1, name: GITHUB_APP_SLUG },
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe("This is a test issue body");
+  });
+
+  it("does not dispatch ignored issue actions or non-matching labels", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const ignoredPayloads: readonly GitHubIssuesPayload[] = [
+      buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        labels: [{ id: 2, name: "bug" }],
+      }),
+      buildGitHubIssuesPayload(fixture, {
+        action: "labeled",
+        labels: [
+          { id: 1, name: GITHUB_APP_SLUG },
+          { id: 2, name: "enhancement" },
+        ],
+        label: { id: 2, name: "enhancement" },
+      }),
+      ...["closed", "edited", "reopened", "deleted"].map((action) => {
+        return buildGitHubIssuesPayload(fixture, { action });
+      }),
+    ];
+
+    for (const payload of ignoredPayloads) {
+      const response = await postGitHubWebhook({
+        event: "issues",
+        payload,
+      });
+      expect(response.status).toBe(200);
+      expect(response.body).toBe("OK");
+      await clearAllDetached();
+    }
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("uses the issue title when an opened issue has a null body", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        issueBody: null,
+        issueTitle: "Fallback title",
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.appendSystemPrompt).toContain("Fallback title");
+    expect(runs[0]?.appendSystemPrompt).toContain(
+      "You are currently running inside: GitHub",
+    );
+  });
+
+  it("dispatches GitHub issue comments through API-native run creation", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "issue_comment",
+      payload: buildGitHubIssueCommentPayload(fixture),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe(`@${GITHUB_APP_SLUG}[bot] please handle this`);
+    expect(runs[0]?.triggerSource).toBe("github");
+
+    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
+    expect(callbacks).toHaveLength(1);
+    expect(callbacks[0]?.payload).toMatchObject({
+      repo: "vm0-ai/vm0",
+      issueNumber: 42,
+      triggerCommentId: "77",
+      triggerCommentBody: `@${GITHUB_APP_SLUG}[bot] please handle this`,
+    });
+  });
+
+  it("does not dispatch ignored issue comments", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const ignoredPayloads: readonly GitHubIssueCommentPayload[] = [
+      buildGitHubIssueCommentPayload(fixture, {
+        labels: [{ id: 1, name: GITHUB_APP_SLUG }],
+        commentBody: "Can you help me fix this?",
+      }),
+      buildGitHubIssueCommentPayload(fixture, {
+        labels: [{ id: 2, name: "bug" }],
+        commentBody: "Just a regular comment",
+      }),
+      buildGitHubIssueCommentPayload(fixture, {
+        commentBody: "Here is the analysis...",
+        senderType: "Bot",
+        senderLogin: `${GITHUB_APP_SLUG}[bot]`,
+      }),
+      buildGitHubIssueCommentPayload(fixture, { action: "edited" }),
+      buildGitHubIssueCommentPayload(fixture, { action: "deleted" }),
+    ];
+
+    for (const payload of ignoredPayloads) {
+      const response = await postGitHubWebhook({
+        event: "issue_comment",
+        payload,
+      });
+      expect(response.status).toBe(200);
+      expect(response.body).toBe("OK");
+      await clearAllDetached();
+    }
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("acknowledges dispatch failures such as missing installations", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        installationId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("acknowledges unknown GitHub events", async () => {
+    mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
+
+    const response = await postGitHubWebhook({
+      event: "push",
+      payload: { ref: "refs/heads/main" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+  });
+
+  it("activates matching pending installations", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+
+    const db = store.set(writeDb$);
+    const targetId = remoteGitHubId();
+    const installationId = remoteGitHubId();
+    await db.insert(githubInstallations).values({
+      status: "pending",
+      targetId,
+      targetType: "Organization",
+      targetName: "pending-org",
+      defaultComposeId: fixture.composeId,
+    });
+    setupGitHubApiMocks({ installationId });
+
+    const response = await postGitHubWebhook({
+      event: "installation",
+      payload: buildGitHubInstallationPayload({
+        installationId,
+        targetId,
+        accountLogin: "activated-org",
+        senderId: fixture.githubUserId,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const [installation] = await db
+      .select({
+        status: githubInstallations.status,
+        installationId: githubInstallations.installationId,
+        encryptedAccessToken: githubInstallations.encryptedAccessToken,
+        targetName: githubInstallations.targetName,
+        adminGithubUserId: githubInstallations.adminGithubUserId,
+      })
+      .from(githubInstallations)
+      .where(eq(githubInstallations.targetId, targetId));
+
+    expect(installation).toMatchObject({
+      status: "active",
+      installationId,
+      targetName: "activated-org",
+      adminGithubUserId: fixture.githubUserId,
+    });
+    expect(installation?.encryptedAccessToken).toStrictEqual(
+      expect.any(String),
+    );
+  });
+
+  it("ignores installation events without a matching pending record", async () => {
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "installation",
+      payload: buildGitHubInstallationPayload({
+        installationId: remoteGitHubId(),
+        targetId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+  });
+
+  it("ignores non-created installation events", async () => {
+    mockGitHubWebhookEnv();
+
+    const response = await postGitHubWebhook({
+      event: "installation",
+      payload: buildGitHubInstallationPayload({
+        action: "deleted",
+        installationId: remoteGitHubId(),
+        targetId: remoteGitHubId(),
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
   });
 });
 

@@ -113,7 +113,7 @@ async function validateCheckpoint(
  * @throws NotFoundError if session doesn't exist
  * @throws UnauthorizedError if session doesn't belong to user
  */
-export async function validateAgentSession(
+async function validateAgentSession(
   agentSessionId: string,
   userId: string,
 ): Promise<{

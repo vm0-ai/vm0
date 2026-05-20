@@ -151,21 +151,6 @@ export {
 } from "./connectors";
 export { createSignedCallbackRequest } from "./callbacks";
 export {
-  insertTestGitHubInstallation,
-  insertTestPendingGitHubInstallation,
-  insertTestGitHubInstallationWithAdmin,
-  insertTestGitHubUserLink,
-  insertTestGitHubIssueSession,
-  insertTestGithubInstallation,
-  insertTestGithubUserLink,
-  findTestGitHubInstallations,
-  findTestGitHubInstallationById,
-  findTestGitHubInstallationsByTargetId,
-  findTestGitHubIssueSession,
-  countGithubUserLinkRows,
-  findTestGitHubUserLinksByVm0UserId,
-} from "./github";
-export {
   PENDING_TELEGRAM_USER_ID,
   createTestTelegramInstallation,
   insertTestTelegramMessages,
