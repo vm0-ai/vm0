@@ -1,7 +1,3 @@
-import { eq, and } from "drizzle-orm";
-import { slackUserAgentPreferences } from "@vm0/db/schema/slack-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { orgMetadata as orgTable } from "@vm0/db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
 import type { UserInfoOptions } from "../../integration-prompt";
@@ -14,77 +10,6 @@ import {
   resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
-
-/**
- * Resolve default agent compose ID from org table.
- * Since zero_agents.id = composeId, defaultAgentId IS the composeId.
- */
-export async function resolveDefaultComposeId(
-  orgId: string,
-): Promise<string | null> {
-  const [orgRow] = await globalThis.services.db
-    .select({ defaultAgentId: orgTable.defaultAgentId })
-    .from(orgTable)
-    .where(eq(orgTable.orgId, orgId))
-    .limit(1);
-
-  return orgRow?.defaultAgentId ?? null;
-}
-
-/**
- * Resolve the user's agent override, or null when no override is set.
- */
-export async function getUserAgentPreference(
-  vm0UserId: string,
-  orgId: string,
-): Promise<string | null> {
-  const [row] = await globalThis.services.db
-    .select({ selectedComposeId: slackUserAgentPreferences.selectedComposeId })
-    .from(slackUserAgentPreferences)
-    .where(
-      and(
-        eq(slackUserAgentPreferences.vm0UserId, vm0UserId),
-        eq(slackUserAgentPreferences.orgId, orgId),
-      ),
-    )
-    .limit(1);
-
-  return row?.selectedComposeId ?? null;
-}
-
-/**
- * Resolve the compose that should respond for this user.
- *
- * Resolution order:
- *   1. If a row exists in `slack_user_agent_preferences` and its
- *      `selectedComposeId` still points to an agent that (a) exists and
- *      (b) belongs to the given org, use it. The org check is a stale-pointer
- *      guard: an override can linger after the target compose is deleted,
- *      archived, or moved to a different org, and silently falling back to
- *      the default is preferable to returning a stale/unauthorized agent.
- *   2. Otherwise return the org default compose id (may be null if the org
- *      has no default configured — callers must handle that).
- *
- * This function is called by the mention / DM / App Home handlers; it must
- * stay cheap (single indexed read + optional zero_agents lookup).
- */
-export async function resolveEffectiveComposeId(
-  vm0UserId: string,
-  orgId: string,
-): Promise<string | null> {
-  const override = await getUserAgentPreference(vm0UserId, orgId);
-  if (override) {
-    const [row] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.id, override), eq(zeroAgents.orgId, orgId)))
-      .limit(1);
-    if (row?.id) {
-      return override;
-    }
-  }
-  return resolveDefaultComposeId(orgId);
-}
 
 /**
  * Build the org connect URL for Slack users.
@@ -177,40 +102,6 @@ export async function fetchConversationContexts(
     : threadExecContext;
 
   return { executionContext };
-}
-
-/**
- * Resolve workspace agent from composeId (= zeroAgents.id).
- * Returns id, name, and displayName from the zero_agents table.
- */
-export async function getWorkspaceAgent(composeId: string): Promise<
-  | {
-      id: string;
-      name: string;
-      displayName: string | null;
-      agentId: string;
-    }
-  | undefined
-> {
-  const db = globalThis.services.db;
-  const [agent] = await db
-    .select({
-      id: zeroAgents.id,
-      name: zeroAgents.name,
-      displayName: zeroAgents.displayName,
-    })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, composeId))
-    .limit(1);
-
-  if (!agent) return undefined;
-
-  return {
-    id: agent.id,
-    name: agent.name,
-    displayName: agent.displayName,
-    agentId: agent.id,
-  };
 }
 
 /**

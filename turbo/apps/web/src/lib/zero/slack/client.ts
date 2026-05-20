@@ -1,5 +1,4 @@
 import { WebClient } from "@slack/web-api";
-import type { View } from "@slack/web-api";
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
@@ -64,24 +63,6 @@ function buildWebClient(token?: string): WebClient {
  */
 export function createSlackClient(token: string): WebClient {
   return buildWebClient(token);
-}
-
-/**
- * Publish an App Home tab view for a user
- *
- * @param client - Slack WebClient
- * @param userId - Slack user ID
- * @param view - Home tab view definition
- */
-export async function publishAppHome(
-  client: WebClient,
-  userId: string,
-  view: View,
-): Promise<void> {
-  await client.views.publish({
-    user_id: userId,
-    view,
-  });
 }
 
 export interface SlackUserInfo {

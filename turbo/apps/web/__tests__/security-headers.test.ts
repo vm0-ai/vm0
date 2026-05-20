@@ -2528,6 +2528,10 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/chat/message",
         },
         {
+          source: "/api/zero/integrations/slack",
+          destination: "https://api.example.test/api/zero/integrations/slack",
+        },
+        {
           source: "/api/zero/integrations/slack/message",
           destination:
             "https://api.example.test/api/zero/integrations/slack/message",
@@ -8219,7 +8223,19 @@ describe("API backend rewrites", () => {
         "/api/zero/integrations/slack/message/extra",
       ),
     ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/messages"),
+    ).toBe(false);
+  });
+
+  it("should match the zero integrations Slack status route for middleware pass-through", async () => {
     expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/integrations/slacks")).toBe(
       false,
     );
   });
@@ -8233,9 +8249,9 @@ describe("API backend rewrites", () => {
         "/api/zero/integrations/slack/connect/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
-      false,
-    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/connects"),
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/connected"),
     ).toBe(false);
@@ -8305,9 +8321,9 @@ describe("API backend rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/integrations/slack/download"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/integrations/slack")).toBe(
-      false,
-    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/slack/downloaded"),
+    ).toBe(false);
   });
 
   it("should match the zero integrations Telegram upload init route for middleware pass-through", async () => {
