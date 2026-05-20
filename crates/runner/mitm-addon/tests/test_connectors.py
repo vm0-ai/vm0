@@ -3554,6 +3554,144 @@ class TestCompiledFirewallMatching:
             "path": "a/b/c",
         }
 
+    def test_matches_raw_for_static_base_boundary_and_query(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.anthropic.com/v1/messages",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "messages", "rules": ["ANY /{path*}"]},
+                    ],
+                }
+            ],
+            name="anthropic",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"anthropic": {"allow": ["messages"], "deny": [], "unknownPolicy": "deny"}}
+
+        url = "https://api.anthropic.com/v1/messages?beta=1"
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["rel_path"] == "/"
+
+        url = "https://api.anthropic.com/v1/messages_fake"
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert compiled is None
+
+    def test_matches_raw_for_parameterized_host_nonstandard_port_rejection(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api-{region}.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        url = "https://api-us.example.com:8443/items"
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert compiled is None
+
+    def test_matches_raw_for_unknown_policy_when_api_has_no_permissions(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [],
+                }
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        url = "https://api.example.com/items"
+
+        allow_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+        raw = matching.match_firewall_request(url, "GET", fws, allow_policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            allow_policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["permission"] == ""
+
+        ask_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "ask"}}
+        raw = matching.match_firewall_request(url, "GET", fws, ask_policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            ask_policies,
+        )
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallBlock)
+
+    def test_matches_raw_for_ask_permission_block(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": [],
+                "ask": ["repo-read"],
+                "deny": [],
+                "unknownPolicy": "allow",
+            }
+        }
+        url = "https://api.github.com/repos/org/repo"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallBlock)
+        assert compiled.permissions == ("repo-read",)
+
     def test_preserves_raw_rule_order_for_any_before_exact_method(self):
         api_entry = {
             "base": "https://api.github.com",

@@ -343,6 +343,39 @@ class TestGetVmContext:
             matching.FirewallAllow,
         )
 
+    def test_successful_registry_change_without_firewalls_clears_compiled_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        assert first_context is not None
+        _, first_compiled = first_context
+        assert first_compiled is not None
+
+        path.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {
+                            "runId": "run-abc-123",
+                            "networkPolicies": {
+                                "example": {
+                                    "allow": [],
+                                    "deny": [],
+                                    "unknownPolicy": "allow",
+                                }
+                            },
+                        }
+                    },
+                    "updatedAt": 1700000000001,
+                }
+            )
+        )
+
+        second_context = registry.get_vm_context("10.200.0.1", str(path))
+        assert second_context is not None
+        _, second_compiled = second_context
+        assert second_compiled is None
+
     def test_parse_failure_preserves_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
         _write_firewall_registry(path)
