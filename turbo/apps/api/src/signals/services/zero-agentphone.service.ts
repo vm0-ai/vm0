@@ -65,6 +65,10 @@ const ORG_SENTINEL_USER_ID = "__org__";
 const MAX_CONTEXT_MESSAGES = 10;
 const AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE =
   "Note: SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
+const AGENTPHONE_GROUP_CONNECT_IN_DM_MESSAGE =
+  "To connect this phone number, message Zero directly in a 1:1 iMessage conversation.";
+const AGENTPHONE_GROUP_ACCOUNT_COMMAND_MESSAGE =
+  "Only the linked sender can use AgentPhone account commands in a group. Message Zero directly to connect or manage your link.";
 
 const AGENTPHONE_DM_ROOT_MESSAGE_ID = "dm";
 export type AgentPhoneChannel = "imessage" | "sms" | "mms";
@@ -206,6 +210,19 @@ function shouldIgnoreAgentPhoneGroupMessage(
   event: AgentPhoneMessageEvent,
 ): boolean {
   return isAgentPhoneGroupEvent(event) && !event.mentioned;
+}
+
+function isAgentPhoneGroupAccountCommand(
+  event: AgentPhoneMessageEvent,
+  commandName: string | undefined,
+): boolean {
+  return (
+    isAgentPhoneGroupEvent(event) &&
+    (commandName === "connect" ||
+      commandName === "disconnect" ||
+      commandName === "new_session" ||
+      commandName === "model")
+  );
 }
 
 function stripZeroMention(text: string): string {
@@ -1444,6 +1461,54 @@ async function sendConnectPrompt(
   );
 }
 
+async function sendGroupConnectInDmPrompt(
+  event: AgentPhoneMessageEvent,
+  signal: AbortSignal,
+): Promise<void> {
+  await sendAgentPhoneText(
+    event,
+    AGENTPHONE_GROUP_CONNECT_IN_DM_MESSAGE,
+    signal,
+  );
+}
+
+async function sendGroupAccountCommandBlockedMessage(
+  event: AgentPhoneMessageEvent,
+  signal: AbortSignal,
+): Promise<void> {
+  await sendAgentPhoneText(
+    event,
+    AGENTPHONE_GROUP_ACCOUNT_COMMAND_MESSAGE,
+    signal,
+  );
+}
+
+async function blockUnauthorizedGroupAccountCommand(args: {
+  readonly db: Db;
+  readonly event: AgentPhoneMessageEvent;
+  readonly commandText: string | undefined;
+  readonly userLink: AgentPhoneUserLink | null;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (!isAgentPhoneGroupAccountCommand(args.event, args.commandText)) {
+    return false;
+  }
+
+  const directUserLink = await resolveAgentPhoneUserLink(
+    args.db,
+    args.event.fromNumber,
+    args.event.channel,
+  );
+  args.signal.throwIfAborted();
+
+  if (directUserLink && directUserLink.id === args.userLink?.id) {
+    return false;
+  }
+
+  await sendGroupAccountCommandBlockedMessage(args.event, args.signal);
+  return true;
+}
+
 async function handleConnectCommand(args: {
   readonly event: AgentPhoneMessageEvent;
   readonly userLink: AgentPhoneUserLink | null;
@@ -1746,6 +1811,34 @@ async function dispatchAgentPhoneCommand(args: {
   }
 }
 
+async function handleAgentPhoneCommandIfPresent(args: {
+  readonly get: ComputedGetter;
+  readonly set: ComputedSetter;
+  readonly db: Db;
+  readonly event: AgentPhoneMessageEvent;
+  readonly userLink: AgentPhoneUserLink | null;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const commandText = parseAgentPhoneCommand(args.event.body);
+  if (commandText === undefined) {
+    return false;
+  }
+
+  if (await blockUnauthorizedGroupAccountCommand({ ...args, commandText })) {
+    return true;
+  }
+
+  return dispatchAgentPhoneCommand({
+    get: args.get,
+    set: args.set,
+    db: args.db,
+    command: commandText,
+    event: args.event,
+    userLink: args.userLink,
+    signal: args.signal,
+  });
+}
+
 async function runAgentForAgentPhone(
   set: ComputedSetter,
   args: {
@@ -1918,13 +2011,11 @@ export const handleAgentPhoneMessage$ = command(
       return;
     }
 
-    const commandText = parseAgentPhoneCommand(params.event.body);
     if (
-      await dispatchAgentPhoneCommand({
+      await handleAgentPhoneCommandIfPresent({
         get,
         set,
         db,
-        command: commandText,
         event: params.event,
         userLink: params.userLink,
         signal,
@@ -1934,6 +2025,11 @@ export const handleAgentPhoneMessage$ = command(
     }
 
     if (!params.userLink) {
+      if (isAgentPhoneGroupEvent(params.event)) {
+        await sendGroupConnectInDmPrompt(params.event, signal);
+        return;
+      }
+
       await sendConnectPrompt(params.event, undefined, signal);
       return;
     }

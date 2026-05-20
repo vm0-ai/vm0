@@ -397,12 +397,15 @@ async function seedAgentPhoneMessage(args: {
   readonly phoneHandle: string;
   readonly userLinkId: string;
   readonly agentphoneAgentId: string;
+  readonly conversationId?: string | null;
+  readonly channel?: "imessage" | "sms";
+  readonly body?: string;
   readonly mediaUrl?: string | null;
   readonly direction?: "inbound" | "outbound";
 }): Promise<void> {
   await writeDb.insert(agentphoneMessages).values({
     agentphoneMessageId: args.messageId,
-    conversationId: null,
+    conversationId: args.conversationId ?? null,
     agentphoneAgentId: args.agentphoneAgentId,
     agentphoneUserLinkId: args.userLinkId,
     phoneHandle: args.phoneHandle,
@@ -410,8 +413,8 @@ async function seedAgentPhoneMessage(args: {
       args.direction === "outbound" ? "+19039853128" : args.phoneHandle,
     toNumber: args.direction === "outbound" ? args.phoneHandle : "+19039853128",
     direction: args.direction ?? "inbound",
-    channel: "sms",
-    body: "hello",
+    channel: args.channel ?? "sms",
+    body: args.body ?? "hello",
     mediaUrl: args.mediaUrl ?? null,
     isBot: args.direction === "outbound",
   });
@@ -947,6 +950,99 @@ describe("AgentPhone migrated API routes", () => {
       isGroup: true,
       rootMessageId: `group:${fixture.conversationId}`,
     });
+  });
+
+  it("does not send signed connect links to iMessage groups", async () => {
+    configureAgentPhoneEnv();
+    const phoneHandle = uniquePhone();
+    const conversationId = uniqueId("conv");
+    const messageId = uniqueId("ap-group-unlinked");
+    await trackPhoneHandle(Promise.resolve({ phoneHandle }));
+    const sendCalls = agentPhoneSendMessage();
+
+    const accepted = await postAgentPhoneWebhook({
+      event: "agent.message",
+      channel: "imessage",
+      data: {
+        id: messageId,
+        agentId: "agt-agentphone",
+        from: phoneHandle,
+        to: "+19039853128",
+        body: "@Zero hello",
+        conversationId,
+        isGroup: true,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    await clearAllDetached();
+
+    expect(sendCalls[0]).toStrictEqual(
+      expect.objectContaining({
+        agent_id: "agt-agentphone",
+        conversation_id: conversationId,
+        reply_to_message_id: messageId,
+      }),
+    );
+    expect(sendCalls[0]?.to_number).toBeUndefined();
+    expect(sendCalls[0]?.body).toContain("message Zero directly");
+    expect(sendCalls[0]?.body).not.toContain("/agentphone/connect?");
+  });
+
+  it("blocks group account commands from conversation-only participants", async () => {
+    configureAgentPhoneEnv();
+    const fixture = await seedAgentPhoneGroupFixture();
+    const userLink = await readAgentPhoneLink(fixture.phoneHandle);
+    if (!userLink) {
+      throw new Error("seeded AgentPhone group fixture has no user link");
+    }
+    const senderPhoneHandle = uniquePhone();
+    const messageId = uniqueId("ap-group-command");
+    await trackPhoneHandle(Promise.resolve({ phoneHandle: senderPhoneHandle }));
+    await seedAgentPhoneMessage({
+      messageId: uniqueId("ap-group-linked"),
+      phoneHandle: fixture.phoneHandle,
+      userLinkId: userLink.id,
+      agentphoneAgentId: "agt-agentphone",
+      conversationId: fixture.conversationId,
+      channel: "imessage",
+      body: "@Zero hello",
+    });
+    const sendCalls = agentPhoneSendMessage();
+
+    const accepted = await postAgentPhoneWebhook({
+      event: "agent.message",
+      channel: "imessage",
+      data: {
+        id: messageId,
+        agentId: "agt-agentphone",
+        from: senderPhoneHandle,
+        to: "+19039853128",
+        body: "/disconnect @Zero",
+        conversationId: fixture.conversationId,
+        isGroup: true,
+      },
+    });
+    expect(accepted.status).toBe(200);
+    await clearAllDetached();
+
+    await expect(
+      readAgentPhoneLink(fixture.phoneHandle),
+    ).resolves.toMatchObject({
+      id: userLink.id,
+      vm0UserId: fixture.userId,
+      orgId: fixture.orgId,
+    });
+    await expect(latestRunForAgentPhoneGroup(fixture)).resolves.toBeUndefined();
+    expect(sendCalls[0]).toStrictEqual(
+      expect.objectContaining({
+        agent_id: "agt-agentphone",
+        conversation_id: fixture.conversationId,
+        reply_to_message_id: messageId,
+      }),
+    );
+    expect(sendCalls[0]?.to_number).toBeUndefined();
+    expect(sendCalls[0]?.body).toContain("Only the linked sender");
+    expect(sendCalls[0]?.body).not.toContain("/agentphone/connect?");
   });
 
   it.each([
