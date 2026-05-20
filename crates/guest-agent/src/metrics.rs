@@ -47,24 +47,10 @@ impl CpuTracker {
             Some(l) => l,
             None => return 0.0,
         };
-        if !first_line.starts_with("cpu ") {
-            return 0.0;
-        }
-        let values: Vec<u64> = match first_line
-            .split_whitespace()
-            .skip(1)
-            .map(|v| v.parse())
-            .collect::<Result<_, _>>()
-        {
-            Ok(values) => values,
-            Err(_) => return 0.0,
+        let (idle, total) = match parse_cpu_stat_line(first_line) {
+            Some(cpu_stat) => cpu_stat,
+            None => return 0.0,
         };
-        // idle = field 3, iowait = field 4
-        let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
-            return 0.0;
-        };
-        let idle = *idle_ticks + *iowait_ticks;
-        let total: u64 = values.iter().sum();
 
         let delta_idle = idle.saturating_sub(self.prev_idle);
         let delta_total = total.saturating_sub(self.prev_total);
@@ -78,6 +64,28 @@ impl CpuTracker {
         let pct = 100.0 * (1.0 - delta_idle as f64 / delta_total as f64);
         (pct * 100.0).round() / 100.0
     }
+}
+
+fn parse_cpu_stat_line(line: &str) -> Option<(u64, u64)> {
+    if !line.starts_with("cpu ") {
+        return None;
+    }
+
+    let values: Vec<u64> = line
+        .split_whitespace()
+        .skip(1)
+        .map(|v| v.parse())
+        .collect::<Result<_, _>>()
+        .ok()?;
+
+    // idle = field 3, iowait = field 4
+    let [_, _, _, idle_ticks, iowait_ticks, ..] = values.as_slice() else {
+        return None;
+    };
+    let idle = *idle_ticks + *iowait_ticks;
+    let total = values.iter().sum();
+
+    Some((idle, total))
 }
 
 /// Parse `/proc/meminfo` to get (used, total) in bytes.
@@ -170,6 +178,26 @@ mod tests {
         assert!((0.0..=100.0).contains(&pct1));
         let pct2 = tracker.get_cpu_percent();
         assert!((0.0..=100.0).contains(&pct2));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_accepts_valid_aggregate_line() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 3 4 5 6 7 8"), Some((9, 36)));
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_short_line() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 3 4"), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_wrong_prefix() {
+        assert_eq!(parse_cpu_stat_line("cpu0 1 2 3 4 5"), None);
+    }
+
+    #[test]
+    fn parse_cpu_stat_line_rejects_malformed_field() {
+        assert_eq!(parse_cpu_stat_line("cpu 1 2 bad 4 5 6"), None);
     }
 
     #[test]
