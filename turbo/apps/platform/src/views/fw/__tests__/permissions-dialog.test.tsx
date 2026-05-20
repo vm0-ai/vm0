@@ -243,25 +243,15 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     });
   });
 
-  it("disables all policy pills and shows only Close in read-only mode (FW-V-001)", async () => {
+  it("allows org admins to manage permissions for agents owned by another user (FW-V-001)", async () => {
     mockAPIs({ connectorType: "slack", ownerId: "other-user-456" });
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Slack");
 
-    // The footer "Close" button (text content) should be present
     await waitFor(() => {
-      const closeButtons = screen.getAllByRole("button").filter((el) => {
-        return el.textContent?.trim() === "Close";
-      });
-      // At least one of them is the footer close button (not the X icon)
-      const footerClose = closeButtons.find((b) => {
-        return b.textContent?.trim() === "Close";
-      });
-      expect(footerClose).toBeDefined();
+      expect(screen.getByText("Apply")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Apply")).not.toBeInTheDocument();
 
-    // All policy pill buttons (Allow/Deny) should be disabled
     const allButtons = screen.getAllByRole("button");
     const policyButtons = allButtons.filter((b) => {
       return (
@@ -271,7 +261,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     });
     expect(policyButtons.length).toBeGreaterThan(0);
     for (const btn of policyButtons) {
-      expect(btn).toBeDisabled();
+      expect(btn).toBeEnabled();
     }
   });
 });
