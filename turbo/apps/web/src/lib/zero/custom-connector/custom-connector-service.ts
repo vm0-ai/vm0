@@ -9,8 +9,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { encryptSecretValue } from "../../shared/crypto";
-import { badRequest, notFound } from "@vm0/api-services/errors";
+import { badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:custom-connector");
@@ -165,23 +164,6 @@ async function listCustomConnectors(orgId: string): Promise<CustomConnector[]> {
   });
 }
 
-async function getCustomConnector(
-  orgId: string,
-  id: string,
-): Promise<CustomConnector> {
-  const [row] = await globalThis.services.db
-    .select()
-    .from(orgCustomConnectors)
-    .where(
-      and(eq(orgCustomConnectors.id, id), eq(orgCustomConnectors.orgId, orgId)),
-    )
-    .limit(1);
-  if (!row) {
-    throw notFound(`Custom connector ${id} not found`);
-  }
-  return { ...row, prefixes: row.prefixes as string[] };
-}
-
 export async function createCustomConnector(
   orgId: string,
   userId: string,
@@ -207,49 +189,6 @@ export async function createCustomConnector(
     throw new Error("Expected insert to return a row");
   }
   return { ...row, prefixes: row.prefixes as string[] };
-}
-
-export async function setCustomConnectorSecret(
-  orgId: string,
-  userId: string,
-  connectorId: string,
-  value: string,
-): Promise<void> {
-  if (value.length === 0) {
-    throw badRequest("Secret value must not be empty");
-  }
-  // Ensure the connector belongs to the user's org — prevents writing secrets
-  // against connectors in other orgs even if the id is guessed.
-  await getCustomConnector(orgId, connectorId);
-
-  const key = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptSecretValue(value, key);
-  await globalThis.services.db
-    .insert(orgCustomConnectorSecrets)
-    .values({ connectorId, userId, orgId, encryptedValue })
-    .onConflictDoUpdate({
-      target: [
-        orgCustomConnectorSecrets.connectorId,
-        orgCustomConnectorSecrets.userId,
-      ],
-      set: { encryptedValue, updatedAt: new Date() },
-    });
-}
-
-export async function deleteCustomConnectorSecret(
-  orgId: string,
-  userId: string,
-  connectorId: string,
-): Promise<void> {
-  await globalThis.services.db
-    .delete(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.connectorId, connectorId),
-        eq(orgCustomConnectorSecrets.userId, userId),
-        eq(orgCustomConnectorSecrets.orgId, orgId),
-      ),
-    );
 }
 
 interface CustomConnectorWithSecretStatus extends CustomConnector {

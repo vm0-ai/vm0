@@ -2162,6 +2162,27 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches zero custom connector secret rewrites exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret",
+      ),
+    ).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/custom-connectors")).toBe(
+      false,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/custom-connector/550e8400-e29b-41d4-a716-446655440000/secret",
+      ),
+    ).toBe(false);
+  });
+
   it("matches only one segment for zero agent instructions rewrites", () => {
     expect(
       matchesApiBackendRewritePath(

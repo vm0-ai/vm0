@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
-import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -25,6 +28,23 @@ const mocks = createZeroRouteMocks(context);
 describe("PUT /api/zero/custom-connectors/:id/secret", () => {
   const track = createFixtureTracker<CustomConnectorFixture>((fixture) => {
     return store.set(deleteCustomConnectorOrg$, fixture, context.signal);
+  });
+
+  it("returns 401 when the user has no active organization", async () => {
+    mocks.clerk.session(`user_${randomUUID().slice(0, 8)}`, null);
+
+    const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+    const response = await accept(
+      client.set({
+        params: { id: randomUUID() },
+        body: { value: "x" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
   });
 
   it("stores per-user secret and round-trips through decryptSecretValue", async () => {
@@ -56,6 +76,15 @@ describe("PUT /api/zero/custom-connectors/:id/secret", () => {
     expect(row!.userId).toBe(fixture.userId);
     expect(row!.orgId).toBe(fixture.orgId);
     expect(decryptSecretValue(row!.encryptedValue)).toBe("sk_live_xyz");
+
+    const listClient = setupApp({ context })(zeroCustomConnectorsContract);
+    const listResponse = await accept(
+      listClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(listResponse.body.connectors[0]?.hasSecret).toBeTruthy();
   });
 
   it("returns 404 for an unknown connector id", async () => {

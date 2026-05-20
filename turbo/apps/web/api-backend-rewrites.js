@@ -108,6 +108,10 @@ const ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE =
   "/api/zero/custom-connectors/:id";
 const ZERO_CUSTOM_CONNECTOR_BY_ID_PATH_RE =
   /^\/api\/zero\/custom-connectors\/[^/]+$/;
+const ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE =
+  "/api/zero/custom-connectors/:id/secret";
+const ZERO_CUSTOM_CONNECTOR_SECRET_PATH_RE =
+  /^\/api\/zero\/custom-connectors\/[^/]+\/secret$/;
 const AGENT_RUN_CANCEL_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/cancel`;
 const AGENT_RUN_CANCEL_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/cancel$`,
@@ -623,6 +627,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE,
     "/api/zero/custom-connectors/:id",
     ZERO_CUSTOM_CONNECTOR_BY_ID_PATH_RE,
+  ],
+  [
+    ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE,
+    "/api/zero/custom-connectors/:id/secret",
+    ZERO_CUSTOM_CONNECTOR_SECRET_PATH_RE,
   ],
   [
     ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE,

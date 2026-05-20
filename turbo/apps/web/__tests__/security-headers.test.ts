@@ -939,6 +939,16 @@ const ZERO_CUSTOM_CONNECTOR_BY_ID_NEXT_NEGATIVE_PATHS = [
   "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/extra",
   "/api/zero/custom-connector/550e8400-e29b-41d4-a716-446655440000",
 ] as const;
+const ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE =
+  "/api/zero/custom-connectors/:id/secret";
+const ZERO_CUSTOM_CONNECTOR_SECRET_PATH =
+  "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret";
+const ZERO_CUSTOM_CONNECTOR_SECRET_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/custom-connectors",
+  "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000",
+  "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret/extra",
+  "/api/zero/custom-connector/550e8400-e29b-41d4-a716-446655440000/secret",
+] as const;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH =
@@ -2299,6 +2309,11 @@ describe("API backend rewrites", () => {
           source: ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/custom-connectors/:id",
+        },
+        {
+          source: ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/custom-connectors/:id/secret",
         },
         {
           source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
@@ -6313,6 +6328,32 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_CUSTOM_CONNECTOR_BY_ID_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match zero custom connector secret rewrites exactly", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/custom-connectors/:id/secret",
+    });
+
+    const matcher = getPathMatch(ZERO_CUSTOM_CONNECTOR_SECRET_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CUSTOM_CONNECTOR_SECRET_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CUSTOM_CONNECTOR_SECRET_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
