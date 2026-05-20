@@ -705,6 +705,17 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero connectors list rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/connectors")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/github")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/search")).toBe(
+      true,
+    );
+  });
+
   it("matches the zero connectors search rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/connectors/search")).toBe(
       true,
@@ -712,7 +723,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/search/extra"),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/connectors")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/connectors/github")).toBe(
       false,
     );

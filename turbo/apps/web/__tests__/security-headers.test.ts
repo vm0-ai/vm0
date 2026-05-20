@@ -1421,6 +1421,13 @@ const ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/authorize",
   "/api/zero/connectors/github/callback",
 ] as const;
+const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
+const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
+const ZERO_CONNECTORS_LIST_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/",
+  "/api/zero/connectors/github",
+  "/api/zero/connectors/search",
+] as const;
 const ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE = "/api/zero/connectors/search";
 const ZERO_CONNECTORS_SEARCH_PATH = "/api/zero/connectors/search";
 const ZERO_CONNECTORS_SEARCH_NEXT_NEGATIVE_PATHS = [
@@ -2071,6 +2078,10 @@ describe("API backend rewrites", () => {
         {
           source: ZERO_BILLING_STATUS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/billing/status",
+        },
+        {
+          source: ZERO_CONNECTORS_LIST_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/zero/connectors",
         },
         {
           source: ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE,
@@ -3658,6 +3669,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_PATH)).toStrictEqual({});
     expect(matcher(STRIPE_CLI_AUTH_SESSIONS_COMPLETE_PATH)).toBe(false);
+  });
+
+  it("should match only the zero connectors list rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CONNECTORS_LIST_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_LIST_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/connectors",
+    });
+
+    const matcher = getPathMatch(ZERO_CONNECTORS_LIST_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CONNECTORS_LIST_PATH)).toStrictEqual({});
+    for (const pathname of ZERO_CONNECTORS_LIST_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
   });
 
   it("should match only the zero connectors search rewrite", async () => {
