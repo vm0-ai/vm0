@@ -2,8 +2,20 @@ import {
   shouldHideMainWindowOnClose,
   showAndFocusWindow,
 } from "./desktop-window-lifecycle";
+import { buildDesktopWindowChromeOptions } from "./desktop-window-chrome";
 
 describe("desktop window lifecycle", () => {
+  it("uses integrated macOS window chrome", () => {
+    expect(buildDesktopWindowChromeOptions("darwin")).toStrictEqual({
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 16, y: 18 },
+    });
+  });
+
+  it("keeps non-macOS window chrome default", () => {
+    expect(buildDesktopWindowChromeOptions("linux")).toStrictEqual({});
+  });
+
   it("hides the main window on macOS close unless the app is quitting", () => {
     expect(
       shouldHideMainWindowOnClose({ platform: "darwin", isQuitting: false }),

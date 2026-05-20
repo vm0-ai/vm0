@@ -40,6 +40,34 @@
 :root {
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+  --zero-desktop-titlebar-height: 48px;
+}
+
+.zero-sidebar-header {
+  padding-top: calc(0.375rem + var(--sat));
+}
+
+.zero-desktop-titlebar-drag-region,
+.zero-desktop-workspace-drag-region {
+  display: none;
+}
+
+.zero-desktop-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (min-width: 768px) {
+  .zero-app[data-desktop-shell] .zero-sidebar-header {
+    padding-top: 0;
+  }
+
+  .zero-app[data-desktop-shell] .zero-desktop-titlebar-drag-region,
+  .zero-app[data-desktop-shell] .zero-desktop-workspace-drag-region {
+    display: block;
+    flex-shrink: 0;
+    height: var(--zero-desktop-titlebar-height);
+    -webkit-app-region: drag;
+  }
 }
 
 /* Landing tagline carousel: smooth vertical fade-in */
