@@ -158,13 +158,10 @@ describe("getAvailableConnectorAuthMethods", () => {
     ]);
   });
 
-  it("exposes WeRead API-token auth only when its switch is enabled", () => {
-    expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([]);
-    expect(
-      getAvailableConnectorAuthMethods("weread", {
-        [FeatureSwitchKey.WereadConnector]: true,
-      }),
-    ).toStrictEqual(["api-token"]);
+  it("exposes WeRead API-token auth without a feature switch", () => {
+    expect(getAvailableConnectorAuthMethods("weread", {})).toStrictEqual([
+      "api-token",
+    ]);
   });
 });
 
