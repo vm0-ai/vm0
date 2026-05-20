@@ -17,6 +17,8 @@ pub struct FailureDiagnostic {
     pub framework: AgentFramework,
     pub cli_exit_code: Option<i32>,
     pub claude_num_turns: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_detail_source: Option<FailureDetailSource>,
     pub session_history_status: SessionHistoryStatus,
     pub prompt_shape: PromptShape,
     pub prompt_bytes: u64,
@@ -36,6 +38,7 @@ impl FailureDiagnostic {
             framework,
             cli_exit_code: None,
             claude_num_turns: None,
+            failure_detail_source: None,
             session_history_status: SessionHistoryStatus::Unknown,
             prompt_shape: prompt.prompt_shape,
             prompt_bytes: prompt.prompt_bytes,
@@ -52,6 +55,15 @@ impl FailureDiagnostic {
     #[must_use]
     pub fn with_claude_num_turns(mut self, claude_num_turns: Option<u64>) -> Self {
         self.claude_num_turns = claude_num_turns;
+        self
+    }
+
+    #[must_use]
+    pub fn with_failure_detail_source(
+        mut self,
+        failure_detail_source: FailureDetailSource,
+    ) -> Self {
+        self.failure_detail_source = Some(failure_detail_source);
         self
     }
 
@@ -86,6 +98,27 @@ impl FailureClass {
             Self::ClaudeZeroTurnNoHistory => "claude_zero_turn_no_history",
             Self::EventUploadFailed => "event_upload_failed",
             Self::CheckpointFailed => "checkpoint_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureDetailSource {
+    ClaudeResult,
+    CodexJsonl,
+    Stderr,
+    FallbackExitCode,
+}
+
+impl FailureDetailSource {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ClaudeResult => "claude_result",
+            Self::CodexJsonl => "codex_jsonl",
+            Self::Stderr => "stderr",
+            Self::FallbackExitCode => "fallback_exit_code",
         }
     }
 }
@@ -217,6 +250,7 @@ mod tests {
         assert_eq!(json["framework"], "claude_code");
         assert_eq!(json["cliExitCode"], 0);
         assert_eq!(json["claudeNumTurns"], 0);
+        assert_eq!(json.get("failureDetailSource"), None);
         assert_eq!(json["sessionHistoryStatus"], "missing");
         assert_eq!(json["promptShape"], "slash_like");
         assert_eq!(json["promptBytes"], 5);
@@ -224,6 +258,42 @@ mod tests {
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_optional_detail_source() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_detail_source(FailureDetailSource::ClaudeResult);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureDetailSource"], "claude_result");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_deserializes_without_optional_detail_source() {
+        let json = serde_json::json!({
+            "schemaVersion": 1,
+            "failureClass": "cli_nonzero",
+            "framework": "claude_code",
+            "cliExitCode": 1,
+            "claudeNumTurns": 1,
+            "sessionHistoryStatus": "present",
+            "promptShape": "plain",
+            "promptBytes": 13,
+            "firstLineBytes": 13
+        });
+
+        let diagnostic: FailureDiagnostic = serde_json::from_value(json).unwrap();
+
+        assert_eq!(diagnostic.failure_detail_source, None);
     }
 
     #[test]

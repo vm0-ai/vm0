@@ -34,6 +34,7 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
+use agent_diagnostics::FailureDetailSource;
 use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
@@ -53,6 +54,13 @@ async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
         }
         None => std::future::pending::<()>().await,
     }
+}
+
+/// Bounded terminal failure detail extracted from CLI stdout JSONL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliFailureDiagnostic {
+    pub message: String,
+    pub source: FailureDetailSource,
 }
 
 /// Result returned after the configured CLI process exits.
@@ -94,10 +102,10 @@ pub struct CliExecutionResult {
     /// Best-effort, secret-masked terminal failure diagnostic parsed from CLI
     /// stdout JSONL.
     ///
-    /// Codex reports terminal failures as JSONL events on stdout, not stderr.
-    /// Keeping the diagnostic here lets the guest-agent surface the actual
-    /// failure reason in its final run error.
-    pub failure_diagnostic: Option<String>,
+    /// Some frameworks report terminal failures as JSONL events on stdout, not
+    /// stderr. Keeping the diagnostic here lets the guest-agent surface the
+    /// actual failure reason in its final run error.
+    pub failure_diagnostic: Option<CliFailureDiagnostic>,
 }
 
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
@@ -279,6 +287,22 @@ pub async fn execute_cli(
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 claude_result = Some(ClaudeResultSummary::from_event(&event));
+                                if let Some(diagnostic) =
+                                    events::masked_claude_failure_diagnostic(&event, masker)
+                                {
+                                    let subtype =
+                                        diagnostic.subtype.as_deref().unwrap_or("unknown");
+                                    let candidate = CliFailureDiagnostic {
+                                        message: diagnostic.message,
+                                        source: FailureDetailSource::ClaudeResult,
+                                    };
+                                    log_warn!(
+                                        LOG_TAG,
+                                        "Claude JSONL failure result seq={seq} subtype={subtype}: {}",
+                                        candidate.message
+                                    );
+                                    failure_diagnostic = Some(candidate);
+                                }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
                                     println!("{result}");
@@ -303,18 +327,21 @@ pub async fn execute_cli(
                                 && let Some(diagnostic) =
                                     events::masked_codex_failure_diagnostic(&event, masker)
                             {
-                                let message = diagnostic.message;
+                                let candidate = CliFailureDiagnostic {
+                                    message: diagnostic.message,
+                                    source: FailureDetailSource::CodexJsonl,
+                                };
                                 log_warn!(
                                     LOG_TAG,
                                     "Codex JSONL failure event seq={seq} type={}: {}",
                                     diagnostic.event_type,
-                                    message
+                                    candidate.message
                                 );
                                 if should_replace_failure_diagnostic(
-                                    failure_diagnostic.as_deref(),
-                                    &message,
+                                    failure_diagnostic.as_ref(),
+                                    &candidate,
                                 ) {
-                                    failure_diagnostic = Some(message);
+                                    failure_diagnostic = Some(candidate);
                                 }
                             }
                             // Capture checkpoint metadata before event payload preparation
@@ -623,33 +650,54 @@ pub async fn execute_cli(
     })
 }
 
-fn should_replace_failure_diagnostic(existing: Option<&str>, candidate: &str) -> bool {
+fn should_replace_failure_diagnostic(
+    existing: Option<&CliFailureDiagnostic>,
+    candidate: &CliFailureDiagnostic,
+) -> bool {
+    if candidate.source != FailureDetailSource::CodexJsonl {
+        return true;
+    }
+
     match existing {
         None => true,
         Some(existing) => {
-            !events::is_generic_codex_failure_diagnostic(candidate)
-                || events::is_generic_codex_failure_diagnostic(existing)
+            !events::is_generic_codex_failure_diagnostic(&candidate.message)
+                || (existing.source == FailureDetailSource::CodexJsonl
+                    && events::is_generic_codex_failure_diagnostic(&existing.message))
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::should_replace_failure_diagnostic;
+    use super::{CliFailureDiagnostic, should_replace_failure_diagnostic};
+    use agent_diagnostics::FailureDetailSource;
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {
         assert!(!should_replace_failure_diagnostic(
-            Some("You've hit your usage limit."),
-            "turn failed",
+            Some(&CliFailureDiagnostic {
+                message: "You've hit your usage limit.".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+            }),
+            &CliFailureDiagnostic {
+                message: "turn failed".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+            },
         ));
     }
 
     #[test]
     fn specific_codex_failure_diagnostic_replaces_generic_event() {
         assert!(should_replace_failure_diagnostic(
-            Some("error"),
-            "You've hit your usage limit.",
+            Some(&CliFailureDiagnostic {
+                message: "error".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+            }),
+            &CliFailureDiagnostic {
+                message: "You've hit your usage limit.".to_string(),
+                source: FailureDetailSource::CodexJsonl,
+            },
         ));
     }
 }

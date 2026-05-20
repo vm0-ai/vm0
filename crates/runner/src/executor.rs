@@ -2834,6 +2834,7 @@ mod tests {
             agent_diagnostics::PromptMetadata::from_prompt("/help"),
         )
         .with_cli_exit_code(1)
+        .with_failure_detail_source(agent_diagnostics::FailureDetailSource::ClaudeResult)
         .with_session_history_status(agent_diagnostics::SessionHistoryStatus::Present);
         sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
 

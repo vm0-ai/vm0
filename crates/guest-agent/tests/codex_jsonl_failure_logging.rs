@@ -5,6 +5,7 @@
 
 mod common;
 
+use agent_diagnostics::FailureDetailSource;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::path::{Path, PathBuf};
@@ -51,8 +52,18 @@ async fn codex_jsonl_error_event_is_written_to_system_log() -> Result<(), Box<dy
 
     assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
     assert_eq!(
-        cli_result.failure_diagnostic.as_deref(),
+        cli_result
+            .failure_diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.message.as_str()),
         Some("Mock error event for fixture testing")
+    );
+    assert_eq!(
+        cli_result
+            .failure_diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.source),
+        Some(FailureDetailSource::CodexJsonl)
     );
     let system_log = std::fs::read_to_string(&system_log_path)?;
     assert!(

@@ -231,6 +231,8 @@ pub(super) fn spawn_job(
                 (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
                 (false, Some(failure)) => {
                     if let Some(diagnostic) = failure.diagnostic.as_ref() {
+                        let failure_detail_source =
+                            diagnostic.failure_detail_source.map(|source| source.as_str());
                         error!(
                             run_id = %run_id,
                             exit_code,
@@ -240,6 +242,7 @@ pub(super) fn spawn_job(
                             failure_framework = diagnostic.framework.as_str(),
                             failure_cli_exit_code = diagnostic.cli_exit_code,
                             failure_claude_num_turns = diagnostic.claude_num_turns,
+                            failure_detail_source,
                             session_history_status = diagnostic.session_history_status.as_str(),
                             prompt_shape = diagnostic.prompt_shape.as_str(),
                             prompt_bytes = diagnostic.prompt_bytes,

@@ -15,12 +15,18 @@ use guest_common::{log_error, log_info};
 use serde_json::{Value, json};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
-const CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
+const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
+const FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX: &str = "...[truncated]";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct CodexFailureDiagnostic {
     pub event_type: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ClaudeFailureDiagnostic {
+    pub subtype: Option<String>,
     pub message: String,
 }
 
@@ -87,6 +93,22 @@ pub(crate) fn masked_codex_failure_diagnostic(
     })
 }
 
+/// Extract a secret-masked Claude Code terminal failure diagnostic.
+///
+/// Claude Code reports the terminal run outcome as `type=result`. On failure,
+/// the `result` field carries the concise terminal reason that is otherwise
+/// lost when stderr is empty.
+pub(crate) fn masked_claude_failure_diagnostic(
+    event: &Value,
+    masker: &SecretMasker,
+) -> Option<ClaudeFailureDiagnostic> {
+    let diagnostic = extract_claude_failure_diagnostic(event)?;
+    Some(ClaudeFailureDiagnostic {
+        subtype: diagnostic.subtype,
+        message: mask_and_truncate_diagnostic(&diagnostic.message, masker),
+    })
+}
+
 pub(crate) fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
     matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
 }
@@ -116,6 +138,27 @@ fn extract_codex_failure_diagnostic(event: &Value) -> Option<CodexFailureDiagnos
         }
         _ => None,
     }
+}
+
+fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagnostic> {
+    if event.get("type").and_then(Value::as_str)? != "result" {
+        return None;
+    }
+
+    let subtype = event
+        .get("subtype")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let is_failure = event.get("is_error").and_then(Value::as_bool) == Some(true)
+        || subtype.as_deref() == Some("error");
+    if !is_failure {
+        return None;
+    }
+
+    Some(ClaudeFailureDiagnostic {
+        subtype,
+        message: raw_message_from_field(event.get("result"))?,
+    })
 }
 
 fn codex_turn_completed_failure_status(event: &Value) -> Option<&'static str> {
@@ -175,20 +218,15 @@ fn escape_log_line_breaks(message: &str) -> String {
 }
 
 fn truncate_diagnostic_message(message: &str) -> String {
-    if message.len() <= CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES {
+    if message.len() <= FAILURE_DIAGNOSTIC_MAX_BYTES {
         return message.to_string();
     }
 
-    let mut end =
-        CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES - CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len();
+    let mut end = FAILURE_DIAGNOSTIC_MAX_BYTES - FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len();
     while !message.is_char_boundary(end) {
         end -= 1;
     }
-    format!(
-        "{}{}",
-        &message[..end],
-        CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX
-    )
+    format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
 /// POST a prepared event payload to the webhook endpoint.
@@ -633,8 +671,8 @@ mod tests {
     #[test]
     fn codex_failure_diagnostic_masks_before_truncating() {
         let prefix = "x".repeat(
-            CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES
-                - CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len()
+            FAILURE_DIAGNOSTIC_MAX_BYTES
+                - FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len()
                 - "super".len(),
         );
         let event = serde_json::json!({
@@ -659,18 +697,123 @@ mod tests {
     fn codex_failure_diagnostic_truncates_to_max_bytes() {
         let event = serde_json::json!({
             "type": "error",
-            "message": "x".repeat(CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES + 100)
+            "message": "x".repeat(FAILURE_DIAGNOSTIC_MAX_BYTES + 100)
         });
         let diagnostic = masked_codex_failure_diagnostic(&event, &SecretMasker::from_raw(""))
             .expect("error event should produce a diagnostic");
 
-        assert_eq!(diagnostic.message.len(), CODEX_FAILURE_DIAGNOSTIC_MAX_BYTES);
+        assert_eq!(diagnostic.message.len(), FAILURE_DIAGNOSTIC_MAX_BYTES);
         assert!(
             diagnostic
                 .message
-                .ends_with(CODEX_FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX),
+                .ends_with(FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX),
             "diagnostic should end with truncation marker: {diagnostic:?}"
         );
+    }
+
+    #[test]
+    fn claude_error_result_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "result",
+            "subtype": "error",
+            "is_error": true,
+            "result": "permission denied while running command"
+        });
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(ClaudeFailureDiagnostic {
+                subtype: Some("error".to_string()),
+                message: "permission denied while running command".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claude_error_subtype_without_is_error_yields_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "result",
+            "subtype": "error",
+            "result": "terminal result failed"
+        });
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(ClaudeFailureDiagnostic {
+                subtype: Some("error".to_string()),
+                message: "terminal result failed".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claude_success_result_has_no_failure_diagnostic() {
+        let event = serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "Done."
+        });
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
+    }
+
+    #[test]
+    fn claude_error_result_requires_nonempty_result_message() {
+        let event = serde_json::json!({
+            "type": "result",
+            "subtype": "error",
+            "is_error": true,
+            "result": " \n\t "
+        });
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            None
+        );
+    }
+
+    #[test]
+    fn claude_failure_diagnostic_masks_and_escapes_line_breaks() {
+        let event = serde_json::json!({
+            "type": "result",
+            "is_error": true,
+            "result": "first line with supersecret\nsecond\rthird"
+        });
+        let masker = SecretMasker::from_raw("c3VwZXJzZWNyZXQ=");
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &masker),
+            Some(ClaudeFailureDiagnostic {
+                subtype: None,
+                message: "first line with ***\\nsecond\\rthird".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claude_failure_diagnostic_truncates_to_max_bytes() {
+        let event = serde_json::json!({
+            "type": "result",
+            "is_error": true,
+            "result": "é".repeat(FAILURE_DIAGNOSTIC_MAX_BYTES)
+        });
+        let diagnostic = masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw(""))
+            .expect("Claude error result should produce a diagnostic");
+
+        assert_eq!(diagnostic.message.len(), FAILURE_DIAGNOSTIC_MAX_BYTES);
+        assert!(
+            diagnostic
+                .message
+                .ends_with(FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX),
+            "diagnostic should end with truncation marker: {diagnostic:?}"
+        );
+        assert!(diagnostic.message.is_char_boundary(
+            FAILURE_DIAGNOSTIC_MAX_BYTES - FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX.len()
+        ));
     }
 
     #[test]

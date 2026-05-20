@@ -15,7 +15,8 @@ use guest_agent::paths;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use agent_diagnostics::{
-    AgentFramework, FailureClass, FailureDiagnostic, PromptMetadata, SessionHistoryStatus,
+    AgentFramework, FailureClass, FailureDetailSource, FailureDiagnostic, PromptMetadata,
+    SessionHistoryStatus,
 };
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
@@ -204,19 +205,21 @@ async fn execute(
             last_event_sequence = cli_result.last_event_sequence;
             let cli_exit_code = cli_result.exit_code;
             if cli_exit_code != 0 {
+                let failure_message = cli_failure_message(
+                    cli_exit_code,
+                    &cli_result.stderr_lines,
+                    cli_result.failure_diagnostic.as_ref(),
+                );
                 let diagnostic = cli_result_failure_diagnostic(
                     FailureClass::CliNonzero,
                     cli_exit_code,
                     cli_result.claude_result,
-                );
+                )
+                .with_failure_detail_source(failure_message.source);
                 (
                     cli_exit_code,
                     cli_exit_code,
-                    cli_failure_message(
-                        cli_exit_code,
-                        &cli_result.stderr_lines,
-                        cli_result.failure_diagnostic.as_deref(),
-                    ),
+                    failure_message.message,
                     false,
                     Some(diagnostic),
                 )
@@ -395,25 +398,37 @@ fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliFailureMessage {
+    message: String,
+    source: FailureDetailSource,
+}
+
 fn cli_failure_message(
     code: i32,
     stderr_lines: &[String],
-    failure_diagnostic: Option<&str>,
-) -> String {
-    if let Some(message) = failure_diagnostic.and_then(|message| {
-        let message = message.trim();
+    failure_diagnostic: Option<&cli::CliFailureDiagnostic>,
+) -> CliFailureMessage {
+    if let Some((message, source)) = failure_diagnostic.and_then(|diagnostic| {
+        let message = diagnostic.message.trim();
         if message.is_empty() {
             None
         } else {
-            Some(message)
+            Some((message, diagnostic.source))
         }
-    }) && (!is_generic_codex_failure_diagnostic(message) || stderr_lines.is_empty())
+    }) && (!is_generic_stdout_failure_diagnostic(message) || stderr_lines.is_empty())
     {
-        return message.to_string();
+        return CliFailureMessage {
+            message: message.to_string(),
+            source,
+        };
     }
 
     if stderr_lines.is_empty() {
-        return format!("Agent exited with code {code}");
+        return CliFailureMessage {
+            message: format!("Agent exited with code {code}"),
+            source: FailureDetailSource::FallbackExitCode,
+        };
     }
 
     log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
@@ -438,10 +453,13 @@ fn cli_failure_message(
         log_warn!(LOG_TAG, "CLI stderr: {line}");
         message_lines.push(line.into_owned());
     }
-    message_lines.join(" ")
+    CliFailureMessage {
+        message: message_lines.join(" "),
+        source: FailureDetailSource::Stderr,
+    }
 }
 
-fn is_generic_codex_failure_diagnostic(message: &str) -> bool {
+fn is_generic_stdout_failure_diagnostic(message: &str) -> bool {
     matches!(message.trim(), "error" | "turn failed" | "turn interrupted")
 }
 
@@ -668,6 +686,13 @@ mod tests {
         }
     }
 
+    fn cli_diagnostic(message: &str, source: FailureDetailSource) -> cli::CliFailureDiagnostic {
+        cli::CliFailureDiagnostic {
+            message: message.to_string(),
+            source,
+        }
+    }
+
     #[test]
     fn cli_failure_message_logs_stderr_to_system_log() {
         let _test_state_guard = lock_test_state();
@@ -683,24 +708,26 @@ mod tests {
             .chain((0..(MAX_LOGGED_CLI_STDERR_LINES - 2)).map(|i| format!("extra line {i}")))
             .collect::<Vec<_>>();
         let msg = cli_failure_message(1, &stderr_lines, None);
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
         assert!(
-            !msg.contains("prefix line"),
+            !msg.message.contains("prefix line"),
             "returned error message should omit older stderr lines"
         );
         assert!(
-            msg.contains("codex stderr includes ***"),
+            msg.message.contains("codex stderr includes ***"),
             "returned error message should preserve stderr"
         );
         assert!(
-            msg.contains("...[truncated]"),
+            msg.message.contains("...[truncated]"),
             "returned error message should truncate long stderr lines"
         );
         assert!(
-            !msg.contains("tail"),
+            !msg.message.contains("tail"),
             "returned error message should not include bytes after the truncation boundary"
         );
         assert!(
-            msg.contains("...[omitted 2 earlier stderr line(s)]"),
+            msg.message
+                .contains("...[omitted 2 earlier stderr line(s)]"),
             "returned error message should report omitted earlier stderr lines"
         );
 
@@ -744,16 +771,17 @@ mod tests {
             .collect::<Vec<_>>();
 
         let msg = cli_failure_message(1, &stderr_lines, None);
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
         assert!(
-            msg.contains(&exact_limit_line),
+            msg.message.contains(&exact_limit_line),
             "returned error message should preserve line at exact size limit"
         );
         assert!(
-            !msg.contains("...[truncated]"),
+            !msg.message.contains("...[truncated]"),
             "returned error message should not truncate line at exact size limit"
         );
         assert!(
-            !msg.contains("omitted"),
+            !msg.message.contains("omitted"),
             "returned error message should not report omitted lines at exact line limit"
         );
 
@@ -778,17 +806,18 @@ mod tests {
         let prefix = "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES - 1);
         let stderr_line = format!("{prefix}é-tail");
         let msg = cli_failure_message(1, &[stderr_line], None);
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
 
         assert!(
-            msg.contains(&prefix),
+            msg.message.contains(&prefix),
             "returned error message should preserve bytes before the truncation boundary"
         );
         assert!(
-            msg.contains("...[truncated]"),
+            msg.message.contains("...[truncated]"),
             "returned error message should indicate truncation"
         );
         assert!(
-            !msg.contains("é-tail"),
+            !msg.message.contains("é-tail"),
             "returned error message should not split or include the over-boundary character"
         );
 
@@ -809,13 +838,15 @@ mod tests {
         let msg = cli_failure_message(
             1,
             &stderr_lines,
-            Some(
+            Some(&cli_diagnostic(
                 "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits.",
-            ),
+                FailureDetailSource::CodexJsonl,
+            )),
         );
 
+        assert_eq!(msg.source, FailureDetailSource::CodexJsonl);
         assert_eq!(
-            msg,
+            msg.message,
             "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits."
         );
     }
@@ -823,16 +854,51 @@ mod tests {
     #[test]
     fn cli_failure_message_uses_stderr_over_generic_codex_failure_diagnostic() {
         let stderr_lines = vec!["specific stderr failure".to_string()];
-        let msg = cli_failure_message(1, &stderr_lines, Some("turn failed"));
+        let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
+        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
 
-        assert_eq!(msg, "specific stderr failure");
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
+        assert_eq!(msg.message, "specific stderr failure");
     }
 
     #[test]
     fn cli_failure_message_uses_generic_codex_failure_diagnostic_without_stderr() {
-        let msg = cli_failure_message(1, &[], Some("turn failed"));
+        let diagnostic = cli_diagnostic("turn failed", FailureDetailSource::CodexJsonl);
+        let msg = cli_failure_message(1, &[], Some(&diagnostic));
 
-        assert_eq!(msg, "turn failed");
+        assert_eq!(msg.source, FailureDetailSource::CodexJsonl);
+        assert_eq!(msg.message, "turn failed");
+    }
+
+    #[test]
+    fn cli_failure_message_prefers_claude_result_diagnostic() {
+        let stderr_lines = vec!["background task noise".to_string()];
+        let diagnostic = cli_diagnostic(
+            "permission denied while running command",
+            FailureDetailSource::ClaudeResult,
+        );
+        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
+
+        assert_eq!(msg.source, FailureDetailSource::ClaudeResult);
+        assert_eq!(msg.message, "permission denied while running command");
+    }
+
+    #[test]
+    fn cli_failure_message_uses_stderr_over_generic_claude_result() {
+        let stderr_lines = vec!["specific stderr failure".to_string()];
+        let diagnostic = cli_diagnostic("error", FailureDetailSource::ClaudeResult);
+        let msg = cli_failure_message(1, &stderr_lines, Some(&diagnostic));
+
+        assert_eq!(msg.source, FailureDetailSource::Stderr);
+        assert_eq!(msg.message, "specific stderr failure");
+    }
+
+    #[test]
+    fn cli_failure_message_marks_exit_code_fallback_source() {
+        let msg = cli_failure_message(7, &[], None);
+
+        assert_eq!(msg.source, FailureDetailSource::FallbackExitCode);
+        assert_eq!(msg.message, "Agent exited with code 7");
     }
 
     #[test]
