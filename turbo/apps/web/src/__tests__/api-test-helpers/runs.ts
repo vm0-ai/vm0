@@ -1,5 +1,3 @@
-import { generateSandboxToken } from "../../lib/auth/sandbox-token";
-import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
 import type {
   ArtifactSnapshotsPayload,
   VolumeVersionsSnapshot,
@@ -8,11 +6,12 @@ import { getAuthContext } from "../../lib/auth/get-auth-context";
 import { resolveOrg } from "../../lib/zero/org/resolve-org";
 import {
   createDispatchedTestRun,
+  markTestRunCompletedFromCheckpoint,
+  markTestRunFailed,
   seedTestCheckpointForRun,
   type CreateDispatchedTestRunOptions,
 } from "../db-test-seeders/runs";
 import { findTestRunRecord } from "../db-test-assertions/runs";
-import { createTestRequest } from "./core";
 
 // Re-exports: DB-direct seeders
 export {
@@ -140,37 +139,19 @@ export async function completeTestRun(
   agentSessionId: string;
   conversationId: string;
 }> {
-  // First create checkpoint (required for completed status)
   const checkpoint = await createTestCheckpoint(
     userId,
     runId,
     checkpointOptions,
   );
 
-  // Then complete the run
-  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
-  const request = createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/complete",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sandboxToken}`,
-      },
-      body: JSON.stringify({
-        runId,
-        exitCode: 0,
-        ...completeOptions,
-      }),
-    },
-  );
-  const response = await completeWebhook(request);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `Failed to complete run: ${error.error?.message || response.status}`,
-    );
-  }
+  await markTestRunCompletedFromCheckpoint({
+    userId,
+    runId,
+    checkpoint,
+    volumeVersionsSnapshot: checkpointOptions?.volumeVersionsSnapshot,
+    lastEventSequence: completeOptions?.lastEventSequence,
+  });
 
   return checkpoint;
 }
@@ -185,27 +166,5 @@ export async function failTestRun(
   runId: string,
   error?: string,
 ): Promise<void> {
-  const sandboxToken = await generateSandboxToken(userId, runId, "org-test");
-  const request = createTestRequest(
-    "http://localhost:3000/api/webhooks/agent/complete",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sandboxToken}`,
-      },
-      body: JSON.stringify({
-        runId,
-        exitCode: 1,
-        error: error ?? "test failure",
-      }),
-    },
-  );
-  const response = await completeWebhook(request);
-  if (!response.ok) {
-    const errorBody = await response.json();
-    throw new Error(
-      `Failed to fail run: ${(errorBody as { error?: { message?: string } }).error?.message || response.status}`,
-    );
-  }
+  await markTestRunFailed({ userId, runId, error });
 }

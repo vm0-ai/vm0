@@ -1065,6 +1065,71 @@ export async function seedTestCheckpointForRun(params: {
 }
 
 /**
+ * Mark a test run completed using a previously seeded checkpoint payload.
+ *
+ * @why-db-direct The web complete webhook has moved to apps/api. Web tests that
+ * only need completed run state should seed the persisted result directly
+ * instead of importing a deleted Next.js route handler.
+ */
+export async function markTestRunCompletedFromCheckpoint(params: {
+  userId: string;
+  runId: string;
+  checkpoint: {
+    checkpointId: string;
+    agentSessionId: string;
+    conversationId: string;
+  };
+  volumeVersionsSnapshot?: VolumeVersionsSnapshot;
+  lastEventSequence?: number;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "completed",
+      completedAt: new Date(),
+      result: {
+        checkpointId: params.checkpoint.checkpointId,
+        agentSessionId: params.checkpoint.agentSessionId,
+        conversationId: params.checkpoint.conversationId,
+        ...(params.volumeVersionsSnapshot
+          ? { volumes: params.volumeVersionsSnapshot.versions }
+          : {}),
+      },
+      ...(params.lastEventSequence !== undefined
+        ? { lastEventSequence: params.lastEventSequence }
+        : {}),
+    })
+    .where(
+      and(eq(agentRuns.id, params.runId), eq(agentRuns.userId, params.userId)),
+    );
+}
+
+/**
+ * Mark a test run failed.
+ *
+ * @why-db-direct The web complete webhook has moved to apps/api. Web tests that
+ * only need failed terminal state should seed it directly.
+ */
+export async function markTestRunFailed(params: {
+  userId: string;
+  runId: string;
+  error?: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(agentRuns)
+    .set({
+      status: "failed",
+      completedAt: new Date(),
+      error: params.error ?? "test failure",
+    })
+    .where(
+      and(eq(agentRuns.id, params.runId), eq(agentRuns.userId, params.userId)),
+    );
+}
+
+/**
  * Overwrite `agent_sessions.artifacts` JSONB for an existing session.
  *
  * @why-db-direct No API route sets `agent_sessions.artifacts` after

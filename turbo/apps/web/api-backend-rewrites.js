@@ -158,6 +158,7 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE = `/api/webhooks/built-in-
 const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
   `^/api/webhooks/built-in-generations/fal/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const AGENT_COMPLETE_REWRITE_SOURCE = "/api/webhooks/agent/complete";
 const AGENT_CHECKPOINTS_REWRITE_SOURCE = "/api/webhooks/agent/checkpoints";
 const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
   "/api/webhooks/agent/checkpoints/prepare-history";
@@ -419,6 +420,7 @@ export const API_BACKEND_REWRITES = [
   [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
+  [AGENT_COMPLETE_REWRITE_SOURCE, "/api/webhooks/agent/complete"],
   [AGENT_CHECKPOINTS_REWRITE_SOURCE, "/api/webhooks/agent/checkpoints"],
   [
     AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE,

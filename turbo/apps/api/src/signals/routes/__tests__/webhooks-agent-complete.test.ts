@@ -19,7 +19,7 @@ import { usagePricing } from "@vm0/db/schema/usage-pricing";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { verifyHmacSignature } from "../../../lib/event-consumer/hmac";
-import { now } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
@@ -229,6 +229,131 @@ describe("POST /api/webhooks/agent/complete", () => {
     );
   });
 
+  it("rejects missing runId", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: { exitCode: 0 } as never,
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("runId");
+  });
+
+  it("rejects missing exitCode", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId } as never,
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("exitCode");
+  });
+
+  it("rejects negative lastEventSequence", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: -1 },
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("lastEventSequence");
+  });
+
+  it("rejects lastEventSequence outside the database integer range", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: {
+          runId: fixture.runId,
+          exitCode: 0,
+          lastEventSequence: 2_147_483_648,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("lastEventSequence");
+  });
+
+  it("rejects an invalid sandboxReuseResult value", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: {
+          runId: fixture.runId,
+          exitCode: 1,
+          sandboxReuseResult: "someInvalidValue",
+        } as never,
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("sandboxReuseResult");
+  });
+
+  it("returns not found for a missing run", async () => {
+    const fixture = await track(seedFixture());
+    const missingRunId = randomUUID();
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: missingRunId, exitCode: 0 },
+        headers: {
+          authorization: `Bearer ${sandboxToken({
+            runId: missingRunId,
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+          })}`,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Agent run not found",
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("returns not found when the sandbox user does not own the run", async () => {
+    const fixture = await track(seedFixture());
+    const otherFixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: otherFixture.runId, exitCode: 0 },
+        headers: {
+          authorization: `Bearer ${sandboxToken({
+            runId: otherFixture.runId,
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+          })}`,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe("Agent run not found");
+  });
+
   it("completes a successful run from its checkpoint", async () => {
     const fixture = await track(seedFixture());
     const checkpoint = await seedCheckpoint(fixture);
@@ -278,6 +403,28 @@ describe("POST /api/webhooks/agent/complete", () => {
     );
   });
 
+  it("upgrades a timed-out run to completed when the checkpoint exists", async () => {
+    const fixture = await track(seedFixture("timeout"));
+    await seedCheckpoint(fixture);
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0 },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+
+    const run = await runById(fixture.runId);
+    expect(run?.status).toBe("completed");
+    expect(run?.error).toBeNull();
+  });
+
   it("fails a successful completion when the checkpoint is missing", async () => {
     const fixture = await track(seedFixture());
 
@@ -300,6 +447,26 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(run).toMatchObject({
       status: "failed",
       error: "Checkpoint for run not found",
+      lastEventSequence: null,
+    });
+  });
+
+  it("persists lastEventSequence when the checkpoint is missing", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 4 },
+        headers: authHeaders(fixture),
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe("Checkpoint for run not found");
+    const run = await runById(fixture.runId);
+    expect(run).toMatchObject({
+      status: "failed",
+      lastEventSequence: 4,
     });
   });
 
@@ -358,6 +525,77 @@ describe("POST /api/webhooks/agent/complete", () => {
     expect(run?.status).toBe("completed");
     expect(run?.lastEventSequence).toBe(12);
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("returns idempotent success for duplicate failed completions", async () => {
+    const fixture = await track(seedFixture("failed"));
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 1, lastEventSequence: 12 },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+
+    const run = await runById(fixture.runId);
+    expect(run?.status).toBe("failed");
+    expect(run?.lastEventSequence).toBe(12);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("does not lower an existing lastEventSequence on duplicate completion", async () => {
+    const fixture = await track(seedFixture("completed"));
+
+    await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 7 },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0, lastEventSequence: 3 },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("completed");
+    const run = await runById(fixture.runId);
+    expect(run?.lastEventSequence).toBe(7);
+  });
+
+  it("returns failed when completion loses the transition race to cancellation", async () => {
+    const fixture = await track(seedFixture());
+    await seedCheckpoint(fixture);
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "cancelled", completedAt: nowDate() })
+      .where(eq(agentRuns.id, fixture.runId));
+
+    const response = await accept(
+      completeClient().complete({
+        body: { runId: fixture.runId, exitCode: 0 },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    const run = await runById(fixture.runId);
+    expect(run?.status).toBe("cancelled");
   });
 
   it("dispatches callbacks, drains the queue, and settles usage after completion", async () => {

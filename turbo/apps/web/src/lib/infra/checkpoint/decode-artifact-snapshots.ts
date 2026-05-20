@@ -11,17 +11,6 @@ import type { ContextArtifact } from "../run/types";
  */
 
 /**
- * Is `raw` a "no artifacts" payload? Treats null/undefined, empty record, and
- * empty array all as equivalent to "persist NULL."
- */
-function isEmptyArtifactPayload(raw: unknown): boolean {
-  if (raw === null || raw === undefined) return true;
-  if (Array.isArray(raw)) return raw.length === 0;
-  if (typeof raw === "object") return Object.keys(raw).length === 0;
-  return false;
-}
-
-/**
  * Decode the JSONB column into the unified `ContextArtifact[]` form consumed
  * by `resolve-checkpoint.ts` and any other code path that needs mountPath
  * stamped on every entry.
@@ -41,39 +30,6 @@ export function decodeToContextArtifacts(raw: unknown): ContextArtifact[] {
     }
     return entry;
   });
-}
-
-/**
- * Project the JSONB column to a `Record<name, version>` for outbound surfaces
- * that currently speak the legacy shape (e.g., `RunResult.artifact`, the CLI
- * `GET /api/agent/checkpoints/:id` response arm). mountPath is discarded; a
- * name collision — which should never happen for a well-formed snapshot —
- * lets the last entry win, matching Object-literal semantics.
- *
- * Returns `null` when the payload is empty (see `isEmptyArtifactPayload`).
- */
-export function decodeToRecord(raw: unknown): Record<string, string> | null {
-  if (isEmptyArtifactPayload(raw)) return null;
-
-  if (!Array.isArray(raw)) {
-    throw badRequest("Invalid checkpoint: artifactSnapshots must be an array");
-  }
-
-  const result: Record<string, string> = {};
-  for (const [i, entry] of raw.entries()) {
-    if (!isContextArtifact(entry)) {
-      throw badRequest(
-        `Invalid checkpoint: artifactSnapshots[${i}] is not a valid ContextArtifact`,
-      );
-    }
-    if (entry.version === undefined) {
-      throw badRequest(
-        `Invalid checkpoint: artifactSnapshots[${i}] has no version`,
-      );
-    }
-    result[entry.name] = entry.version;
-  }
-  return result;
 }
 
 function isContextArtifact(value: unknown): value is ContextArtifact {
