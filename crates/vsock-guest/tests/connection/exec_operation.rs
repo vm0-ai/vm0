@@ -5,13 +5,14 @@ use std::time::Duration;
 use vsock_proto::{
     self, ExecControlPolicy, ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream,
     ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy, MSG_ERROR, MSG_EXEC_CONTROL,
-    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
+    MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED,
     MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, ProcessControlNonce, ProcessControlStatus,
 };
 
 use super::support::*;
 
 const EXEC_CONTROL_NONCE: ProcessControlNonce = *b"exec-ctrl-000001";
+const EXEC_CONTROL_WRONG_NONCE: ProcessControlNonce = *b"exec-ctrl-999999";
 
 fn send_supervised_exec_start(
     stream: &mut impl std::io::Write,
@@ -46,6 +47,16 @@ fn read_exec_started(stream: &mut impl std::io::Read, seq: u32) -> u32 {
     vsock_proto::decode_exec_started(&msg.payload).unwrap().pid
 }
 
+fn read_stdout_chunk(stream: &mut impl std::io::Read, seq: u32) -> Vec<u8> {
+    let msg = read_message(stream);
+    assert_eq!(msg.msg_type, MSG_EXEC_OUTPUT);
+    assert_eq!(msg.seq, seq);
+    let decoded = vsock_proto::decode_exec_output(&msg.payload).unwrap();
+    assert_eq!(decoded.stream, ExecOutputStream::Stdout);
+    assert!(!decoded.truncated);
+    decoded.chunk.to_vec()
+}
+
 fn send_exec_control(
     stream: &mut impl std::io::Write,
     request_seq: u32,
@@ -64,6 +75,8 @@ fn assert_exec_control_result(
     stream: &mut impl std::io::Read,
     request_seq: u32,
     expected_target_seq: u32,
+    expected_nonce: ProcessControlNonce,
+    expected_message_id: &str,
     expected_status: ProcessControlStatus,
     expected_diagnostic: &str,
 ) {
@@ -72,8 +85,8 @@ fn assert_exec_control_result(
     assert_eq!(msg.seq, request_seq);
     let decoded = vsock_proto::decode_exec_control_result(&msg.payload).unwrap();
     assert_eq!(decoded.target_seq, expected_target_seq);
-    assert_eq!(decoded.control_nonce, EXEC_CONTROL_NONCE);
-    assert_eq!(decoded.message_id, "message");
+    assert_eq!(decoded.control_nonce, expected_nonce);
+    assert_eq!(decoded.message_id, expected_message_id);
     assert_eq!(decoded.status, expected_status);
     assert_eq!(decoded.diagnostic, expected_diagnostic);
 }
@@ -297,7 +310,11 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
             env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],
             sudo: false,
             label: "supervised-test",
-            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stdout: ExecOutputPolicy::CaptureAndStream {
+                capture_limit_bytes: 1024,
+                stream_limit_bytes: 1024,
+                chunk_limit_bytes: 1024,
+            },
             stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
             expected_exit_codes: &[],
             control: ExecControlPolicy::Enabled {
@@ -307,6 +324,10 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         },
     );
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);
+    assert_eq!(
+        read_stdout_chunk(&mut host_stream, target_seq),
+        endpoint.as_bytes()
+    );
 
     let client_endpoint = endpoint.clone();
     let client = thread::spawn(move || {
@@ -337,6 +358,8 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         &mut host_stream,
         303,
         target_seq,
+        EXEC_CONTROL_NONCE,
+        "message",
         ProcessControlStatus::Delivered,
         "ok",
     );
@@ -372,6 +395,8 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
         &mut host_stream,
         304,
         204,
+        EXEC_CONTROL_NONCE,
+        "message",
         ProcessControlStatus::Unsupported,
         "exec control sink is not configured",
     );
@@ -379,6 +404,126 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
     send_exec_cancel(&mut host_stream, 204);
     let (_chunks, result) = read_exec_result(&mut host_stream, 204);
     assert_eq!(result.termination, ExecTermination::Cancelled);
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        206,
+        "sleep 60",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+    assert!(read_exec_started(&mut host_stream, 206) > 0);
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        206,
+        "printf duplicate",
+        ExecTimeoutPolicy::None,
+        ExecOutputPolicy::Discard,
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_WRONG_NONCE,
+            sink: false,
+        },
+    );
+    assert_eq!(
+        read_error_response(&mut host_stream, 206),
+        "exec operation already active"
+    );
+
+    send_exec_control(
+        &mut host_stream,
+        306,
+        206,
+        EXEC_CONTROL_WRONG_NONCE,
+        "message-wrong-nonce",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        306,
+        206,
+        EXEC_CONTROL_WRONG_NONCE,
+        "message-wrong-nonce",
+        ProcessControlStatus::NonceMismatch,
+        "exec operation nonce mismatch",
+    );
+
+    send_exec_control(
+        &mut host_stream,
+        307,
+        206,
+        EXEC_CONTROL_NONCE,
+        "message-original-nonce",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        307,
+        206,
+        EXEC_CONTROL_NONCE,
+        "message-original-nonce",
+        ProcessControlStatus::Unsupported,
+        "exec control sink is not configured",
+    );
+
+    send_exec_cancel(&mut host_stream, 206);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 206);
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+
+    send_quiesce_operations(&mut host_stream, 308);
+    let quiesced = read_message(&mut host_stream);
+    assert_eq!(quiesced.msg_type, MSG_OPERATIONS_QUIESCED);
+    assert_eq!(quiesced.seq, 308);
+    assert!(quiesced.payload.is_empty());
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn supervised_exec_control_after_exit_returns_inactive() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_supervised_exec_start(
+        &mut host_stream,
+        207,
+        "printf done",
+        ExecTimeoutPolicy::Duration { timeout_ms: 5000 },
+        ExecOutputPolicy::Capture { limit_bytes: 1024 },
+        ExecControlPolicy::Enabled {
+            control_nonce: EXEC_CONTROL_NONCE,
+            sink: false,
+        },
+    );
+    assert!(read_exec_started(&mut host_stream, 207) > 0);
+    let (_chunks, result) = read_exec_result(&mut host_stream, 207);
+    assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+    assert_eq!(result.stdout, Some(b"done".to_vec()));
+
+    send_exec_control(
+        &mut host_stream,
+        309,
+        207,
+        EXEC_CONTROL_NONCE,
+        "message-after-exit",
+    );
+    assert_exec_control_result(
+        &mut host_stream,
+        309,
+        207,
+        EXEC_CONTROL_NONCE,
+        "message-after-exit",
+        ProcessControlStatus::Inactive,
+        "exec operation is not active",
+    );
 
     finish_guest_connection(handle, host_stream);
 }
@@ -989,7 +1134,7 @@ fn exec_operation_unknown_cancel_is_ignored() {
 }
 
 #[test]
-fn exec_operation_seq_zero_start_and_cancel_return_error() {
+fn exec_operation_seq_zero_start_cancel_and_control_return_error() {
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start(
@@ -1015,6 +1160,16 @@ fn exec_operation_seq_zero_start_and_cancel_return_error() {
     assert_eq!(cancel_error.seq, 0);
     assert!(
         vsock_proto::decode_error(&cancel_error.payload)
+            .unwrap()
+            .contains("non-zero sequence")
+    );
+
+    send_exec_control(&mut host_stream, 0, 1, EXEC_CONTROL_NONCE, "message-zero");
+    let control_error = read_message(&mut host_stream);
+    assert_eq!(control_error.msg_type, MSG_ERROR);
+    assert_eq!(control_error.seq, 0);
+    assert!(
+        vsock_proto::decode_error(&control_error.payload)
             .unwrap()
             .contains("non-zero sequence")
     );
