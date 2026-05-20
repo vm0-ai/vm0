@@ -278,6 +278,12 @@ impl GuestProcessHandle {
     }
 }
 
+impl Drop for GuestProcessHandle {
+    fn drop(&mut self) {
+        self.drop_unclaimed_stdout();
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessOutputMode {
     Buffered {
@@ -467,6 +473,28 @@ mod tests {
         });
 
         handle.drop_unclaimed_stdout();
+
+        assert!(closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn guest_process_handle_drop_closes_unclaimed_stdout() {
+        let (_tx, stdout_rx) = tokio::sync::mpsc::channel(1);
+        let closed = Arc::new(AtomicBool::new(false));
+        let close_observed = Arc::clone(&closed);
+        let handle = GuestProcessHandle::new(
+            42,
+            Some(stdout_rx),
+            None,
+            GuestProcessWaiter::new(|_| {
+                Box::pin(async { Ok(ProcessExit::new(42, 0, Vec::new(), Vec::new())) })
+            }),
+        )
+        .with_unclaimed_stdout_cleanup(move || {
+            close_observed.store(true, Ordering::SeqCst);
+        });
+
+        drop(handle);
 
         assert!(closed.load(Ordering::SeqCst));
     }
