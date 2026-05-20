@@ -209,54 +209,6 @@ export async function createCustomConnector(
   return { ...row, prefixes: row.prefixes as string[] };
 }
 
-export async function patchCustomConnectorDisplayName(
-  orgId: string,
-  id: string,
-  displayName: string,
-): Promise<CustomConnector> {
-  const trimmed = displayName.trim();
-  if (trimmed.length < 1 || trimmed.length > 128) {
-    throw badRequest("Display name must be between 1 and 128 characters");
-  }
-  const [row] = await globalThis.services.db
-    .update(orgCustomConnectors)
-    .set({ displayName: trimmed, updatedAt: new Date() })
-    .where(
-      and(eq(orgCustomConnectors.id, id), eq(orgCustomConnectors.orgId, orgId)),
-    )
-    .returning();
-  if (!row) {
-    throw notFound(`Custom connector ${id} not found`);
-  }
-  return { ...row, prefixes: row.prefixes as string[] };
-}
-
-export async function deleteCustomConnector(
-  orgId: string,
-  id: string,
-): Promise<void> {
-  await globalThis.services.db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({ id: orgCustomConnectors.id })
-      .from(orgCustomConnectors)
-      .where(
-        and(
-          eq(orgCustomConnectors.id, id),
-          eq(orgCustomConnectors.orgId, orgId),
-        ),
-      )
-      .limit(1);
-    if (!existing) {
-      throw notFound(`Custom connector ${id} not found`);
-    }
-    await tx
-      .delete(orgCustomConnectorSecrets)
-      .where(eq(orgCustomConnectorSecrets.connectorId, id));
-    await tx.delete(orgCustomConnectors).where(eq(orgCustomConnectors.id, id));
-  });
-  log.debug("custom connector deleted", { orgId, id });
-}
-
 export async function setCustomConnectorSecret(
   orgId: string,
   userId: string,

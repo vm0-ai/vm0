@@ -907,6 +907,15 @@ const ZERO_AGENT_USER_CONNECTORS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/agents/user-connectors",
   "/api/zero/agent/550e8400-e29b-41d4-a716-446655440000/user-connectors",
 ] as const;
+const ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE =
+  "/api/zero/custom-connectors/:id";
+const ZERO_CUSTOM_CONNECTOR_BY_ID_PATH =
+  "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000";
+const ZERO_CUSTOM_CONNECTOR_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/custom-connectors",
+  "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/extra",
+  "/api/zero/custom-connector/550e8400-e29b-41d4-a716-446655440000",
+] as const;
 const ZERO_AGENT_INSTRUCTIONS_REWRITE_SOURCE =
   "/api/zero/agents/:id/instructions";
 const ZERO_AGENT_INSTRUCTIONS_PATH =
@@ -2238,6 +2247,11 @@ describe("API backend rewrites", () => {
           source: ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/zero/agents/:id/user-connectors",
+        },
+        {
+          source: ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/zero/custom-connectors/:id",
         },
         {
           source: ZERO_CHAT_SEARCH_REWRITE_SOURCE,
@@ -6131,6 +6145,31 @@ describe("API backend rewrites", () => {
       id: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of ZERO_AGENT_USER_CONNECTORS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only one segment for zero custom connector by-id rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/zero/custom-connectors/:id",
+    });
+
+    const matcher = getPathMatch(ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CUSTOM_CONNECTOR_BY_ID_PATH)).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    for (const pathname of ZERO_CUSTOM_CONNECTOR_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

@@ -63,6 +63,24 @@ describe("DELETE /api/zero/custom-connectors/:id", () => {
     });
   });
 
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    const { userId, orgId } = uniqueOrg("zcc-del-no-org");
+    const id = await seedCustomConnector(orgId, userId);
+    mocks.clerk.session(userId, null);
+
+    const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+    const response = await accept(
+      client.delete({
+        params: { id },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 403 for non-admin members and leaves the row in place", async () => {
     const { userId, orgId } = uniqueOrg("zcc-del-member");
     const id = await seedCustomConnector(orgId, userId);
