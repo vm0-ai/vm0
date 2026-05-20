@@ -9,7 +9,7 @@ import {
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
 } from "@vm0/connectors/oauth-providers/providers/meta-ads";
-import { metaAdsHandler } from "@vm0/connectors/oauth-providers/providers/meta-ads-handler";
+import { metaAdsProvider } from "@vm0/connectors/oauth-providers/providers/meta-ads-provider";
 
 const TOKEN_URL = "https://graph.facebook.com/v22.0/oauth/access_token";
 const USER_URL = "https://graph.facebook.com/v22.0/me";
@@ -144,13 +144,13 @@ describe("connector/providers/meta-ads", () => {
     });
   });
 
-  describe("metaAdsHandler", () => {
+  describe("metaAdsProvider", () => {
     it("is registered in CONNECTOR_OAUTH_PROVIDERS under meta-ads key", () => {
-      expect(CONNECTOR_OAUTH_PROVIDERS["meta-ads"]).toBe(metaAdsHandler);
+      expect(CONNECTOR_OAUTH_PROVIDERS["meta-ads"]).toBe(metaAdsProvider);
     });
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
-      const url = metaAdsHandler.buildAuthUrl({
+      const url = metaAdsProvider.buildAuthUrl({
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -163,25 +163,25 @@ describe("connector/providers/meta-ads", () => {
     it("getClientId returns META_ADS_OAUTH_CLIENT_ID from env", () => {
       const env = {
         META_ADS_OAUTH_CLIENT_ID: "test-client-id",
-      } as Parameters<typeof metaAdsHandler.getClientId>[0];
+      } as Parameters<typeof metaAdsProvider.getClientId>[0];
 
-      expect(metaAdsHandler.getClientId(env)).toBe("test-client-id");
+      expect(metaAdsProvider.getClientId(env)).toBe("test-client-id");
     });
 
     it("getClientSecret returns META_ADS_OAUTH_CLIENT_SECRET from env", () => {
       const env = {
         META_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",
-      } as Parameters<typeof metaAdsHandler.getClientSecret>[0];
+      } as Parameters<typeof metaAdsProvider.getClientSecret>[0];
 
-      expect(metaAdsHandler.getClientSecret(env)).toBe("test-client-secret");
+      expect(metaAdsProvider.getClientSecret(env)).toBe("test-client-secret");
     });
 
     it("getSecretName returns META_ADS_ACCESS_TOKEN", () => {
-      expect(metaAdsHandler.getSecretName()).toBe("META_ADS_ACCESS_TOKEN");
+      expect(metaAdsProvider.getSecretName()).toBe("META_ADS_ACCESS_TOKEN");
     });
 
     it("refreshToken is not registered (Meta uses long-lived token exchange)", () => {
-      expect("refreshToken" in metaAdsHandler).toBe(false);
+      expect("refreshToken" in metaAdsProvider).toBe(false);
     });
   });
 });

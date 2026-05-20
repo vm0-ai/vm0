@@ -11,7 +11,7 @@ import {
   isChatgptRefreshError,
   type ChatgptRefreshError,
 } from "@vm0/connectors/oauth-providers/providers/codex-oauth";
-import { codexOauthHandler } from "@vm0/connectors/oauth-providers/providers/codex-oauth-handler";
+import { codexOauthProvider } from "@vm0/connectors/oauth-providers/providers/codex-oauth-provider";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -165,26 +165,28 @@ describe("connector/providers/codex-oauth", () => {
     });
   });
 
-  describe("codexOauthHandler", () => {
+  describe("codexOauthProvider", () => {
     it("is registered as a model-provider refresh provider", () => {
       expect(getModelProviderOAuthProvider("codex-oauth-token")).toBe(
-        codexOauthHandler,
+        codexOauthProvider,
       );
     });
 
     it("does not expose browser authorize or code exchange helpers", () => {
-      expect("buildAuthUrl" in codexOauthHandler).toBe(false);
-      expect("exchangeCode" in codexOauthHandler).toBe(false);
+      expect("buildAuthUrl" in codexOauthProvider).toBe(false);
+      expect("exchangeCode" in codexOauthProvider).toBe(false);
     });
 
     it("getClientId returns the Codex public client_id (used by refresh)", () => {
-      const env = {} as Parameters<typeof codexOauthHandler.getClientId>[0];
-      expect(codexOauthHandler.getClientId(env)).toBe(CODEX_PUBLIC_CLIENT_ID);
+      const env = {} as Parameters<typeof codexOauthProvider.getClientId>[0];
+      expect(codexOauthProvider.getClientId(env)).toBe(CODEX_PUBLIC_CLIENT_ID);
     });
 
     it("getClientSecret returns undefined (PKCE-only)", () => {
-      const env = {} as Parameters<typeof codexOauthHandler.getClientSecret>[0];
-      expect(codexOauthHandler.getClientSecret(env)).toBeUndefined();
+      const env = {} as Parameters<
+        typeof codexOauthProvider.getClientSecret
+      >[0];
+      expect(codexOauthProvider.getClientSecret(env)).toBeUndefined();
     });
 
     it("returns documented secret names", () => {

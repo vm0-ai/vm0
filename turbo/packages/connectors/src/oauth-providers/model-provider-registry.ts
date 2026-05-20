@@ -2,10 +2,10 @@ import type {
   OAuthAuthorizationCodeProvider,
   OAuthRefreshProvider,
 } from "./provider-types";
-import { codexOauthHandler } from "./providers/codex-oauth-handler";
+import { codexOauthProvider } from "./providers/codex-oauth-provider";
 
 export const MODEL_PROVIDER_OAUTH_PROVIDERS = {
-  "codex-oauth-token": codexOauthHandler,
+  "codex-oauth-token": codexOauthProvider,
 } as const satisfies Record<
   string,
   OAuthAuthorizationCodeProvider | OAuthRefreshProvider

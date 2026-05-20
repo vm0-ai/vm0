@@ -15,51 +15,51 @@ import {
   type OAuthConnectorProvider,
   type ProviderEnv,
 } from "./provider-types";
-import { ahrefsHandler } from "./providers/ahrefs-handler";
-import { airtableHandler } from "./providers/airtable-handler";
-import { asanaHandler } from "./providers/asana-handler";
-import { canvaHandler } from "./providers/canva-handler";
-import { closeHandler } from "./providers/close-handler";
-import { deelHandler } from "./providers/deel-handler";
-import { docusignHandler } from "./providers/docusign-handler";
-import { dropboxHandler } from "./providers/dropbox-handler";
-import { figmaHandler } from "./providers/figma-handler";
-import { garminConnectHandler } from "./providers/garmin-connect-handler";
-import { gumroadHandler } from "./providers/gumroad-handler";
-import { githubHandler } from "./providers/github-handler";
-import { gmailHandler } from "./providers/gmail-handler";
-import { hubspotHandler } from "./providers/hubspot-handler";
-import { googleAdsHandler } from "./providers/google-ads-handler";
-import { googleCalendarHandler } from "./providers/google-calendar-handler";
-import { googleDocsHandler } from "./providers/google-docs-handler";
-import { googleDriveHandler } from "./providers/google-drive-handler";
-import { googleMeetHandler } from "./providers/google-meet-handler";
-import { googleSheetsHandler } from "./providers/google-sheets-handler";
-import { linearHandler } from "./providers/linear-handler";
-import { mailchimpHandler } from "./providers/mailchimp-handler";
-import { mercuryHandler } from "./providers/mercury-handler";
-import { mondayHandler } from "./providers/monday-handler";
-import { neonHandler } from "./providers/neon-handler";
-import { notionHandler } from "./providers/notion-handler";
-import { outlookCalendarHandler } from "./providers/outlook-calendar-handler";
-import { outlookMailHandler } from "./providers/outlook-mail-handler";
-import { redditHandler } from "./providers/reddit-handler";
-import { intervalsIcuHandler } from "./providers/intervals-icu-handler";
-import { sentryHandler } from "./providers/sentry-handler";
-import { slackHandler } from "./providers/slack-handler";
-import { stravaHandler } from "./providers/strava-handler";
-import { stripeHandler } from "./providers/stripe-handler";
-import { todoistHandler } from "./providers/todoist-handler";
-import { vercelHandler } from "./providers/vercel-handler";
-import { webflowHandler } from "./providers/webflow-handler";
-import { supabaseHandler } from "./providers/supabase-handler";
-import { metaAdsHandler } from "./providers/meta-ads-handler";
-import { posthogHandler } from "./providers/posthog-handler";
-import { spotifyHandler } from "./providers/spotify-handler";
-import { xHandler } from "./providers/x-handler";
-import { xeroHandler } from "./providers/xero-handler";
-import { zoomHandler } from "./providers/zoom-handler";
-import { testOauthHandler } from "./providers/test-oauth-handler";
+import { ahrefsProvider } from "./providers/ahrefs-provider";
+import { airtableProvider } from "./providers/airtable-provider";
+import { asanaProvider } from "./providers/asana-provider";
+import { canvaProvider } from "./providers/canva-provider";
+import { closeProvider } from "./providers/close-provider";
+import { deelProvider } from "./providers/deel-provider";
+import { docusignProvider } from "./providers/docusign-provider";
+import { dropboxProvider } from "./providers/dropbox-provider";
+import { figmaProvider } from "./providers/figma-provider";
+import { garminConnectProvider } from "./providers/garmin-connect-provider";
+import { gumroadProvider } from "./providers/gumroad-provider";
+import { githubProvider } from "./providers/github-provider";
+import { gmailProvider } from "./providers/gmail-provider";
+import { hubspotProvider } from "./providers/hubspot-provider";
+import { googleAdsProvider } from "./providers/google-ads-provider";
+import { googleCalendarProvider } from "./providers/google-calendar-provider";
+import { googleDocsProvider } from "./providers/google-docs-provider";
+import { googleDriveProvider } from "./providers/google-drive-provider";
+import { googleMeetProvider } from "./providers/google-meet-provider";
+import { googleSheetsProvider } from "./providers/google-sheets-provider";
+import { linearProvider } from "./providers/linear-provider";
+import { mailchimpProvider } from "./providers/mailchimp-provider";
+import { mercuryProvider } from "./providers/mercury-provider";
+import { mondayProvider } from "./providers/monday-provider";
+import { neonProvider } from "./providers/neon-provider";
+import { notionProvider } from "./providers/notion-provider";
+import { outlookCalendarProvider } from "./providers/outlook-calendar-provider";
+import { outlookMailProvider } from "./providers/outlook-mail-provider";
+import { redditProvider } from "./providers/reddit-provider";
+import { intervalsIcuProvider } from "./providers/intervals-icu-provider";
+import { sentryProvider } from "./providers/sentry-provider";
+import { slackProvider } from "./providers/slack-provider";
+import { stravaProvider } from "./providers/strava-provider";
+import { stripeProvider } from "./providers/stripe-provider";
+import { todoistProvider } from "./providers/todoist-provider";
+import { vercelProvider } from "./providers/vercel-provider";
+import { webflowProvider } from "./providers/webflow-provider";
+import { supabaseProvider } from "./providers/supabase-provider";
+import { metaAdsProvider } from "./providers/meta-ads-provider";
+import { posthogProvider } from "./providers/posthog-provider";
+import { spotifyProvider } from "./providers/spotify-provider";
+import { xProvider } from "./providers/x-provider";
+import { xeroProvider } from "./providers/xero-provider";
+import { zoomProvider } from "./providers/zoom-provider";
+import { testOauthProvider } from "./providers/test-oauth-provider";
 
 export type {
   AuthUrlResult,
@@ -73,51 +73,51 @@ export type { ProviderEnv };
 export { providerEnvFromObject, isOAuthRefreshProvider };
 
 export const CONNECTOR_OAUTH_PROVIDERS = {
-  ahrefs: ahrefsHandler,
-  airtable: airtableHandler,
-  asana: asanaHandler,
-  canva: canvaHandler,
-  close: closeHandler,
-  deel: deelHandler,
-  docusign: docusignHandler,
-  dropbox: dropboxHandler,
-  figma: figmaHandler,
-  "garmin-connect": garminConnectHandler,
-  gumroad: gumroadHandler,
-  github: githubHandler,
-  gmail: gmailHandler,
-  hubspot: hubspotHandler,
-  "google-ads": googleAdsHandler,
-  "google-calendar": googleCalendarHandler,
-  "google-docs": googleDocsHandler,
-  "google-drive": googleDriveHandler,
-  "google-meet": googleMeetHandler,
-  "google-sheets": googleSheetsHandler,
-  linear: linearHandler,
-  mailchimp: mailchimpHandler,
-  mercury: mercuryHandler,
-  monday: mondayHandler,
-  neon: neonHandler,
-  notion: notionHandler,
-  "outlook-calendar": outlookCalendarHandler,
-  "outlook-mail": outlookMailHandler,
-  reddit: redditHandler,
-  "intervals-icu": intervalsIcuHandler,
-  sentry: sentryHandler,
-  slack: slackHandler,
-  strava: stravaHandler,
-  stripe: stripeHandler,
-  todoist: todoistHandler,
-  vercel: vercelHandler,
-  webflow: webflowHandler,
-  supabase: supabaseHandler,
-  "meta-ads": metaAdsHandler,
-  posthog: posthogHandler,
-  spotify: spotifyHandler,
-  x: xHandler,
-  xero: xeroHandler,
-  zoom: zoomHandler,
-  "test-oauth": testOauthHandler,
+  ahrefs: ahrefsProvider,
+  airtable: airtableProvider,
+  asana: asanaProvider,
+  canva: canvaProvider,
+  close: closeProvider,
+  deel: deelProvider,
+  docusign: docusignProvider,
+  dropbox: dropboxProvider,
+  figma: figmaProvider,
+  "garmin-connect": garminConnectProvider,
+  gumroad: gumroadProvider,
+  github: githubProvider,
+  gmail: gmailProvider,
+  hubspot: hubspotProvider,
+  "google-ads": googleAdsProvider,
+  "google-calendar": googleCalendarProvider,
+  "google-docs": googleDocsProvider,
+  "google-drive": googleDriveProvider,
+  "google-meet": googleMeetProvider,
+  "google-sheets": googleSheetsProvider,
+  linear: linearProvider,
+  mailchimp: mailchimpProvider,
+  mercury: mercuryProvider,
+  monday: mondayProvider,
+  neon: neonProvider,
+  notion: notionProvider,
+  "outlook-calendar": outlookCalendarProvider,
+  "outlook-mail": outlookMailProvider,
+  reddit: redditProvider,
+  "intervals-icu": intervalsIcuProvider,
+  sentry: sentryProvider,
+  slack: slackProvider,
+  strava: stravaProvider,
+  stripe: stripeProvider,
+  todoist: todoistProvider,
+  vercel: vercelProvider,
+  webflow: webflowProvider,
+  supabase: supabaseProvider,
+  "meta-ads": metaAdsProvider,
+  posthog: posthogProvider,
+  spotify: spotifyProvider,
+  x: xProvider,
+  xero: xeroProvider,
+  zoom: zoomProvider,
+  "test-oauth": testOauthProvider,
 } satisfies Record<OAuthConnectorType, OAuthConnectorProvider>;
 
 export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
