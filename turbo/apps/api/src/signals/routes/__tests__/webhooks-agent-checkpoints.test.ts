@@ -204,6 +204,24 @@ describe("POST /api/webhooks/agent/checkpoints/prepare-history", () => {
     expect(context.mocks.s3.getSignedUrl).not.toHaveBeenCalled();
   });
 
+  it("rejects invalid history hashes", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      prepareHistoryClient().prepare({
+        body: {
+          runId: fixture.runId,
+          hash: "not-a-valid-hash",
+          size: 123,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("pre-registers a missing blob and returns a presigned upload URL", async () => {
     const fixture = await track(seedFixture());
 

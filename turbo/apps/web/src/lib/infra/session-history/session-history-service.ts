@@ -12,31 +12,6 @@ import { logger } from "../../shared/logger";
 const log = logger("session-history");
 
 /**
- * Pre-register a session history blob with correct size before S3 upload.
- * Creates the blob record with refCount 0; the subsequent checkpoint call
- * will increment refCount via registerSessionHistoryBlob.
- *
- * On conflict (blob already exists), updates size to the correct value.
- *
- * @param hash SHA-256 hash of the content
- * @param size File size in bytes
- */
-export async function preRegisterSessionHistoryBlob(
-  hash: string,
-  size: number,
-): Promise<void> {
-  log.debug(`Pre-registering session history blob, hash=${hash}, size=${size}`);
-
-  await globalThis.services.db
-    .insert(blobs)
-    .values({ hash, size, refCount: 0 })
-    .onConflictDoUpdate({
-      target: blobs.hash,
-      set: { size },
-    });
-}
-
-/**
  * Register a session history blob that was uploaded directly to S3 via presigned URL.
  * The blob record (with correct size) is pre-created by the prepare-history endpoint;
  * this function increments refCount to track usage.

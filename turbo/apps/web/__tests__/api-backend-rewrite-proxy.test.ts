@@ -1227,6 +1227,22 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks")).toBe(false);
   });
 
+  it("matches the agent checkpoint prepare-history webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/checkpoints/prepare-history",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/checkpoints/prepare-history/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/checkpoints"),
+    ).toBe(false);
+  });
+
   it("matches the Clerk webhook rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/clerk")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/webhooks/clerk/extra")).toBe(
@@ -2682,6 +2698,46 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.headers["x-hub-signature-256"]).toBe(
           "sha256=test-signature",
         );
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent checkpoint prepare-history webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_prepare_history_1",
+          hash: "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+          size: 1024,
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/checkpoints/prepare-history?from=prepare-history`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/checkpoints/prepare-history?from=prepare-history",
+        );
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
         expect(payload.body).toBe(webhookBody);
       },
     );

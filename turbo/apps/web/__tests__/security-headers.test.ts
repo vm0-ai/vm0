@@ -659,6 +659,15 @@ const BUILT_IN_GENERATIONS_FAL_WEBHOOK_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/built-in-generations/fal/550e8400-e29b-41d4-a716-446655440000/extra",
   "/api/webhooks/built-in-generations",
 ] as const;
+const AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE =
+  "/api/webhooks/agent/checkpoints/prepare-history";
+const AGENT_CHECKPOINTS_PREPARE_HISTORY_PATH =
+  "/api/webhooks/agent/checkpoints/prepare-history";
+const AGENT_CHECKPOINTS_PREPARE_HISTORY_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/checkpoints/prepare-history/extra",
+  "/api/webhooks/agent/checkpoints",
+  "/api/webhooks/agent",
+] as const;
 const CLERK_WEBHOOK_REWRITE_SOURCE = "/api/webhooks/clerk";
 const CLERK_WEBHOOK_PATH = "/api/webhooks/clerk";
 const CLERK_WEBHOOK_NEXT_NEGATIVE_PATHS = [
@@ -1844,6 +1853,11 @@ describe("API backend rewrites", () => {
           source: BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/built-in-generations/fal/:generationId",
+        },
+        {
+          source: AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/checkpoints/prepare-history",
         },
         {
           source: CLERK_WEBHOOK_REWRITE_SOURCE,
@@ -3951,6 +3965,33 @@ describe("API backend rewrites", () => {
       generationId: "550e8400-e29b-41d4-a716-446655440000",
     });
     for (const pathname of BUILT_IN_GENERATIONS_FAL_WEBHOOK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent checkpoint prepare-history webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/agent/checkpoints/prepare-history",
+    });
+
+    const matcher = getPathMatch(
+      AGENT_CHECKPOINTS_PREPARE_HISTORY_REWRITE_SOURCE,
+      {
+        removeUnnamedParams: true,
+        strict: true,
+      },
+    );
+
+    expect(matcher(AGENT_CHECKPOINTS_PREPARE_HISTORY_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_CHECKPOINTS_PREPARE_HISTORY_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
