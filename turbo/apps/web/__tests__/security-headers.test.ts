@@ -2512,6 +2512,11 @@ describe("API backend rewrites", () => {
             "https://api.example.test/api/zero/integrations/telegram/message",
         },
         {
+          source: "/api/zero/integrations/telegram/upload-file/complete",
+          destination:
+            "https://api.example.test/api/zero/integrations/telegram/upload-file/complete",
+        },
+        {
           source: "/api/zero/integrations/telegram/upload-file/init",
           destination:
             "https://api.example.test/api/zero/integrations/telegram/upload-file/init",
@@ -8161,6 +8166,27 @@ describe("API backend rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/integrations/telegram/upload-file/init/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/integrations/telegram"),
+    ).toBe(false);
+  });
+
+  it("should match the zero integrations Telegram upload complete route for middleware pass-through", async () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file/complete",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/integrations/telegram/upload-file/complete/extra",
       ),
     ).toBe(false);
     expect(

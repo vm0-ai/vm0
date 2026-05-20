@@ -34,10 +34,6 @@ export function buildArtifactKey(
   return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
-export function buildArtifactPrefix(userId: string, id: string): string {
-  return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/`;
-}
-
 export function buildFileUrl(
   userId: string,
   id: string,

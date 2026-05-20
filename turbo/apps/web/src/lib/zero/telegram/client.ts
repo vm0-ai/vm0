@@ -51,32 +51,10 @@ function makeTelegramApiError(
   );
 }
 
-export function isTelegramApiError(error: unknown): error is TelegramApiError {
-  return (
-    error instanceof Error &&
-    error.name === "TelegramApiError" &&
-    "method" in error &&
-    "status" in error
-  );
-}
-
 interface TelegramSentMessage {
   message_id: number;
   chat: { id: number };
   text?: string;
-}
-
-interface TelegramDocument {
-  file_id: string;
-  file_unique_id: string;
-  file_name?: string;
-  mime_type?: string;
-  file_size?: number;
-}
-
-interface TelegramSentDocumentMessage extends TelegramSentMessage {
-  document?: TelegramDocument;
-  caption?: string;
 }
 
 export interface TelegramClient {
@@ -205,29 +183,6 @@ export async function sendMessage(
     }),
     ...(options?.replyMarkup && { reply_markup: options.replyMarkup }),
   });
-}
-
-/**
- * Send a general file by Telegram file id or HTTP URL.
- */
-export async function sendDocument(
-  client: TelegramClient,
-  chatId: string | number,
-  document: string,
-  options?: { caption?: string; messageThreadId?: number },
-): Promise<TelegramSentDocumentMessage> {
-  return callTelegramApi<TelegramSentDocumentMessage>(
-    client.token,
-    "sendDocument",
-    {
-      chat_id: chatId,
-      document,
-      ...(options?.caption ? { caption: options.caption } : {}),
-      ...(options?.messageThreadId
-        ? { message_thread_id: options.messageThreadId }
-        : {}),
-    },
-  );
 }
 
 /**
