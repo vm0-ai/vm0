@@ -215,13 +215,13 @@ impl GuestProcessControlHandle {
 ///
 /// The handle owns backend-specific exit state and must be consumed by
 /// [`Sandbox::wait_process`](crate::Sandbox::wait_process). When stdout streaming is
-/// enabled, callers may take [`stdout_rx`](Self::stdout_rx) before waiting; if
-/// they do, they must drain it while the process runs.
+/// enabled, callers may use [`take_stdout_receiver`](Self::take_stdout_receiver)
+/// before waiting; if they do, they must drain it while the process runs.
 pub struct GuestProcessHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
     /// `None` when the backend does not support streaming.
-    pub stdout_rx: Option<ProcessOutputReceiver>,
+    stdout_rx: Option<ProcessOutputReceiver>,
     control: Option<GuestProcessControlHandle>,
     wait: Option<GuestProcessWaiter>,
     close_unclaimed_stdout: Option<Box<dyn FnOnce() + Send + 'static>>,
@@ -242,6 +242,16 @@ impl GuestProcessHandle {
             wait: Some(wait),
             close_unclaimed_stdout: None,
         }
+    }
+
+    /// Return whether this handle currently owns a stdout receiver.
+    pub fn has_stdout_receiver(&self) -> bool {
+        self.stdout_rx.is_some()
+    }
+
+    /// Take the stdout receiver so the caller can drain streamed output.
+    pub fn take_stdout_receiver(&mut self) -> Option<ProcessOutputReceiver> {
+        self.stdout_rx.take()
     }
 
     /// Register backend cleanup for an unclaimed stdout receiver.
@@ -449,7 +459,7 @@ mod tests {
             close_observed.store(true, Ordering::SeqCst);
         });
 
-        let _claimed_stdout = handle.stdout_rx.take();
+        let _claimed_stdout = handle.take_stdout_receiver();
         handle.drop_unclaimed_stdout();
 
         assert!(!closed.load(Ordering::SeqCst));

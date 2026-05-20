@@ -2198,7 +2198,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(buffered.stdout_rx.is_none());
+        assert!(!buffered.has_stdout_receiver());
 
         let streamed = sandbox
             .start_process(&StartProcessRequest {
@@ -2211,7 +2211,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(streamed.stdout_rx.is_some());
+        assert!(streamed.has_stdout_receiver());
 
         assert_eq!(
             overrides.start_process_calls(),

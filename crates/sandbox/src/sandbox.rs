@@ -226,9 +226,8 @@ pub trait Sandbox: Send + Sync + Any {
     ///
     /// `request.output` controls whether stdout is buffered into the final
     /// [`ProcessExit`] or streamed in real time through
-    /// [`GuestProcessHandle::stdout_rx`].
-    /// Callers that take `stdout_rx` are responsible for draining it while the
-    /// process runs.
+    /// [`GuestProcessHandle::take_stdout_receiver`]. Callers that take the
+    /// receiver are responsible for draining it while the process runs.
     async fn start_process(&self, request: &StartProcessRequest<'_>) -> Result<GuestProcessHandle>;
     /// Wait for the process behind `handle` to exit, up to `timeout`.
     ///

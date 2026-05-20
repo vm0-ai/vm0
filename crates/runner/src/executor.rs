@@ -720,8 +720,7 @@ async fn run_in_sandbox(
     // Spawn background task to drain stdout chunks and write to host log file.
     let host_log_path = config.log_paths.system_log(context.run_id);
     let stream_task = handle
-        .stdout_rx
-        .take()
+        .take_stdout_receiver()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
 
     // 6. Wait for exit (or cancellation).
