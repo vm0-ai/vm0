@@ -1,0 +1,44 @@
+"""Helpers for setting up auth state in mitm-addon tests."""
+
+import auth
+
+
+def set_cached_headers(
+    cache_key: tuple[str, str],
+    *,
+    headers: dict,
+    expires_at: object = None,
+    resolved_secrets: list | None = None,
+    base: str | None = None,
+    query: dict | None = None,
+) -> None:
+    auth._get_auth_state(cache_key).cache = auth._FirewallHeaderCacheEntry(
+        headers=headers,
+        expires_at=expires_at,
+        resolved_secrets=resolved_secrets or [],
+        base=base,
+        query=query,
+    )
+
+
+def cached_headers(cache_key: tuple[str, str]) -> auth._FirewallHeaderCacheEntry | None:
+    state = auth._auth_state.get(cache_key)
+    return state.cache if state else None
+
+
+def mark_force_refresh(cache_key: tuple[str, str]) -> None:
+    auth._get_auth_state(cache_key).force_refresh_pending = True
+
+
+def force_refresh_pending(cache_key: tuple[str, str]) -> bool:
+    state = auth._auth_state.get(cache_key)
+    return bool(state and state.force_refresh_pending)
+
+
+def set_last_force_refresh_at(cache_key: tuple[str, str], timestamp: float) -> None:
+    auth._get_auth_state(cache_key).last_force_refresh_at = timestamp
+
+
+def last_force_refresh_at(cache_key: tuple[str, str]) -> float | None:
+    state = auth._auth_state.get(cache_key)
+    return state.last_force_refresh_at if state else None

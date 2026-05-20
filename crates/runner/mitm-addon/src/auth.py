@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 
 from mitmproxy import ctx, http
 
@@ -34,30 +35,29 @@ class MissingAuthExpiryError(Exception):
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 
-# Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict, "expiresAt": float | None}
-#
-# expiresAt is the effective cache expiry returned by the server. For
-# non-billable auth it is just the auth-token expiry and may be None. For
-# billable auth it must be finite because the server folds the credit
-# authorization lease into this timestamp.
-_firewall_header_cache: dict[tuple[str, str], dict] = {}
 
-# Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
-_cache_locks: dict[tuple[str, str], asyncio.Lock] = {}
+@dataclass
+class _FirewallHeaderCacheEntry:
+    """Cached /firewall/auth response data for a single firewall key."""
 
-# (run_id, api_id) pairs for which the upstream just returned 401 — the next
-# /firewall/auth fetch must force a token refresh regardless of the DB's
-# tokenExpiresAt, since the provider has silently invalidated it (user
-# revoked, admin rotated, clock skew). Consumed + cleared in
-# get_firewall_headers before each fetch. See #9860.
-_force_refresh_markers: set[tuple[str, str]] = set()
+    headers: dict
+    expires_at: object = None
+    resolved_secrets: list = field(default_factory=list)
+    base: str | None = None
+    query: dict | None = None
 
-# Timestamp of the last consumed force-refresh per (run_id, api_id). Used to
-# rate-limit amplification when an upstream persistently returns 401 for a
-# non-token reason (scope mismatch, resource-level reject, IP block).
-# Without this, every 401 would trigger an OAuth refresh call — hitting
-# provider rate limits and potentially tripping abuse detection. See #9860.
-_last_force_refresh_at: dict[tuple[str, str], float] = {}
+
+@dataclass
+class _FirewallAuthState:
+    """Per-(run_id, api_id) auth lifecycle state."""
+
+    cache: _FirewallHeaderCacheEntry | None = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    force_refresh_pending: bool = False
+    last_force_refresh_at: float = 0.0
+
+
+_auth_state: dict[tuple[str, str], _FirewallAuthState] = {}
 
 # Cooldown window for re-marking a force-refresh. Caps amplification at
 # 30 refreshes/hour/key under a persistent non-token 401 loop — safely
@@ -66,6 +66,10 @@ _last_force_refresh_at: dict[tuple[str, str], float] = {}
 # immediately; the cooldown only affects REPEATED forced refreshes, so
 # happy-path recovery is unaffected.
 _FORCE_REFRESH_COOLDOWN_SECS = 120.0
+
+
+def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
+    return _auth_state.setdefault(cache_key, _FirewallAuthState())
 
 
 def is_billable_firewall(match_info: dict, vm_info: dict) -> bool:
@@ -106,7 +110,7 @@ def request_force_refresh(cache_key: tuple[str, str]) -> None:
 
     Design notes for future changes:
 
-    * The consume timestamp in ``_last_force_refresh_at`` is written **before**
+    * The consume timestamp in ``state.last_force_refresh_at`` is written **before**
       ``fetch_firewall_headers`` is awaited in ``get_firewall_headers``, not
       after. Recording after would allow a 401 arriving during the fetch to
       re-add the marker; after the fetch completes and writes the cache, a
@@ -122,23 +126,23 @@ def request_force_refresh(cache_key: tuple[str, str]) -> None:
       freeze the cooldown until wall-clock catches up; on NTP-slewed runners
       this is not a realistic concern.
     """
-    last = _last_force_refresh_at.get(cache_key, 0.0)
-    if time.time() - last >= _FORCE_REFRESH_COOLDOWN_SECS:
-        _force_refresh_markers.add(cache_key)
+    state = _get_auth_state(cache_key)
+    if time.time() - state.last_force_refresh_at >= _FORCE_REFRESH_COOLDOWN_SECS:
+        state.force_refresh_pending = True
+
+
+def clear_cached_firewall_headers(cache_key: tuple[str, str]) -> None:
+    """Invalidate only cached headers while preserving refresh lifecycle state."""
+    state = _auth_state.get(cache_key)
+    if state:
+        state.cache = None
 
 
 def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     """Remove cache entries for runs no longer in the registry."""
-    stale = [k for k in _firewall_header_cache if k[0] not in active_run_ids]
+    stale = [k for k in _auth_state if k[0] not in active_run_ids]
     for k in stale:
-        _firewall_header_cache.pop(k, None)
-        _cache_locks.pop(k, None)
-    stale_markers = [k for k in _force_refresh_markers if k[0] not in active_run_ids]
-    for k in stale_markers:
-        _force_refresh_markers.discard(k)
-    stale_ts = [k for k in _last_force_refresh_at if k[0] not in active_run_ids]
-    for k in stale_ts:
-        _last_force_refresh_at.pop(k, None)
+        _auth_state.pop(k, None)
 
 
 def get_api_url() -> str:
@@ -372,22 +376,27 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
     return (time.time() if now is None else now) < value
 
 
-def _build_cache_hit(cached: dict, firewall_billable: bool = False) -> dict | None:
+def _build_cache_hit(
+    cached: _FirewallHeaderCacheEntry, firewall_billable: bool = False
+) -> dict | None:
     """Check if a cached entry is still valid and return a cache-hit result."""
-    expires_at = cached.get("expiresAt")
+    expires_at = cached.expires_at
     now = time.time()
     if expires_at is None:
         if firewall_billable:
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    return {
-        "headers": cached["headers"],
-        "resolved_secrets": cached.get("resolvedSecrets", []),
+    hit = {
+        "headers": cached.headers,
+        "resolved_secrets": cached.resolved_secrets,
         "cache_hit": True,
-        **({"base": cached["base"]} if "base" in cached else {}),
-        **({"query": cached["query"]} if "query" in cached else {}),
     }
+    if cached.base is not None:
+        hit["base"] = cached.base
+    if cached.query is not None:
+        hit["query"] = cached.query
+    return hit
 
 
 async def get_firewall_headers(
@@ -414,21 +423,19 @@ async def get_firewall_headers(
     - The expiresAt timestamp from the auth endpoint has passed
     """
     cache_key = (run_id, api_id)
+    state = _get_auth_state(cache_key)
 
     # Fast path: cache hit (no lock needed — single-threaded event loop)
-    cached = _firewall_header_cache.get(cache_key)
-    if cached:
-        hit = _build_cache_hit(cached, firewall_billable=firewall_billable)
+    if state.cache:
+        hit = _build_cache_hit(state.cache, firewall_billable=firewall_billable)
         if hit:
             return hit
 
     # Slow path: acquire per-key lock so only one coroutine fetches
-    lock = _cache_locks.setdefault(cache_key, asyncio.Lock())
-    async with lock:
+    async with state.lock:
         # Double-check: another coroutine may have populated cache while we waited
-        cached = _firewall_header_cache.get(cache_key)
-        if cached:
-            hit = _build_cache_hit(cached, firewall_billable=firewall_billable)
+        if state.cache:
+            hit = _build_cache_hit(state.cache, firewall_billable=firewall_billable)
             if hit:
                 return hit
 
@@ -438,10 +445,10 @@ async def get_firewall_headers(
         # on its double-check above and never reach this path. Record the
         # consume timestamp so request_force_refresh() suppresses re-marking
         # within the cooldown window (guards against 401-amplification).
-        force_refresh = cache_key in _force_refresh_markers
-        _force_refresh_markers.discard(cache_key)
+        force_refresh = state.force_refresh_pending
+        state.force_refresh_pending = False
         if force_refresh:
-            _last_force_refresh_at[cache_key] = time.time()
+            state.last_force_refresh_at = time.time()
 
         result = await fetch_firewall_headers(
             encrypted_secrets,
@@ -461,16 +468,16 @@ async def get_firewall_headers(
             )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])
-        cache_entry: dict = {
-            "headers": headers,
-            "expiresAt": result.get("expiresAt"),
-            "resolvedSecrets": resolved_secrets,
-        }
+        cache_entry = _FirewallHeaderCacheEntry(
+            headers=headers,
+            expires_at=result.get("expiresAt"),
+            resolved_secrets=resolved_secrets,
+        )
         if result.get("base"):
-            cache_entry["base"] = result["base"]
+            cache_entry.base = result["base"]
         if result.get("query"):
-            cache_entry["query"] = result["query"]
-        _firewall_header_cache[cache_key] = cache_entry
+            cache_entry.query = result["query"]
+        state.cache = cache_entry
         ret: dict = {
             "headers": headers,
             "resolved_secrets": resolved_secrets,

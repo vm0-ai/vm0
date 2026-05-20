@@ -21,6 +21,13 @@ from matching import (
     match_host,
     match_path_prefix,
 )
+from tests.auth_state_helpers import (
+    cached_headers,
+    force_refresh_pending,
+    last_force_refresh_at,
+    mark_force_refresh,
+    set_cached_headers,
+)
 
 
 def _wrap_firewalls(apis, name="test"):
@@ -1286,15 +1293,13 @@ class TestGetFirewallHeaders:
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
-        assert cache_key in auth._firewall_header_cache
-        assert auth._firewall_header_cache[cache_key]["headers"] == mock_headers
+        assert cached_headers(cache_key)
+        assert cached_headers(cache_key).headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
-        auth._firewall_header_cache[cache_key] = {
-            "headers": cached_headers,
-        }
+        set_cached_headers(cache_key, headers=cached_headers)
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1310,10 +1315,11 @@ class TestGetFirewallHeaders:
         """Cached entry with expiresAt in the future should be returned without fetching."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer valid-token"}
-        auth._firewall_header_cache[cache_key] = {
-            "headers": cached_headers,
-            "expiresAt": time.time() + 3600,  # 1 hour from now
-        }
+        set_cached_headers(
+            cache_key,
+            headers=cached_headers,
+            expires_at=time.time() + 3600,  # 1 hour from now
+        )
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1328,10 +1334,11 @@ class TestGetFirewallHeaders:
     async def test_cache_evicted_when_ttl_expired(self, headers):
         """Cached entry with expiresAt in the past should trigger a re-fetch."""
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer stale-token"},
-            "expiresAt": time.time() - 10,  # expired 10 seconds ago
-        }
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer stale-token"},
+            expires_at=time.time() - 10,  # expired 10 seconds ago
+        )
 
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_result = {"headers": fresh_headers, "expiresAt": time.time() + 3600}
@@ -1347,16 +1354,13 @@ class TestGetFirewallHeaders:
         # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert auth._firewall_header_cache[cache_key]["headers"] == fresh_headers
+        assert cached_headers(cache_key).headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer permanent-token"}
-        auth._firewall_header_cache[cache_key] = {
-            "headers": cached_headers,
-            "expiresAt": None,
-        }
+        set_cached_headers(cache_key, headers=cached_headers, expires_at=None)
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1371,10 +1375,7 @@ class TestGetFirewallHeaders:
     async def test_billable_cache_hit_requires_valid_expiry(self, headers):
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer cached-token"}
-        auth._firewall_header_cache[cache_key] = {
-            "headers": cached_headers,
-            "expiresAt": time.time() + 30,
-        }
+        set_cached_headers(cache_key, headers=cached_headers, expires_at=time.time() + 30)
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1398,10 +1399,11 @@ class TestGetFirewallHeaders:
     @pytest.mark.parametrize("expiry", [True, "123", float("inf"), float("nan")])
     async def test_cache_with_invalid_expiry_refetches(self, headers, expiry):
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer malformed-token"},
-            "expiresAt": expiry,
-        }
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer malformed-token"},
+            expires_at=expiry,
+        )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_fetch = AsyncMock(return_value={"headers": fresh_headers, "expiresAt": None})
 
@@ -1416,10 +1418,11 @@ class TestGetFirewallHeaders:
 
     async def test_billable_cache_without_expiry_refetches(self, headers):
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer stale-token"},
-            "expiresAt": None,
-        }
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer stale-token"},
+            expires_at=None,
+        )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         expires_at = time.time() + 30
         mock_fetch = AsyncMock(
@@ -1443,14 +1446,15 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
         assert mock_fetch.call_args.args[8] is True
-        assert auth._firewall_header_cache[cache_key]["expiresAt"] == expires_at
+        assert cached_headers(cache_key).expires_at == expires_at
 
     async def test_billable_cache_with_expired_expiry_refetches(self, headers):
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer stale-token"},
-            "expiresAt": time.time() - 1,
-        }
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer stale-token"},
+            expires_at=time.time() - 1,
+        )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_fetch = AsyncMock(
             return_value={
@@ -1497,12 +1501,13 @@ class TestGetFirewallHeaders:
     async def test_cache_hit_includes_base_when_present(self, headers):
         """Cached entry with 'base' returns it on cache hit."""
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {},
-            "resolvedSecrets": ["WEBHOOK_URL"],
-            "base": "https://discord.com/api/webhooks/123/abc",
-            "expiresAt": None,
-        }
+        set_cached_headers(
+            cache_key,
+            headers={},
+            resolved_secrets=["WEBHOOK_URL"],
+            base="https://discord.com/api/webhooks/123/abc",
+            expires_at=None,
+        )
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1515,11 +1520,12 @@ class TestGetFirewallHeaders:
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer tok"},
-            "resolvedSecrets": ["TOKEN"],
-            "expiresAt": None,
-        }
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer tok"},
+            resolved_secrets=["TOKEN"],
+            expires_at=None,
+        )
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1533,7 +1539,7 @@ class TestGetFirewallHeaders:
         force_refresh=True, the marker is cleared, and the consume timestamp
         is recorded so the cooldown can suppress re-marking (#9860)."""
         cache_key = ("run-1", "api-1")
-        auth._force_refresh_markers.add(cache_key)
+        mark_force_refresh(cache_key)
         before = time.time()
 
         mock_fetch = AsyncMock(return_value={"headers": {"Authorization": "Bearer new"}})
@@ -1543,9 +1549,9 @@ class TestGetFirewallHeaders:
         # force_refresh kwarg must be True
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
         # Marker cleared after consumption
-        assert cache_key not in auth._force_refresh_markers
+        assert not force_refresh_pending(cache_key)
         # Consume timestamp recorded for cooldown enforcement
-        assert auth._last_force_refresh_at[cache_key] >= before
+        assert last_force_refresh_at(cache_key) >= before
 
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
@@ -1555,17 +1561,18 @@ class TestGetFirewallHeaders:
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is False
         # No consume timestamp written when force-refresh didn't happen
-        assert ("run-1", "api-2") not in auth._last_force_refresh_at
+        assert last_force_refresh_at(("run-1", "api-2")) == 0.0
 
     async def test_force_refresh_marker_ignored_on_cache_hit(self, headers):
         """Fast-path cache hit does NOT consume the force-refresh marker —
         marker survives until the next actual fetch (#9860)."""
         cache_key = ("run-1", "api-1")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer cached"},
-            "expiresAt": None,
-        }
-        auth._force_refresh_markers.add(cache_key)
+        set_cached_headers(
+            cache_key,
+            headers={"Authorization": "Bearer cached"},
+            expires_at=None,
+        )
+        mark_force_refresh(cache_key)
 
         mock_fetch = AsyncMock()
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -1574,7 +1581,7 @@ class TestGetFirewallHeaders:
         assert result["cache_hit"] is True
         mock_fetch.assert_not_called()
         # Marker preserved for next real fetch
-        assert cache_key in auth._force_refresh_markers
+        assert force_refresh_pending(cache_key)
 
 
 # =========================================================================

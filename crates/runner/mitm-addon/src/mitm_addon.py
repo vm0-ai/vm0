@@ -34,7 +34,7 @@ import registry
 import response_streaming
 import usage
 from auth import (
-    _firewall_header_cache,
+    clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
     request_force_refresh,
@@ -460,7 +460,7 @@ def response(flow: http.HTTPFlow) -> None:
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
-            _firewall_header_cache.pop(cache_key, None)
+            clear_cached_firewall_headers(cache_key)
             request_force_refresh(cache_key)
 
     # Log errors to per-job proxy log and mitmproxy console

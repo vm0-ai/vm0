@@ -45,10 +45,7 @@ def _reset_module_state() -> None:
     """
     mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
-    auth._firewall_header_cache.clear()
-    auth._cache_locks.clear()
-    auth._force_refresh_markers.clear()
-    auth._last_force_refresh_at.clear()
+    auth._auth_state.clear()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters._pending_write_error_logged = False
 

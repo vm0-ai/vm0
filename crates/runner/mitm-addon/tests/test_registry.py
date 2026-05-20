@@ -1,6 +1,5 @@
 """Tests for registry loading, caching, and network logging."""
 
-import asyncio
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -8,13 +7,20 @@ from unittest.mock import MagicMock, patch
 import auth
 import logging_utils
 import registry
+from tests.auth_state_helpers import (
+    cached_headers,
+    force_refresh_pending,
+    last_force_refresh_at,
+    mark_force_refresh,
+    set_cached_headers,
+    set_last_force_refresh_at,
+)
 
 
 def _reset_cache():
     """Reset the module-level registry cache between tests."""
     registry.reset_cache_for_tests()
-    auth._firewall_header_cache.clear()
-    auth._cache_locks.clear()
+    auth._auth_state.clear()
 
 
 class TestLoadRegistry:
@@ -143,19 +149,19 @@ class TestLoadRegistry:
 
         # Simulate cached headers, locks, markers, and refresh timestamps
         # for run-abc-123
-        auth._firewall_header_cache[("run-abc-123", "api-0")] = {
-            "headers": {"Authorization": "Bearer tok"},
-        }
-        auth._cache_locks[("run-abc-123", "api-0")] = asyncio.Lock()
-        auth._force_refresh_markers.add(("run-abc-123", "api-0"))
-        auth._last_force_refresh_at[("run-abc-123", "api-0")] = 100.0
+        set_cached_headers(
+            ("run-abc-123", "api-0"),
+            headers={"Authorization": "Bearer tok"},
+        )
+        mark_force_refresh(("run-abc-123", "api-0"))
+        set_last_force_refresh_at(("run-abc-123", "api-0"), 100.0)
         # Also cache for run-other (will appear in new registry)
-        auth._firewall_header_cache[("run-other", "api-0")] = {
-            "headers": {"Authorization": "Bearer other"},
-        }
-        auth._cache_locks[("run-other", "api-0")] = asyncio.Lock()
-        auth._force_refresh_markers.add(("run-other", "api-0"))
-        auth._last_force_refresh_at[("run-other", "api-0")] = 200.0
+        set_cached_headers(
+            ("run-other", "api-0"),
+            headers={"Authorization": "Bearer other"},
+        )
+        mark_force_refresh(("run-other", "api-0"))
+        set_last_force_refresh_at(("run-other", "api-0"), 200.0)
 
         # Update registry: remove run-abc-123, add run-other
         new_data = {"vms": {"10.200.0.99": {"runId": "run-other"}}, "updatedAt": 0}
@@ -164,49 +170,42 @@ class TestLoadRegistry:
         registry.load_registry(str(registry_file))  # reload triggers eviction
 
         # run-abc-123 state should be evicted (no longer in registry)
-        assert ("run-abc-123", "api-0") not in auth._firewall_header_cache
-        assert ("run-abc-123", "api-0") not in auth._cache_locks
-        assert ("run-abc-123", "api-0") not in auth._force_refresh_markers
-        assert ("run-abc-123", "api-0") not in auth._last_force_refresh_at
+        assert ("run-abc-123", "api-0") not in auth._auth_state
         # run-other state should remain (still in registry)
-        assert ("run-other", "api-0") in auth._firewall_header_cache
-        assert ("run-other", "api-0") in auth._cache_locks
-        assert ("run-other", "api-0") in auth._force_refresh_markers
-        assert ("run-other", "api-0") in auth._last_force_refresh_at
+        assert cached_headers(("run-other", "api-0"))
+        assert force_refresh_pending(("run-other", "api-0"))
+        assert last_force_refresh_at(("run-other", "api-0")) == 200.0
 
     def test_parse_failure_does_not_evict_header_cache(self, registry_file):
         """Auth cache eviction only runs after a successfully parsed registry reload."""
         registry.load_registry(str(registry_file))
 
-        auth._firewall_header_cache[("run-abc-123", "api-0")] = {
-            "headers": {"Authorization": "Bearer tok"},
-        }
-        auth._cache_locks[("run-abc-123", "api-0")] = asyncio.Lock()
-        auth._force_refresh_markers.add(("run-abc-123", "api-0"))
-        auth._last_force_refresh_at[("run-abc-123", "api-0")] = 100.0
+        set_cached_headers(
+            ("run-abc-123", "api-0"),
+            headers={"Authorization": "Bearer tok"},
+        )
+        mark_force_refresh(("run-abc-123", "api-0"))
+        set_last_force_refresh_at(("run-abc-123", "api-0"), 100.0)
 
         registry_file.write_text("{ broken while preserving cache")
 
         with patch.object(registry.ctx, "log", MagicMock(), create=True):
             registry.load_registry(str(registry_file))
 
-        assert ("run-abc-123", "api-0") in auth._firewall_header_cache
-        assert ("run-abc-123", "api-0") in auth._cache_locks
-        assert ("run-abc-123", "api-0") in auth._force_refresh_markers
-        assert ("run-abc-123", "api-0") in auth._last_force_refresh_at
+        assert cached_headers(("run-abc-123", "api-0"))
+        assert force_refresh_pending(("run-abc-123", "api-0"))
+        assert last_force_refresh_at(("run-abc-123", "api-0")) == 100.0
 
     def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
         """Registry entries with missing/empty runId are not active cache owners."""
         registry.load_registry(str(registry_file))
 
-        auth._firewall_header_cache[("", "api-0")] = {"headers": {}}
-        auth._cache_locks[("", "api-0")] = asyncio.Lock()
-        auth._force_refresh_markers.add(("", "api-0"))
-        auth._last_force_refresh_at[("", "api-0")] = 100.0
-        auth._firewall_header_cache[("run-active", "api-0")] = {"headers": {}}
-        auth._cache_locks[("run-active", "api-0")] = asyncio.Lock()
-        auth._force_refresh_markers.add(("run-active", "api-0"))
-        auth._last_force_refresh_at[("run-active", "api-0")] = 200.0
+        set_cached_headers(("", "api-0"), headers={})
+        mark_force_refresh(("", "api-0"))
+        set_last_force_refresh_at(("", "api-0"), 100.0)
+        set_cached_headers(("run-active", "api-0"), headers={})
+        mark_force_refresh(("run-active", "api-0"))
+        set_last_force_refresh_at(("run-active", "api-0"), 200.0)
 
         registry_file.write_text(
             json.dumps(
@@ -223,14 +222,10 @@ class TestLoadRegistry:
 
         registry.load_registry(str(registry_file))
 
-        assert ("", "api-0") not in auth._firewall_header_cache
-        assert ("", "api-0") not in auth._cache_locks
-        assert ("", "api-0") not in auth._force_refresh_markers
-        assert ("", "api-0") not in auth._last_force_refresh_at
-        assert ("run-active", "api-0") in auth._firewall_header_cache
-        assert ("run-active", "api-0") in auth._cache_locks
-        assert ("run-active", "api-0") in auth._force_refresh_markers
-        assert ("run-active", "api-0") in auth._last_force_refresh_at
+        assert ("", "api-0") not in auth._auth_state
+        assert cached_headers(("run-active", "api-0"))
+        assert force_refresh_pending(("run-active", "api-0"))
+        assert last_force_refresh_at(("run-active", "api-0")) == 200.0
 
 
 class TestGetVmInfo:

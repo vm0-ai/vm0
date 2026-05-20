@@ -22,6 +22,12 @@ import mitm_addon
 import registry as registry_cache
 import response_streaming
 import usage
+from tests.auth_state_helpers import (
+    cached_headers,
+    force_refresh_pending,
+    set_cached_headers,
+    set_last_force_refresh_at,
+)
 from usage import (
     create_anthropic_messages_sse_usage_extractor,
     create_openai_responses_sse_usage_extractor,
@@ -1528,18 +1534,16 @@ class TestResponseHandler:
 
         # Pre-populate firewall header cache keyed by api_id
         cache_key = ("run-conn-1", "run-conn-1:0")
-        auth._firewall_header_cache[cache_key] = {
-            "headers": {"Authorization": "Bearer old-token"},
-        }
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
-        assert cache_key not in auth._firewall_header_cache
+        assert cached_headers(cache_key) is None
         # Force-refresh marker must be set so the next /firewall/auth fetch
         # refreshes the token regardless of DB tokenExpiresAt (#9860).
-        assert cache_key in auth._force_refresh_markers
+        assert force_refresh_pending(cache_key)
 
     def test_401_within_cooldown_does_not_re_mark(self, real_flow, mitm_ctx, headers):
         """A second 401 within the force-refresh cooldown window must NOT
@@ -1558,13 +1562,13 @@ class TestResponseHandler:
 
         cache_key = ("run-conn-cd", "run-conn-cd:0")
         # Simulate: a forced refresh JUST completed a moment ago
-        auth._last_force_refresh_at[cache_key] = time.time()
+        set_last_force_refresh_at(cache_key, time.time())
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Marker was suppressed by the cooldown
-        assert cache_key not in auth._force_refresh_markers
+        assert not force_refresh_pending(cache_key)
 
     def test_401_after_cooldown_re_marks(self, real_flow, mitm_ctx, headers):
         """Once the cooldown has elapsed, a subsequent 401 re-marks — the
@@ -1582,13 +1586,16 @@ class TestResponseHandler:
 
         cache_key = ("run-conn-re", "run-conn-re:0")
         # Simulate: last forced refresh happened well before the cooldown window
-        auth._last_force_refresh_at[cache_key] = time.time() - auth._FORCE_REFRESH_COOLDOWN_SECS - 1
+        set_last_force_refresh_at(
+            cache_key,
+            time.time() - auth._FORCE_REFRESH_COOLDOWN_SECS - 1,
+        )
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Cooldown elapsed → marker re-added
-        assert cache_key in auth._force_refresh_markers
+        assert force_refresh_pending(cache_key)
 
     def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""
@@ -5537,10 +5544,11 @@ class TestFirewallHeaderCache:
 
     async def test_cache_hit_skips_fetch(self, headers):
         """Cached entry should be returned without fetching."""
-        auth._firewall_header_cache[("run-1", "api-1")] = {
-            "headers": {"Authorization": "Bearer cached"},
-            "expiresAt": time.time() + 3600,
-        }
+        set_cached_headers(
+            ("run-1", "api-1"),
+            headers={"Authorization": "Bearer cached"},
+            expires_at=time.time() + 3600,
+        )
 
         with patch.object(auth, "_fetch_firewall_headers_sync") as mock_fetch:
             result = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
@@ -5553,10 +5561,11 @@ class TestFirewallHeaderCache:
 
     async def test_expired_cache_triggers_fetch(self, headers):
         """Expired cache entry should trigger a new fetch."""
-        auth._firewall_header_cache[("run-1", "api-1")] = {
-            "headers": {"Authorization": "Bearer old"},
-            "expiresAt": time.time() - 10,
-        }
+        set_cached_headers(
+            ("run-1", "api-1"),
+            headers={"Authorization": "Bearer old"},
+            expires_at=time.time() - 10,
+        )
 
         def fresh_fetch(*args, **kwargs):
             return {
@@ -5586,15 +5595,12 @@ class TestFirewallHeaderCache:
         ):
             await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-        assert ("run-1", "api-1") not in auth._firewall_header_cache
+        assert cached_headers(("run-1", "api-1")) is None
 
     def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx, headers):
         """When a run is evicted from registry, its locks should be cleaned up too."""
-        auth._firewall_header_cache[("run-old", "api-1")] = {
-            "headers": {},
-            "expiresAt": None,
-        }
-        auth._cache_locks[("run-old", "api-1")] = asyncio.Lock()
+        cache_key = ("run-old", "api-1")
+        set_cached_headers(cache_key, headers={}, expires_at=None)
 
         registry = {"vms": {"10.200.0.1": {"runId": "run-new", "billableFirewalls": []}}}
         reg_path = tmp_path / "registry.json"
@@ -5606,8 +5612,7 @@ class TestFirewallHeaderCache:
             registry_cache.reset_cache_for_tests()
             registry_cache.load_registry(str(reg_path))
 
-        assert ("run-old", "api-1") not in auth._firewall_header_cache
-        assert ("run-old", "api-1") not in auth._cache_locks
+        assert cache_key not in auth._auth_state
 
 
 class TestUsagePendingCounter:
