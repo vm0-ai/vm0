@@ -252,9 +252,10 @@ async function resolveRunSelectedModel(
 /**
  * Resolve the audit footer text appended to user-initiated Telegram messages.
  *
- * Mirrors apps/web/src/lib/zero/telegram/footer.ts:resolveTelegramMessageSendFooterText
- * verbatim. Returns undefined when authRunId is undefined (auth source has no
- * run context) or when none of the four data points are available.
+ * Preserves the legacy footer semantics for agent, schedule, triggering user,
+ * and selected model labels. Returns undefined when authRunId is undefined
+ * (auth source has no run context) or when none of the four data points are
+ * available.
  */
 export function telegramMessageSendFooterText(args: {
   readonly authRunId: string | undefined;

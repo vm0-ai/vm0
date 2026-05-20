@@ -185,6 +185,32 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 401 when the token has no active organization membership", async () => {
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const token = zeroToken({ userId, orgId, runId: "run-1" });
+
+    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const response = await accept(
+      client.sendMessage({
+        body: {
+          botId: "tg-bot",
+          chatId: "-100",
+          text: "hi",
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
     const client = setupApp({ context })(integrationsTelegramMessageContract);
