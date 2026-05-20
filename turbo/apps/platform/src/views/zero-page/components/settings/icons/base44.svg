@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <mask id="base44-mark-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+    <rect width="1024" height="1024" fill="white" />
+    <rect y="544" width="1024" height="58" fill="black" />
+    <rect y="693" width="1024" height="60" fill="black" />
+    <rect y="843" width="1024" height="58" fill="black" />
+  </mask>
+  <circle cx="512" cy="512" r="512" fill="#FF5A1F" mask="url(#base44-mark-mask)" />
+</svg>
