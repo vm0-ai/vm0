@@ -22,6 +22,8 @@ from usage.providers.connectors.x_billing import (
     _INCLUDES_TO_BUCKET,
     _PATH_OVERRIDES,
     _PERMISSION_TO_BUCKET,
+    _build_override_index,
+    classify_bucket,
     refine_bucket_with_body,
 )
 from usage.providers.connectors.x_tlds import IANA_TLD_VERSION, IANA_TLDS
@@ -329,6 +331,21 @@ class TestFirewallConsistency:
         )
         assert not unreviewed, drift_msg
         assert not obsolete, drift_msg
+
+
+class TestOverrideClassification:
+    def test_path_overrides_match_compiled_patterns(self):
+        assert classify_bucket("tweet.read", "GET", "/2/tweets/123/retweeted_by") == "user.read"
+        assert classify_bucket("tweet.read", "GET", "/2/tweets/123") == "posts.read"
+        assert classify_bucket("like.write", "DELETE", "/2/users/1/likes/2") == "interaction.delete"
+
+    def test_invalid_static_override_path_fails_fast(self):
+        with pytest.raises(ValueError, match="invalid X billing override path pattern"):
+            _build_override_index(
+                [
+                    ("tweet.read", "GET", "/2/tweets/{id}literal{other}", "user.read"),
+                ]
+            )
 
 
 class TestSeedConsistency:

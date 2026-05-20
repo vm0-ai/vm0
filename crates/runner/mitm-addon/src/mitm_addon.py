@@ -40,7 +40,7 @@ from auth import (
     request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
-from matching import FirewallAllow, FirewallBlock, match_firewall_request
+from matching import FirewallAllow, FirewallBlock, match_compiled_firewall_request
 from url_utils import get_original_url
 
 # HTTP status boundaries used in response-phase classification.
@@ -150,11 +150,12 @@ async def request(flow: http.HTTPFlow) -> None:
         return
 
     # Look up VM info from registry
-    vm_info = registry.get_vm_info(client_ip, get_registry_path())
+    vm_context = registry.get_vm_context(client_ip, get_registry_path())
 
-    if not vm_info:
+    if not vm_context:
         # Not a registered VM, pass through without proxying
         return
+    vm_info, compiled_firewalls = vm_context
 
     run_id = vm_info.get("runId", "")
 
@@ -198,13 +199,12 @@ async def request(flow: http.HTTPFlow) -> None:
 
         # --- Step 2: Firewall match with permission check ---
         # Match base URL, then check permission rules before injecting auth headers.
-        vm_firewalls = vm_info.get("firewalls")
-        if vm_firewalls:
+        if compiled_firewalls:
             network_policies = vm_info.get("networkPolicies") or {}
-            result = match_firewall_request(
+            result = match_compiled_firewall_request(
                 original_url,
                 flow.request.method,
-                vm_firewalls,
+                compiled_firewalls,
                 network_policies,
             )
             if isinstance(result, FirewallBlock):

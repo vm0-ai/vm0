@@ -3492,7 +3492,8 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-read"
 
-        # Second API: no permissions defined, base matches → unknown → ALLOW (unknownPolicy: allow)
+        # Second API: no permissions defined, base matches → unknown
+        # → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
             "https://uploads.github.com/anything",
             "POST",
@@ -3501,3 +3502,300 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == ""
+
+
+class TestCompiledFirewallMatching:
+    def _compiled(self, firewalls):
+        compiled = matching.compile_firewalls(firewalls)
+        assert compiled is not None
+        return compiled
+
+    def _assert_same_result(self, raw, compiled):
+        assert type(compiled) is type(raw)
+        if isinstance(raw, FirewallAllow):
+            assert isinstance(compiled, FirewallAllow)
+            assert compiled.api_entry is raw.api_entry
+            assert compiled.match_info == raw.match_info
+            return
+        if isinstance(raw, FirewallBlock):
+            assert compiled == raw
+            return
+        assert compiled is raw
+
+    def test_matches_raw_for_mixed_base_and_greedy_rule(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api-{region}.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "upload", "rules": ["POST /upload/{path+}"]},
+                    ],
+                }
+            ],
+            name="storage",
+        )
+        url = "https://api-us.example.com/v1/acme/upload/a/b/c"
+        policies = {"storage": {"allow": ["upload"], "deny": [], "unknownPolicy": "deny"}}
+
+        raw = matching.match_firewall_request(url, "POST", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "POST",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["params"] == {
+            "region": "us",
+            "org": "acme",
+            "path": "a/b/c",
+        }
+
+    def test_preserves_raw_rule_order_for_any_before_exact_method(self):
+        api_entry = {
+            "base": "https://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [
+                {
+                    "name": "repo-read",
+                    "rules": [
+                        "ANY /repos/{owner}/{repo}",
+                        "GET /repos/{owner}/{repo}",
+                    ],
+                }
+            ],
+        }
+        fws = _wrap_firewalls([api_entry], name="github")
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallAllow)
+        assert result.api_entry is api_entry
+        assert result.match_info["rule"] == "ANY /repos/{owner}/{repo}"
+
+    def test_later_allowed_permission_still_wins_after_earlier_denied_match(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": ["repo-admin"],
+                "deny": ["repo-read"],
+                "unknownPolicy": "deny",
+            }
+        }
+        url = "https://api.github.com/repos/org/repo"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallAllow)
+        assert compiled.match_info["permission"] == "repo-admin"
+
+    def test_denied_permission_names_keep_encounter_order_and_deduplicate(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {
+                            "name": "repo-read",
+                            "rules": [
+                                "GET /repos/{owner}/{repo}",
+                                "ANY /repos/{owner}/{repo}",
+                            ],
+                        },
+                        {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": [],
+                "deny": ["repo-read", "repo-admin"],
+                "unknownPolicy": "deny",
+            }
+        }
+        url = "https://api.github.com/repos/org/repo"
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, FirewallBlock)
+        assert compiled.permissions == ("repo-read", "repo-admin")
+
+    def test_malformed_rule_fails_closed_without_allowing_permission(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{a}literal{b}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ()
+
+    def test_malformed_rule_blocks_unknown_policy_allow(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{a}literal{b}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ()
+
+    def test_valid_later_permission_can_still_allow_after_malformed_rule(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "bad", "rules": ["GET /repos/{a}literal{b}"]},
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": ["bad", "repo-read"],
+                "deny": [],
+                "unknownPolicy": "allow",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["permission"] == "repo-read"
+
+    def test_malformed_rules_shape_fails_closed_without_compile_error(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": None},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ()
+
+    def test_malformed_api_list_shape_is_skipped_without_compile_error(self):
+        assert matching.compile_firewalls([{"name": "github", "apis": None}]) is None
+
+    def test_request_url_is_parsed_once_for_multiple_api_entries(self):
+        fws = _wrap_firewalls(
+            [
+                {"base": "https://one.example.com", "permissions": []},
+                {
+                    "base": "https://api.example.com",
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                },
+                {"base": "https://three.example.com", "permissions": []},
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        with patch.object(
+            matching,
+            "_split_base_match_url",
+            wraps=matching._split_base_match_url,
+        ) as spy:
+            result = matching.match_compiled_firewall_request(
+                "https://api.example.com/items/123",
+                "GET",
+                compiled_firewalls,
+                policies,
+            )
+
+        assert isinstance(result, FirewallAllow)
+        assert spy.call_count == 1

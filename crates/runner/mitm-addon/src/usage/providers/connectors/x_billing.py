@@ -53,7 +53,7 @@ sheet for drift.
 import json
 import re
 
-from matching import match_path
+from matching import CompiledPathPattern, compile_path_pattern, match_compiled_path
 
 from .x_tlds import IANA_TLDS
 
@@ -203,15 +203,18 @@ _PATH_OVERRIDES: list[tuple[str, str, str, str]] = [
 
 def _build_override_index(
     overrides: list[tuple[str, str, str, str]],
-) -> dict[tuple[str, str], list[tuple[str, str]]]:
+) -> dict[tuple[str, str], list[tuple[CompiledPathPattern, str]]]:
     """Group overrides by ``(scope, method)`` so :func:`classify_bucket`
     only walks patterns under the matching scope/method instead of the
     full list.  Insertion order is preserved inside each bucket, which
     keeps first-match-wins semantics from the source list.
     """
-    index: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    index: dict[tuple[str, str], list[tuple[CompiledPathPattern, str]]] = {}
     for scope, method, pattern, bucket in overrides:
-        index.setdefault((scope, method), []).append((pattern, bucket))
+        compiled_pattern = compile_path_pattern(pattern)
+        if compiled_pattern is None:
+            raise ValueError(f"invalid X billing override path pattern: {scope} {method} {pattern}")
+        index.setdefault((scope, method), []).append((compiled_pattern, bucket))
     return index
 
 
@@ -230,7 +233,7 @@ def classify_bucket(permission: str, method: str, path: str) -> str | None:
     case.
     """
     for pattern, bucket in _OVERRIDE_INDEX.get((permission, method.upper()), ()):
-        if match_path(path, pattern) is not None:
+        if match_compiled_path(path, pattern) is not None:
             return bucket
     return _PERMISSION_TO_BUCKET.get(permission)
 

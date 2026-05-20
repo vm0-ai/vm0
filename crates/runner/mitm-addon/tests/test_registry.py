@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import auth
 import logging_utils
+import matching
 import registry
 
 
@@ -15,6 +16,39 @@ def _reset_cache():
     registry.reset_cache_for_tests()
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
+
+
+def _write_firewall_registry(path, *, rule="/items"):
+    data = {
+        "vms": {
+            "10.200.0.1": {
+                "runId": "run-abc-123",
+                "firewalls": [
+                    {
+                        "name": "example",
+                        "apis": [
+                            {
+                                "base": "https://api.example.com",
+                                "auth": {"headers": {"Authorization": "Bearer token"}},
+                                "permissions": [
+                                    {"name": "read", "rules": [f"GET {rule}"]},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+                "networkPolicies": {
+                    "example": {
+                        "allow": ["read"],
+                        "deny": [],
+                        "unknownPolicy": "deny",
+                    }
+                },
+            }
+        },
+        "updatedAt": 1700000000000,
+    }
+    path.write_text(json.dumps(data))
 
 
 class TestLoadRegistry:
@@ -247,6 +281,119 @@ class TestGetVmInfo:
         info = registry.get_vm_info("192.168.1.1", str(registry_file))
 
         assert info is None
+
+
+class TestGetVmContext:
+    def setup_method(self):
+        _reset_cache()
+
+    def test_returns_raw_info_and_compiled_firewall(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls = context
+        assert vm_info["runId"] == "run-abc-123"
+        assert registry.get_vm_info("10.200.0.1", str(path)) is vm_info
+        assert compiled_firewalls is not None
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            vm_info["networkPolicies"],
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry is vm_info["firewalls"][0]["apis"][0]
+
+    def test_compiled_context_updates_after_successful_registry_change(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path, rule="/items")
+        first_context = registry.get_vm_context("10.200.0.1", str(path))
+        assert first_context is not None
+        first_vm_info, first_compiled = first_context
+        assert first_compiled is not None
+
+        _write_firewall_registry(path, rule="/other-resource")
+        second_context = registry.get_vm_context("10.200.0.1", str(path))
+        assert second_context is not None
+        second_vm_info, second_compiled = second_context
+
+        assert second_vm_info is not first_vm_info
+        assert second_compiled is not None
+        assert second_compiled is not first_compiled
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/items",
+                "GET",
+                second_compiled,
+                second_vm_info["networkPolicies"],
+            ),
+            matching.FirewallBlock,
+        )
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/other-resource",
+                "GET",
+                second_compiled,
+                second_vm_info["networkPolicies"],
+            ),
+            matching.FirewallAllow,
+        )
+
+    def test_parse_failure_preserves_compiled_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        context = registry.get_vm_context("10.200.0.1", str(path))
+        assert context is not None
+        vm_info, compiled_firewalls = context
+        assert compiled_firewalls is not None
+
+        path.write_text("{ broken")
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            preserved_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert preserved_context is not None
+        preserved_vm_info, preserved_compiled = preserved_context
+        assert preserved_vm_info is vm_info
+        assert preserved_compiled is compiled_firewalls
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/items",
+                "GET",
+                preserved_compiled,
+                preserved_vm_info["networkPolicies"],
+            ),
+            matching.FirewallAllow,
+        )
+
+    def test_missing_file_preserves_compiled_context(self, tmp_path):
+        path = tmp_path / "registry.json"
+        _write_firewall_registry(path)
+        context = registry.get_vm_context("10.200.0.1", str(path))
+        assert context is not None
+        vm_info, compiled_firewalls = context
+        assert compiled_firewalls is not None
+
+        path.unlink()
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            preserved_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert preserved_context is not None
+        preserved_vm_info, preserved_compiled = preserved_context
+        assert preserved_vm_info is vm_info
+        assert preserved_compiled is compiled_firewalls
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/items",
+                "GET",
+                preserved_compiled,
+                preserved_vm_info["networkPolicies"],
+            ),
+            matching.FirewallAllow,
+        )
 
 
 class TestLogNetworkEntry:

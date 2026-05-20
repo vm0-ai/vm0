@@ -24,6 +24,63 @@ class _BaseUrlParts(NamedTuple):
     path: str
 
 
+class SegmentLiteral(NamedTuple):
+    value: str
+
+
+class SegmentParam(NamedTuple):
+    prefix: str
+    name: str
+    suffix: str
+    greedy: str
+
+
+class SegmentError(NamedTuple):
+    reason: str
+
+
+ParsedSegment = SegmentLiteral | SegmentParam | SegmentError
+
+
+class CompiledPathPattern(NamedTuple):
+    segments: tuple[ParsedSegment, ...]
+
+
+class _CompiledBase(NamedTuple):
+    raw: str
+    parts: _BaseUrlParts
+    has_params: bool
+    host_segments: tuple[ParsedSegment, ...]
+    path_segments: tuple[ParsedSegment, ...]
+
+
+class _CompiledRule(NamedTuple):
+    method: str
+    raw: str
+    path: CompiledPathPattern
+
+
+class _CompiledPermission(NamedTuple):
+    name: str
+    rules: tuple[_CompiledRule, ...]
+
+
+class _CompiledApi(NamedTuple):
+    raw_api_entry: dict
+    base: _CompiledBase
+    permissions: tuple[_CompiledPermission, ...]
+    has_malformed_rules: bool
+
+
+class _CompiledFirewall(NamedTuple):
+    name: str
+    apis: tuple[_CompiledApi, ...]
+
+
+class CompiledFirewallSet(NamedTuple):
+    firewalls: tuple[_CompiledFirewall, ...]
+
+
 def _split_base_match_url(
     value: str,
     *,
@@ -51,6 +108,52 @@ def _split_base_match_url(
     )
 
 
+def _parse_segment(seg: str) -> ParsedSegment:
+    """Parse a single host or path segment into an immutable result."""
+    open_count = seg.count("{")
+    close_count = seg.count("}")
+
+    if open_count == 0 and close_count == 0:
+        return SegmentLiteral(seg)
+    if open_count != close_count:
+        return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
+
+    open1 = seg.find("{")
+    close1 = seg.find("}")
+    if close1 < open1:
+        return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
+
+    if open_count >= _MULTI_PARAM_BRACE_COUNT:
+        open2 = seg.find("{", close1 + 1)
+        if close1 + 1 == open2:
+            return SegmentError(
+                f'adjacent parameters in segment "{seg}" — only one parameter '
+                f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+            )
+        return SegmentError(
+            f'literal-separated parameters in segment "{seg}" — only one parameter '
+            f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+        )
+
+    prefix = seg[:open1]
+    content = seg[open1 + 1 : close1]
+    suffix = seg[close1 + 1 :]
+
+    if "{" in prefix or "}" in prefix or "{" in suffix or "}" in suffix:
+        return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
+
+    greedy = ""
+    name = content
+    if len(content) > 0 and content[-1] in ("+", "*"):
+        greedy = content[-1]
+        name = content[:-1]
+
+    if len(name) == 0:
+        return SegmentError(f'empty parameter name in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
+
+    return SegmentParam(prefix, name, suffix, greedy)
+
+
 def parse_segment(seg: str) -> dict:
     """Parse a single host or path segment into literal / param / error.
 
@@ -64,72 +167,18 @@ def parse_segment(seg: str) -> dict:
        "greedy": "" | "+" | "*"}
       {"kind": "error", "reason": str}
     """
-    open_count = seg.count("{")
-    close_count = seg.count("}")
-
-    if open_count == 0 and close_count == 0:
-        return {"kind": "literal", "value": seg}
-    if open_count != close_count:
+    parsed = _parse_segment(seg)
+    if isinstance(parsed, SegmentLiteral):
+        return {"kind": "literal", "value": parsed.value}
+    if isinstance(parsed, SegmentParam):
         return {
-            "kind": "error",
-            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+            "kind": "param",
+            "prefix": parsed.prefix,
+            "name": parsed.name,
+            "suffix": parsed.suffix,
+            "greedy": parsed.greedy,
         }
-
-    open1 = seg.find("{")
-    close1 = seg.find("}")
-    if close1 < open1:
-        return {
-            "kind": "error",
-            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
-        }
-
-    if open_count >= _MULTI_PARAM_BRACE_COUNT:
-        open2 = seg.find("{", close1 + 1)
-        if close1 + 1 == open2:
-            return {
-                "kind": "error",
-                "reason": (
-                    f'adjacent parameters in segment "{seg}" — only one parameter '
-                    f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
-                ),
-            }
-        return {
-            "kind": "error",
-            "reason": (
-                f'literal-separated parameters in segment "{seg}" — only one parameter '
-                f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
-            ),
-        }
-
-    prefix = seg[:open1]
-    content = seg[open1 + 1 : close1]
-    suffix = seg[close1 + 1 :]
-
-    if "{" in prefix or "}" in prefix or "{" in suffix or "}" in suffix:
-        return {
-            "kind": "error",
-            "reason": f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
-        }
-
-    greedy = ""
-    name = content
-    if len(content) > 0 and content[-1] in ("+", "*"):
-        greedy = content[-1]
-        name = content[:-1]
-
-    if len(name) == 0:
-        return {
-            "kind": "error",
-            "reason": f'empty parameter name in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
-        }
-
-    return {
-        "kind": "param",
-        "prefix": prefix,
-        "name": name,
-        "suffix": suffix,
-        "greedy": greedy,
-    }
+    return {"kind": "error", "reason": parsed.reason}
 
 
 def _match_segment_literal(runtime: str, prefix: str, suffix: str) -> str | None:
@@ -387,6 +436,300 @@ def match_path(path: str, pattern: str) -> dict | None:
     return params
 
 
+def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegment, ...] | None:
+    parsed = tuple(_parse_segment(seg) for seg in segments)
+    if any(isinstance(seg, SegmentError) for seg in parsed):
+        return None
+    return parsed
+
+
+def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
+    """Compile a URL path pattern for repeated matching."""
+    segments = _compile_segments(tuple(s for s in pattern.split("/") if s))
+    if segments is None:
+        return None
+    return CompiledPathPattern(segments)
+
+
+def _match_compiled_path_segments(
+    path_segs: list[str],
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> dict | None:
+    params: dict[str, str] = {}
+    pi = 0
+
+    for parsed in pattern_segs:
+        if isinstance(parsed, SegmentLiteral):
+            if pi >= len(path_segs) or path_segs[pi] != parsed.value:
+                return None
+            pi += 1
+            continue
+
+        if isinstance(parsed, SegmentError):
+            return None
+
+        if parsed.greedy == "+":
+            if pi >= len(path_segs):
+                return None
+            params[parsed.name] = "/".join(path_segs[pi:])
+            return params
+        if parsed.greedy == "*":
+            params[parsed.name] = "/".join(path_segs[pi:])
+            return params
+        if pi >= len(path_segs):
+            return None
+
+        runtime = path_segs[pi]
+        if parsed.prefix == "" and parsed.suffix == "":
+            params[parsed.name] = runtime
+        else:
+            captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
+            if captured is None:
+                return None
+            params[parsed.name] = captured
+        pi += 1
+
+    if pi != len(path_segs):
+        return None
+    return params
+
+
+def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
+    """Match a URL path against a compiled rule path pattern."""
+    return _match_compiled_path_segments([s for s in path.split("/") if s], pattern.segments)
+
+
+def _match_compiled_path_prefix(
+    path_segs: list[str],
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> tuple[dict, int] | None:
+    params: dict[str, str] = {}
+    pi = 0
+
+    for parsed in pattern_segs:
+        if isinstance(parsed, SegmentLiteral):
+            if pi >= len(path_segs) or path_segs[pi] != parsed.value:
+                return None
+            pi += 1
+            continue
+
+        if isinstance(parsed, SegmentError):
+            return None
+        if pi >= len(path_segs):
+            return None
+
+        runtime = path_segs[pi]
+        if parsed.prefix == "" and parsed.suffix == "":
+            params[parsed.name] = runtime
+        else:
+            captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
+            if captured is None:
+                return None
+            params[parsed.name] = captured
+        pi += 1
+
+    return params, pi
+
+
+def _match_compiled_host(
+    host: str,
+    pattern_segs_reversed: tuple[ParsedSegment, ...],
+) -> dict | None:
+    host_segs_orig = host.split(".")
+    host_segs_lower = [s.lower() for s in host_segs_orig]
+    host_segs_orig = list(reversed(host_segs_orig))
+    host_segs_lower = list(reversed(host_segs_lower))
+
+    params: dict[str, str] = {}
+    hi = 0
+    for parsed in pattern_segs_reversed:
+        if isinstance(parsed, SegmentLiteral):
+            if hi >= len(host_segs_lower) or host_segs_lower[hi] != parsed.value.lower():
+                return None
+            hi += 1
+            continue
+
+        if isinstance(parsed, SegmentError):
+            return None
+
+        if parsed.greedy == "+":
+            if hi >= len(host_segs_orig):
+                return None
+            remaining = list(reversed(host_segs_orig[hi:]))
+            params[parsed.name] = ".".join(remaining)
+            return params
+        if parsed.greedy == "*":
+            remaining = list(reversed(host_segs_orig[hi:]))
+            params[parsed.name] = ".".join(remaining)
+            return params
+        if hi >= len(host_segs_orig):
+            return None
+        if parsed.prefix == "" and parsed.suffix == "":
+            params[parsed.name] = host_segs_lower[hi]
+        else:
+            captured = _match_segment_literal(
+                host_segs_lower[hi],
+                parsed.prefix.lower(),
+                parsed.suffix.lower(),
+            )
+            if captured is None:
+                return None
+            params[parsed.name] = captured
+        hi += 1
+
+    if hi != len(host_segs_orig):
+        return None
+    return params
+
+
+def _compile_base(raw_base: str) -> _CompiledBase | None:
+    base = raw_base.rstrip("/")
+    if not base:
+        return None
+
+    has_params = "{" in base
+    parts = _split_base_match_url(base, allow_query_fragment=False)
+    if parts is None:
+        return None
+
+    host_segments: tuple[ParsedSegment, ...] = ()
+    path_segments: tuple[ParsedSegment, ...] = ()
+    if has_params:
+        compiled_host = _compile_segments(tuple(reversed(parts.authority.split("."))))
+        if compiled_host is None:
+            return None
+        host_segments = compiled_host
+        compiled_path = _compile_segments(tuple(s for s in parts.path.split("/") if s))
+        if compiled_path is None:
+            return None
+        path_segments = compiled_path
+
+    return _CompiledBase(base, parts, has_params, host_segments, path_segments)
+
+
+def _match_compiled_base_url_parts(
+    url_parts: _BaseUrlParts,
+    base: _CompiledBase,
+) -> tuple[str, dict] | None:
+    if not base.has_params:
+        if url_parts.scheme.lower() != base.parts.scheme.lower():
+            return None
+        if url_parts.authority.lower() != base.parts.authority.lower():
+            return None
+
+        base_path = base.parts.path
+        if base_path and not url_parts.path.startswith(base_path):
+            return None
+        rest = url_parts.path[len(base_path) :] if base_path else url_parts.path
+        if rest and rest[0] != "/":
+            return None
+        rel_path = rest or "/"
+        return rel_path, {}
+
+    if url_parts.scheme.lower() != base.parts.scheme.lower():
+        return None
+
+    host_params = _match_compiled_host(url_parts.authority, base.host_segments)
+    if host_params is None:
+        return None
+
+    base_path = base.parts.path
+    clean_url_path = url_parts.path
+    if base_path and base_path != "/":
+        url_path_segs = [s for s in clean_url_path.split("/") if s]
+        path_result = _match_compiled_path_prefix(url_path_segs, base.path_segments)
+        if path_result is None:
+            return None
+        path_params, consumed = path_result
+        remaining_segs = url_path_segs[consumed:]
+        rel_path = "/" + "/".join(remaining_segs) if remaining_segs else "/"
+        all_params = {**host_params, **path_params}
+    else:
+        rel_path = clean_url_path or "/"
+        all_params = host_params
+
+    return rel_path, all_params
+
+
+def _compile_rule(rule_str: str) -> _CompiledRule | None:
+    parts = rule_str.split(" ", 1)
+    if len(parts) != _RULE_TOKEN_COUNT:
+        return None
+    pattern = compile_path_pattern(parts[1])
+    if pattern is None:
+        return None
+    return _CompiledRule(parts[0].upper(), rule_str, pattern)
+
+
+def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
+    """Compile raw firewall config into immutable matcher-side data."""
+    if not vm_firewalls:
+        return None
+
+    compiled_firewalls: list[_CompiledFirewall] = []
+    for fw_entry in vm_firewalls:
+        if not isinstance(fw_entry, dict):
+            continue
+
+        raw_apis = fw_entry.get("apis", [])
+        if not isinstance(raw_apis, list):
+            continue
+
+        compiled_apis: list[_CompiledApi] = []
+        for api_entry in raw_apis:
+            if not isinstance(api_entry, dict):
+                continue
+            raw_base = api_entry.get("base", "")
+            if not isinstance(raw_base, str):
+                continue
+            base = _compile_base(raw_base)
+            if base is None:
+                continue
+
+            compiled_permissions: list[_CompiledPermission] = []
+            has_malformed_rules = False
+            permissions = api_entry.get("permissions")
+            if isinstance(permissions, list):
+                for perm in permissions:
+                    if not isinstance(perm, dict):
+                        has_malformed_rules = True
+                        continue
+                    raw_rules = perm.get("rules", [])
+                    if not isinstance(raw_rules, list):
+                        raw_rules = []
+                        has_malformed_rules = True
+
+                    compiled_rules: list[_CompiledRule] = []
+                    for rule_str in raw_rules:
+                        if not isinstance(rule_str, str):
+                            has_malformed_rules = True
+                            continue
+                        rule = _compile_rule(rule_str)
+                        if rule is None:
+                            has_malformed_rules = True
+                            continue
+                        compiled_rules.append(rule)
+
+                    compiled_permissions.append(
+                        _CompiledPermission(perm.get("name", ""), tuple(compiled_rules))
+                    )
+            elif permissions is not None:
+                has_malformed_rules = True
+
+            compiled_apis.append(
+                _CompiledApi(api_entry, base, tuple(compiled_permissions), has_malformed_rules)
+            )
+
+        if compiled_apis:
+            compiled_firewalls.append(
+                _CompiledFirewall(fw_entry.get("name", ""), tuple(compiled_apis))
+            )
+
+    if not compiled_firewalls:
+        return None
+    return CompiledFirewallSet(tuple(compiled_firewalls))
+
+
 class FirewallAllow(NamedTuple):
     """Permission matched — inject auth headers."""
 
@@ -435,6 +778,108 @@ def _get_unknown_policy(
     if grant is None:
         return "allow"
     return grant.get("unknownPolicy", "allow")
+
+
+def match_compiled_firewall_request(
+    url: str,
+    method: str,
+    compiled_firewalls: CompiledFirewallSet | None,
+    network_policies: dict | None = None,
+) -> FirewallAllow | FirewallBlock | None:
+    """Match request against precompiled firewall permissions."""
+    if not compiled_firewalls:
+        return None
+
+    url_parts = _split_base_match_url(url)
+    if url_parts is None:
+        return None
+
+    if network_policies is None:
+        network_policies = {}
+
+    blocked_base = None
+    blocked_name = ""
+    blocked_rel_path = "/"
+    first_matched_api_entry = None
+    first_matched_base_params: dict = {}
+
+    upper_method = method.upper()
+
+    denied_match: tuple[str, str, str, str] | None = None
+    denied_perm_names: list[str] = []
+    malformed_match: tuple[str, str, str, str] | None = None
+
+    for fw_entry in compiled_firewalls.firewalls:
+        block_set = _build_block_set(fw_entry.name, network_policies)
+
+        for api_entry in fw_entry.apis:
+            base_result = _match_compiled_base_url_parts(url_parts, api_entry.base)
+            if base_result is None:
+                continue
+
+            rel_path, base_params = base_result
+
+            if blocked_base is None:
+                blocked_base = api_entry.base.raw
+                blocked_name = fw_entry.name
+                blocked_rel_path = rel_path
+                first_matched_api_entry = api_entry.raw_api_entry
+                first_matched_base_params = base_params
+            if api_entry.has_malformed_rules and malformed_match is None:
+                malformed_match = (api_entry.base.raw, fw_entry.name, upper_method, rel_path)
+
+            if not api_entry.permissions:
+                continue
+
+            rel_path_segs = [s for s in rel_path.split("/") if s]
+            for perm in api_entry.permissions:
+                for rule in perm.rules:
+                    if rule.method not in ("ANY", upper_method):
+                        continue
+
+                    params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
+                    if params is not None:
+                        all_params = {**base_params, **params}
+
+                        if perm.name not in block_set:
+                            return FirewallAllow(
+                                api_entry.raw_api_entry,
+                                {
+                                    "name": fw_entry.name,
+                                    "permission": perm.name,
+                                    "params": all_params,
+                                    "rule": rule.raw,
+                                    "rel_path": rel_path,
+                                },
+                            )
+                        if perm.name not in denied_perm_names:
+                            denied_perm_names.append(perm.name)
+                        if denied_match is None:
+                            denied_match = (
+                                api_entry.base.raw,
+                                fw_entry.name,
+                                upper_method,
+                                rel_path,
+                            )
+
+    if blocked_base is not None:
+        if denied_match is not None:
+            return FirewallBlock(*denied_match, tuple(denied_perm_names))
+        if malformed_match is not None:
+            return FirewallBlock(*malformed_match, ())
+        if _get_unknown_policy(blocked_name, network_policies) == "allow":
+            return FirewallAllow(
+                first_matched_api_entry,
+                {
+                    "name": blocked_name,
+                    "permission": "",
+                    "params": first_matched_base_params,
+                    "rule": "",
+                    "rel_path": blocked_rel_path,
+                },
+            )
+        return FirewallBlock(blocked_base, blocked_name, upper_method, blocked_rel_path, ())
+    return None
 
 
 def match_firewall_request(
