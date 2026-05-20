@@ -5,7 +5,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { request$ } from "../../signals/context/hono";
 import type { SignalRouteHandler } from "../../signals/context/route";
 import { db$ } from "../../signals/external/db";
-import { decryptSecretValue } from "../../signals/services/crypto.utils";
+import { decryptPersistentSecretValue } from "../../signals/services/crypto.utils";
 import { safeJsonParse } from "../../signals/utils";
 import { verifyCallbackRequest } from "../event-consumer/verify-signature";
 
@@ -117,7 +117,8 @@ export function callbackRoute<T>(
         return { status: 404, body: { error: "Callback not found" } };
       }
 
-      const secret = decryptSecretValue(record.encryptedSecret);
+      const secret = await decryptPersistentSecretValue(record.encryptedSecret);
+      signal.throwIfAborted();
 
       const verification = verifyCallbackRequest(
         rawBody,

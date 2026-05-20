@@ -27,7 +27,7 @@ import {
   type GithubIssueComment,
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptPersistentSecretValue } from "./crypto.utils";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 const L = logger("WebhookGithub");
@@ -920,7 +920,7 @@ export const handleGithubInstallationEvent$ = command(
       .set({
         status: "active",
         installationId: ghInstallationId,
-        encryptedAccessToken: encryptSecretValue(token),
+        encryptedAccessToken: await encryptPersistentSecretValue(token),
         targetName: payload.installation.account.login,
         adminGithubUserId: payload.sender ? String(payload.sender.id) : null,
         updatedAt: nowDate(),

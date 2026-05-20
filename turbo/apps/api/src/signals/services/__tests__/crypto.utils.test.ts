@@ -10,6 +10,11 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import {
+  decryptPersistentSecretValue,
+  decryptPersistentSecretValueWithMode,
+  encryptPersistentSecretValue,
+  encryptPersistentSecretValueWithMode,
+  encryptPersistentSecretsMap,
   decryptStoredSecretValue,
   decryptStoredSecretValueWithMode,
   encryptSecretValue,
@@ -228,6 +233,100 @@ describe("stored secret encryption", () => {
     expect(encrypted).not.toBeNull();
     if (!encrypted) {
       throw new Error("Expected encrypted secrets map");
+    }
+    expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
+      format: "dual",
+    });
+  });
+
+  it("keeps persistent secrets legacy-only when KMS is not configured", async () => {
+    const encrypted = await encryptPersistentSecretValue("bot-token");
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
+      format: "legacy",
+      hasLegacy: true,
+      hasKms: false,
+    });
+    await expect(decryptPersistentSecretValue(encrypted)).resolves.toBe(
+      "bot-token",
+    );
+    expect(fakeKmsClient.calls).toHaveLength(0);
+  });
+
+  it("gates persistent secret KMS writes separately from stored secrets", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptPersistentSecretValue("bot-token", {
+      overrides: { [FeatureSwitchKey.PersistentSecretKmsWrite]: false },
+    });
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
+      format: "legacy",
+      hasLegacy: true,
+      hasKms: false,
+    });
+    await expect(decryptPersistentSecretValue(encrypted)).resolves.toBe(
+      "bot-token",
+    );
+    expect(fakeKmsClient.calls).toHaveLength(0);
+  });
+
+  it("dual-writes persistent secrets and can prefer either read branch", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptPersistentSecretValue("bot-token", {
+      overrides: { [FeatureSwitchKey.PersistentSecretKmsWrite]: true },
+    });
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
+      format: "dual",
+      hasLegacy: true,
+      hasKms: true,
+    });
+    await expect(
+      decryptPersistentSecretValue(encrypted, {
+        overrides: { [FeatureSwitchKey.PersistentSecretKmsRead]: true },
+      }),
+    ).resolves.toBe("bot-token");
+    await expect(
+      decryptPersistentSecretValue(encrypted, {
+        overrides: { [FeatureSwitchKey.PersistentSecretKmsRead]: false },
+      }),
+    ).resolves.toBe("bot-token");
+  });
+
+  it("can backfill persistent secrets to KMS-only ciphertext", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptPersistentSecretValueWithMode(
+      "callback-secret",
+      "kms",
+    );
+
+    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
+      format: "kms",
+      hasLegacy: false,
+      hasKms: true,
+    });
+    await expect(
+      decryptPersistentSecretValueWithMode(encrypted, "legacy-only"),
+    ).rejects.toThrow("Stored secret ciphertext does not include legacy data");
+    await expect(
+      decryptPersistentSecretValueWithMode(encrypted, "kms-only"),
+    ).resolves.toBe("callback-secret");
+  });
+
+  it("dual-writes persistent secret maps when PersistentSecretKmsWrite is on", async () => {
+    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
+
+    const encrypted = await encryptPersistentSecretsMap(
+      { API_KEY: "secret" },
+      { overrides: { [FeatureSwitchKey.PersistentSecretKmsWrite]: true } },
+    );
+
+    expect(encrypted).not.toBeNull();
+    if (!encrypted) {
+      throw new Error("Expected encrypted persistent secrets map");
     }
     expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
       format: "dual",

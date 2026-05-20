@@ -35,7 +35,7 @@ import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
 import { settle } from "../utils";
 import {
-  decryptSecretsMap,
+  decryptPersistentSecretsMap,
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
@@ -1314,13 +1314,8 @@ export async function resolveFirewallAuth(
       };
     }
 > {
-  // decryptSecretsMap is synchronous and throws on malformed input — wrap in
-  // an async IIFE so the throw becomes a rejection settle can observe.
   const decryptedResult = await settle(
-    (async (): Promise<Record<string, string> | null> => {
-      await Promise.resolve();
-      return decryptSecretsMap(body.encryptedSecrets);
-    })(),
+    decryptPersistentSecretsMap(body.encryptedSecrets),
   );
   const decryptedSecrets = decryptedResult.ok ? decryptedResult.value : null;
 

@@ -39,7 +39,7 @@ export const runnerJobQueue = pgTable(
     // Claim status
     claimedAt: timestamp("claimed_at"),
 
-    // Execution context (secrets encrypted with AES-256-GCM)
+    // Execution context (secrets encrypted with persistent-secret envelope)
     executionContext: jsonb("execution_context").notNull(),
 
     // Lifecycle management

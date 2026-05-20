@@ -36,7 +36,7 @@ import {
   postMessage,
   setThreadStatus,
 } from "../external/slack-message-client";
-import { decryptSecretValue } from "../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { getRunOutputText } from "../services/run-output.service";
 import { saveRunSummary$ } from "../services/run-summary.service";
@@ -416,7 +416,7 @@ async function handleProgress(args: {
 
   if (installation) {
     refreshThreadStatus({
-      token: decryptSecretValue(installation.encryptedBotToken),
+      token: await decryptPersistentSecretValue(installation.encryptedBotToken),
       channelId: args.payload.channelId,
       threadTs: args.payload.threadTs,
       status: "is thinking...",
@@ -462,7 +462,9 @@ async function handleCompletion(args: {
     return errorResponse(404, "Slack installation not found");
   }
 
-  const botToken = decryptSecretValue(installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
   const run = await loadRunContext({
     db: args.db,
     runId: args.runId,

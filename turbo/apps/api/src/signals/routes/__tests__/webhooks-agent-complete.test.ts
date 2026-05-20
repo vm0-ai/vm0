@@ -654,7 +654,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       runId: queuedRunId,
       orgId: fixture.orgId,
       userId: fixture.userId,
-      encryptedParams: encryptQueuedRunnerJobPayload(
+      encryptedParams: await encryptQueuedRunnerJobPayload(
         queuedRunnerJobPayload({
           runnerGroup,
           profile,

@@ -9,7 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
 import { listConversations } from "../../lib/slack-client";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 import type { ApiOrgRole } from "../../types/auth";
 
 export const SLACK_BOT_SCOPES: readonly string[] = [
@@ -246,7 +246,9 @@ export function zeroSlackOrgInstallation(args: {
       return null;
     }
 
-    const botToken = decryptSecretValue(installation.encryptedBotToken);
+    const botToken = await decryptPersistentSecretValue(
+      installation.encryptedBotToken,
+    );
 
     return {
       workspaceId: installation.slackWorkspaceId,

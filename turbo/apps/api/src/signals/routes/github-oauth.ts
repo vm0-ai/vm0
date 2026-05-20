@@ -18,7 +18,7 @@ import {
   tryLinkGithubFromLocalRecord,
   tryLinkGithubFromRemoteInstallations,
 } from "../services/github-oauth.service";
-import { encryptSecretValue } from "../services/crypto.utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import type { RouteEntry } from "../route";
 import {
   getOAuthCanonicalRedirectUrl,
@@ -231,7 +231,7 @@ const callbackGithubOauth$ = command(
       db,
       installationId,
       installInfo,
-      encryptedAccessToken: encryptSecretValue(token),
+      encryptedAccessToken: await encryptPersistentSecretValue(token),
       adminGithubUserId,
       composeId,
       signal,

@@ -3,7 +3,7 @@ import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { revokeConnectorToken } from "../connector/connector-service";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -92,13 +92,10 @@ async function deregisterTelegramWebhooks(orgId: string): Promise<void> {
     .from(telegramInstallations)
     .where(eq(telegramInstallations.orgId, orgId));
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-
   for (const inst of installations) {
     try {
-      const botToken = decryptSecretValue(
+      const botToken = await decryptPersistentSecretValue(
         inst.encryptedBotToken,
-        encryptionKey,
       );
       await deleteWebhook(botToken);
       log.debug("telegram webhook deregistered", {

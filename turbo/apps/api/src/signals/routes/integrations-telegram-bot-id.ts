@@ -14,7 +14,7 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishOrgSignal, publishUserSignal } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
-import { decryptSecretValue } from "../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { telegramIntegrationBotStatus } from "../services/zero-telegram-data.service";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -276,7 +276,10 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const botToken = decryptSecretValue(installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
+  signal.throwIfAborted();
   const webhookResult = await settle(deleteWebhook(botToken));
   signal.throwIfAborted();
   if (!webhookResult.ok) {

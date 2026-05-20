@@ -20,7 +20,9 @@ import { safeJsonParse, safeSync, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import {
+  decryptPersistentSecretValue,
   decryptSecretValue,
+  encryptPersistentSecretValue,
   encryptSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
@@ -216,8 +218,10 @@ function encodeSession(payload: CliAuthStripeSessionToken): string {
   return encryptSecretValue(JSON.stringify(payload));
 }
 
-function encodeProviderState(payload: CliAuthStripeProviderState): string {
-  return encryptSecretValue(JSON.stringify(payload));
+async function encodeProviderState(
+  payload: CliAuthStripeProviderState,
+): Promise<string> {
+  return await encryptPersistentSecretValue(JSON.stringify(payload));
 }
 
 function decodeSession(token: string): CliAuthStripeSessionToken | null {
@@ -233,22 +237,22 @@ function decodeSession(token: string): CliAuthStripeSessionToken | null {
   return decoded.ok;
 }
 
-function decodeProviderState(
+async function decodeProviderState(
   encryptedProviderState: string | null,
-): CliAuthStripeProviderState | null {
+): Promise<CliAuthStripeProviderState | null> {
   if (!encryptedProviderState) {
     return null;
   }
-  const decoded = safeSync(() => {
-    const parsed = cliAuthStripeProviderStateSchema.safeParse(
-      safeJsonParse(decryptSecretValue(encryptedProviderState)),
-    );
-    return parsed.success ? parsed.data : null;
-  });
-  if ("error" in decoded) {
+  const decrypted = await settle(
+    decryptPersistentSecretValue(encryptedProviderState),
+  );
+  if (!decrypted.ok) {
     return null;
   }
-  return decoded.ok;
+  const parsed = cliAuthStripeProviderStateSchema.safeParse(
+    safeJsonParse(decrypted.value),
+  );
+  return parsed.success ? parsed.data : null;
 }
 
 function commandText(result: SandboxCommandResult): string {
@@ -774,7 +778,7 @@ async function markCliAuthStripeSessionAwaitingApproval(args: {
       status: "awaiting_user_approval",
       approvalUrl: args.output.browserUrl,
       verificationCode: args.output.verificationCode,
-      encryptedProviderState: encodeProviderState({
+      encryptedProviderState: await encodeProviderState({
         version: 1,
         type: "stripe",
         mode: args.mode,

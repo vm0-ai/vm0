@@ -21,7 +21,7 @@ export const telegramInstallations = pgTable(
   {
     telegramBotId: varchar("telegram_bot_id", { length: 255 }).primaryKey(),
     botUsername: varchar("bot_username", { length: 255 }),
-    // Bot token encrypted with AES-256-GCM
+    // Bot token encrypted with the persistent-secret KMS rollout envelope.
     encryptedBotToken: text("encrypted_bot_token").notNull(),
     // Secret token for webhook verification (X-Telegram-Bot-Api-Secret-Token)
     webhookSecret: varchar("webhook_secret", { length: 255 }).notNull(),

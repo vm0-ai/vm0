@@ -1,7 +1,10 @@
 import { eq, and } from "drizzle-orm";
 import { type SecretType } from "@vm0/api-contracts/contracts/secrets";
 import { secrets } from "@vm0/db/schema/secret";
-import { encryptSecretValue, decryptSecretValue } from "../../shared/crypto";
+import {
+  decryptStoredSecretValue,
+  encryptStoredSecretValue,
+} from "../../shared/crypto/kms-secrets-encryption";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -101,8 +104,7 @@ export async function getSecretValue(
     return null;
   }
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  return decryptSecretValue(result[0].encryptedValue, encryptionKey);
+  return await decryptStoredSecretValue(result[0].encryptedValue);
 }
 
 /**
@@ -128,11 +130,10 @@ export async function getSecretValues(
     .from(secrets)
     .where(and(...conditions));
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const values: Record<string, string> = {};
 
   for (const row of result) {
-    values[row.name] = decryptSecretValue(row.encryptedValue, encryptionKey);
+    values[row.name] = await decryptStoredSecretValue(row.encryptedValue);
   }
 
   return values;
@@ -150,8 +151,7 @@ export async function upsertSecretByOrg(
   type: SecretType,
   description: string,
 ): Promise<void> {
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptSecretValue(value, encryptionKey);
+  const encryptedValue = await encryptStoredSecretValue(value);
 
   await globalThis.services.db
     .insert(secrets)
@@ -181,8 +181,7 @@ export async function setSecret(
 ): Promise<SecretInfo> {
   validateSecretName(name);
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptSecretValue(value, encryptionKey);
+  const encryptedValue = await encryptStoredSecretValue(value);
 
   log.debug("setting secret", { orgId, name });
 

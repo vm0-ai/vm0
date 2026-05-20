@@ -65,7 +65,7 @@ import {
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 import {
   resolveIntegrationModelRouteForUser,
   type IntegrationModelRoutePin,
@@ -638,7 +638,9 @@ async function refreshOrgAppHome(
   slackUserId: string,
 ): Promise<void> {
   const workspaceId = installation.slackWorkspaceId;
-  const botToken = decryptSecretValue(installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
   const client = createSlackClient(botToken);
   const connection = await connectionForSlackUser(db, workspaceId, slackUserId);
   if (!connection) {
@@ -743,7 +745,7 @@ async function commandSwitchResponse(
     installation.orgId,
   );
   const client = createSlackClient(
-    decryptSecretValue(installation.encryptedBotToken),
+    await decryptPersistentSecretValue(installation.encryptedBotToken),
   );
   const result = await settle(
     openView(
@@ -803,7 +805,7 @@ async function commandModelResponse(
     );
   }
   const client = createSlackClient(
-    decryptSecretValue(args.installation.encryptedBotToken),
+    await decryptPersistentSecretValue(args.installation.encryptedBotToken),
   );
   const result = await settle(
     openView(
@@ -1170,7 +1172,9 @@ async function resolveSlackAgentMessage(
     return null;
   }
   const boundInstallation = { ...installation, orgId };
-  const botToken = decryptSecretValue(installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
   const client = createSlackClient(botToken);
   const threadTs = args.threadTs ?? args.messageTs;
   const connection = await connectionForSlackUser(
@@ -1465,7 +1469,9 @@ async function handleMessagesTabOpened(
     agentName = agent?.displayName ?? agent?.name;
   }
   await postMessage(
-    createSlackClient(decryptSecretValue(installation.encryptedBotToken)),
+    createSlackClient(
+      await decryptPersistentSecretValue(installation.encryptedBotToken),
+    ),
     channelId,
     "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
     { blocks: buildWelcomeMessage(agentName) },
@@ -1696,7 +1702,9 @@ async function handleAgentPickerSubmit(
   if (!ctx) {
     return emptyResponse();
   }
-  const botToken = decryptSecretValue(ctx.installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    ctx.installation.encryptedBotToken,
+  );
   const channelId = parseViewChannelId(payload.view?.private_metadata);
   if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
     const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
@@ -1799,7 +1807,9 @@ async function handleModelPickerSubmit(
   const channelId = parseViewChannelId(payload.view?.private_metadata);
   if (channelId) {
     await postEphemeralMessage({
-      botToken: decryptSecretValue(ctx.installation.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(
+        ctx.installation.encryptedBotToken,
+      ),
       channel: channelId,
       slackUserId: payload.user.id,
       text: `Switched to *${option.label}*.`,
@@ -1851,7 +1861,9 @@ async function handleHomeSwitchAgent(
   );
   const result = await settle(
     openView(
-      createSlackClient(decryptSecretValue(ctx.installation.encryptedBotToken)),
+      createSlackClient(
+        await decryptPersistentSecretValue(ctx.installation.encryptedBotToken),
+      ),
       triggerId,
       buildAgentPickerModal({
         options,

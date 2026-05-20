@@ -1,7 +1,7 @@
 import { eq, and, or } from "drizzle-orm";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { env } from "../../../env";
 import { computeHmacSignature } from "./hmac";
 import { logger } from "../../shared/logger";
@@ -44,8 +44,6 @@ export async function dispatchCallbacks(
   result?: Record<string, unknown>,
   error?: string,
 ): Promise<DispatchResult[]> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
-
   // Fetch only pending callbacks for this run (prevents double dispatch on retries)
   const callbacks = await globalThis.services.db
     .select({
@@ -80,7 +78,6 @@ export async function dispatchCallbacks(
       status,
       result,
       error,
-      SECRETS_ENCRYPTION_KEY,
     );
     results.push(dispatchResult);
   }
@@ -105,14 +102,13 @@ async function dispatchSingleCallback(
   status: "completed" | "failed",
   result: Record<string, unknown> | undefined,
   error: string | undefined,
-  encryptionKey: string,
 ): Promise<DispatchResult> {
   const { id, encryptedSecret, payload } = callback;
 
   const url = resolveCallbackUrl(callback.url);
 
   // Decrypt the callback secret
-  const secret = decryptSecretValue(encryptedSecret, encryptionKey);
+  const secret = await decryptPersistentSecretValue(encryptedSecret);
 
   // Build callback body (callbackId enables PK-based secret lookup on receivers)
   const body = JSON.stringify({
@@ -224,8 +220,6 @@ export async function dispatchProgressCallbacks(runId: string): Promise<void> {
     return;
   }
 
-  const { SECRETS_ENCRYPTION_KEY } = env();
-
   const callbacks = await globalThis.services.db
     .select({
       id: agentRunCallbacks.id,
@@ -246,11 +240,10 @@ export async function dispatchProgressCallbacks(runId: string): Promise<void> {
   }
 
   await Promise.allSettled(
-    callbacks.map((callback) => {
+    callbacks.map(async (callback) => {
       const url = resolveCallbackUrl(callback.url);
-      const secret = decryptSecretValue(
+      const secret = await decryptPersistentSecretValue(
         callback.encryptedSecret,
-        SECRETS_ENCRYPTION_KEY,
       );
 
       const body = JSON.stringify({

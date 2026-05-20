@@ -24,7 +24,7 @@ import { publishUserSignal } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import { settle } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 import { createZeroIntegrationRun$ } from "./zero-runs-create.service";
 
 const L = logger("TelegramDispatch");
@@ -1066,7 +1066,9 @@ async function resolveDispatchBase(args: {
     return { kind: "stop" };
   }
 
-  const botToken = decryptSecretValue(installation.encryptedBotToken);
+  const botToken = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
   const telegramDisplayName = formatTelegramUserDisplayName(message.from);
   const userLink = await resolveUserLink({
     db: args.db,

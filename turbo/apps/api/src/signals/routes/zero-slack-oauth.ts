@@ -16,7 +16,7 @@ import {
 import { logger } from "../../lib/log";
 import { env, optionalEnv } from "../../lib/env";
 import { safeJsonParse, settle, tapError } from "../utils";
-import { encryptSecretValue } from "../services/crypto.utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   connectSlackWorkspace$,
@@ -381,7 +381,9 @@ async function handleInstallCallback(args: {
 
   const oauthResult = exchange.value;
   const writeDb = args.set(writeDb$);
-  const encryptedBotToken = encryptSecretValue(oauthResult.accessToken);
+  const encryptedBotToken = await encryptPersistentSecretValue(
+    oauthResult.accessToken,
+  );
   const botScopes = oauthResult.scope
     ? JSON.stringify(oauthResult.scope.split(",").filter(Boolean))
     : null;

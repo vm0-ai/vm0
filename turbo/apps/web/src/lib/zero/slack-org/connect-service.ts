@@ -8,8 +8,7 @@ import {
 } from "./handlers/shared";
 import { refreshOrgAppHome } from "./handlers/app-home";
 
-import { env } from "../../../env";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
 import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
 import { logger } from "../../shared/logger";
@@ -276,10 +275,8 @@ export async function notifyConnectSuccess(params: {
     threadTs,
     pendingPrompt,
   } = params;
-  const { SECRETS_ENCRYPTION_KEY } = env();
-  const botToken = decryptSecretValue(
+  const botToken = await decryptPersistentSecretValue(
     installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);
 

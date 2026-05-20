@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { logger } from "../../shared/logger";
 import { deleteWebhook } from "../telegram/client";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { revokeConnectorToken } from "../connector/connector-service";
 import { connectors } from "@vm0/db/schema/connector";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
@@ -138,12 +138,10 @@ async function deleteOwnedTelegramInstallations(userId: string): Promise<void> {
 
   if (owned.length === 0) return;
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   for (const inst of owned) {
     try {
-      const botToken = decryptSecretValue(
+      const botToken = await decryptPersistentSecretValue(
         inst.encryptedBotToken,
-        encryptionKey,
       );
       await deleteWebhook(botToken);
     } catch (error) {

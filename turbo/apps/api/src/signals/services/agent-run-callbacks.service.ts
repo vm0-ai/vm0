@@ -7,7 +7,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -50,7 +50,7 @@ export const dispatchProgressCallbacks$ = command(
     }
 
     await Promise.allSettled(
-      callbacks.map((callback) => {
+      callbacks.map(async (callback) => {
         const body = JSON.stringify({
           callbackId: callback.id,
           runId,
@@ -60,7 +60,7 @@ export const dispatchProgressCallbacks$ = command(
         const timestamp = Math.floor(now() / 1000);
         const signature = computeHmacSignature(
           body,
-          decryptSecretValue(callback.encryptedSecret),
+          await decryptPersistentSecretValue(callback.encryptedSecret),
           timestamp,
         );
 

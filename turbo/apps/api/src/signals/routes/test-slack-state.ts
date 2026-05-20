@@ -23,7 +23,7 @@ import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route";
-import { encryptSecretValue } from "../services/crypto.utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -115,7 +115,7 @@ async function upsertSlackInstallation(
   db: Db,
   input: UpsertSlackInstallationInput,
 ): Promise<typeof slackOrgInstallations.$inferSelect> {
-  const encryptedBotToken = encryptSecretValue(input.botToken);
+  const encryptedBotToken = await encryptPersistentSecretValue(input.botToken);
   const [row] = await db
     .insert(slackOrgInstallations)
     .values({

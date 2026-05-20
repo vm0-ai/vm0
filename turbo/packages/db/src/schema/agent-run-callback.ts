@@ -29,7 +29,7 @@ export const agentRunCallbacks = pgTable(
         { onDelete: "cascade" },
       ),
     url: text("url").notNull(),
-    // Secret encrypted with AES-256-GCM for HMAC signature verification
+    // Secret encrypted with the persistent-secret KMS rollout envelope.
     encryptedSecret: text("encrypted_secret").notNull(),
     // Arbitrary JSON payload to include in callback (e.g., Slack context)
     payload: jsonb("payload"),

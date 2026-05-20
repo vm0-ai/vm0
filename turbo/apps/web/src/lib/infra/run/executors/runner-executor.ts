@@ -11,7 +11,7 @@ import {
   ingestRunContext,
   type RunContextSnapshot,
 } from "../../../shared/axiom/client";
-import { encryptSecretsMap } from "../../../shared/crypto/secrets-encryption";
+import { encryptPersistentSecretsMap } from "../../../shared/crypto/kms-secrets-encryption";
 import { isOfficialRunnerGroup } from "../runner-group";
 import { forbidden } from "@vm0/api-services/errors";
 import { publishJobNotification } from "../../realtime/client";
@@ -85,7 +85,7 @@ export async function executeRunnerJob(
   }
 
   const buildStoredContextStart = Date.now();
-  const storedContext = buildStoredContext(context, profile);
+  const storedContext = await buildStoredContext(context, profile);
   recordRunnerDispatchSpan({
     runId: context.runId,
     actionType: "api_dispatch_build_stored_context",
@@ -222,13 +222,12 @@ async function notifyRunners(
 /**
  * Build stored execution context with encrypted secrets for the runner job queue.
  */
-function buildStoredContext(
+async function buildStoredContext(
   context: PreparedContext,
   profile: string,
-): StoredExecutionContext {
-  const encryptedSecrets = encryptSecretsMap(
+): Promise<StoredExecutionContext> {
+  const encryptedSecrets = await encryptPersistentSecretsMap(
     context.secrets ?? null,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );
 
   return {

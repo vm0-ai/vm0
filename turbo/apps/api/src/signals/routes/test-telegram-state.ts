@@ -24,7 +24,7 @@ import { queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route";
-import { encryptSecretValue } from "../services/crypto.utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { settle } from "../utils";
 import {
   isTestEndpointAllowed,
@@ -589,9 +589,10 @@ const postTestTelegramState$ = command(
     );
     signal.throwIfAborted();
 
-    const encryptedBotToken = encryptSecretValue(
+    const encryptedBotToken = await encryptPersistentSecretValue(
       TELEGRAM_E2E_FIXTURES.botToken,
     );
+    signal.throwIfAborted();
     await db
       .insert(telegramInstallations)
       .values({

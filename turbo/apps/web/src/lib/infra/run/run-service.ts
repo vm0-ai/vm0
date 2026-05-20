@@ -25,7 +25,7 @@ import type {
 } from "./types";
 import { recordSandboxOperation } from "../metrics";
 
-import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { encryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { type RunStatus } from "@vm0/api-contracts/contracts/runs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
@@ -233,19 +233,17 @@ export async function registerCallbacks(
   runId: string,
   callbacks: Array<{ url: string; secret: string; payload: unknown }>,
 ): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
   await globalThis.services.db.insert(agentRunCallbacks).values(
-    callbacks.map((callback) => {
-      return {
-        runId,
-        url: callback.url,
-        encryptedSecret: encryptSecretValue(
-          callback.secret,
-          SECRETS_ENCRYPTION_KEY,
-        ),
-        payload: callback.payload,
-      };
-    }),
+    await Promise.all(
+      callbacks.map(async (callback) => {
+        return {
+          runId,
+          url: callback.url,
+          encryptedSecret: await encryptPersistentSecretValue(callback.secret),
+          payload: callback.payload,
+        };
+      }),
+    ),
   );
   log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
 }

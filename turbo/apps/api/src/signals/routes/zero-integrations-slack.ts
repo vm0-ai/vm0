@@ -37,7 +37,7 @@ import { createSlackClient } from "../external/slack-message-client";
 import { db$, writeDb$ } from "../external/db";
 import { zeroConnectorList } from "../services/zero-connector-data.service";
 import { userSecrets, userVariables } from "../services/zero-user-data.service";
-import { decryptSecretValue } from "../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { env } from "../../lib/env";
 import type { RouteEntry } from "../route";
 import { bestEffort, settle } from "../utils";
@@ -344,7 +344,7 @@ const deleteSlackIntegration$ = command(
 
       if (connections.length > 0) {
         const client = createSlackClient(
-          decryptSecretValue(installation.encryptedBotToken),
+          await decryptPersistentSecretValue(installation.encryptedBotToken),
         );
         const view = buildUninstalledAppHomeView();
         await Promise.allSettled(
@@ -433,7 +433,7 @@ const deleteSlackIntegration$ = command(
     signal.throwIfAborted();
 
     const client = createSlackClient(
-      decryptSecretValue(installation.encryptedBotToken),
+      await decryptPersistentSecretValue(installation.encryptedBotToken),
     );
     await bestEffort(
       publishAppHome(

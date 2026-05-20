@@ -26,7 +26,7 @@ import { now, nowDate } from "../external/time";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
-import { decryptSecretsMap } from "../services/crypto.utils";
+import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import type { RouteEntry } from "../route";
 
 const L = logger("Runners");
@@ -347,10 +347,12 @@ async function markRunRunning(
   return run ?? null;
 }
 
-function secretValuesForRunner(
+async function secretValuesForRunner(
   storedContext: StoredExecutionContext,
-): string[] | null {
-  const secretsMap = decryptSecretsMap(storedContext.encryptedSecrets);
+): Promise<string[] | null> {
+  const secretsMap = await decryptPersistentSecretsMap(
+    storedContext.encryptedSecrets,
+  );
   if (!secretsMap) {
     return null;
   }
@@ -445,7 +447,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: (run.vars as Record<string, string>) ?? null,
       checkpointId: run.resumedFromCheckpointId ?? null,
       sandboxToken,
-      secretValues: secretValuesForRunner(storedContext),
+      secretValues: await secretValuesForRunner(storedContext),
     },
   };
 });

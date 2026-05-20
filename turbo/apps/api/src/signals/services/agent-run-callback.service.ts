@@ -7,7 +7,7 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
 const L = logger("AgentRunCallback");
 
@@ -85,7 +85,7 @@ async function dispatchSingleCallback(
   input: DispatchSingleCallbackInput,
 ): Promise<DispatchResult> {
   const { db, callback, runId, status, result, error } = input;
-  const secret = decryptSecretValue(callback.encryptedSecret);
+  const secret = await decryptPersistentSecretValue(callback.encryptedSecret);
   const body = JSON.stringify({
     callbackId: callback.id,
     runId,

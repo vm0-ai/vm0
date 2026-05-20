@@ -5,7 +5,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { decryptSecretValue } from "../../shared/crypto";
+import { decryptStoredSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 
 const SECRET_PLACEHOLDER = "{{secret}}";
 
@@ -79,7 +79,6 @@ export async function resolveCustomConnectorFirewalls(
     return { firewalls: [], secrets: {} };
   }
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const firewalls: ExpandedFirewallConfig[] = [];
   const secrets: Record<string, string> = {};
 
@@ -102,7 +101,7 @@ export async function resolveCustomConnectorFirewalls(
         };
       }),
     });
-    secrets[secretKey] = decryptSecretValue(row.encryptedSecret, encryptionKey);
+    secrets[secretKey] = await decryptStoredSecretValue(row.encryptedSecret);
   }
 
   return { firewalls, secrets };

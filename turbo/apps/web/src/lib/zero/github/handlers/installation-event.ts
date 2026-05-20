@@ -2,7 +2,7 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { getInstallationAccessToken } from "../github-app";
-import { encryptSecretValue } from "../../../shared/crypto/secrets-encryption";
+import { encryptPersistentSecretValue } from "../../../shared/crypto/kms-secrets-encryption";
 import { env } from "../../../../env";
 import { logger } from "../../../shared/logger";
 
@@ -71,8 +71,7 @@ export async function handleInstallationCreatedEvent(
     return;
   }
 
-  const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, SECRETS_ENCRYPTION_KEY } =
-    env();
+  const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY } = env();
 
   if (!GITHUB_APP_ID || !GITHUB_APP_PRIVATE_KEY) {
     throw new Error(
@@ -87,10 +86,7 @@ export async function handleInstallationCreatedEvent(
     ghInstallationId,
   );
 
-  const encryptedAccessToken = encryptSecretValue(
-    token,
-    SECRETS_ENCRYPTION_KEY,
-  );
+  const encryptedAccessToken = await encryptPersistentSecretValue(token);
 
   // Set adminGithubUserId from webhook sender if available
   const adminGithubUserId = payload.sender ? String(payload.sender.id) : null;

@@ -27,7 +27,7 @@ import { nowDate } from "../external/time";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
 import type { ApiOrgRole } from "../../types/auth";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
 type PermissionAccessRequestRow = typeof permissionAccessRequests.$inferSelect;
 type ForbiddenResponse = NonNullable<ReturnType<typeof requireAgentPermission>>;
@@ -192,7 +192,7 @@ async function resolveSlackDmTarget(
 
   return {
     client: createSlackClient(
-      decryptSecretValue(installation.encryptedBotToken),
+      await decryptPersistentSecretValue(installation.encryptedBotToken),
     ),
     slackUserId: connection.slackUserId,
   };

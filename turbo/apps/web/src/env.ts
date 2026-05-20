@@ -50,6 +50,7 @@ function initEnv() {
       // Public S3 endpoint for presigned URLs (reachable from CLI / browsers)
       S3_PUBLIC_ENDPOINT: z.url().optional(),
       SECRETS_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256
+      SECRETS_KMS_KEY_ID: z.string().min(1).optional(),
       OFFICIAL_RUNNER_SECRET: z.string().length(64).optional(), // 32-byte hex key for official runner auth
       RUNNER_DEFAULT_GROUP: z.string().min(1).optional(), // Default runner group for domain-based rollout (e.g. "vm0/production")
       GITHUB_SKILL_DOWNLOAD_TOKEN: z.string().min(1).optional(), // GitHub PAT for skill download via Contents API (avoids 60 req/hr rate limit)
@@ -319,6 +320,7 @@ function initEnv() {
       S3_PUBLIC_ENDPOINT:
         process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
       SECRETS_ENCRYPTION_KEY: process.env.SECRETS_ENCRYPTION_KEY,
+      SECRETS_KMS_KEY_ID: process.env.SECRETS_KMS_KEY_ID,
       OFFICIAL_RUNNER_SECRET: process.env.OFFICIAL_RUNNER_SECRET,
       RUNNER_DEFAULT_GROUP: process.env.RUNNER_DEFAULT_GROUP,
       GITHUB_SKILL_DOWNLOAD_TOKEN: process.env.GITHUB_SKILL_DOWNLOAD_TOKEN,

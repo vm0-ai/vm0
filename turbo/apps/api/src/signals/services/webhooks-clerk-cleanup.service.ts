@@ -41,7 +41,7 @@ import { publishCancelToRunnerGroup } from "../external/realtime";
 import { deleteWebhook } from "../external/telegram-client";
 import { getStripeClient } from "../external/stripe-client";
 import { settle, tapError } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 
 const L = logger("WebhookClerkCleanup");
@@ -145,7 +145,9 @@ async function deregisterOrgTelegramWebhooks(
 
   for (const installation of installations) {
     await tapError(
-      deleteWebhook(decryptSecretValue(installation.encryptedBotToken)),
+      deleteWebhook(
+        await decryptPersistentSecretValue(installation.encryptedBotToken),
+      ),
       (error) => {
         L.warn("failed to deregister telegram webhook", {
           telegramBotId: installation.telegramBotId,
@@ -170,7 +172,9 @@ async function deregisterOwnedTelegramWebhooks(
 
   for (const installation of installations) {
     await tapError(
-      deleteWebhook(decryptSecretValue(installation.encryptedBotToken)),
+      deleteWebhook(
+        await decryptPersistentSecretValue(installation.encryptedBotToken),
+      ),
       (error) => {
         L.warn("failed to deregister telegram webhook", {
           telegramBotId: installation.telegramBotId,

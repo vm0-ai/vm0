@@ -11,7 +11,6 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { env } from "../../env";
 import { transitionRunStatus } from "../infra/run/run-status";
 import {
   PENDING_RUN_TTL_MS,
@@ -40,9 +39,9 @@ import {
   type ZeroRunMetadataValues,
 } from "./zero-run-metadata";
 import {
-  encryptSecretsMap,
-  decryptSecretsMap,
-} from "../shared/crypto/secrets-encryption";
+  decryptPersistentSecretsMap,
+  encryptPersistentSecretsMap,
+} from "../shared/crypto/kms-secrets-encryption";
 import { isConcurrentRunLimit } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
@@ -115,10 +114,9 @@ export async function enqueueRun(
 
   // Encrypt the full CreateRunParams for later replay
   const paramsJson = JSON.stringify(params);
-  const encryptedParams = encryptSecretsMap(
-    { __params: paramsJson },
-    env().SECRETS_ENCRYPTION_KEY,
-  );
+  const encryptedParams = await encryptPersistentSecretsMap({
+    __params: paramsJson,
+  });
 
   // Insert agent_runs + queue entry atomically to prevent orphaned records.
   // Eagerly create the agent_sessions row too so sessionId is known on the
@@ -255,7 +253,6 @@ export async function drainOrgQueue(
   dispatch: QueuedRunDispatcher,
 ): Promise<void> {
   const db = globalThis.services.db;
-  const encryptionKey = env().SECRETS_ENCRYPTION_KEY;
 
   try {
     for (;;) {
@@ -279,9 +276,8 @@ export async function drainOrgQueue(
       });
 
       // Decrypt CreateRunParams (outside transaction — no lock held)
-      const decryptedMap = decryptSecretsMap(
+      const decryptedMap = await decryptPersistentSecretsMap(
         dequeued.encryptedParams,
-        encryptionKey,
       );
       try {
         const apiPayload = parseApiQueuedRunnerJobPayload(decryptedMap);

@@ -24,7 +24,7 @@ import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../src/lib/infra/callback";
 import { publishAppHome } from "../../../../../src/lib/zero/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/zero/slack/blocks";
-import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../../../../src/lib/shared/crypto/kms-secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { hasAllBotScopes } from "../../../../../src/lib/zero/slack-org/scopes";
@@ -198,10 +198,8 @@ async function handleUninstall(authCtx: { userId: string }) {
     );
 
   if (connections.length > 0) {
-    const { SECRETS_ENCRYPTION_KEY } = env();
-    const botToken = decryptSecretValue(
+    const botToken = await decryptPersistentSecretValue(
       installation.encryptedBotToken,
-      SECRETS_ENCRYPTION_KEY,
     );
     const client = createSlackClient(botToken);
 
@@ -365,7 +363,6 @@ function buildScopeFields(
 async function handleDisconnect(authCtx: { userId: string }) {
   const { userId } = authCtx;
   const { org } = await resolveOrg(authCtx);
-  const { SECRETS_ENCRYPTION_KEY } = env();
   const db = globalThis.services.db;
 
   // Find installation for this org, then find user's connection via workspace
@@ -405,9 +402,8 @@ async function handleDisconnect(authCtx: { userId: string }) {
 
   // Refresh App Home (best-effort) — installation already fetched above
   if (installation) {
-    const botToken = decryptSecretValue(
+    const botToken = await decryptPersistentSecretValue(
       installation.encryptedBotToken,
-      SECRETS_ENCRYPTION_KEY,
     );
     const client = createSlackClient(botToken);
     await refreshOrgAppHome(client, installation, connection.slackUserId).catch(

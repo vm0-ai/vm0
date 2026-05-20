@@ -12,7 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { encryptSecretValue } from "../../shared/crypto";
+import { encryptStoredSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -220,8 +220,7 @@ async function upsertModelProvider(
   if (!secretName) {
     throw badRequest(`Provider "${type}" does not have a secret name`);
   }
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-  const encryptedValue = encryptSecretValue(secret, encryptionKey);
+  const encryptedValue = await encryptStoredSecretValue(secret);
 
   log.debug("upserting model provider", {
     orgId,
@@ -324,9 +323,8 @@ async function upsertMultiAuthSecret(
   name: string,
   value: string,
   description: string,
-  encryptionKey: string,
 ): Promise<void> {
-  const encryptedValue = encryptSecretValue(value, encryptionKey);
+  const encryptedValue = await encryptStoredSecretValue(value);
 
   await globalThis.services.db
     .insert(secrets)
@@ -511,8 +509,6 @@ async function upsertMultiAuthModelProvider(
     );
   }
 
-  const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
-
   log.debug("upserting multi-auth model provider", {
     orgId,
     type,
@@ -549,14 +545,7 @@ async function upsertMultiAuthModelProvider(
   const secretDescription = `${MODEL_PROVIDER_TYPES[type].label} secret (${authMethod})`;
 
   for (const [name, value] of Object.entries(secretValues)) {
-    await upsertMultiAuthSecret(
-      orgId,
-      userId,
-      name,
-      value,
-      secretDescription,
-      encryptionKey,
-    );
+    await upsertMultiAuthSecret(orgId, userId, name, value, secretDescription);
   }
 
   // Atomic model provider upsert — handles concurrent requests safely.

@@ -5,7 +5,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { decryptSecretsMap } from "../../shared/crypto";
+import { decryptStoredSecretsMap } from "../../shared/crypto/kms-secrets-encryption";
 import { notFound, badRequest, schedulePast } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { generateScheduleDescription } from "../ai/lightweight-model";
@@ -103,17 +103,14 @@ function calculateNextRun(
  * Convert schedule row to API response format.
  * agentId in the schedule IS the composeId (single UUID).
  */
-function toResponse(
+async function toResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
   displayName: string | null,
-): ScheduleResponse {
+): Promise<ScheduleResponse> {
   // Extract secret names from encrypted secrets (values are never returned)
   let secretNames: string[] | null = null;
   if (schedule.encryptedSecrets) {
-    const secrets = decryptSecretsMap(
-      schedule.encryptedSecrets,
-      globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-    );
+    const secrets = await decryptStoredSecretsMap(schedule.encryptedSecrets);
     if (secrets) {
       secretNames = Object.keys(secrets);
     }
@@ -450,7 +447,7 @@ export async function deploySchedule(
     );
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
     return {
-      schedule: toResponse(updated, displayName),
+      schedule: await toResponse(updated, displayName),
       created: false,
     };
   }
@@ -465,7 +462,7 @@ export async function deploySchedule(
   );
   log.debug(`Created schedule ${request.name} (${created.id})`);
   return {
-    schedule: toResponse(created, displayName),
+    schedule: await toResponse(created, displayName),
     created: true,
   };
 }
@@ -488,7 +485,7 @@ export async function getScheduleByName(
     name,
   );
 
-  return toResponse(schedule, displayName);
+  return await toResponse(schedule, displayName);
 }
 
 /**
@@ -618,7 +615,7 @@ export async function enableSchedule(
 
   log.debug(`Enabled schedule ${name}`);
 
-  return toResponse(updated, displayName);
+  return await toResponse(updated, displayName);
 }
 
 /**
@@ -655,5 +652,5 @@ export async function disableSchedule(
 
   log.debug(`Disabled schedule ${name}`);
 
-  return toResponse(updated, displayName);
+  return await toResponse(updated, displayName);
 }

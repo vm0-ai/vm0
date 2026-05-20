@@ -118,7 +118,9 @@ export const drainOrgQueue$ = command(
           });
           continue;
         }
-        const payload = decryptQueuedRunnerJobPayload(row.encryptedParams);
+        const payload = await decryptQueuedRunnerJobPayload(
+          row.encryptedParams,
+        );
         if (payload) {
           await tx.insert(runnerJobQueue).values({
             runId: row.runId,

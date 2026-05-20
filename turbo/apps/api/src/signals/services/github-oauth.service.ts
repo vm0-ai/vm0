@@ -10,7 +10,7 @@ import type { Db } from "../external/db";
 import { safeJsonParse, settle } from "../utils";
 import { now } from "../../lib/time";
 import { logger } from "../../lib/log";
-import { encryptSecretValue } from "./crypto.utils";
+import { encryptPersistentSecretValue } from "./crypto.utils";
 
 const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
@@ -445,7 +445,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
     .insert(githubInstallations)
     .values({
       installationId: ghInstallationId,
-      encryptedAccessToken: encryptSecretValue(token),
+      encryptedAccessToken: await encryptPersistentSecretValue(token),
       status: "active",
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),

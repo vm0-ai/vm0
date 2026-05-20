@@ -27,7 +27,7 @@ export const agentRunQueue = pgTable(
     // Denormalized for efficient per-org queue queries (partition key for dequeue)
     orgId: text("org_id").notNull(),
 
-    // AES-256-GCM encrypted CreateRunParams JSON
+    // Persistent-secret encrypted CreateRunParams JSON
     encryptedParams: text("encrypted_params"),
 
     // Lifecycle management

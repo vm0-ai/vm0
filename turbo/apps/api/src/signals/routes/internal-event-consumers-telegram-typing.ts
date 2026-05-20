@@ -16,7 +16,7 @@ import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
-import { decryptSecretValue } from "../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import type { RouteEntry } from "../route";
 import { tapError } from "../utils";
 
@@ -95,7 +95,9 @@ const refreshTelegramTypingForRun$ = command(
         continue;
       }
 
-      const botToken = decryptSecretValue(installation.encryptedBotToken);
+      const botToken = await decryptPersistentSecretValue(
+        installation.encryptedBotToken,
+      );
       await sendChatAction(botToken, target.chatId, "typing");
     }
   },

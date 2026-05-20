@@ -1,10 +1,9 @@
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { encryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 
 interface Services {
   db: typeof globalThis.services.db;
-  env: { SECRETS_ENCRYPTION_KEY: string };
 }
 
 interface UpsertSlackInstallationInput {
@@ -31,10 +30,7 @@ export async function upsertSlackInstallation(
   slackWorkspaceId: string;
   installation: typeof slackOrgInstallations.$inferSelect;
 }> {
-  const encryptedBotToken = encryptSecretValue(
-    input.botToken,
-    services.env.SECRETS_ENCRYPTION_KEY,
-  );
+  const encryptedBotToken = await encryptPersistentSecretValue(input.botToken);
 
   const [row] = await services.db
     .insert(slackOrgInstallations)

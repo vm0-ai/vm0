@@ -17,7 +17,7 @@ import {
   buildFileUrl,
 } from "../../../../../../../src/lib/zero/uploads/file-url";
 import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
-import { decryptSecretValue } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../../../../../../src/lib/shared/crypto/kms-secrets-encryption";
 import { inferMimetype } from "../../../../../../../src/lib/shared/mimetype";
 import {
   createTelegramClient,
@@ -93,10 +93,7 @@ async function resolveTelegramBotToken(
 
   if (!row) return null;
 
-  return decryptSecretValue(
-    row.encryptedBotToken,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
+  return await decryptPersistentSecretValue(row.encryptedBotToken);
 }
 
 async function resolveUploadedObject(

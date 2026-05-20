@@ -27,7 +27,7 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
 } from "../external/telegram-official";
 import { safeUrlParse, settle } from "../utils";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -622,7 +622,7 @@ export function zeroTelegramInstallation(args: {
     }
 
     return {
-      botToken: decryptSecretValue(row.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(row.encryptedBotToken),
       botUsername: row.botUsername ?? null,
     };
   });
@@ -658,7 +658,7 @@ export function telegramBotToken(args: {
     }
 
     return {
-      botToken: decryptSecretValue(row.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(row.encryptedBotToken),
       botUsername: row.botUsername ?? null,
     };
   });
@@ -678,7 +678,9 @@ function isInvalidTelegramTokenError(error: unknown): boolean {
 async function resolveIntegrationTokenStatus(
   installation: TelegramInstallationRow,
 ): Promise<TelegramBot["tokenStatus"]> {
-  const token = decryptSecretValue(installation.encryptedBotToken);
+  const token = await decryptPersistentSecretValue(
+    installation.encryptedBotToken,
+  );
   const result = await settle(getMe(token));
 
   if (!result.ok) {

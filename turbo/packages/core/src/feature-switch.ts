@@ -317,7 +317,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.StoredSecretKmsWrite]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Dual-write stored-secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured — this gates the KMS GenerateDataKey call so a missing IAM grant does not 500 every secret save.",
+      "Dual-write stored-secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured. This gates the KMS GenerateDataKey call so a missing IAM grant does not 500 every secret save.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.PersistentSecretKmsRead]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Prefer AWS KMS material when reading persistent secret envelopes such as bot tokens, callback secrets, OAuth tokens, and queued execution secrets. Legacy AES remains as a fallback while backfills complete.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.PersistentSecretKmsWrite]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Dual-write persistent secret values to AWS KMS in addition to the legacy AES branch. When OFF, writes stay legacy-only even if SECRETS_KMS_KEY_ID is configured.",
     enabled: true,
   },
   [FeatureSwitchKey.Trinity]: {

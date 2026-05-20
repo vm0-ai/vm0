@@ -55,7 +55,10 @@ import {
 } from "../external/telegram-official";
 import { now, nowDate } from "../external/time";
 import { safeUrlParse, settle, tapError } from "../utils";
-import { encryptSecretValue, decryptSecretValue } from "./crypto.utils";
+import {
+  decryptPersistentSecretValue,
+  encryptPersistentSecretValue,
+} from "./crypto.utils";
 import {
   resolveIntegrationModelRouteForUser,
   type IntegrationModelRoutePin,
@@ -563,7 +566,7 @@ async function handleExistingInstallation(args: {
     .update(telegramInstallations)
     .set({
       botUsername: args.botInfo.username,
-      encryptedBotToken: encryptSecretValue(args.body.botToken),
+      encryptedBotToken: await encryptPersistentSecretValue(args.body.botToken),
       webhookSecret,
       defaultComposeId: resolvedAgent.agentId,
       updatedAt: nowDate(),
@@ -659,7 +662,9 @@ export const registerTelegramBot$ = command(
       .values({
         telegramBotId,
         botUsername: botInfoResult.value.username,
-        encryptedBotToken: encryptSecretValue(bodyResult.data.botToken),
+        encryptedBotToken: await encryptPersistentSecretValue(
+          bodyResult.data.botToken,
+        ),
         webhookSecret,
         defaultComposeId: resolvedAgent.agentId,
         ownerUserId: auth.userId,
@@ -2661,7 +2666,10 @@ const processCustomWebhookMessage$ = command(
       return;
     }
 
-    const botToken = decryptSecretValue(installation.encryptedBotToken);
+    const botToken = await decryptPersistentSecretValue(
+      installation.encryptedBotToken,
+    );
+    signal.throwIfAborted();
     const commandName = parseBotCommand(
       args.message.text ?? args.message.caption,
       installation.botUsername,

@@ -25,7 +25,7 @@ import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { db$, writeDb$, type Db } from "../external/db";
 import { ensureUserArtifactStorage } from "./agent-run-storage.service";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 type SlackClient = ReturnType<typeof createSlackClient>;
@@ -494,7 +494,7 @@ export const notifySlackConnect$ = command(
   ): Promise<void> => {
     const writeDb = set(writeDb$);
     const client = createSlackClient(
-      decryptSecretValue(args.installation.encryptedBotToken),
+      await decryptPersistentSecretValue(args.installation.encryptedBotToken),
     );
     const defaultComposeId = await resolveDefaultComposeId(writeDb, args.orgId);
     signal.throwIfAborted();

@@ -5,7 +5,7 @@ import { isSandboxAuth } from "../../auth/capability-check";
 import { resolveOrg } from "../org/resolve-org";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { decryptPersistentSecretValue } from "../../shared/crypto/kms-secrets-encryption";
 import { createSlackClient } from "./client";
 import { eq, and } from "drizzle-orm";
 
@@ -81,10 +81,8 @@ export async function resolveSlackClient(
   }
 
   // Decrypt bot token and create Slack client
-  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
-  const botToken = decryptSecretValue(
+  const botToken = await decryptPersistentSecretValue(
     installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);
 

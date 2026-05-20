@@ -16,7 +16,7 @@ import { publishUserSignal } from "../external/realtime";
 import { putS3Object } from "../external/s3";
 import { settle } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
-import { decryptSecretValue } from "./crypto.utils";
+import { decryptPersistentSecretValue } from "./crypto.utils";
 
 const L = logger("api:telegram:link");
 const PENDING_TELEGRAM_USER_ID = "pending";
@@ -227,7 +227,7 @@ export function telegramInstallationForLink(args: {
     return {
       telegramBotId: row.telegramBotId,
       botUsername: row.botUsername ?? null,
-      botToken: decryptSecretValue(row.encryptedBotToken),
+      botToken: await decryptPersistentSecretValue(row.encryptedBotToken),
       orgId: row.orgId,
     };
   });
