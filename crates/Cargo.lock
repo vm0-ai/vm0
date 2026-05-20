@@ -3686,6 +3686,8 @@ name = "vsock-test"
 version = "0.9.49"
 dependencies = [
  "guest-write-file",
+ "libc",
+ "nix",
  "tempfile",
  "tokio",
  "vsock-guest",

@@ -1,5 +1,6 @@
 use std::io;
 use std::ops::Deref;
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
@@ -7,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+use tokio::io::unix::AsyncFd;
 use vsock_host::VsockHost;
 
 static WRITE_FILE_HELPER: Once = Once::new();
@@ -20,29 +23,12 @@ fn install_write_file_helper() {
 }
 
 /// Spawn a guest agent in a background OS thread that connects to the given socket path.
-///
-/// Retries connection up to 50 times with 10ms delay to handle the race between
-/// host listener bind and guest connect.
 fn start_guest(socket_path: &str) -> JoinHandle<io::Result<()>> {
     let path = socket_path.to_owned();
     thread::spawn(move || {
-        let stream = retry_connect(&path)?;
+        let stream = vsock_guest::connect_unix(&path)?;
         vsock_guest::handle_connection(stream)
     })
-}
-
-fn retry_connect(path: &str) -> io::Result<std::os::unix::net::UnixStream> {
-    for i in 0..50 {
-        match vsock_guest::connect_unix(path) {
-            Ok(stream) => return Ok(stream),
-            Err(e) if i < 49 => {
-                let _ = e;
-                thread::sleep(Duration::from_millis(10));
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    unreachable!()
 }
 
 fn cleanup_guest(guest: &mut Option<JoinHandle<io::Result<()>>>) {
@@ -67,16 +53,9 @@ pub(crate) fn shell_quote_path(path: &Path) -> String {
 }
 
 pub(crate) async fn wait_for_path(path: &Path, timeout: Duration) {
-    tokio::time::timeout(timeout, async {
-        loop {
-            if path.exists() {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap_or_else(|_| panic!("timed out waiting for path {path:?}"));
+    wait_for_path_result(path, timeout)
+        .await
+        .unwrap_or_else(|error| panic!("timed out waiting for path {path:?}: {error}"));
 }
 
 /// Test harness: creates temp dir, starts guest thread, connects host.
@@ -97,13 +76,29 @@ impl Harness {
         let dir = dir_guard.path().to_path_buf();
         let base_path = dir.join("vsock").to_string_lossy().to_string();
         let listener_path = format!("{base_path}_1000");
+        let listener = std::path::PathBuf::from(&listener_path);
+
+        let host_base_path = base_path.clone();
+        let host_task = tokio::spawn(async move {
+            VsockHost::wait_for_connection(&host_base_path, Duration::from_secs(5)).await
+        });
+
+        if let Err(err) = wait_for_path_result(&listener, Duration::from_secs(5)).await {
+            host_task.abort();
+            let _ = host_task.await;
+            panic!("host listener did not become ready: {err}");
+        }
 
         let mut guest = Some(start_guest(&listener_path));
-        let host = match VsockHost::wait_for_connection(&base_path, Duration::from_secs(5)).await {
-            Ok(host) => host,
-            Err(err) => {
+        let host = match host_task.await {
+            Ok(Ok(host)) => host,
+            Ok(Err(err)) => {
                 cleanup_guest(&mut guest);
                 panic!("host connection failed: {err}");
+            }
+            Err(err) => {
+                cleanup_guest(&mut guest);
+                panic!("host listener task failed: {err}");
             }
         };
 
@@ -129,6 +124,62 @@ impl Harness {
         drop(self.host.take());
         if let Some(g) = self.guest.take() {
             let _ = g.join();
+        }
+    }
+}
+
+async fn wait_for_path_result(path: &Path, timeout: Duration) -> io::Result<()> {
+    tokio::time::timeout(timeout, wait_for_path_event(path))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "path wait timed out"))?
+}
+
+async fn wait_for_path_event(path: &Path) -> io::Result<()> {
+    if tokio::fs::try_exists(path).await? {
+        return Ok(());
+    }
+
+    let dir = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path has no parent directory: {}", path.display()),
+        )
+    })?;
+    let inotify = Inotify::init(InitFlags::IN_NONBLOCK)
+        .map_err(|error| io::Error::other(format!("inotify init: {error}")))?;
+    inotify
+        .add_watch(dir, AddWatchFlags::IN_CREATE | AddWatchFlags::IN_MOVED_TO)
+        .map_err(|error| io::Error::other(format!("inotify watch: {error}")))?;
+
+    if tokio::fs::try_exists(path).await? {
+        return Ok(());
+    }
+
+    let async_fd = async_inotify_fd(inotify)?;
+    loop {
+        let mut guard = async_fd.readable().await?;
+        drain_inotify_fd(async_fd.get_ref().as_fd());
+        guard.clear_ready();
+
+        if tokio::fs::try_exists(path).await? {
+            return Ok(());
+        }
+    }
+}
+
+fn async_inotify_fd(inotify: Inotify) -> io::Result<AsyncFd<OwnedFd>> {
+    let fd: OwnedFd = inotify.into();
+    AsyncFd::new(fd).map_err(|error| io::Error::other(format!("AsyncFd: {error}")))
+}
+
+fn drain_inotify_fd(fd: std::os::fd::BorrowedFd<'_>) {
+    let mut buf = [0u8; 4096];
+    loop {
+        // SAFETY: fd is a valid non-blocking inotify descriptor borrowed from
+        // AsyncFd. The stack buffer is valid for the requested byte length.
+        let result = unsafe { libc::read(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
+        if result <= 0 {
+            break;
         }
     }
 }
