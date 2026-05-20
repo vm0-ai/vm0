@@ -2163,6 +2163,20 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches zero custom connectors root rewrites exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/custom-connectors")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/custom-connector")).toBe(
+      false,
+    );
+  });
+
   it("matches only one segment for zero custom connector by-id rewrites", () => {
     expect(
       matchesApiBackendRewritePath(
@@ -2174,9 +2188,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/custom-connectors")).toBe(
-      false,
-    );
   });
 
   it("matches zero custom connector secret rewrites exactly", () => {
@@ -2185,9 +2196,6 @@ describe("API backend rewrite proxy behavior", () => {
         "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret",
       ),
     ).toBe(true);
-    expect(matchesApiBackendRewritePath("/api/zero/custom-connectors")).toBe(
-      false,
-    );
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/custom-connectors/550e8400-e29b-41d4-a716-446655440000/secret/extra",

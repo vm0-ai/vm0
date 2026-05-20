@@ -33,7 +33,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/connectors/[type]/sessions/[sessionId]/route.ts",
   "app/api/zero/connectors/[type]/sessions/route.ts",
   "app/api/zero/connectors/computer/route.ts",
-  "app/api/zero/custom-connectors/route.ts",
   "app/api/zero/default-agent/route.ts",
   "app/api/zero/feature-switches/route.ts",
   "app/api/zero/integrations/chat/message/route.ts",

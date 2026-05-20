@@ -41,6 +41,23 @@ describe("POST /api/zero/custom-connectors", () => {
     });
   });
 
+  it("returns 401 when the authenticated session has no active organization", async () => {
+    const userId = `user_zcc_create_no_org_${randomUUID().slice(0, 8)}`;
+    mocks.clerk.session(userId, null);
+
+    const client = setupApp({ context })(zeroCustomConnectorsContract);
+    const response = await accept(
+      client.create({
+        body: validBody(),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [401],
+    );
+    expect(response.body).toStrictEqual({
+      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("returns 403 for non-admin members", async () => {
     const { userId, orgId } = uniqueOrg("zcc-member");
     mocks.clerk.session(userId, orgId, "org:member");
@@ -87,6 +104,14 @@ describe("POST /api/zero/custom-connectors", () => {
       .where(eq(orgCustomConnectors.id, response.body.id));
     expect(row?.orgId).toBe(orgId);
     expect(row?.createdBy).toBe(userId);
+
+    const listResponse = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(listResponse.body.connectors).toStrictEqual([response.body]);
   });
 
   it("normalises prefix to trailing slash", async () => {

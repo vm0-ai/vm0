@@ -6,7 +6,8 @@ import {
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { decryptSecretValue } from "../../shared/crypto";
-import { SECRET_PLACEHOLDER } from "./custom-connector-service";
+
+const SECRET_PLACEHOLDER = "{{secret}}";
 
 interface ResolvedCustomConnectors {
   firewalls: ExpandedFirewallConfig[];
