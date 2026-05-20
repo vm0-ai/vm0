@@ -1233,6 +1233,10 @@ async function loadReferencedSecrets(
     return args.runSecrets;
   }
 
+  // Load all user secrets, not only those named in the compose environment:
+  // api-token connector credentials are consumed by firewall auth templates,
+  // which the compose environment never references. Connector-owned secrets
+  // are still scoped by filterDbSecretsByConnectorPermissions below.
   const [rows, apiTokenTypes] = await Promise.all([
     db
       .select({
@@ -1245,7 +1249,6 @@ async function loadReferencedSecrets(
         and(
           eq(secretsTable.orgId, args.orgId),
           eq(secretsTable.type, "user"),
-          inArray(secretsTable.name, referencedNames),
           or(
             eq(secretsTable.userId, ORG_SENTINEL_USER_ID),
             eq(secretsTable.userId, args.userId),

@@ -667,6 +667,64 @@ describe("POST /api/agent/runs", () => {
     expect(zendesk?.apis[0]?.base).toBe("https://acme.zendesk.com");
   });
 
+  it("loads an api-token connector secret used only by the firewall, not the compose environment", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    // WeRead's credential is consumed by the firewall auth header template
+    // (Authorization: Bearer ${{ secrets.WEREAD_API_KEY }}), so the compose
+    // environment never references it. Regression: loadReferencedSecrets used
+    // to drop any user secret not named in the compose environment, leaving
+    // the weread firewall to fail with 424 CONNECTOR_NOT_CONFIGURED.
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "WEREAD_API_KEY",
+      encryptedValue: encryptSecretForTests("weread-real-token"),
+      type: "user",
+    });
+    // A second secret IS referenced in the compose environment, so the
+    // referenced-name set is non-empty (matching real agents).
+    await db.insert(secretsTable).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "DECLARED_SECRET",
+      encryptedValue: encryptSecretForTests("declared-value"),
+      type: "user",
+    });
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: {
+        environment: {
+          ANTHROPIC_API_KEY: "test-key",
+          DECLARED_SECRET: vm0Template("{{ secrets.DECLARED_SECRET }}"),
+        },
+      },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Read my books",
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+    };
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      WEREAD_API_KEY: "weread-real-token",
+      DECLARED_SECRET: "declared-value",
+    });
+  });
+
   it("accepts OAuth connector-provided env secrets during compose validation", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
