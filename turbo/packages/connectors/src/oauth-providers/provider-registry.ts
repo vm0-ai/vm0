@@ -10,6 +10,7 @@ import {
   exchangeProviderCode,
   refreshProviderToken,
   providerEnvFromObject,
+  providerSupportsRefresh,
   type OAuthTokenResult,
   type ProviderHandler,
   type ProviderEnv,
@@ -24,6 +25,7 @@ import { apolloHandler } from "./providers/apollo-handler";
 import { apifyHandler } from "./providers/apify-handler";
 import { pikaHandler } from "./providers/pika-handler";
 import { axiomHandler } from "./providers/axiom-handler";
+import { base44Handler } from "./providers/base44-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { attioHandler } from "./providers/attio-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
@@ -246,6 +248,7 @@ export {
   buildProviderAuthUrl,
   exchangeProviderCode,
   providerEnvFromObject,
+  providerSupportsRefresh,
   refreshProviderToken,
 };
 
@@ -263,6 +266,7 @@ export const PROVIDER_HANDLERS: Record<
   apify: apifyHandler,
   pika: pikaHandler,
   axiom: axiomHandler,
+  base44: base44Handler,
   asana: asanaHandler,
   attio: attioHandler,
   atlassian: atlassianHandler,

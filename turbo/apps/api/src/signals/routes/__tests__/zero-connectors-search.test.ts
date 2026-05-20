@@ -389,6 +389,39 @@ describe("GET /api/zero/connectors/search", () => {
     expect(zapier).toBeUndefined();
   });
 
+  it("shows Base44 OAuth only when the feature switch is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFeatureSwitches.push({ orgId, userId });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorsSearchContract);
+    const disabled = await accept(
+      client.search({
+        query: { keyword: "base44" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(disabled.body.connectors).toStrictEqual([]);
+
+    await enableFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.Base44Connector]: true,
+    });
+    const enabled = await accept(
+      client.search({
+        query: { keyword: "base44" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const base44 = enabled.body.connectors.find((c) => {
+      return c.id === "base44";
+    });
+    expect(base44?.authMethods).toStrictEqual(["oauth"]);
+  });
+
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

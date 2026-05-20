@@ -35,7 +35,10 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  PROVIDER_HANDLERS,
+  providerSupportsRefresh,
+} from "@vm0/connectors/oauth-providers";
 import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   expandHostWildcardsInBaseUrl,
@@ -858,7 +861,7 @@ function modelProviderRefreshMaps(
   if (!handler) {
     return undefined;
   }
-  if (!handler.refreshToken) {
+  if (!providerSupportsRefresh(handler)) {
     return undefined;
   }
 
@@ -1477,7 +1480,7 @@ async function loadOauthConnectorContext(
       continue;
     }
     const handler = PROVIDER_HANDLERS[connectorType];
-    if (!handler.refreshToken) {
+    if (!providerSupportsRefresh(handler)) {
       continue;
     }
     const secretName = handler.getSecretName();

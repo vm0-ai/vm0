@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -30,6 +31,8 @@ const mocks = createZeroRouteMocks(context);
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
+const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
 const GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -117,6 +120,14 @@ function callbackHeaders(args: {
     headers["x-vm0-web-origin"] = args.webOrigin;
   }
   return headers;
+}
+
+function encodeBase44Payload(value: object): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function decodeBase44Payload(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
 }
 
 function authenticate(args: {
@@ -1579,6 +1590,108 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.pathname).toBe("/connector/success");
     expect(url.searchParams.get("type")).toBe("test-oauth");
     expect(url.searchParams.get("username")).toBe("dynamic-user");
+  });
+
+  it("stores Base44 OAuth credentials after dynamic public token exchange", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const oauthContext = encodeBase44Payload({
+      version: 1,
+      clientId: "base44-dcr-client",
+    });
+    let tokenBody: URLSearchParams | undefined;
+    let userInfoAuthorization: string | null = null;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    server.use(
+      http.post(BASE44_TOKEN_URL, async ({ request }) => {
+        tokenBody = new URLSearchParams(await request.text());
+        return HttpResponse.json({
+          access_token: "base44-access-token",
+          refresh_token: "base44-refresh-token",
+          scope: "apps:read apps:write offline",
+          token_type: "Bearer",
+        });
+      }),
+      http.get(BASE44_USERINFO_URL, ({ request }) => {
+        userInfoAuthorization = request.headers.get("authorization");
+        return HttpResponse.json({
+          sub: "base44-user-id",
+          name: "Base44 User",
+          email: "base44@example.com",
+        });
+      }),
+    );
+
+    const response = await requestCallback({
+      type: "base44",
+      query: { code: "base44-code", state: "state-123" },
+      headers: callbackHeaders({
+        stateCookie: "state-123",
+        codeVerifier: "base44-code-verifier",
+        oauthContext,
+      }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/success");
+    expect(url.searchParams.get("type")).toBe("base44");
+    expect(url.searchParams.get("username")).toBe("Base44 User");
+    expect(response.headers.getSetCookie()).toStrictEqual(
+      expect.arrayContaining([
+        "connector_oauth_state=; Max-Age=0; Path=/",
+        "connector_oauth_session=; Max-Age=0; Path=/",
+        "connector_oauth_pkce=; Max-Age=0; Path=/",
+        "connector_oauth_context=; Max-Age=0; Path=/",
+      ]),
+    );
+
+    expect(tokenBody?.get("grant_type")).toBe("authorization_code");
+    expect(tokenBody?.get("client_id")).toBe("base44-dcr-client");
+    expect(tokenBody?.get("code")).toBe("base44-code");
+    expect(tokenBody?.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/base44/callback`,
+    );
+    expect(tokenBody?.get("code_verifier")).toBe("base44-code-verifier");
+    expect(tokenBody?.has("client_secret")).toBeFalsy();
+    expect(userInfoAuthorization).toBe("Bearer base44-access-token");
+
+    const connector = await findConnector({ orgId, userId, type: "base44" });
+    expect(connector).toMatchObject({
+      type: "base44",
+      authMethod: "oauth",
+      externalId: "base44-user-id",
+      externalUsername: "Base44 User",
+      externalEmail: "base44@example.com",
+      needsReconnect: false,
+    });
+    expect(connector?.oauthScopes).toBe(
+      JSON.stringify(["apps:read", "apps:write", "offline"]),
+    );
+    expect(connector?.tokenExpiresAt).toBeInstanceOf(Date);
+    expect(connector!.tokenExpiresAt!.getTime()).toBeGreaterThan(now());
+
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "BASE44_ACCESS_TOKEN",
+      }),
+    ).resolves.toBe("base44-access-token");
+    const refreshSecret = await findDecryptedSecret({
+      orgId,
+      userId,
+      name: "BASE44_REFRESH_TOKEN",
+    });
+    expect(refreshSecret).toBeDefined();
+    expect(decodeBase44Payload(refreshSecret!)).toStrictEqual({
+      version: 1,
+      clientId: "base44-dcr-client",
+      refreshToken: "base44-refresh-token",
+    });
   });
 
   it("stores a Slack user OAuth token without an expiry", async () => {

@@ -27,6 +27,7 @@ import {
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
+import { providerSupportsRefresh } from "@vm0/connectors/oauth-providers";
 import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getAppUrl } from "../url";
@@ -251,7 +252,7 @@ interface ModelProviderSecretResult {
  * tokens are OAuth-refreshable (e.g. codex-oauth-token).
  *
  * Returns undefined when the provider has no bridged handler or its handler
- * lacks `refreshToken` — for non-OAuth providers the firewall has nothing
+ * lacks refresh support — for non-OAuth providers the firewall has nothing
  * to refresh and should not see the secret in the map.
  *
  * The returned map is merged INTO the wire `secretConnectorMap` after
@@ -270,7 +271,7 @@ function buildModelProviderRefreshMaps(
   if (!handlerKey) return undefined;
 
   const handler = getModelProviderOAuthHandler(handlerKey);
-  if (!handler?.refreshToken) return undefined;
+  if (!handler || !providerSupportsRefresh(handler)) return undefined;
 
   const accessSecretName = handler.getSecretName();
   const result: Record<string, string> = { [accessSecretName]: handlerKey };

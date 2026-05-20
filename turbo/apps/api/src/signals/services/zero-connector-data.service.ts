@@ -16,7 +16,10 @@ import {
   getScopeDiff,
   isConnectorAuthMethodAvailable,
 } from "@vm0/connectors/connector-utils";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  PROVIDER_HANDLERS,
+  providerSupportsRefresh,
+} from "@vm0/connectors/oauth-providers";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
@@ -802,7 +805,7 @@ function connectorTokenExpiresAt(args: {
 }): Date | null {
   const isRefreshable =
     args.type !== "computer" &&
-    Boolean(PROVIDER_HANDLERS[args.type].refreshToken);
+    providerSupportsRefresh(PROVIDER_HANDLERS[args.type]);
   const fallbackSecs = isRefreshable
     ? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS
     : null;

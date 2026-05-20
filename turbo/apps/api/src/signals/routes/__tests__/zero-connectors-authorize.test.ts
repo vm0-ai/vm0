@@ -27,6 +27,7 @@ const mocks = createZeroRouteMocks(context);
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
+const BASE44_REGISTER_URL = "https://app.base44.com/oauth/register";
 
 function authorizeUrl(
   type: string,
@@ -109,6 +110,30 @@ function useDynamicTestOAuthAuthorize(): () => void {
       delete handler.buildAuthUrlWithArgs;
     }
   };
+}
+
+function mockBase44Registration(
+  options: {
+    readonly clientId?: string;
+    readonly status?: number;
+    readonly body?: unknown;
+    readonly capture?: (body: unknown) => void;
+  } = {},
+): void {
+  server.use(
+    http.post(BASE44_REGISTER_URL, async ({ request }) => {
+      const body = await request.json();
+      options.capture?.(body);
+      if (options.status) {
+        return HttpResponse.json(options.body ?? {}, {
+          status: options.status,
+        });
+      }
+      return HttpResponse.json({
+        client_id: options.clientId ?? "base44-dynamic-client-id",
+      });
+    }),
+  );
 }
 
 async function requestAuthorize(
@@ -287,6 +312,63 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith(
           "connector_oauth_context=dynamic-oauth-context%3B%20tenant%3Dexample",
         );
+      }),
+    ).toBeTruthy();
+  });
+
+  it("redirects to Base44 OAuth after dynamic client registration", async () => {
+    let dcrBody: unknown;
+    mockBase44Registration({
+      clientId: "base44-dcr-client",
+      capture: (body) => {
+        dcrBody = body;
+      },
+    });
+
+    const response = await requestAuthorize("base44", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(307);
+    expect(dcrBody).toStrictEqual({
+      client_name: "vm0",
+      redirect_uris: [`${BASE_URL}/api/connectors/base44/callback`],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+      scope: "apps:read apps:write offline",
+    });
+
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://app.base44.com/oauth/authorize",
+    );
+    expect(url.searchParams.get("client_id")).toBe("base44-dcr-client");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      `${BASE_URL}/api/connectors/base44/callback`,
+    );
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toBe("apps:read apps:write offline");
+    expect(url.searchParams.get("state")).toMatch(/^[0-9a-f]{64}$/);
+    expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith("connector_oauth_state=");
+      }),
+    ).toBeTruthy();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith("connector_oauth_pkce=");
+      }),
+    ).toBeTruthy();
+    expect(
+      cookies.some((cookie) => {
+        return cookie.startsWith("connector_oauth_context=");
       }),
     ).toBeTruthy();
   });
@@ -488,6 +570,40 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
     const response = await app.request(authorizeUrl("github"), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(500);
+    const survivors = await db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connector!.id));
+    expect(survivors).toHaveLength(1);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps existing Base44 connector state when dynamic client registration fails", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mockBase44Registration({
+      status: 500,
+      body: {
+        error: "server_error",
+        error_description: "registration failed",
+      },
+    });
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "base44", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+
+    mocks.clerk.session(userId, orgId);
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("base44"), {
       method: "GET",
       headers: sessionHeaders(),
     });

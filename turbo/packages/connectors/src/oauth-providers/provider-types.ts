@@ -98,6 +98,10 @@ export interface ProviderHandler {
   ): Promise<void>;
 }
 
+export function providerSupportsRefresh(handler: ProviderHandler): boolean {
+  return Boolean(handler.refreshToken || handler.refreshTokenWithArgs);
+}
+
 export async function buildProviderAuthUrl(
   handler: ProviderHandler,
   args: OAuthAuthorizeArgs,

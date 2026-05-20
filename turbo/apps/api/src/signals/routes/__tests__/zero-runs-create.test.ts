@@ -1169,6 +1169,74 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
+  it("injects Base44 OAuth connector secrets, firewall, and refresh metadata", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "base44",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "base44",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "BASE44_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("base44-access"),
+        type: "connector",
+      },
+      {
+        orgId: fx.orgId,
+        userId: fx.userId,
+        name: "BASE44_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("base44-refresh"),
+        type: "connector",
+      },
+    ]);
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "base44 oauth connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly firewalls: readonly { readonly name: string }[];
+      readonly billableFirewalls: readonly string[];
+    };
+    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    expect(decrypted).toMatchObject({
+      BASE44_TOKEN: "base44-access",
+    });
+    expect(decrypted).not.toHaveProperty("BASE44_REFRESH_TOKEN");
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      BASE44_ACCESS_TOKEN: "base44",
+      BASE44_TOKEN: "base44",
+    });
+    expect(
+      executionContext.firewalls.map((firewall) => {
+        return firewall.name;
+      }),
+    ).toContain("base44");
+    expect(executionContext.billableFirewalls).not.toContain("base44");
+  });
+
   it("adds Google Ads platform secrets for authorized OAuth connector runs", async () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     mockOptionalEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "1234567890");

@@ -42,6 +42,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const ORG_SENTINEL_USER_ID = "__org__";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 
 interface FirewallFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -94,6 +95,14 @@ function varTemplate(name: string): string {
 
 function basicTemplate(first: string, second: string): string {
   return `\${{ basic(${first}, ${second}) }}`;
+}
+
+function encodeBase44Payload(value: object): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function decodeBase44Payload(value: string): unknown {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
 }
 
 function firewallClient() {
@@ -270,6 +279,41 @@ async function seedExpiredTestOAuthConnector(
     userId: fixture.userId,
     name: "TEST_OAUTH_REFRESH_TOKEN",
     value: "test-oauth-refresh-token",
+    type: "connector",
+  });
+}
+
+async function seedExpiredBase44Connector(
+  fixture: FirewallFixture,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "base44",
+    authMethod: "oauth",
+    externalId: "base44-user",
+    externalUsername: "Base44 User",
+    externalEmail: "base44@example.com",
+    oauthScopes: JSON.stringify(["apps:read", "apps:write", "offline"]),
+    tokenExpiresAt: new Date(now() - 60_000),
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "BASE44_ACCESS_TOKEN",
+    value: "stale-base44-token",
+    type: "connector",
+  });
+  await seedSecret({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "BASE44_REFRESH_TOKEN",
+    value: encodeBase44Payload({
+      version: 1,
+      clientId: "base44-dcr-client",
+      refreshToken: "base44-old-refresh-token",
+    }),
     type: "connector",
   });
 }
@@ -869,6 +913,117 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "connector",
       }),
     ).resolves.toBe("new-test-oauth-refresh-token");
+  });
+
+  it("refreshes Base44 tokens with a rotated refresh credential", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredBase44Connector(fixture);
+    let refreshBody: URLSearchParams | undefined;
+    server.use(
+      http.post(BASE44_TOKEN_URL, async ({ request }) => {
+        refreshBody = new URLSearchParams(await request.text());
+        return HttpResponse.json({
+          access_token: "fresh-base44-token",
+          refresh_token: "base44-rotated-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            BASE44_TOKEN: "stale-base44-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("BASE44_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            BASE44_TOKEN: "base44",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(refreshBody?.get("grant_type")).toBe("refresh_token");
+    expect(refreshBody?.get("client_id")).toBe("base44-dcr-client");
+    expect(refreshBody?.get("refresh_token")).toBe("base44-old-refresh-token");
+    expect(refreshBody?.has("client_secret")).toBeFalsy();
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-base44-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["base44"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["BASE44_TOKEN"]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "BASE44_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-base44-token");
+    const refreshSecret = await readSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "BASE44_REFRESH_TOKEN",
+      type: "connector",
+    });
+    expect(refreshSecret).toBeDefined();
+    expect(decodeBase44Payload(refreshSecret!)).toStrictEqual({
+      version: 1,
+      clientId: "base44-dcr-client",
+      refreshToken: "base44-rotated-refresh-token",
+    });
+  });
+
+  it("preserves the Base44 refresh credential when refresh does not rotate", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredBase44Connector(fixture);
+    server.use(
+      http.post(BASE44_TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "fresh-base44-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            BASE44_TOKEN: "stale-base44-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("BASE44_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            BASE44_TOKEN: "base44",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-base44-token",
+    );
+    const refreshSecret = await readSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "BASE44_REFRESH_TOKEN",
+      type: "connector",
+    });
+    expect(refreshSecret).toBeDefined();
+    expect(decodeBase44Payload(refreshSecret!)).toStrictEqual({
+      version: 1,
+      clientId: "base44-dcr-client",
+      refreshToken: "base44-old-refresh-token",
+    });
   });
 
   it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {

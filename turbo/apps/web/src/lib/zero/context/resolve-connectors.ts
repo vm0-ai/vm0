@@ -6,7 +6,10 @@ import {
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { connectors } from "@vm0/db/schema/connector";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  PROVIDER_HANDLERS,
+  providerSupportsRefresh,
+} from "@vm0/connectors/oauth-providers";
 import { getSecretValues } from "../secret/secret-service";
 
 const log = logger("zero:build-context");
@@ -110,7 +113,7 @@ export async function resolveOauthConnectorSecrets(
   for (const { type } of allowedConnectors) {
     if (!(type in PROVIDER_HANDLERS)) continue;
     const handler = PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
-    if (!handler.refreshToken) continue;
+    if (!providerSupportsRefresh(handler)) continue;
 
     const secretName = handler.getSecretName();
     secretConnectorMap[secretName] = type;
