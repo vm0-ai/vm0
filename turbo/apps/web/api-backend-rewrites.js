@@ -272,6 +272,7 @@ const ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE =
   "/api/zero/billing/auto-recharge";
 const ZERO_BILLING_CHECKOUT_REWRITE_SOURCE = "/api/zero/billing/checkout";
 const ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE = "/api/zero/billing/downgrade";
+const ZERO_BILLING_INVOICES_REWRITE_SOURCE = "/api/zero/billing/invoices";
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
 
 export const API_BACKEND_REWRITES = [
@@ -550,6 +551,7 @@ export const API_BACKEND_REWRITES = [
   ],
   [ZERO_BILLING_CHECKOUT_REWRITE_SOURCE, "/api/zero/billing/checkout"],
   [ZERO_BILLING_DOWNGRADE_REWRITE_SOURCE, "/api/zero/billing/downgrade"],
+  [ZERO_BILLING_INVOICES_REWRITE_SOURCE, "/api/zero/billing/invoices"],
   [ZERO_BILLING_STATUS_REWRITE_SOURCE, "/api/zero/billing/status"],
   [
     ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,

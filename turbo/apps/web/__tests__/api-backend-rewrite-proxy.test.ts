@@ -1322,6 +1322,19 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the zero billing invoices rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/invoices")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/invoices/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/invoice")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero billing status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(

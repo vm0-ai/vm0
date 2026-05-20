@@ -603,51 +603,6 @@ export async function createBillingPortalSession(
   return session.url;
 }
 
-/**
- * Get invoices for an org from Stripe.
- * Returns an empty array if the org has no Stripe customer.
- */
-export async function getOrgInvoices(orgId: string): Promise<{
-  invoices: Array<{
-    id: string;
-    number: string | null;
-    date: number;
-    amount: number;
-    status: string | null;
-    hostedInvoiceUrl: string | null;
-  }>;
-}> {
-  const db = globalThis.services.db;
-  const [row] = await db
-    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (!row?.stripeCustomerId) {
-    return { invoices: [] };
-  }
-
-  const stripe = getStripe();
-  const result = await stripe.invoices.list({
-    customer: row.stripeCustomerId,
-    limit: 24,
-  });
-
-  const invoices = result.data.map((inv) => {
-    return {
-      id: inv.id,
-      number: inv.number ?? null,
-      date: inv.created,
-      amount: inv.amount_paid ?? 0,
-      status: inv.status ?? null,
-      hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
-    };
-  });
-
-  return { invoices };
-}
-
 type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
 type PlanCreditTier = "pro" | "team";
 

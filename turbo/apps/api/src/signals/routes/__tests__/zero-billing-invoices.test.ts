@@ -97,7 +97,9 @@ describe("GET /api/zero/billing/invoices", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
-    mockListStripeInvoices(() => {
+    let receivedCustomerId: string | null = null;
+    mockListStripeInvoices((stripeCustomerId) => {
+      receivedCustomerId = stripeCustomerId;
       return Promise.resolve([
         {
           id: "inv_001",
@@ -127,6 +129,7 @@ describe("GET /api/zero/billing/invoices", () => {
       [200],
     );
 
+    expect(receivedCustomerId).toBe(customerId);
     expect(response.body).toStrictEqual({
       invoices: [
         {
@@ -154,6 +157,9 @@ describe("GET /api/zero/billing/invoices", () => {
       store.set(seedInvoicesOrg$, {}, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockListStripeInvoices(() => {
+      throw new Error("Stripe invoices should not be listed without customer");
+    });
 
     const client = setupApp({ context })(zeroBillingInvoicesContract);
 
