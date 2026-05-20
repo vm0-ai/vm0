@@ -92,6 +92,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconPlug as NavIcon,
   },
   {
+    id: "computerUse",
+    activeKeys: ["desktopComputerUse"],
+    pathname: "/computer-use",
+    label: "Computer use",
+    icon: IconDeviceDesktop as NavIcon,
+    featureGate: FeatureSwitchKey.ComputerUse,
+  },
+  {
     id: "localAgents",
     activeKeys: ["desktopLocalAgents"],
     pathname: "/local-agents",
@@ -179,6 +187,8 @@ function ManagePinnedAgentsDialogContainer() {
 function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const desktopComputerUseAvailable =
+    typeof window !== "undefined" && Boolean(window.vm0DesktopComputerUse);
   const desktopLocalAgentAvailable =
     typeof window !== "undefined" && Boolean(window.vm0DesktopLocalAgent);
   const manageNav = MANAGE_NAV.filter((item) => {
@@ -190,6 +200,9 @@ function useResolvedNavItems() {
     }
     if (item.id === "localAgents") {
       return desktopLocalAgentAvailable;
+    }
+    if (item.id === "computerUse") {
+      return desktopComputerUseAvailable;
     }
     return true;
   });

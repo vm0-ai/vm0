@@ -49,6 +49,69 @@ interface DesktopLocalAgentAddOptions {
   readonly permissionMode?: DesktopLocalAgentPermissionMode;
 }
 
+type DesktopComputerUseHostStatus =
+  | "idle"
+  | "connecting"
+  | "online"
+  | "unauthenticated"
+  | "disabled"
+  | "error";
+
+interface DesktopComputerUsePermissionState {
+  readonly accessibility: boolean;
+  readonly screenRecording: boolean;
+}
+
+interface DesktopComputerUsePendingApproval {
+  readonly commandId: string;
+  readonly kind: string;
+  readonly app: string | null;
+  readonly createdAt: string;
+}
+
+interface DesktopComputerUseAuditEvent {
+  readonly commandId: string;
+  readonly kind: string;
+  readonly app: string | null;
+  readonly event: "created" | "approved" | "denied" | "completed";
+  readonly approvalOutcome: "approved" | "denied" | null;
+  readonly createdAt: string;
+}
+
+interface DesktopComputerUseHostState {
+  readonly status: DesktopComputerUseHostStatus;
+  readonly hostId: string | null;
+  readonly lastHeartbeatAt: string | null;
+  readonly lastCommandAt: string | null;
+  readonly lastError: string | null;
+  readonly pendingApprovals: readonly DesktopComputerUsePendingApproval[];
+  readonly recentAuditEvents: readonly DesktopComputerUseAuditEvent[];
+}
+
+interface DesktopComputerUseState {
+  readonly featureSwitchKey: "computerUse";
+  readonly platform: string;
+  readonly supported: boolean;
+  readonly permissions: DesktopComputerUsePermissionState;
+  readonly host: DesktopComputerUseHostState;
+}
+
+interface DesktopComputerUseApprovalAction {
+  readonly commandId: string;
+  readonly decision: "approve" | "deny";
+}
+
+interface DesktopComputerUseApi {
+  readonly getState: () => Promise<DesktopComputerUseState>;
+  readonly requestAccessibilityPermission: () => Promise<DesktopComputerUseState>;
+  readonly openAccessibilitySettings: () => Promise<void>;
+  readonly openScreenRecordingSettings: () => Promise<void>;
+  readonly decideCommand: (
+    action: DesktopComputerUseApprovalAction,
+  ) => Promise<DesktopComputerUseState>;
+  readonly subscribe: (callback: () => void) => () => void;
+}
+
 interface DesktopLocalAgentApi {
   readonly setEnabled: (enabled: boolean) => Promise<void>;
   readonly list: () => Promise<DesktopLocalAgentEntry[]>;
@@ -67,6 +130,7 @@ declare global {
   interface Window {
     _vm0: VM0Global | undefined;
     vm0DesktopLocalAgent?: DesktopLocalAgentApi;
+    vm0DesktopComputerUse?: DesktopComputerUseApi;
     /**
      * Set inline in `index.html` at the start of `<head>` parsing. Used by
      * `captureFirstSkeletonHide` to measure total time from page entry to

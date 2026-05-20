@@ -1,0 +1,135 @@
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+
+const context = testContext();
+
+type TestDesktopComputerUseState = Awaited<
+  ReturnType<NonNullable<Window["vm0DesktopComputerUse"]>["getState"]>
+>;
+
+function installDesktopComputerUseApi(
+  api: NonNullable<Window["vm0DesktopComputerUse"]>,
+): void {
+  Object.defineProperty(window, "vm0DesktopComputerUse", {
+    configurable: true,
+    writable: true,
+    value: api,
+  });
+}
+
+function computerUseState(): TestDesktopComputerUseState {
+  return {
+    featureSwitchKey: "computerUse",
+    platform: "darwin",
+    supported: true,
+    permissions: {
+      accessibility: false,
+      screenRecording: true,
+    },
+    host: {
+      status: "online",
+      hostId: "host-1",
+      lastHeartbeatAt: "2026-05-20T00:00:00.000Z",
+      lastCommandAt: "2026-05-20T00:01:00.000Z",
+      lastError: null,
+      pendingApprovals: [
+        {
+          commandId: "command-1",
+          kind: "element.click",
+          app: "Safari",
+          createdAt: "2026-05-20T00:02:00.000Z",
+        },
+      ],
+      recentAuditEvents: [
+        {
+          commandId: "command-1",
+          kind: "element.click",
+          app: "Safari",
+          event: "created",
+          approvalOutcome: null,
+          createdAt: "2026-05-20T00:02:00.000Z",
+        },
+      ],
+    },
+  };
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(window, "vm0DesktopComputerUse");
+});
+
+describe("zero desktop Computer Use page", () => {
+  it("renders desktop permissions, runtime state, and approval actions", async () => {
+    const user = userEvent.setup();
+    const state = computerUseState();
+    const decideCommand = vi.fn(() => {
+      return Promise.resolve(state);
+    });
+    installDesktopComputerUseApi({
+      getState() {
+        return Promise.resolve(state);
+      },
+      requestAccessibilityPermission() {
+        return Promise.resolve(state);
+      },
+      openAccessibilitySettings() {
+        return Promise.resolve();
+      },
+      openScreenRecordingSettings() {
+        return Promise.resolve();
+      },
+      decideCommand,
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Computer Use" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Accessibility")).toBeInTheDocument();
+    expect(screen.getByText("Screen Recording")).toBeInTheDocument();
+    expect(screen.getByText("missing")).toBeInTheDocument();
+    expect(screen.getByText("granted")).toBeInTheDocument();
+    expect(screen.getByText("host-1")).toBeInTheDocument();
+    expect(screen.getAllByText("element.click")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Safari")[0]).toBeInTheDocument();
+
+    const approveButton = screen.getByText("Approve").closest("button");
+    expect(approveButton).toBeInstanceOf(HTMLButtonElement);
+    await user.click(approveButton as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(decideCommand).toHaveBeenCalledWith({
+        commandId: "command-1",
+        decision: "approve",
+      });
+    });
+  });
+
+  it("redirects when the native desktop bridge is unavailable", async () => {
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+  });
+});

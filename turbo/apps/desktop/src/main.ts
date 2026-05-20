@@ -1,15 +1,23 @@
 import path from "node:path";
 import { app, BrowserWindow, Menu, session, shell } from "electron";
 import { executeComputerUseCommand } from "./computer-use-accessibility";
+import {
+  installComputerUseIpc,
+  notifyDesktopComputerUseChanged,
+} from "./computer-use-electron";
 import { ComputerUseHostRuntime } from "./computer-use-host";
+import { buildDesktopComputerUsePageUrl } from "./computer-use-page-url";
 import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
-  buildComputerUsePageUrl,
   COMPUTER_USE_FEATURE_SWITCH_KEY,
-  parseComputerUseApprovalActionUrl,
+  IDLE_COMPUTER_USE_HOST_STATE,
   type ComputerUseApprovalAction,
-} from "./computer-use-page";
-import { getComputerUsePermissionState } from "./computer-use-permissions";
+  type DesktopComputerUseState,
+} from "./computer-use-types";
+import {
+  getComputerUsePermissionState,
+  requestComputerUseAccessibilityPermission,
+} from "./computer-use-permissions";
 import { resolveDesktopConfig } from "./config";
 import { createDesktopLocalAgentApiClient } from "./desktop-local-agent-api";
 import {
@@ -97,22 +105,17 @@ function installDesktopLocalAgent(): void {
 }
 
 async function openComputerUsePage(): Promise<void> {
-  await createMainWindow(
-    buildComputerUsePageUrl({
-      featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
-      approvalActionScheme: config.identity.authScheme,
-      permissions: getComputerUsePermissionState(),
-      host: computerUseRuntime?.getState() ?? {
-        status: "idle",
-        hostId: null,
-        lastHeartbeatAt: null,
-        lastCommandAt: null,
-        lastError: null,
-        pendingApprovals: [],
-        recentAuditEvents: [],
-      },
-    }),
-  );
+  await createMainWindow(buildDesktopComputerUsePageUrl(config.platformUrl));
+}
+
+function getComputerUseBridgeState(): DesktopComputerUseState {
+  return {
+    featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
+    platform: process.platform,
+    supported: process.platform === "darwin",
+    permissions: getComputerUsePermissionState(),
+    host: computerUseRuntime?.getState() ?? IDLE_COMPUTER_USE_HOST_STATE,
+  };
 }
 
 function startComputerUseRuntime(): void {
@@ -134,23 +137,36 @@ function startComputerUseRuntime(): void {
         captureScreenshot: captureComputerUseScreenshot,
       });
     },
+    onChange: notifyDesktopComputerUseChanged,
   });
   computerUseRuntime.start();
 }
 
 async function decideComputerUseCommand(
   action: ComputerUseApprovalAction,
-): Promise<void> {
+): Promise<DesktopComputerUseState> {
   if (!computerUseRuntime) {
-    return;
+    return getComputerUseBridgeState();
   }
-  try {
-    await computerUseRuntime.decideCommand(action);
-  } catch (error) {
-    console.error("Failed to decide Computer Use command", error);
-  } finally {
-    await openComputerUsePage();
-  }
+  await computerUseRuntime.decideCommand(action);
+  return getComputerUseBridgeState();
+}
+
+function requestComputerUsePermission(): DesktopComputerUseState {
+  requestComputerUseAccessibilityPermission();
+  notifyDesktopComputerUseChanged();
+  return getComputerUseBridgeState();
+}
+
+function installComputerUse(): void {
+  installComputerUseIpc(
+    {
+      getState: getComputerUseBridgeState,
+      requestAccessibilityPermission: requestComputerUsePermission,
+      decideCommand: decideComputerUseCommand,
+    },
+    { allowedAppOrigins: config.allowedAppOrigins },
+  );
 }
 
 function applyApplicationMenu(): void {
@@ -222,19 +238,6 @@ function openDesktopAuthCallback(rawUrl: string): boolean {
   return true;
 }
 
-function openComputerUseApprovalAction(rawUrl: string): boolean {
-  const action = parseComputerUseApprovalActionUrl(
-    rawUrl,
-    config.identity.authScheme,
-  );
-  if (!action) {
-    return false;
-  }
-
-  void decideComputerUseCommand(action);
-  return true;
-}
-
 function showSignedOutPage(window: BrowserWindow): void {
   void window.loadURL(signedOutPageUrl);
 }
@@ -252,10 +255,6 @@ function handleAuthNavigation(
   event: PreventableNavigationEvent,
   url: string,
 ): boolean {
-  if (openComputerUseApprovalAction(url)) {
-    event.preventDefault();
-    return true;
-  }
   if (openDesktopAuthCallback(url)) {
     event.preventDefault();
     return true;
@@ -291,9 +290,6 @@ function installChildWindowPolicy(window: BrowserWindow): void {
   const { webContents } = window;
 
   webContents.setWindowOpenHandler(({ url }) => {
-    if (openComputerUseApprovalAction(url)) {
-      return { action: "deny" };
-    }
     if (openDesktopAuthCallback(url)) {
       return { action: "deny" };
     }
@@ -337,9 +333,6 @@ function installMainWindowPolicy(window: BrowserWindow): void {
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (openComputerUseApprovalAction(url)) {
-      return { action: "deny" };
-    }
     if (openDesktopAuthCallback(url)) {
       return { action: "deny" };
     }
@@ -483,9 +476,6 @@ if (!hasSingleInstanceLock) {
 
   app.on("open-url", (event, url) => {
     event.preventDefault();
-    if (openComputerUseApprovalAction(url)) {
-      return;
-    }
     handleDesktopAuthCallback(url);
   });
 
@@ -511,6 +501,7 @@ if (!hasSingleInstanceLock) {
     applyApplicationMenu();
     registerDesktopAuthProtocol();
     installDesktopLocalAgent();
+    installComputerUse();
     queueDesktopAuthCallbackArgv(process.argv);
     startComputerUseRuntime();
 

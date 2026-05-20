@@ -52,6 +52,11 @@ describe("zero-nav", () => {
       expect(context.store.get(activeRoute$)).toBe("desktopLocalAgents");
     });
 
+    it("should resolve /computer-use to 'desktopComputerUse'", () => {
+      mockLocation({ pathname: "/computer-use", search: "" }, context.signal);
+      expect(context.store.get(activeRoute$)).toBe("desktopComputerUse");
+    });
+
     it("should resolve /works to 'works'", () => {
       mockLocation({ pathname: "/works", search: "" }, context.signal);
       expect(context.store.get(activeRoute$)).toBe("works");

@@ -16,6 +16,7 @@ export const ROUTES = {
   works: "/works",
   ideas: "/ideas",
   connectors: "/connectors",
+  desktopComputerUse: "/computer-use",
   desktopLocalAgents: "/local-agents",
   localBrowserConnect: "/zero/connectors/local-browser",
   directedConnect: "/connectors/:type/connect",

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ComputerUsePermissionState } from "./computer-use-page";
+import type { ComputerUsePermissionState } from "./computer-use-types";
 
 const execFileAsync = promisify(execFile);
 

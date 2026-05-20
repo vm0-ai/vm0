@@ -3,9 +3,9 @@
 Electron POC for launching the hosted Zero platform app.
 
 This pass is macOS-only. Windows packaging, native push, tray behavior, and
-auto-update are intentionally out of scope. The application menu includes a
-Computer Use page for the `computerUse` feature switch and macOS permission
-status.
+auto-update are intentionally out of scope. The application menu links to the
+Platform Computer Use page for the `computerUse` feature switch and macOS
+permission status.
 
 When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It

@@ -4,34 +4,22 @@ import type {
   ComputerUseCommandExecutionResult,
 } from "./computer-use-accessibility";
 import { SUPPORTED_COMPUTER_USE_CAPABILITIES } from "./computer-use-accessibility";
-import type { ComputerUsePermissionState } from "./computer-use-page";
+import type {
+  ComputerUseApprovalAction,
+  ComputerUseHostRuntimeState,
+  ComputerUsePendingApprovalRuntimeEvent,
+  ComputerUsePermissionState,
+  ComputerUseRuntimeAuditEvent,
+} from "./computer-use-types";
 
 const START_RETRY_MS = 15_000;
 const ONLINE_POLL_MS = 2_000;
 const ERROR_RETRY_MS = 10_000;
 
-type ComputerUseHostRuntimeStatus =
-  | "idle"
-  | "connecting"
-  | "online"
-  | "unauthenticated"
-  | "disabled"
-  | "error";
-
 type ComputerUseHostFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
-
-interface ComputerUseHostRuntimeState {
-  readonly status: ComputerUseHostRuntimeStatus;
-  readonly hostId: string | null;
-  readonly lastHeartbeatAt: string | null;
-  readonly lastCommandAt: string | null;
-  readonly lastError: string | null;
-  readonly pendingApprovals: readonly ComputerUsePendingApprovalRuntimeEvent[];
-  readonly recentAuditEvents: readonly ComputerUseRuntimeAuditEvent[];
-}
 
 interface ComputerUseHostRuntimeOptions {
   readonly platformUrl: URL;
@@ -43,6 +31,7 @@ interface ComputerUseHostRuntimeOptions {
     command: ComputerUseCommand,
     permissions: ComputerUsePermissionState,
   ) => Promise<ComputerUseCommandExecutionResult>;
+  readonly onChange?: () => void;
   readonly setTimeout?: typeof setTimeout;
   readonly clearTimeout?: typeof clearTimeout;
 }
@@ -50,22 +39,6 @@ interface ComputerUseHostRuntimeOptions {
 interface ComputerUseHostStartResponse {
   readonly hostId: string;
   readonly hostToken: string;
-}
-
-interface ComputerUseRuntimeAuditEvent {
-  readonly commandId: string;
-  readonly kind: string;
-  readonly app: string | null;
-  readonly event: "created" | "approved" | "denied" | "completed";
-  readonly approvalOutcome: "approved" | "denied" | null;
-  readonly createdAt: string;
-}
-
-interface ComputerUsePendingApprovalRuntimeEvent {
-  readonly commandId: string;
-  readonly kind: string;
-  readonly app: string | null;
-  readonly createdAt: string;
 }
 
 interface ComputerUseAuditEventsResponse {
@@ -116,6 +89,7 @@ export class ComputerUseHostRuntime {
   private readonly fetch: ComputerUseHostFetch;
   private readonly getPermissions: () => ComputerUsePermissionState;
   private readonly executeCommand: ComputerUseHostRuntimeOptions["executeCommand"];
+  private readonly onChange: () => void;
   private readonly scheduleTimeout: typeof setTimeout;
   private readonly clearScheduledTimeout: typeof clearTimeout;
   private running = false;
@@ -138,6 +112,7 @@ export class ComputerUseHostRuntime {
     this.fetch = options.fetch;
     this.getPermissions = options.getPermissions;
     this.executeCommand = options.executeCommand;
+    this.onChange = options.onChange ?? (() => {});
     this.scheduleTimeout = options.setTimeout ?? setTimeout;
     this.clearScheduledTimeout = options.clearTimeout ?? clearTimeout;
   }
@@ -162,10 +137,7 @@ export class ComputerUseHostRuntime {
     return this.state;
   }
 
-  async decideCommand(args: {
-    readonly commandId: string;
-    readonly decision: "approve" | "deny";
-  }): Promise<void> {
+  async decideCommand(args: ComputerUseApprovalAction): Promise<void> {
     const response = await this.fetch(
       `${this.apiBaseUrl}/api/zero/computer-use/commands/${encodeURIComponent(args.commandId)}/approval`,
       {
@@ -197,6 +169,7 @@ export class ComputerUseHostRuntime {
 
   private setState(update: Partial<ComputerUseHostRuntimeState>): void {
     this.state = { ...this.state, ...update };
+    this.onChange();
   }
 
   private schedule(delayMs: number): void {
