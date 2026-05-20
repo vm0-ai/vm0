@@ -42,6 +42,10 @@ export interface DesktopLocalAgentApiClient {
     readonly hostToken: string;
     readonly signal?: AbortSignal;
   }) => Promise<void>;
+  readonly deleteHost: (params: {
+    readonly hostId: string;
+    readonly signal?: AbortSignal;
+  }) => Promise<void>;
 }
 
 function replaceHostPrefix(hostname: string, target: string): string {
@@ -212,6 +216,17 @@ export function createDesktopLocalAgentApiClient(params: {
             authorization: `Bearer ${closeParams.hostToken}`,
           },
           signal: closeParams.signal,
+        },
+      );
+      await parseResponse<{ readonly ok: true }>(response);
+    },
+    async deleteHost(deleteParams) {
+      const response = await fetch(
+        `${apiBase}/api/zero/local-agent/hosts/${encodeURIComponent(deleteParams.hostId)}`,
+        {
+          method: "DELETE",
+          headers: await sessionHeaders(),
+          signal: deleteParams.signal,
         },
       );
       await parseResponse<{ readonly ok: true }>(response);

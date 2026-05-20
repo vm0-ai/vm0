@@ -64,6 +64,7 @@ function createHarness(
   const folders = [...harnessFolders];
   const startedHosts: string[] = [];
   const closedHosts: string[] = [];
+  const deletedHosts: string[] = [];
   const completedJobs: Array<{
     readonly jobId: string;
     readonly status: "succeeded" | "failed";
@@ -92,6 +93,9 @@ function createHarness(
     },
     async closeHost(params) {
       closedHosts.push(params.hostToken);
+    },
+    async deleteHost(params) {
+      deletedHosts.push(params.hostId);
     },
   };
   const manager = new DesktopLocalAgentManager({
@@ -140,6 +144,7 @@ function createHarness(
     manager,
     startedHosts,
     closedHosts,
+    deletedHosts,
     completedJobs,
     folders: harnessFolders,
   };
@@ -168,7 +173,8 @@ describe("DesktopLocalAgentManager", () => {
   });
 
   it("adds a Codex workspace with workspace-write permissions by default", async () => {
-    const { manager, startedHosts, closedHosts, folders } = createHarness();
+    const { manager, startedHosts, closedHosts, deletedHosts, folders } =
+      createHarness();
 
     await manager.setEnabled(true);
     const entry = await manager.add();
@@ -187,10 +193,11 @@ describe("DesktopLocalAgentManager", () => {
 
     await manager.stopAll();
     expect(closedHosts).toStrictEqual(["token-1"]);
+    expect(deletedHosts).toStrictEqual([]);
   });
 
   it("runs multiple configured workspaces independently", async () => {
-    const { manager, startedHosts, closedHosts } = createHarness({
+    const { manager, startedHosts, closedHosts, deletedHosts } = createHarness({
       folders: [createWorkspace("alpha"), createWorkspace("beta")],
     });
 
@@ -213,6 +220,7 @@ describe("DesktopLocalAgentManager", () => {
 
     await manager.stopAll();
     expect(closedHosts).toStrictEqual(["token-1", "token-2"]);
+    expect(deletedHosts).toStrictEqual([]);
   });
 
   it("restores persisted agents as stopped without autostarting them", async () => {
@@ -273,6 +281,90 @@ describe("DesktopLocalAgentManager", () => {
         errorMessage: "Codex not found",
       },
     ]);
+  });
+
+  it("revokes the server host before removing a Desktop local agent", async () => {
+    const folderPath = createWorkspace("alpha");
+    const { manager, closedHosts, deletedHosts } = createHarness({
+      initialEntries: [
+        {
+          id: "agent-1",
+          name: "alpha",
+          folderPath,
+          backend: "codex",
+          permissionMode: "workspace-write",
+          status: "stopped",
+          hostId: "host-1",
+        },
+      ],
+    });
+
+    await manager.setEnabled(true);
+    await manager.remove("agent-1");
+
+    await expect(manager.list()).resolves.toStrictEqual([]);
+    expect(closedHosts).toStrictEqual([]);
+    expect(deletedHosts).toStrictEqual(["host-1"]);
+  });
+
+  it("keeps the local entry visible when server host deletion fails", async () => {
+    const folderPath = createWorkspace("alpha");
+    const deletionAttempts: string[] = [];
+    const { manager } = createHarness({
+      initialEntries: [
+        {
+          id: "agent-1",
+          name: "alpha",
+          folderPath,
+          backend: "codex",
+          permissionMode: "workspace-write",
+          status: "stopped",
+          hostId: "host-1",
+        },
+      ],
+      apiOverrides: {
+        async deleteHost(params) {
+          deletionAttempts.push(params.hostId);
+          throw new Error("Local-agent host not found");
+        },
+      },
+    });
+
+    await manager.setEnabled(true);
+    await expect(manager.remove("agent-1")).rejects.toThrow(
+      "Local-agent host not found",
+    );
+
+    await expect(manager.list()).resolves.toMatchObject([
+      {
+        id: "agent-1",
+        status: "error",
+        errorMessage: "Local-agent host not found",
+      },
+    ]);
+    expect(deletionAttempts).toStrictEqual(["host-1"]);
+  });
+
+  it("removes local-only entries without calling server delete", async () => {
+    const folderPath = createWorkspace("alpha");
+    const { manager, deletedHosts } = createHarness({
+      initialEntries: [
+        {
+          id: "agent-1",
+          name: "alpha",
+          folderPath,
+          backend: "codex",
+          permissionMode: "workspace-write",
+          status: "stopped",
+        },
+      ],
+    });
+
+    await manager.setEnabled(true);
+    await manager.remove("agent-1");
+
+    await expect(manager.list()).resolves.toStrictEqual([]);
+    expect(deletedHosts).toStrictEqual([]);
   });
 
   it("uses the resolved executable path for jobs", async () => {
@@ -336,25 +428,27 @@ describe("DesktopLocalAgentManager", () => {
         });
       },
     );
-    const { manager, closedHosts, completedJobs } = createHarness({
-      executeBackend,
-      apiOverrides: {
-        async claimNextJob() {
-          claimCount += 1;
-          if (claimCount === 1) {
-            return {
-              status: "job",
-              job: {
-                id: "job-1",
-                backend: "codex",
-                prompt: "run task",
-              },
-            };
-          }
-          return { status: "idle" };
+    const { manager, closedHosts, deletedHosts, completedJobs } = createHarness(
+      {
+        executeBackend,
+        apiOverrides: {
+          async claimNextJob() {
+            claimCount += 1;
+            if (claimCount === 1) {
+              return {
+                status: "job",
+                job: {
+                  id: "job-1",
+                  backend: "codex",
+                  prompt: "run task",
+                },
+              };
+            }
+            return { status: "idle" };
+          },
         },
       },
-    });
+    );
 
     await manager.setEnabled(true);
     await manager.add();
@@ -373,5 +467,6 @@ describe("DesktopLocalAgentManager", () => {
       },
     ]);
     expect(closedHosts).toStrictEqual(["token-1"]);
+    expect(deletedHosts).toStrictEqual([]);
   });
 });

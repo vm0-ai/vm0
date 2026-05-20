@@ -276,7 +276,22 @@ export class DesktopLocalAgentManager {
 
   async remove(id: string): Promise<void> {
     this.assertEnabled();
+    await this.ensureLoaded();
+    const entry = this.requireEntry(id);
+    const hostId = entry.hostId;
     await this.stopEntry(id).catch(() => {});
+    if (hostId) {
+      try {
+        await this.deps.api.deleteHost({ hostId });
+      } catch (error) {
+        this.updateEntry(id, {
+          status: "error",
+          errorMessage: errorMessage(error),
+        });
+        await this.persistAndNotify();
+        throw error;
+      }
+    }
     await this.ensureLoaded();
     this.entries = this.entriesOrThrow().filter((entry) => {
       return entry.id !== id;

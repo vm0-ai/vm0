@@ -1,8 +1,11 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { zeroLocalAgentHostsContract } from "@vm0/api-contracts/contracts/zero-local-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -26,6 +29,24 @@ describe("zero desktop local agent page", () => {
     const setEnabled = vi.fn(() => {
       return Promise.resolve();
     });
+    let serverHostListCalls = 0;
+    server.use(
+      mockApi(zeroLocalAgentHostsContract.list, ({ respond }) => {
+        serverHostListCalls += 1;
+        return respond(200, {
+          hosts: [
+            {
+              id: "host-1",
+              displayName: "alpha",
+              supportedBackends: ["codex"],
+              status: "online",
+              lastSeenAt: "2026-05-19T00:00:00.000Z",
+              createdAt: "2026-05-19T00:00:00.000Z",
+            },
+          ],
+        });
+      }),
+    );
     installDesktopLocalAgentApi({
       setEnabled,
       list() {
@@ -86,6 +107,7 @@ describe("zero desktop local agent page", () => {
     expect(screen.getByText("workspace-write")).toBeInTheDocument();
     expect(screen.getByText("online")).toBeInTheDocument();
     expect(setEnabled).toHaveBeenCalledWith(true);
+    expect(serverHostListCalls).toBeGreaterThan(0);
   });
 
   it("surfaces backend health errors and blocks unavailable backend selection", async () => {

@@ -1,5 +1,11 @@
 import { command, computed, state } from "ccstate";
+import {
+  zeroLocalAgentHostsContract,
+  type LocalAgentHost,
+} from "@vm0/api-contracts/contracts/zero-local-agent";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
 
 type DesktopLocalAgentApi = NonNullable<Window["vm0DesktopLocalAgent"]>;
 export type DesktopLocalAgentEntry = Awaited<
@@ -15,6 +21,7 @@ export type DesktopLocalAgentPermissionMode =
 interface DesktopLocalAgentData {
   readonly entries: readonly DesktopLocalAgentEntry[];
   readonly probes: readonly DesktopLocalAgentBackendProbe[];
+  readonly serverHosts: readonly LocalAgentHost[];
 }
 
 const internalReload$ = state(0);
@@ -41,11 +48,23 @@ export const desktopLocalAgentData$ = computed(
   async (get): Promise<DesktopLocalAgentData> => {
     get(internalReload$);
     const api = desktopLocalAgentApi();
-    const [entries, probes] = await Promise.all([
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroLocalAgentHostsContract);
+    const [entries, probes, serverHostResults] = await Promise.all([
       api.list(),
       api.detectBackends(),
+      Promise.allSettled([accept(client.list(), [200], { toast: false })]),
     ]);
-    return { entries, probes };
+    const [serverHostsResult] = serverHostResults;
+    const serverHosts: readonly LocalAgentHost[] =
+      serverHostsResult?.status === "fulfilled"
+        ? serverHostsResult.value.body.hosts
+        : [];
+    return {
+      entries,
+      probes,
+      serverHosts,
+    };
   },
 );
 
