@@ -1,7 +1,7 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
 import { isApiError } from "@vm0/api-services/errors";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { logger } from "../../../shared/logger";
 import type { TelegramCallbackPayload } from "../../../infra/callback/callback-payloads";
 import type { UserInfoOptions } from "../../integration-prompt";
@@ -64,23 +64,31 @@ function translateTelegramRunError(
 ): RunAgentResult {
   const { composeId, agentName, userId } = params;
   if (isApiError(error)) {
-    const guidance = RUN_ERROR_GUIDANCE[error.code];
-    const response = guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : error.message;
     log.warn(`Pre-run check failed: ${error.code}`, {
       composeId,
       agentName,
       userId,
     });
-    return { status: "failed", response, runId: undefined };
+    return {
+      status: "failed",
+      response: formatRunErrorForExternalSurface({
+        code: error.code,
+        message: error.message,
+      }),
+      runId: undefined,
+    };
   }
   const runId = isRunDispatchError(error) ? error.runId : undefined;
   log.error("Failed to create run", { composeId, agentName, userId, error });
   return {
     status: "failed",
-    response:
-      "Something went wrong while starting the agent. Please try again later.",
+    response: formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while starting the agent.",
+    }),
     runId,
   };
 }

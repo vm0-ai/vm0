@@ -116,6 +116,50 @@ export const RUN_ERROR_GUIDANCE: Record<
   },
 };
 
+export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
+  "Oops, something went wrong. Please try again later.";
+
+export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
+  ...Object.values(RUN_ERROR_GUIDANCE).flatMap((guidance) => {
+    return [guidance.title, guidance.guidance];
+  }),
+  "Cannot continue session",
+  "Invalid signature in thinking block",
+  "Run cancelled",
+  "usage limit",
+  "usage_limit",
+  "usage-limit",
+  "UsageLimit",
+] as const;
+
+export function isActionableRunError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+  return ACTIONABLE_RUN_ERROR_SNIPPETS.some((snippet) => {
+    return normalized.includes(snippet.toLowerCase());
+  });
+}
+
+/**
+ * Plain-text run error copy that matches the Web chat error behavior.
+ * Actionable allowlisted errors are shown as-is; generic failures are hidden
+ * behind the same transient "Oops" message Web chat uses.
+ */
+export function formatRunErrorForExternalSurface(params: {
+  readonly code: string;
+  readonly message: string;
+}): string {
+  const errorMessage = params.message.trim() || "Run failed";
+  const chatgptCodexUsageLimitMessage =
+    formatChatgptCodexUsageLimitError(errorMessage);
+  if (chatgptCodexUsageLimitMessage) {
+    return chatgptCodexUsageLimitMessage;
+  }
+
+  return isActionableRunError(errorMessage)
+    ? errorMessage
+    : CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+}
+
 const CHATGPT_CODEX_USAGE_DETAILS_URL =
   "https://chatgpt.com/codex/settings/usage";
 

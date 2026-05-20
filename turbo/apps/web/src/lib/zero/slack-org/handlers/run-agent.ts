@@ -1,4 +1,4 @@
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { isRunDispatchError } from "../../../infra/run";
 import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
 import { isApiError } from "@vm0/api-services/errors";
@@ -85,14 +85,13 @@ function translateSlackRunError(
   logContext: LogContext,
 ): RunAgentResult {
   if (isApiError(error)) {
-    const guidance = RUN_ERROR_GUIDANCE[error.code];
-    const response = guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : error.message;
     log.warn(`Pre-run check failed: ${error.code}`, logContext);
     return {
       status: "failed",
-      response,
+      response: formatRunErrorForExternalSurface({
+        code: error.code,
+        message: error.message,
+      }),
       runId: undefined,
       errorCode: error.code,
     };
@@ -101,8 +100,13 @@ function translateSlackRunError(
   log.error("Error running agent for Slack org:", error);
   return {
     status: "failed",
-    response:
-      "Something went wrong while starting the agent. Please try again later.",
+    response: formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while starting the agent.",
+    }),
     runId,
   };
 }

@@ -23,10 +23,14 @@ export {
   type HealthRouteResponse,
 } from "./health";
 export {
+  ACTIONABLE_RUN_ERROR_SNIPPETS,
   apiErrorSchema,
   ApiError,
+  CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   createErrorResponse,
   formatChatgptCodexUsageLimitError,
+  formatRunErrorForExternalSurface,
+  isActionableRunError,
   RUN_ERROR_GUIDANCE,
   type ApiErrorKey,
   type ApiErrorResponse,

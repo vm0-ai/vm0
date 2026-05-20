@@ -9,7 +9,7 @@ import {
   isSupportedRunModel,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { slackOrgCallbackPayloadSchema } from "@vm0/api-contracts/contracts/internal-callbacks-slack-org";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
@@ -1017,12 +1017,12 @@ async function runAgentForSlackOrg(
     };
   }
 
-  const guidance = RUN_ERROR_GUIDANCE[result.body.error.code];
   return {
     status: "failed",
-    response: guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : result.body.error.message,
+    response: formatRunErrorForExternalSurface({
+      code: result.body.error.code,
+      message: result.body.error.message,
+    }),
   };
 }
 

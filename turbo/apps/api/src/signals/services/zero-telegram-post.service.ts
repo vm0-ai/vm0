@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { command, type Getter, type Setter } from "ccstate";
-import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -1716,12 +1716,12 @@ async function runAgentForTelegram(
     };
   }
 
-  const guidance = RUN_ERROR_GUIDANCE[result.body.error.code];
   return {
     status: "failed",
-    response: guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : result.body.error.message,
+    response: formatRunErrorForExternalSurface({
+      code: result.body.error.code,
+      message: result.body.error.message,
+    }),
   };
 }
 
