@@ -26,7 +26,7 @@ pub(crate) struct CodexFailureDiagnostic {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ClaudeFailureDiagnostic {
-    pub subtype: Option<String>,
+    pub subtype: Option<&'static str>,
     pub message: String,
 }
 
@@ -145,12 +145,13 @@ fn extract_claude_failure_diagnostic(event: &Value) -> Option<ClaudeFailureDiagn
         return None;
     }
 
-    let subtype = event
-        .get("subtype")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
+    let raw_subtype = event.get("subtype").and_then(Value::as_str);
+    let subtype = match raw_subtype {
+        Some("error") => Some("error"),
+        _ => None,
+    };
     let is_failure = event.get("is_error").and_then(Value::as_bool) == Some(true)
-        || subtype.as_deref() == Some("error");
+        || raw_subtype == Some("error");
     if !is_failure {
         return None;
     }
@@ -723,7 +724,7 @@ mod tests {
         assert_eq!(
             masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
             Some(ClaudeFailureDiagnostic {
-                subtype: Some("error".to_string()),
+                subtype: Some("error"),
                 message: "permission denied while running command".to_string(),
             })
         );
@@ -740,7 +741,25 @@ mod tests {
         assert_eq!(
             masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
             Some(ClaudeFailureDiagnostic {
-                subtype: Some("error".to_string()),
+                subtype: Some("error"),
+                message: "terminal result failed".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claude_failure_diagnostic_drops_unrecognized_subtype() {
+        let event = serde_json::json!({
+            "type": "result",
+            "subtype": "secret\nsubtype",
+            "is_error": true,
+            "result": "terminal result failed"
+        });
+
+        assert_eq!(
+            masked_claude_failure_diagnostic(&event, &SecretMasker::from_raw("")),
+            Some(ClaudeFailureDiagnostic {
+                subtype: None,
                 message: "terminal result failed".to_string(),
             })
         );

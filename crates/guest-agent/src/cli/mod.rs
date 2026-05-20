@@ -290,8 +290,7 @@ pub async fn execute_cli(
                                 if let Some(diagnostic) =
                                     events::masked_claude_failure_diagnostic(&event, masker)
                                 {
-                                    let subtype =
-                                        diagnostic.subtype.as_deref().unwrap_or("unknown");
+                                    let subtype = diagnostic.subtype.unwrap_or("unknown");
                                     let candidate = CliFailureDiagnostic {
                                         message: diagnostic.message,
                                         source: FailureDetailSource::ClaudeResult,
