@@ -125,6 +125,16 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
+async function orgCredits(orgId: string): Promise<number | undefined> {
+  const [row] = await store
+    .set(writeDb$)
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return row?.credits;
+}
+
 function falQueueHandle(requestId: string): Record<string, string> {
   return {
     request_id: requestId,
@@ -1088,6 +1098,9 @@ describe("POST /api/zero/image-io/generate", () => {
       return total + (row.creditsCharged ?? 0);
     }, 0);
     expect(totalCredits).toBe(creditsCharged);
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(
+      10_000 - creditsCharged,
+    );
   });
 
   it("does not complete a job after the status route times it out", async () => {
@@ -1345,6 +1358,7 @@ describe("POST /api/zero/image-io/generate", () => {
       billingError: null,
       creditsCharged: 48,
     });
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(952);
   });
 
   it("generates image-to-image through fal with 20 percent markup pricing", async () => {
@@ -1749,5 +1763,6 @@ describe("POST /api/zero/image-io/generate", () => {
       .from(usageEvent)
       .where(eq(usageEvent.orgId, fixture.orgId));
     expect(usageRows).toHaveLength(0);
+    await expect(orgCredits(fixture.orgId)).resolves.toBe(1000);
   });
 });

@@ -22,14 +22,6 @@ type RecordRunUploadedFileParams = {
   metadata?: Record<string, unknown>;
 };
 
-type RecordUploadedFileWithS3MetadataParams = Omit<
-  RecordRunUploadedFileParams,
-  "source" | "metadata"
-> & {
-  s3Key?: string;
-  metadata?: Record<string, unknown>;
-};
-
 export async function recordRunUploadedFile({
   runId,
   source,
@@ -79,30 +71,6 @@ export async function recordRunUploadedFile({
     });
 
   await publishChatThreadArtifactsChanged(runId);
-}
-
-export async function recordGeneratedRunFile({
-  s3Key,
-  metadata,
-  ...params
-}: RecordUploadedFileWithS3MetadataParams): Promise<void> {
-  await recordUploadedFileWithS3Metadata("web", params, s3Key, metadata);
-}
-
-async function recordUploadedFileWithS3Metadata(
-  source: RunUploadedFileSource,
-  params: Omit<RecordRunUploadedFileParams, "source" | "metadata">,
-  s3Key?: string,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
-  await recordRunUploadedFile({
-    ...params,
-    source,
-    metadata: {
-      ...(metadata ?? {}),
-      ...(s3Key ? { s3Key } : {}),
-    },
-  });
 }
 
 async function resolveRunUploadedFileSource(

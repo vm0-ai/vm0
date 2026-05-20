@@ -54,7 +54,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/telegram/message/route.ts",
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
-  "app/api/zero/image-io/generate/route.ts",
   "app/api/zero/slack/channels/route.ts",
   "app/api/zero/slack/commands/route.ts",
   "app/api/zero/slack/connect/route.ts",
