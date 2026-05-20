@@ -144,10 +144,6 @@ fn build_codex_memories_config() -> String {
     "features.memories=true".to_string()
 }
 
-fn build_codex_disable_imagegen_skill_config() -> String {
-    r#"skills.config=[{name="imagegen", enabled=false}]"#.to_string()
-}
-
 fn build_codex_args(
     working_dir: &str,
     model: &str,
@@ -167,8 +163,6 @@ fn build_codex_args(
 
     args.push("-c".to_string());
     args.push(build_codex_memories_config());
-    args.push("-c".to_string());
-    args.push(build_codex_disable_imagegen_skill_config());
 
     if !model.is_empty() {
         args.push("-m".to_string());
@@ -355,10 +349,6 @@ mod tests {
         let c_idx = args.iter().position(|a| a == "-C").unwrap();
         assert_eq!(args[c_idx + 1], "/workspace");
         assert!(codex_args_have_config(&args, "features.memories=true"));
-        assert!(codex_args_have_config(
-            &args,
-            r#"skills.config=[{name="imagegen", enabled=false}]"#
-        ));
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "hello");
     }
@@ -444,10 +434,6 @@ mod tests {
             &args,
             r#"developer_instructions="Your name is Aria.""#
         ));
-        assert!(codex_args_have_config(
-            &args,
-            r#"skills.config=[{name="imagegen", enabled=false}]"#
-        ));
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "analyze this");
     }
@@ -474,10 +460,6 @@ mod tests {
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert!(c_idx < r_idx);
         assert!(codex_args_have_config(&args, "features.memories=true"));
-        assert!(codex_args_have_config(
-            &args,
-            r#"skills.config=[{name="imagegen", enabled=false}]"#
-        ));
         assert_eq!(args[c_idx], r#"developer_instructions="Be concise.""#);
         assert_eq!(args[r_idx + 1], "thread-abc");
         assert_eq!(args[r_idx + 2], "--");
