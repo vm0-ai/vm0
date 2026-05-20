@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.159.0](https://github.com/vm0-ai/vm0/compare/cli-v9.158.2...cli-v9.159.0) (2026-05-20)
+
+
+### Features
+
+* include screenshot in computer use app state ([#14151](https://github.com/vm0-ai/vm0/issues/14151)) ([916533f](https://github.com/vm0-ai/vm0/commit/916533f7069b4311de6d4eee75dd9e45a1b2010a)), closes [#14130](https://github.com/vm0-ai/vm0/issues/14130)
+* serve user artifacts from public cdn ([#13956](https://github.com/vm0-ai/vm0/issues/13956)) ([32604d5](https://github.com/vm0-ai/vm0/commit/32604d5bd56b042a35b1ff8b50622eb54f4635f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.34.0
+    * @vm0/connectors bumped to 1.23.1
+    * @vm0/core bumped to 8.285.2
+
 ## [9.158.2](https://github.com/vm0-ai/vm0/compare/cli-v9.158.1...cli-v9.158.2) (2026-05-20)
 
 

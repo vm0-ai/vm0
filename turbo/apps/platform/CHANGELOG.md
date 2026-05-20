@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.370.0](https://github.com/vm0-ai/vm0/compare/app-v0.369.1...app-v0.370.0) (2026-05-20)
+
+
+### Features
+
+* serve user artifacts from public cdn ([#13956](https://github.com/vm0-ai/vm0/issues/13956)) ([32604d5](https://github.com/vm0-ai/vm0/commit/32604d5bd56b042a35b1ff8b50622eb54f4635f1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.34.0
+    * @vm0/connectors bumped to 1.23.1
+    * @vm0/core bumped to 8.285.2
+
 ## [0.369.1](https://github.com/vm0-ai/vm0/compare/app-v0.369.0...app-v0.369.1) (2026-05-20)
 
 

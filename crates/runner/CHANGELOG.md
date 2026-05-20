@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.103.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.0...runner-rs-v0.103.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* preserve Claude failure diagnostics ([#14174](https://github.com/vm0-ai/vm0/issues/14174)) ([7cd9971](https://github.com/vm0-ai/vm0/commit/7cd99711b6ded65520acbfbe74f12d90a0f391c6))
+
 ## [0.103.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.102.5...runner-rs-v0.103.0) (2026-05-20)
 
 

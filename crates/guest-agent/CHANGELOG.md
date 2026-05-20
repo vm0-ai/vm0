@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.5...guest-agent-v0.32.6) (2026-05-20)
+
+
+### Bug Fixes
+
+* parse guest cpu stat fields strictly ([#14157](https://github.com/vm0-ai/vm0/issues/14157)) ([78f614a](https://github.com/vm0-ai/vm0/commit/78f614a3a059682798babd983b6ae9cbdd6bf7f2))
+* preserve Claude failure diagnostics ([#14174](https://github.com/vm0-ai/vm0/issues/14174)) ([7cd9971](https://github.com/vm0-ai/vm0/commit/7cd99711b6ded65520acbfbe74f12d90a0f391c6))
+
 ## [0.32.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.4...guest-agent-v0.32.5) (2026-05-19)
 
 ## [0.32.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.3...guest-agent-v0.32.4) (2026-05-19)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.4](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.3...vsock-guest-v0.18.4) (2026-05-20)
+
+
+### Refactoring
+
+* implement supervised exec guest path ([#14075](https://github.com/vm0-ai/vm0/issues/14075)) ([61a73f3](https://github.com/vm0-ai/vm0/commit/61a73f357701276bf60c448cbf0f9f70d9ebbcc5))
+
 ## [0.18.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.2...vsock-guest-v0.18.3) (2026-05-19)
 
 

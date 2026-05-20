@@ -1,5 +1,47 @@
 # Changelog
 
+## [12.380.0](https://github.com/vm0-ai/vm0/compare/web-v12.379.1...web-v12.380.0) (2026-05-20)
+
+
+### Features
+
+* serve user artifacts from public cdn ([#13956](https://github.com/vm0-ai/vm0/issues/13956)) ([32604d5](https://github.com/vm0-ai/vm0/commit/32604d5bd56b042a35b1ff8b50622eb54f4635f1))
+
+
+### Bug Fixes
+
+* align integration session model reuse ([#14171](https://github.com/vm0-ai/vm0/issues/14171)) ([3f3cd2a](https://github.com/vm0-ai/vm0/commit/3f3cd2a44d3e800d7fe30f051eb781392192a6b6))
+* format external callback errors ([#14153](https://github.com/vm0-ai/vm0/issues/14153)) ([15f8e30](https://github.com/vm0-ai/vm0/commit/15f8e30b7772e7065dfa5d91293c05835c61bc34))
+* stop injecting google ads login customer header ([#14181](https://github.com/vm0-ai/vm0/issues/14181)) ([dbc371b](https://github.com/vm0-ai/vm0/commit/dbc371b92265844be46752987ffaa87131a78e5c))
+
+
+### Refactoring
+
+* cut over custom connector by-id route ([#14159](https://github.com/vm0-ai/vm0/issues/14159)) ([9be7496](https://github.com/vm0-ai/vm0/commit/9be74961aa5c02e11a825c246b06e6efb7ff24dc))
+* cut over custom connector secret route ([#14180](https://github.com/vm0-ai/vm0/issues/14180)) ([713aa75](https://github.com/vm0-ai/vm0/commit/713aa75c937707246d46339fb35a01cdc2b28f8d))
+* cut over prepare-history webhook ([#14155](https://github.com/vm0-ai/vm0/issues/14155)) ([f137293](https://github.com/vm0-ai/vm0/commit/f137293900de6f9845791abcd50e558961447a75))
+* cut over telegram auth callback route ([#14191](https://github.com/vm0-ai/vm0/issues/14191)) ([c576fc5](https://github.com/vm0-ai/vm0/commit/c576fc536bb39f38b0633a51b4f037418f54d363))
+* cut over zero billing invoices route ([#14156](https://github.com/vm0-ai/vm0/issues/14156)) ([a721b5c](https://github.com/vm0-ai/vm0/commit/a721b5c1a53c85ea0262f4bfee0dc76d16e4fff2))
+* cut over zero developer support route ([#14179](https://github.com/vm0-ai/vm0/issues/14179)) ([6c5a32b](https://github.com/vm0-ai/vm0/commit/6c5a32ba862ece42167e212c6e42248a1da97db8))
+* cut over zero image generation route ([#14186](https://github.com/vm0-ai/vm0/issues/14186)) ([8a9989a](https://github.com/vm0-ai/vm0/commit/8a9989a535da992ab52f2a1dec318c7463cb9a5c))
+* cut over zero integrations chat message route ([#14192](https://github.com/vm0-ai/vm0/issues/14192)) ([b8d20ad](https://github.com/vm0-ai/vm0/commit/b8d20adecd3fbb686f48c7273c0e8a8042ff4981))
+* cut over zero slack channels route ([#14190](https://github.com/vm0-ai/vm0/issues/14190)) ([01ced91](https://github.com/vm0-ai/vm0/commit/01ced91042e1c1c4436722a18e637af83b4383ae))
+* proxy zero billing portal to api ([#14170](https://github.com/vm0-ai/vm0/issues/14170)) ([576bcc7](https://github.com/vm0-ai/vm0/commit/576bcc790fc18791932d8fe36b98b61dddc239b0))
+* proxy zero billing redeem to api ([#14184](https://github.com/vm0-ai/vm0/issues/14184)) ([3c669f2](https://github.com/vm0-ai/vm0/commit/3c669f203dba67773ff96ffed5c7043e35d1b9f6))
+* proxy zero connectors list to api ([#14164](https://github.com/vm0-ai/vm0/issues/14164)) ([b2ae58d](https://github.com/vm0-ai/vm0/commit/b2ae58d3fcb01d05b84f8cf04d8646c7cc52db3e))
+* proxy zero connectors scope diff to api ([#14182](https://github.com/vm0-ai/vm0/issues/14182)) ([66f6aea](https://github.com/vm0-ai/vm0/commit/66f6aea7d421161f93113b43352d0e07ae9ccfda))
+* proxy zero connectors search to api ([#14149](https://github.com/vm0-ai/vm0/issues/14149)) ([bfad1aa](https://github.com/vm0-ai/vm0/commit/bfad1aa5376b2c347f11fb995b753aa718379107))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.34.0
+    * @vm0/connectors bumped to 1.23.1
+    * @vm0/core bumped to 8.285.2
+    * @vm0/db bumped to 1.16.2
+
 ## [12.379.1](https://github.com/vm0-ai/vm0/compare/web-v12.379.0...web-v12.379.1) (2026-05-20)
 
 
