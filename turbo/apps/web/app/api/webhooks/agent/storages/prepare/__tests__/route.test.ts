@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { POST as commitPOST } from "../../commit/route";
 import {
   createTestRequest,
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  findTestStorageByName,
 } from "../../../../../../../src/__tests__/api-test-helpers";
+import { commitPreparedTestStorage } from "../../../../../../../src/__tests__/db-test-seeders/storage";
 import {
   testContext,
   uniqueId,
@@ -162,25 +163,17 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     );
     const { versionId } = await prepareResponse.json();
 
-    // Commit → persist version in DB
-    const commitRequest = createTestRequest(
-      "http://localhost:3000/api/webhooks/agent/storages/commit",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${testToken}`,
-        },
-        body: JSON.stringify({
-          runId: testRunId,
-          storageName,
-          storageType: "volume",
-          versionId,
-          files,
-        }),
-      },
-    );
-    await commitPOST(commitRequest);
+    // Commit metadata directly because the commit webhook is API-authoritative.
+    const storage = await findTestStorageByName(user.orgId, storageName);
+    expect(storage).toBeDefined();
+    if (!storage) {
+      throw new Error("Expected prepared storage to exist");
+    }
+    await commitPreparedTestStorage({
+      storageId: storage.id,
+      versionId,
+      files,
+    });
 
     // Prepare again with same files → should be deduplicated
     const response = await POST(

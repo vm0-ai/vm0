@@ -170,6 +170,14 @@ async function prepareOk(fixture: AgentStorageFixture, body: PrepareBody) {
   return response.body;
 }
 
+async function storageLineage(versionId: string) {
+  const db = store.set(writeDb$);
+  return await db
+    .select()
+    .from(storageVersionLineage)
+    .where(eq(storageVersionLineage.versionId, versionId));
+}
+
 const track = createFixtureTracker<AgentStorageFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
@@ -247,6 +255,77 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
 });
 
 describe("POST /api/webhooks/agent/storages/commit", () => {
+  it("rejects missing sandbox auth", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          storageName: storageName("missing-auth"),
+        }),
+        headers: {},
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated or runId mismatch",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("returns 404 when storage does not exist", async () => {
+    const fixture = await track(seedFixture());
+    const name = storageName("missing-storage");
+
+    const response = await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          storageName: name,
+          storageType: "volume",
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: `Storage "${name}" not found`,
+        code: "NOT_FOUND",
+      },
+    });
+  });
+
+  it("returns 400 when versionId does not match prepared files", async () => {
+    const fixture = await track(seedFixture());
+    const name = storageName("webhook-mismatch");
+    const file = validFile({ path: "mismatch.txt" });
+    const prepare = prepareBody(fixture, {
+      storageName: name,
+      storageType: "volume",
+      files: [file],
+    });
+    await prepareOk(fixture, prepare);
+
+    const response = await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          storageName: name,
+          storageType: "volume",
+          versionId: "f".repeat(64),
+          files: [file],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain("Version ID mismatch");
+  });
+
   it("commits uploaded storage and records artifact lineage", async () => {
     const fixture = await track(seedFixture());
     const name = storageName("webhook-commit");
@@ -318,6 +397,67 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     });
   });
 
+  it("returns deduplicated=true for idempotent re-commit", async () => {
+    const fixture = await track(seedFixture());
+    const name = storageName("webhook-idempotent");
+    const file = validFile({ path: "idempotent.txt" });
+    const prepare = prepareBody(fixture, {
+      storageName: name,
+      storageType: "volume",
+      files: [file],
+    });
+    const prepared = await prepareOk(fixture, prepare);
+    const request = {
+      body: commitBody(fixture, {
+        storageName: name,
+        storageType: "volume",
+        versionId: prepared.versionId,
+        files: [file],
+      }),
+      headers: authHeaders(fixture),
+    };
+
+    context.mocks.s3.send.mockResolvedValue({});
+    await accept(commitClient().commit(request), [200]);
+
+    const response = await accept(commitClient().commit(request), [200]);
+
+    expect(response.body).toMatchObject({
+      success: true,
+      versionId: prepared.versionId,
+      storageName: name,
+      size: 100,
+      fileCount: 1,
+      deduplicated: true,
+    });
+  });
+
+  it("does not record lineage when parentVersionId is absent", async () => {
+    const fixture = await track(seedFixture());
+    const name = storageName("webhook-no-lineage");
+    const file = validFile({ path: "no-lineage.txt" });
+    const prepare = prepareBody(fixture, {
+      storageName: name,
+      files: [file],
+    });
+    const prepared = await prepareOk(fixture, prepare);
+
+    context.mocks.s3.send.mockResolvedValue({});
+    await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          storageName: name,
+          versionId: prepared.versionId,
+          files: [file],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(storageLineage(prepared.versionId)).resolves.toStrictEqual([]);
+  });
+
   it("does not record lineage for volume commits", async () => {
     const fixture = await track(seedFixture());
     const name = storageName("webhook-volume");
@@ -344,11 +484,6 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
       [200],
     );
 
-    const db = store.set(writeDb$);
-    const lineage = await db
-      .select()
-      .from(storageVersionLineage)
-      .where(eq(storageVersionLineage.versionId, prepared.versionId));
-    expect(lineage).toStrictEqual([]);
+    await expect(storageLineage(prepared.versionId)).resolves.toStrictEqual([]);
   });
 });
