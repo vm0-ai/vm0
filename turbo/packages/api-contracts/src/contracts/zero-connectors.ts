@@ -4,6 +4,7 @@ import { apiErrorSchema } from "./errors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   computerConnectorCreateResponseSchema,
+  connectorOauthStartResponseSchema,
   connectorListResponseSchema,
   connectorResponseSchema,
   connectorSessionResponseSchema,
@@ -103,6 +104,24 @@ export const zeroConnectorAuthorizeContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Start connector OAuth authorization (zero proxy)",
+  },
+});
+
+export const zeroConnectorOauthStartContract = c.router({
+  start: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/oauth/start",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({}).optional(),
+    responses: {
+      200: connectorOauthStartResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create connector OAuth handoff and authorization URL",
   },
 });
 

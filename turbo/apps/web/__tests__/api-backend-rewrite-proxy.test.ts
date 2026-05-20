@@ -704,6 +704,23 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero connector OAuth start rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/oauth/start"),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/connectors/github/oauth/start/extra",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/oauth/start"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/github/oauth"),
+    ).toBe(false);
+  });
+
   it("matches Slack OAuth rewrite paths exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/slack/oauth/install")).toBe(
       true,

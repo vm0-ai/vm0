@@ -30,6 +30,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-local-browser";
 import {
   zeroConnectorScopeDiffContract,
+  zeroConnectorOauthStartContract,
   zeroLocalBrowserConnectorContract,
   zeroConnectorsMainContract,
   zeroLocalAgentConnectorContract,
@@ -49,7 +50,6 @@ import {
   deleteConnector$,
   reloadConnectors$,
 } from "../../external/connectors.ts";
-import { resolveApiBaseForNavigation } from "../../api-base.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import {
   jsonParseOr,
@@ -1643,6 +1643,42 @@ const resetOAuthConnectorPopupSignal$ = resetSignal();
 // Connect command
 // ---------------------------------------------------------------------------
 
+const openConnectorOauthWindow$ = command(
+  async ({ get }, type: ConnectorType, signal: AbortSignal) => {
+    const standalone = isStandaloneMode();
+
+    // In standalone (PWA) mode, omit popup features so iOS Safari opens the
+    // URL in the external browser instead of blocking it as a popup.
+    const popupFeatures = standalone ? undefined : "width=600,height=700";
+    const authWindow = window.open("about:blank", "_blank", popupFeatures);
+
+    if (!authWindow && !standalone) {
+      throw new Error("Failed to open authorization window");
+    }
+
+    const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
+      apiBase: "www",
+    });
+    const startResult = await accept(
+      startClient.start({
+        params: { type },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    if (authWindow) {
+      authWindow.location.href = startResult.body.authorizationUrl;
+    } else if (standalone) {
+      window.location.href = startResult.body.authorizationUrl;
+    }
+
+    return authWindow;
+  },
+);
+
 export const connectConnector$ = command(
   async (
     { get, set },
@@ -1650,29 +1686,14 @@ export const connectConnector$ = command(
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    const baseUrl = resolveApiBaseForNavigation(false);
-    signal.throwIfAborted();
-
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     set(internalPollingType$, type);
 
     return await withCleanup(
       (async () => {
-        const standalone = isStandaloneMode();
-
-        // In standalone (PWA) mode, omit popup features so iOS Safari opens the
-        // URL in the external browser instead of blocking it as a popup.
-        const popupFeatures = standalone ? undefined : "width=600,height=700";
-        const authWindow = window.open(
-          `${baseUrl}/api/zero/connectors/${type}/authorize`,
-          "_blank",
-          popupFeatures,
-        );
-
-        if (!authWindow && !standalone) {
-          throw new Error("Failed to open authorization window");
-        }
+        const authWindow = await set(openConnectorOauthWindow$, type, signal);
+        signal.throwIfAborted();
 
         // Wait for the OAuth flow to complete. The callback publishes
         // `connector:changed`, and the subscription rechecks the server state.

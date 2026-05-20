@@ -87,6 +87,14 @@ export type ConnectorSessionStatusResponse = z.infer<
   typeof connectorSessionStatusResponseSchema
 >;
 
+export const connectorOauthStartResponseSchema = z.object({
+  authorizationUrl: z.string(),
+});
+
+export type ConnectorOauthStartResponse = z.infer<
+  typeof connectorOauthStartResponseSchema
+>;
+
 /**
  * Computer connector create response
  */

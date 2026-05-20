@@ -24,6 +24,7 @@ import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
 import * as connectorCliAuthSessionSchema from "./schema/connector-cli-auth-session";
+import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
@@ -108,6 +109,7 @@ export const schema = {
   ...composeJobSchema,
   ...connectorSchema,
   ...connectorCliAuthSessionSchema,
+  ...connectorOauthStateSchema,
   ...usageEventSchema,
   ...runBuiltInAdmissionSchema,
   ...usageDailySchema,

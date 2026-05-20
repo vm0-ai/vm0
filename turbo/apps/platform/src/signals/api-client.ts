@@ -26,7 +26,7 @@ export type ZeroClientFactory = <T extends AppRouter>(
 ) => InitClientReturn<T, InitClientArgs>;
 
 export interface ZeroClientOptions {
-  readonly apiBase?: "auto" | "api";
+  readonly apiBase?: "auto" | "api" | "www";
 }
 
 function rebaseApiPath(path: string, apiBase: string): string {
@@ -62,6 +62,9 @@ export const zeroClient$ = computed((get) => {
       resolvePath: async (path) => {
         if (options?.apiBase === "api") {
           return rebaseApiPath(path, resolveApiBase(true));
+        }
+        if (options?.apiBase === "www") {
+          return rebaseApiPath(path, resolveApiBase(false));
         }
         return rebaseApiPath(path, await get(apiBase$));
       },

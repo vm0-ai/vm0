@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
@@ -10,7 +10,10 @@ import {
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroSecretsContract,
   zeroVariablesContract,
@@ -62,11 +65,29 @@ function mockMatchMedia(standalone: boolean) {
   } as MediaQueryList);
 }
 
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: false, close: vi.fn(), location: { href: "" } };
+}
+
 describe("connectConnector$", () => {
+  beforeEach(() => {
+    mockConnectorOauthStart();
+  });
+
   it("detects connector via connector:changed Ably event", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     let pollCount = 0;
@@ -106,7 +127,7 @@ describe("connectConnector$", () => {
   it("clears polling when the oauth popup closes before connector appears", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     let pollCount = 0;
@@ -157,13 +178,23 @@ describe("connectConnector$", () => {
       featureSwitches: { apiBackend: true },
     });
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     const open = vi
       .spyOn(window, "open")
       .mockReturnValue(mockWindow as unknown as Window);
 
     let pollCount = 0;
+    let startRequestUrl: string | null = null;
     server.use(
+      mockApi(
+        zeroConnectorOauthStartContract.start,
+        ({ request, params, respond }) => {
+          startRequestUrl = request.url;
+          return respond(200, {
+            authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          });
+        },
+      ),
       mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
         pollCount++;
         if (pollCount <= 1) {
@@ -182,9 +213,15 @@ describe("connectConnector$", () => {
 
     await vi.waitFor(() => {
       expect(open).toHaveBeenCalledWith(
-        "https://www.vm0.ai/api/zero/connectors/github/authorize",
+        "about:blank",
         "_blank",
         "width=600,height=700",
+      );
+      expect(startRequestUrl).toBe(
+        "https://www.vm0.ai/api/zero/connectors/github/oauth/start",
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
       );
       expect(hasSubscription("connector:changed")).toBeTruthy();
     });
@@ -196,7 +233,7 @@ describe("connectConnector$", () => {
   it("keeps subscribing on reconnect until updatedAt changes", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     // Existing connector with a stable updatedAt simulates the pre-reconnect
@@ -270,7 +307,7 @@ describe("connectConnector$", () => {
   it("sets permissionDialogType$ after connector appears when requested", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     server.use(

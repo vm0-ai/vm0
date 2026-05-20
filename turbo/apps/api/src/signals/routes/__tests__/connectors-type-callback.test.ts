@@ -7,6 +7,7 @@ import {
 } from "@vm0/connectors/connectors";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
@@ -922,6 +923,37 @@ async function seedSession(userId: string): Promise<string> {
   return session!.id;
 }
 
+async function seedOauthState(args: {
+  readonly type: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly state?: string;
+  readonly sessionId?: string;
+  readonly redirectUri?: string;
+  readonly codeVerifier?: string;
+  readonly oauthContext?: string;
+  readonly expiresAt?: Date;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [oauthState] = await db
+    .insert(connectorOauthStates)
+    .values({
+      state: args.state ?? `state-${randomUUID()}`,
+      type: args.type,
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: args.sessionId,
+      redirectUri:
+        args.redirectUri ?? `${BASE_URL}/api/connectors/${args.type}/callback`,
+      codeVerifier: args.codeVerifier,
+      oauthContext: args.oauthContext,
+      expiresAt: args.expiresAt ?? new Date(now() + 15 * 60 * 1000),
+    })
+    .returning({ id: connectorOauthStates.id });
+  expect(oauthState).toBeDefined();
+  return oauthState!.id;
+}
+
 async function findConnector(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -1125,6 +1157,7 @@ const providerUserInfoErrorCases = providerSuccessCases.filter(
 describe("GET /api/connectors/:type/callback", () => {
   const orgIds: string[] = [];
   const sessionIds: string[] = [];
+  const oauthStateIds: string[] = [];
   let restoreDynamicTestOAuthExchange: (() => void) | undefined;
 
   beforeEach(() => {
@@ -1151,6 +1184,14 @@ describe("GET /api/connectors/:type/callback", () => {
         await db
           .delete(connectorSessions)
           .where(eq(connectorSessions.id, sessionId));
+      }
+    }
+    while (oauthStateIds.length > 0) {
+      const oauthStateId = oauthStateIds.pop();
+      if (oauthStateId) {
+        await db
+          .delete(connectorOauthStates)
+          .where(eq(connectorOauthStates.id, oauthStateId));
       }
     }
   });
@@ -1480,6 +1521,60 @@ describe("GET /api/connectors/:type/callback", () => {
       .where(eq(connectorSessions.id, sessionId));
     expect(session?.status).toBe("complete");
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("stores a connector from a server-side OAuth handoff without Clerk cookies", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+      oauthContext: "opaque-context",
+    });
+    oauthStateIds.push(oauthStateId);
+    mockGitHubOAuth({
+      accessToken: "github-token",
+      userId: 98_765,
+      username: "octocat",
+      email: "octocat@example.com",
+    });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/success");
+    expect(url.searchParams.get("type")).toBe("github");
+    expect(url.searchParams.get("username")).toBe("octocat");
+
+    const connector = await findConnector({ orgId, userId, type: "github" });
+    expect(connector).toMatchObject({
+      type: "github",
+      authMethod: "oauth",
+      externalId: "98765",
+      externalUsername: "octocat",
+      externalEmail: "octocat@example.com",
+      needsReconnect: false,
+    });
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthStateId));
+    expect(storedState?.consumedAt).toBeInstanceOf(Date);
   });
 
   it("passes OAuth context to dynamic public connector exchange", async () => {

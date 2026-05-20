@@ -6,6 +6,7 @@ import {
 } from "@vm0/connectors/connectors";
 import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -14,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { encryptSecretValue } from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
@@ -38,6 +40,10 @@ function authorizeUrl(
     url.searchParams.set("session", session);
   }
   return url.toString();
+}
+
+function oauthStartUrl(type: string, origin = BASE_URL): string {
+  return new URL(`/api/zero/connectors/${type}/oauth/start`, origin).toString();
 }
 
 function sessionHeaders(): HeadersInit {
@@ -135,6 +141,28 @@ async function requestAuthorize(
       headers,
     },
   );
+}
+
+async function requestOauthStart(
+  type: string,
+  options: {
+    readonly authenticated?: boolean;
+    readonly headers?: HeadersInit;
+    readonly origin?: string;
+  } = {},
+): Promise<Response> {
+  if (options.authenticated) {
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+  }
+  const headers = new Headers(options.headers);
+  if (options.authenticated) {
+    headers.set("authorization", "Bearer clerk-session");
+  }
+  const app = createApp({ signal: context.signal });
+  return await app.request(oauthStartUrl(type, options.origin), {
+    method: "POST",
+    headers,
+  });
 }
 
 describe("GET /api/zero/connectors/:type/authorize", () => {
@@ -544,5 +572,91 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       `Basic ${Buffer.from("test-client-id:test-client-secret").toString("base64")}`,
     );
     expect(revokeBody).toContain('"access_token":"gh-access-token"');
+  });
+});
+
+describe("POST /api/zero/connectors/:type/oauth/start", () => {
+  const orgIds: string[] = [];
+  const stateIds: string[] = [];
+
+  beforeEach(() => {
+    mockOAuthEnv();
+  });
+
+  afterEach(async () => {
+    const db = store.set(writeDb$);
+    while (stateIds.length > 0) {
+      const stateId = stateIds.pop();
+      if (stateId) {
+        await db
+          .delete(connectorOauthStates)
+          .where(eq(connectorOauthStates.id, stateId));
+      }
+    }
+    while (orgIds.length > 0) {
+      const orgId = orgIds.pop();
+      if (orgId) {
+        await db.delete(connectors).where(eq(connectors.orgId, orgId));
+        await db.delete(secrets).where(eq(secrets.orgId, orgId));
+      }
+    }
+  });
+
+  it("creates a server-side OAuth handoff and returns the provider authorization URL", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("github", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: API_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      "https://github.com/login/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      "test-client-id",
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/github/callback`,
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    expect(state).toMatch(/^[0-9a-f]{64}$/);
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "github",
+      userId,
+      orgId,
+      redirectUri: `${WEB_ORIGIN}/api/connectors/github/callback`,
+      consumedAt: null,
+    });
+    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+  });
+
+  it("returns 401 instead of relying on browser cookies when unauthenticated", async () => {
+    const response = await requestOauthStart("github");
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "Not authenticated",
+        code: "UNAUTHORIZED",
+      },
+    });
   });
 });

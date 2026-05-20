@@ -5,6 +5,7 @@ import type { AppRoute } from "@ts-rest/core";
 import {
   zeroComputerConnectorContract,
   zeroConnectorAuthorizeContract,
+  zeroConnectorOauthStartContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
   zeroConnectorScopeDiffContract,
@@ -31,6 +32,7 @@ import {
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -327,6 +329,18 @@ async function buildProviderAuthorizeUrl(args: {
       state: args.state,
     }),
   );
+}
+
+function internalServerError(message: string) {
+  return {
+    status: 500 as const,
+    body: {
+      error: {
+        message,
+        code: "INTERNAL_SERVER_ERROR",
+      },
+    },
+  };
 }
 
 const getConnectorListInner$ = computed(async (get) => {
@@ -655,6 +669,81 @@ const authorizeConnectorInner$ = createAuthorizeConnectorInner(
   zeroConnectorAuthorizeContract.authorize,
 );
 
+const startConnectorOauthInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const params = get(pathParamsOf(zeroConnectorOauthStartContract.start));
+    const request = get(request$).raw;
+    const auth = get(authContext$);
+    const type = params.type;
+
+    if (type === "computer") {
+      return badRequestMessage("Computer connector does not use OAuth");
+    }
+
+    if (!getConnectorAuthMethod(type, "oauth")) {
+      return badRequestMessage(`${type} connector does not use OAuth`);
+    }
+
+    if (!auth.orgId) {
+      return badRequestMessage(
+        "Explicit org context required — ensure active org in session",
+      );
+    }
+
+    const state = generateState();
+    const origin = getConnectorOAuthOrigin(request);
+    const redirectUri = `${origin}/api/connectors/${type}/callback`;
+    const credentials = getConnectorOAuthCredentials(type, optionalEnv);
+    if (!credentials?.configured) {
+      return internalServerError(`${type} OAuth not configured`);
+    }
+
+    const authResult = credentials.clientId
+      ? await buildAuthorizeUrl({
+          type,
+          clientId: credentials.clientId,
+          redirectUri,
+          state,
+        })
+      : await buildProviderAuthorizeUrl({
+          type,
+          redirectUri,
+          state,
+        });
+    signal.throwIfAborted();
+    if (!authResult) {
+      return internalServerError(`${type} OAuth not configured`);
+    }
+
+    await set(
+      deleteZeroConnectorLocalState$,
+      { orgId: auth.orgId, userId: auth.userId, type },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const writeDb = set(writeDb$);
+    await writeDb.insert(connectorOauthStates).values({
+      state,
+      type,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      redirectUri,
+      codeVerifier: authResult.codeVerifier,
+      oauthContext: authResult.oauthContext,
+      expiresAt: new Date(nowDate().getTime() + COOKIE_MAX_AGE * 1000),
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        authorizationUrl: authResult.url,
+      },
+    };
+  },
+);
+
 const createConnectorSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -781,6 +870,10 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorAuthorizeContract.authorize,
     handler: authorizeConnectorInner$,
+  },
+  {
+    route: zeroConnectorOauthStartContract.start,
+    handler: authRoute(connectorWriteAuth, startConnectorOauthInner$),
   },
   {
     route: zeroConnectorSessionByIdContract.get,

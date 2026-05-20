@@ -58,7 +58,8 @@ export function getOAuthWebOrigin(request: Request): string {
     return new URL(webOrigin).origin;
   }
 
-  return new URL(request.url).origin;
+  const requestUrl = new URL(request.url);
+  return canonicalWebOriginForApiHost(requestUrl) ?? requestUrl.origin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
