@@ -47,6 +47,7 @@ import {
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 
 const log = logger("zero-attachment-chips");
+const CLERK_USER_ID_PREFIX = "user_";
 
 type DocumentAttachmentPreviewKind =
   | "markdown"
@@ -85,6 +86,75 @@ function filenameFromUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
   const last = path.split("/").pop();
   return last && last.length > 0 ? last : "image";
+}
+
+function storageUserIdFromFileUrlSegment(userIdSegment: string): string {
+  if (
+    userIdSegment === "user" ||
+    userIdSegment.startsWith(CLERK_USER_ID_PREFIX) ||
+    userIdSegment.startsWith("user-")
+  ) {
+    return userIdSegment;
+  }
+  return `${CLERK_USER_ID_PREFIX}${userIdSegment}`;
+}
+
+function isPlatformFileUrlHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "vm0.ai" ||
+    hostname.endsWith(".vm0.ai") ||
+    hostname === "vm6.ai" ||
+    hostname.endsWith(".vm6.ai") ||
+    hostname === "vm7.ai" ||
+    hostname.endsWith(".vm7.ai")
+  );
+}
+
+function publicArtifactsBaseUrl(): string | null {
+  const baseUrl = import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL;
+  if (!baseUrl || !URL.canParse(baseUrl)) {
+    return null;
+  }
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function legacyFileUrlToArtifactCdnUrl(url: string): string | null {
+  const baseUrl = publicArtifactsBaseUrl();
+  if (!baseUrl) {
+    return null;
+  }
+
+  if (!URL.canParse(url, window.location.origin)) {
+    return null;
+  }
+
+  const parsed = new URL(url, window.location.origin);
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !isPlatformFileUrlHost(parsed.hostname)
+  ) {
+    return null;
+  }
+
+  const segments = parsed.pathname.split("/");
+  const [, route, userIdSegment, id, filename] = segments;
+  if (
+    route !== "f" ||
+    segments.length !== 5 ||
+    !userIdSegment ||
+    !id ||
+    !filename
+  ) {
+    return null;
+  }
+
+  const storageUserId = storageUserIdFromFileUrlSegment(userIdSegment);
+  return `${baseUrl}/artifacts/${encodeURIComponent(storageUserId)}/${id}/${filename}`;
+}
+
+function downloadFetchUrl(url: string): string {
+  return legacyFileUrlToArtifactCdnUrl(url) ?? url;
 }
 
 export function getAttachmentRawUrl(url: string): string {
@@ -211,11 +281,12 @@ async function fetchBlobForDownload(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob | null> {
+  const fetchUrl = downloadFetchUrl(url);
   // The catch branch reports network/CORS failures without falling back to
   // cross-origin anchor navigation, which would open images instead.
   // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
   try {
-    const res = await fetch(url, {
+    const res = await fetch(fetchUrl, {
       cache: "reload",
       mode: "cors",
       signal,

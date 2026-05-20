@@ -18,6 +18,7 @@ import {
   PLACEHOLDER,
   sendMessageInUI,
 } from "./chat-test-helpers.ts";
+import { downloadAttachmentUrl } from "../zero-attachment-chips.tsx";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -402,6 +403,55 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
 // ---------------------------------------------------------------------------
 
 describe("chat-i-066: lightbox download fetches blobs", () => {
+  it("fetches the CDN artifact directly for legacy file URLs", async () => {
+    const previousBaseUrl = import.meta.env.VITE_PUBLIC_ARTIFACTS_BASE_URL;
+    const legacyUrl =
+      "https://tunnel-yuma-vm0-www.vm7.ai/f/3BennfUepyJwP3OaiYD0rK8CZKs/9c4c6df4-f0ed-4c25-af3a-b58bc40faf0f/image-9c4c6df4.png";
+    const cdnUrl =
+      "https://cdn.vm7.io/artifacts/user_3BennfUepyJwP3OaiYD0rK8CZKs/9c4c6df4-f0ed-4c25-af3a-b58bc40faf0f/image-9c4c6df4.png";
+    let legacyRequests = 0;
+    let cdnRequests = 0;
+    vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
+    server.use(
+      http.get(legacyUrl, () => {
+        legacyRequests += 1;
+        return HttpResponse.error();
+      }),
+      http.get(cdnUrl, () => {
+        cdnRequests += 1;
+        return HttpResponse.text("img", {
+          headers: { "content-type": "image/png" },
+        });
+      }),
+    );
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:download");
+    const revokeObjectURLSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function () {
+        return;
+      });
+
+    try {
+      await downloadAttachmentUrl(legacyUrl, context.signal, "image.png");
+
+      expect(legacyRequests).toBe(0);
+      expect(cdnRequests).toBe(1);
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
+      expect(anchorClickSpy).toHaveBeenCalledOnce();
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:download");
+    } finally {
+      vi.stubEnv("VITE_PUBLIC_ARTIFACTS_BASE_URL", previousBaseUrl ?? "");
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
+      anchorClickSpy.mockRestore();
+    }
+  });
+
   it("does not fall back to opening the image URL when fetch fails", async () => {
     const user = userEvent.setup();
     const imageUrl = "http://localhost:3000/f/user-1/file-1/photo.png";
