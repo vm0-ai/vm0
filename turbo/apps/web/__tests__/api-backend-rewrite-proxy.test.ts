@@ -705,6 +705,19 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero connectors search rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/search")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/connectors/search/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/connectors/github")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero connector OAuth start rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/oauth/start"),
