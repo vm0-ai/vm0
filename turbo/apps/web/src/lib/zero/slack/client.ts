@@ -1,5 +1,5 @@
 import { WebClient } from "@slack/web-api";
-import type { Block, KnownBlock, View } from "@slack/web-api";
+import type { View } from "@slack/web-api";
 import { env } from "../../../env";
 import { logger } from "../../shared/logger";
 
@@ -64,33 +64,6 @@ function buildWebClient(token?: string): WebClient {
  */
 export function createSlackClient(token: string): WebClient {
   return buildWebClient(token);
-}
-
-/**
- * Post a message to a Slack channel or thread
- *
- * @param client - Slack WebClient
- * @param channel - Channel ID
- * @param text - Message text (used as fallback for blocks)
- * @param options - Additional options
- */
-export async function postMessage(
-  client: WebClient,
-  channel: string,
-  text: string,
-  options?: {
-    threadTs?: string;
-    blocks?: (Block | KnownBlock)[];
-  },
-): Promise<{ ts: string | undefined; channel: string | undefined }> {
-  const result = await client.chat.postMessage({
-    channel,
-    text,
-    thread_ts: options?.threadTs,
-    blocks: options?.blocks,
-  });
-
-  return { ts: result.ts, channel: result.channel };
 }
 
 /**
