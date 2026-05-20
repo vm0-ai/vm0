@@ -126,21 +126,3 @@ function addUsageRows(
     );
   }
 }
-
-/**
- * Reset creditEnabled flags for all disabled members in an org.
- * Called on billing cycle reset (handleInvoicePaid).
- */
-export async function resetMemberCreditFlags(orgId: string): Promise<void> {
-  const db = globalThis.services.db;
-
-  await db
-    .update(orgMembersMetadata)
-    .set({ creditEnabled: true, updatedAt: new Date() })
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.creditEnabled, false),
-      ),
-    );
-}

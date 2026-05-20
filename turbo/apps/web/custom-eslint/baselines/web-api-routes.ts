@@ -7,7 +7,6 @@
  * that this baseline only shrinks relative to the branch's git base.
  */
 export const WEB_API_ROUTE_BASELINE = [
-  "app/api/webhooks/stripe/route.ts",
   "app/api/zero/feature-switches/route.ts",
 ] as const;
 

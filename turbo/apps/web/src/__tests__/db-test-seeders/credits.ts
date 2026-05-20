@@ -39,7 +39,7 @@ import {
  * @why-db-direct Sets Stripe billing preconditions (stripeCustomerId,
  * subscriptionId, tier). These fields are normally written by Stripe
  * Dashboard / checkout flow. No API or webhook in our codebase bootstraps
- * these from scratch — `handleCheckoutCompleted` READS `stripeCustomerId`
+ * these from scratch — the Stripe checkout webhook reads `stripeCustomerId`
  * to find the org, so it cannot create the initial association.
  */
 export async function updateOrgStripeFields(
@@ -113,7 +113,7 @@ export async function updateOrgStripeSubscription(
  * Insert a credit expires record for testing.
  *
  * @why-db-direct Credit expires records are normally created by
- * `handleInvoicePaid` during subscription renewal. Tests need precise
+ * subscription renewal handling. Tests need precise
  * control over amounts, remaining balances, and expiry dates that cannot
  * be achieved through the webhook flow.
  */

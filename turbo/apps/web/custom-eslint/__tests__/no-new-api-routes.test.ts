@@ -74,15 +74,11 @@ describe("missingBaselineRoutes", () => {
 
   it("returns stale baseline entries when allowlisted routes are deleted", () => {
     tempDir = mkdtempSync(path.join(os.tmpdir(), "web-api-routes-"));
-    const existingRoute = WEB_API_ROUTE_BASELINE[0];
-    const routePath = path.join(tempDir, existingRoute);
-    mkdirSync(path.dirname(routePath), { recursive: true });
-    writeFileSync(routePath, "");
+    const deletedRoute = WEB_API_ROUTE_BASELINE[0];
 
     const missing = missingBaselineRoutes(tempDir);
 
-    expect(missing).not.toContain(existingRoute);
-    expect(missing).toContain(WEB_API_ROUTE_BASELINE[1]);
+    expect(missing).toContain(deletedRoute);
   });
 });
 
@@ -139,9 +135,7 @@ describe("web API route baseline expansion", () => {
     writeFileSync(
       baselinePath,
       `
-        export const WEB_API_ROUTE_BASELINE = [
-          "${WEB_API_ROUTE_BASELINE[0]}",
-        ] as const;
+        export const WEB_API_ROUTE_BASELINE = [] as const;
       `,
     );
     execFileSync("git", ["init"], { cwd: tempGitDir });
@@ -163,6 +157,6 @@ describe("web API route baseline expansion", () => {
 
     const expanded = expandedBaselineRoutesSinceReference(tempGitDir);
 
-    expect(expanded).toContain(WEB_API_ROUTE_BASELINE[1]);
+    expect(expanded).toContain(WEB_API_ROUTE_BASELINE[0]);
   });
 });

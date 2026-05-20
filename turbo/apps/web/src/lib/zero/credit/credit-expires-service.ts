@@ -1,4 +1,4 @@
-import { eq, and, gt, lte, asc, desc, sql } from "drizzle-orm";
+import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { logger } from "../../shared/logger";
@@ -97,7 +97,7 @@ export async function deductFromExpiresRecords(
  * Settle expired credits: find records past their expiry with remaining > 0,
  * zero them out, and deduct the total from org_metadata.credits.
  *
- * Called from handleInvoicePaid() BEFORE granting new credits.
+ * Called from subscription renewal handling BEFORE granting new credits.
  */
 export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
   const expired = await tx
@@ -218,41 +218,4 @@ export async function getExpiresRecordsSummary(orgId: string): Promise<{
     }, 0);
 
   return { expiringNextCycle, nextExpiryDate };
-}
-
-/**
- * Remaining credits for active (non-expired) records, returned as individual
- * rows so callers can distinguish subscription_renewal records from different
- * tiers (e.g. pro=20k vs team=120k).
- */
-export async function getCreditBreakdownRecords(orgId: string): Promise<
-  Array<{
-    id: string;
-    source: string;
-    amount: number;
-    remaining: number;
-    expiresAt: Date;
-    createdAt: Date;
-  }>
-> {
-  const db = globalThis.services.db;
-
-  return db
-    .select({
-      id: creditExpiresRecord.id,
-      source: creditExpiresRecord.source,
-      amount: creditExpiresRecord.amount,
-      remaining: creditExpiresRecord.remaining,
-      expiresAt: creditExpiresRecord.expiresAt,
-      createdAt: creditExpiresRecord.createdAt,
-    })
-    .from(creditExpiresRecord)
-    .where(
-      and(
-        eq(creditExpiresRecord.orgId, orgId),
-        gt(creditExpiresRecord.remaining, 0),
-        gt(creditExpiresRecord.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(desc(creditExpiresRecord.createdAt));
 }

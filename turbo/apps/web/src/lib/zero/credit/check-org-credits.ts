@@ -40,7 +40,7 @@ function isDatabase(value: unknown): value is CreditDb {
  * The spendable balance subtracts unsettled expired records so a dormant
  * non-subscription org whose credits have expired (but haven't yet been
  * settled by `processOrgUsageEvents` or the next renewal) isn't admitted on its
- * stale inflated balance — same form `getBillingStatus` presents in the UI.
+ * stale inflated balance — same form the billing status API presents in the UI.
  *
  * Callable from any vm0-billable route. For LLM runs that may use BYOK,
  * first resolve the run admission context, then call
