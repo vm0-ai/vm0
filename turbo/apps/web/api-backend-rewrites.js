@@ -251,6 +251,7 @@ const ZERO_SLACK_OAUTH_CALLBACK_REWRITE_SOURCE =
   "/api/zero/slack/oauth/callback";
 const ZERO_SLACK_OAUTH_PATH_RE =
   /^\/api\/zero\/slack\/oauth\/(?:install|connect|callback)$/;
+const ZERO_SLACK_CHANNELS_REWRITE_SOURCE = "/api/zero/slack/channels";
 const ZERO_SLACK_EVENTS_REWRITE_SOURCE = "/api/zero/slack/events";
 const ZERO_SLACK_COMMANDS_REWRITE_SOURCE = "/api/zero/slack/commands";
 const ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE = "/api/zero/slack/interactive";
@@ -595,6 +596,7 @@ export const API_BACKEND_REWRITES = [
   [ZERO_SLACK_OAUTH_INSTALL_REWRITE_SOURCE, "/api/zero/slack/oauth/install"],
   [ZERO_SLACK_OAUTH_CONNECT_REWRITE_SOURCE, "/api/zero/slack/oauth/connect"],
   [ZERO_SLACK_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/zero/slack/oauth/callback"],
+  [ZERO_SLACK_CHANNELS_REWRITE_SOURCE, "/api/zero/slack/channels"],
   [ZERO_SLACK_EVENTS_REWRITE_SOURCE, "/api/zero/slack/events"],
   [ZERO_SLACK_COMMANDS_REWRITE_SOURCE, "/api/zero/slack/commands"],
   [ZERO_SLACK_INTERACTIVE_REWRITE_SOURCE, "/api/zero/slack/interactive"],

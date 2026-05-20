@@ -781,6 +781,17 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
+  it("matches the Slack channels rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/slack/channels")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/channels/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/channel")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/slack/channels-list")).toBe(
+      false,
+    );
+  });
+
   it("matches Slack provider callback rewrite paths exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/slack/events")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/slack/commands")).toBe(true);
