@@ -14,6 +14,7 @@ export const googleAds = {
     authMethods: {
       oauth: {
         featureFlag: FeatureSwitchKey.GoogleAdsConnector,
+        showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",
         secrets: {

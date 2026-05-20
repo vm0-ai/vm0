@@ -250,15 +250,16 @@ function buildConnectorTypeStatus(params: {
     },
   );
   const hasApiToken = availableAuthMethods.includes("api-token");
-  const hasFeatureFlaggedMethod = availableAuthMethods.some((authMethod) => {
-    return !!getConnectorAuthMethod(params.type, authMethod)?.featureFlag;
+  const showExperimentalLabel = availableAuthMethods.some((authMethod) => {
+    const method = getConnectorAuthMethod(params.type, authMethod);
+    return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
 
   return {
     type: params.type,
     label:
-      hasFeatureFlaggedMethod &&
+      showExperimentalLabel &&
       !hasApiToken &&
       !isHostBackedConnector(params.type)
         ? `[Experimental] ${config.label}`
