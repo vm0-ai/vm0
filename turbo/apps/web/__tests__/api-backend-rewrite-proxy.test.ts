@@ -39,6 +39,7 @@ const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_LOG_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_CONNECTOR_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -783,7 +784,7 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath(
-        "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
+        "/api/zero/connectors/github/sessions/not-a-uuid",
       ),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/connectors/sessions")).toBe(
@@ -791,6 +792,29 @@ describe("API backend rewrite proxy behavior", () => {
     );
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/session"),
+    ).toBe(false);
+  });
+
+  it("matches the zero connector session polling rewrite path only for UUID session IDs", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/connectors/github/sessions/not-a-uuid",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
+      ),
     ).toBe(false);
   });
 

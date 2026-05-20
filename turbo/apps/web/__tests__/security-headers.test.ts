@@ -25,6 +25,7 @@ const { getPathMatch } =
 const AGENT_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_RUN_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_LOG_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ZERO_CONNECTOR_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VOICE_CHAT_SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const AGENT_COMPOSE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const ZERO_API_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -1516,6 +1517,14 @@ const ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
   "/api/zero/connectors/sessions",
   "/api/zero/connectors/github/session",
+] as const;
+const ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/sessions/:sessionId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
+const ZERO_CONNECTORS_SESSION_BY_ID_PATH = `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`;
+const ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/sessions/not-a-uuid",
+  `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
+  `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
 ] as const;
 const ZERO_SLACK_CHANNELS_REWRITE_SOURCE = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_PATH = "/api/zero/slack/channels";
@@ -3937,6 +3946,33 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only UUID-shaped zero connector session polling rewrites", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/zero/connectors/:type/sessions/:sessionId",
+    });
+
+    const matcher = getPathMatch(ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(ZERO_CONNECTORS_SESSION_BY_ID_PATH)).toStrictEqual({
+      type: "github",
+      sessionId: ZERO_CONNECTOR_SESSION_ID,
+    });
+    for (const pathname of ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
