@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -10,36 +9,40 @@ import {
   refreshGoogleToken,
 } from "./google-oauth";
 export const googleDriveHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl((clientId, redirectUri, state) => {
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    const redirectUri = args.redirectUri;
+    const state = args.state;
     return buildGoogleAuthorizationUrl(
       "google-drive",
       clientId,
       redirectUri,
       state,
     );
-  }),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeGoogleOAuthCode(
-        "google-drive",
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeGoogleOAuthCode(
+      "google-drive",
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.GOOGLE_OAUTH_CLIENT_ID;
   },
@@ -52,14 +55,14 @@ export const googleDriveHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "GOOGLE_DRIVE_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(
-    (clientId, clientSecret, refreshToken) => {
-      return refreshGoogleToken(
-        "google-drive",
-        clientId,
-        clientSecret,
-        refreshToken,
-      );
-    },
-  ),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const refreshToken = args.refreshToken;
+    return refreshGoogleToken(
+      "google-drive",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

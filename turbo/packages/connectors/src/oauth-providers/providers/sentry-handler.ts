@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,28 +10,32 @@ import {
   refreshSentryToken,
 } from "./sentry";
 export const sentryHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildSentryAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeSentryCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildSentryAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeSentryCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.SENTRY_OAUTH_CLIENT_ID;
   },
@@ -43,5 +46,8 @@ export const sentryHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "SENTRY_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshSentryToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshSentryToken(clientId, clientSecret, args.refreshToken);
+  },
 };

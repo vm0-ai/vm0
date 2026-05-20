@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,28 +10,32 @@ import {
   refreshXeroToken,
 } from "./xero";
 export const xeroHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildXeroAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeXeroCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.username,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildXeroAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeXeroCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.XERO_OAUTH_CLIENT_ID;
   },
@@ -43,5 +46,8 @@ export const xeroHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "XERO_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshXeroToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshXeroToken(clientId, clientSecret, args.refreshToken);
+  },
 };

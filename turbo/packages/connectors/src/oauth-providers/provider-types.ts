@@ -83,41 +83,16 @@ export interface OAuthRevokeArgs {
 
 export type RevokeTokenFn = (args: OAuthRevokeArgs) => Promise<void>;
 
-type ClientIdBuildAuthUrlFn = (
-  clientId: string,
-  redirectUri: string,
-  state: string,
-) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
-
-type ClientCredentialExchangeCodeFn = (
-  clientId: string,
-  clientSecret: string,
-  code: string,
-  redirectUri: string,
-  state?: string,
-  codeVerifier?: string,
-) => Promise<OAuthTokenResult>;
-
-type ClientCredentialRefreshTokenFn = (
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string,
-) => Promise<OAuthRefreshResult>;
-
-type ClientCredentialRevokeTokenFn = (
-  clientId: string,
-  clientSecret: string,
-  accessToken: string,
-) => Promise<void>;
-
-function requireOAuthClientId(args: { readonly clientId?: string }): string {
+export function requireOAuthClientId(args: {
+  readonly clientId?: string;
+}): string {
   if (!args.clientId) {
     throw new Error("OAuth provider requires a client ID");
   }
   return args.clientId;
 }
 
-function requireOAuthClientCredentials(args: {
+export function requireOAuthClientCredentials(args: {
   readonly clientId?: string;
   readonly clientSecret?: string;
 }): { readonly clientId: string; readonly clientSecret: string } {
@@ -125,49 +100,6 @@ function requireOAuthClientCredentials(args: {
     throw new Error("OAuth provider requires client credentials");
   }
   return { clientId: args.clientId, clientSecret: args.clientSecret };
-}
-
-export function adaptClientIdAuthUrl(
-  buildAuthUrl: ClientIdBuildAuthUrlFn,
-): BuildAuthUrlFn {
-  return (args) => {
-    const clientId = requireOAuthClientId(args);
-    return buildAuthUrl(clientId, args.redirectUri, args.state);
-  };
-}
-
-export function adaptClientCredentialCodeExchange(
-  exchangeCode: ClientCredentialExchangeCodeFn,
-): ExchangeCodeFn {
-  return (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
-    return exchangeCode(
-      clientId,
-      clientSecret,
-      args.code,
-      args.redirectUri,
-      args.state,
-      args.codeVerifier,
-    );
-  };
-}
-
-export function adaptClientCredentialTokenRefresh(
-  refreshToken: ClientCredentialRefreshTokenFn,
-): RefreshTokenFn {
-  return (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
-    return refreshToken(clientId, clientSecret, args.refreshToken);
-  };
-}
-
-export function adaptClientCredentialTokenRevocation(
-  revokeToken: ClientCredentialRevokeTokenFn,
-): RevokeTokenFn {
-  return (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
-    return revokeToken(clientId, clientSecret, args.accessToken);
-  };
 }
 
 export interface OAuthProvider {

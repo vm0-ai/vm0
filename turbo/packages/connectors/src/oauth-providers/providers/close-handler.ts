@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,28 +10,32 @@ import {
   refreshCloseToken,
 } from "./close";
 export const closeHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildCloseAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeCloseCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.email,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildCloseAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeCloseCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.email,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.CLOSE_OAUTH_CLIENT_ID;
   },
@@ -43,5 +46,8 @@ export const closeHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "CLOSE_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshCloseToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshCloseToken(clientId, clientSecret, args.refreshToken);
+  },
 };

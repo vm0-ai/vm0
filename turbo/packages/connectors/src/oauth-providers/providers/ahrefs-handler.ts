@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,28 +10,32 @@ import {
   refreshAhrefsToken,
 } from "./ahrefs";
 export const ahrefsHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildAhrefsAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeAhrefsCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildAhrefsAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeAhrefsCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.AHREFS_OAUTH_CLIENT_ID;
   },
@@ -43,5 +46,8 @@ export const ahrefsHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "AHREFS_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshAhrefsToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshAhrefsToken(clientId, clientSecret, args.refreshToken);
+  },
 };

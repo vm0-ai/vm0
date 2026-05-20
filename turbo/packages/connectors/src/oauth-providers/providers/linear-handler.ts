@@ -1,8 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientCredentialTokenRevocation,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -13,28 +11,32 @@ import {
   revokeLinearToken,
 } from "./linear";
 export const linearHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildLinearAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeLinearCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildLinearAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeLinearCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.LINEAR_OAUTH_CLIENT_ID;
   },
@@ -45,6 +47,12 @@ export const linearHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "LINEAR_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshLinearToken),
-  revokeToken: adaptClientCredentialTokenRevocation(revokeLinearToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshLinearToken(clientId, clientSecret, args.refreshToken);
+  },
+  revokeToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return revokeLinearToken(clientId, clientSecret, args.accessToken);
+  },
 };

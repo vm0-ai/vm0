@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,22 +10,25 @@ import {
   refreshStripeToken,
 } from "./stripe";
 export const stripeHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildStripeAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code) => {
-      const result = await exchangeStripeCode(clientId, clientSecret, code);
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.username,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildStripeAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const result = await exchangeStripeCode(clientId, clientSecret, code);
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.STRIPE_OAUTH_CLIENT_ID;
   },
@@ -37,5 +39,8 @@ export const stripeHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "STRIPE_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshStripeToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshStripeToken(clientId, clientSecret, args.refreshToken);
+  },
 };

@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,29 +10,38 @@ import {
   refreshAirtableToken,
 } from "./airtable";
 export const airtableHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildAirtableAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri, _state, codeVerifier) => {
-      const result = await exchangeAirtableCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-        codeVerifier,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.username,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildAirtableAuthorizationUrl(
+      clientId,
+      args.redirectUri,
+      args.state,
+    );
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const codeVerifier = args.codeVerifier;
+    const result = await exchangeAirtableCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+      codeVerifier,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.AIRTABLE_OAUTH_CLIENT_ID;
   },
@@ -44,5 +52,8 @@ export const airtableHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "AIRTABLE_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshAirtableToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshAirtableToken(clientId, clientSecret, args.refreshToken);
+  },
 };

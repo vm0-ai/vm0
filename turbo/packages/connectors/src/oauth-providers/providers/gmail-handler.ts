@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,28 +10,32 @@ import {
 } from "./gmail";
 import { refreshGoogleToken } from "./google-oauth";
 export const gmailHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildGmailAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeGmailCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildGmailAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeGmailCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.GOOGLE_OAUTH_CLIENT_ID;
   },
@@ -43,9 +46,9 @@ export const gmailHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "GMAIL_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(
-    (clientId, clientSecret, refreshToken) => {
-      return refreshGoogleToken("gmail", clientId, clientSecret, refreshToken);
-    },
-  ),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const refreshToken = args.refreshToken;
+    return refreshGoogleToken("gmail", clientId, clientSecret, refreshToken);
+  },
 };

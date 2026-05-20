@@ -1,6 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -9,26 +9,30 @@ import {
   getVercelSecretName,
 } from "./vercel";
 export const vercelHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildVercelAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeVercelCode(
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        scopes: [],
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.username,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildVercelAuthorizationUrl(clientId, args.redirectUri, args.state);
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeVercelCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      scopes: [],
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.VERCEL_OAUTH_CLIENT_ID;
   },

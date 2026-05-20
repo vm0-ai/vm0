@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -10,36 +9,40 @@ import {
   refreshMicrosoftToken,
 } from "./microsoft-oauth";
 export const outlookMailHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl((clientId, redirectUri, state) => {
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    const redirectUri = args.redirectUri;
+    const state = args.state;
     return buildMicrosoftAuthorizationUrl(
       "outlook-mail",
       clientId,
       redirectUri,
       state,
     );
-  }),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, redirectUri) => {
-      const result = await exchangeMicrosoftOAuthCode(
-        "outlook-mail",
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.name,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const redirectUri = args.redirectUri;
+    const result = await exchangeMicrosoftOAuthCode(
+      "outlook-mail",
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.name,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.MICROSOFT_OAUTH_CLIENT_ID;
   },
@@ -52,14 +55,14 @@ export const outlookMailHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "OUTLOOK_MAIL_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(
-    (clientId, clientSecret, refreshToken) => {
-      return refreshMicrosoftToken(
-        "outlook-mail",
-        clientId,
-        clientSecret,
-        refreshToken,
-      );
-    },
-  ),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const refreshToken = args.refreshToken;
+    return refreshMicrosoftToken(
+      "outlook-mail",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

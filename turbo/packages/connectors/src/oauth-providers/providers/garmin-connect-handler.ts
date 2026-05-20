@@ -1,7 +1,6 @@
 import {
-  adaptClientCredentialCodeExchange,
-  adaptClientCredentialTokenRefresh,
-  adaptClientIdAuthUrl,
+  requireOAuthClientCredentials,
+  requireOAuthClientId,
   type OAuthConnectorProvider,
 } from "../provider-types";
 import {
@@ -11,33 +10,41 @@ import {
   refreshGarminConnectToken,
 } from "./garmin-connect";
 export const garminConnectHandler: OAuthConnectorProvider = {
-  buildAuthUrl: adaptClientIdAuthUrl(buildGarminConnectAuthorizationUrl),
-  exchangeCode: adaptClientCredentialCodeExchange(
-    async (clientId, clientSecret, code, _redirectUri, state) => {
-      if (!state) {
-        throw new Error(
-          "Garmin Connect PKCE requires state for code_verifier derivation",
-        );
-      }
-      const result = await exchangeGarminConnectCode(
-        clientId,
-        clientSecret,
-        code,
-        state,
+  buildAuthUrl: (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildGarminConnectAuthorizationUrl(
+      clientId,
+      args.redirectUri,
+      args.state,
+    );
+  },
+  exchangeCode: async (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const code = args.code;
+    const state = args.state;
+    if (!state) {
+      throw new Error(
+        "Garmin Connect PKCE requires state for code_verifier derivation",
       );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-        scopes: result.scopes,
-        userInfo: {
-          id: result.userInfo.id,
-          username: result.userInfo.username,
-          email: result.userInfo.email,
-        },
-      };
-    },
-  ),
+    }
+    const result = await exchangeGarminConnectCode(
+      clientId,
+      clientSecret,
+      code,
+      state,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
+  },
   getClientId: (e) => {
     return e.GARMIN_CONNECT_OAUTH_CLIENT_ID;
   },
@@ -48,5 +55,8 @@ export const garminConnectHandler: OAuthConnectorProvider = {
   getRefreshSecretName: () => {
     return "GARMIN_CONNECT_REFRESH_TOKEN";
   },
-  refreshToken: adaptClientCredentialTokenRefresh(refreshGarminConnectToken),
+  refreshToken: (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshGarminConnectToken(clientId, clientSecret, args.refreshToken);
+  },
 };
