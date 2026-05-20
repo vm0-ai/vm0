@@ -983,6 +983,9 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/integrations/telegram/link"),
     ).toBe(true);
     expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/123456789"),
+    ).toBe(true);
+    expect(
       matchesApiBackendRewritePath(
         "/api/integrations/telegram/123456789/avatar",
       ),
@@ -1013,21 +1016,12 @@ describe("API backend rewrite proxy behavior", () => {
       ),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/integrations/telegram/avatar"),
-    ).toBe(false);
-    expect(
       matchesApiBackendRewritePath(
         "/api/integrations/telegram/123456789/avatars",
       ),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/integrations/telegram/extra"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/integrations/telegram/auth"),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/integrations/telegram/links"),
+      matchesApiBackendRewritePath("/api/integrations/telegram/123456789/link"),
     ).toBe(false);
   });
 
@@ -3074,6 +3068,26 @@ describe("API backend rewrite proxy behavior", () => {
           "application/json",
         );
         expect(linkPayload.body).toBe(linkBody);
+
+        const botBody = JSON.stringify({ defaultAgentId: "agent_123" });
+        const botResponse = await fetch(
+          `${origin}/api/integrations/telegram/123456789?view=detail`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: botBody,
+          },
+        );
+
+        const botPayload = (await botResponse.json()) as EchoPayload;
+        expect(botPayload.method).toBe("PATCH");
+        expect(botPayload.url).toBe(
+          "/api/integrations/telegram/123456789?view=detail",
+        );
+        expect(botPayload.headers["content-type"]).toContain(
+          "application/json",
+        );
+        expect(botPayload.body).toBe(botBody);
 
         const avatarResponse = await fetch(
           `${origin}/api/integrations/telegram/123456789/avatar?exp=1000&sig=avatar-signature`,

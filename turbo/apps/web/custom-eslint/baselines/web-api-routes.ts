@@ -7,7 +7,6 @@
  * that this baseline only shrinks relative to the branch's git base.
  */
 export const WEB_API_ROUTE_BASELINE = [
-  "app/api/integrations/telegram/[botId]/route.ts",
   "app/api/webhooks/agent/firewall/auth/route.ts",
   "app/api/webhooks/agent/heartbeat/route.ts",
   "app/api/webhooks/agent/storages/commit/route.ts",

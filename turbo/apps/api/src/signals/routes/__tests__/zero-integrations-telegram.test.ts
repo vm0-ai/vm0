@@ -794,7 +794,12 @@ describe("GET /api/integrations/telegram/:botId", () => {
     }
   });
 
-  async function seedBotStatusContext(): Promise<{
+  async function seedBotStatusContext(
+    args: {
+      readonly ownerUserId?: string;
+      readonly linkUser?: boolean;
+    } = {},
+  ): Promise<{
     readonly token: string;
     readonly botId: string;
     readonly orgId: string;
@@ -810,6 +815,7 @@ describe("GET /api/integrations/telegram/:botId", () => {
     memberships.push(membership);
 
     const botId = newTelegramBotId();
+    const ownerUserId = args.ownerUserId ?? userId;
     context.mocks.telegram.getMe.mockResolvedValue({
       id: Number(botId),
       is_bot: true,
@@ -819,12 +825,26 @@ describe("GET /api/integrations/telegram/:botId", () => {
     const builder = makeTelegramFixtureBuilder(orgId);
     const installation = await store.set(
       seedTelegramInstallation$,
-      { orgId, ownerUserId: userId, telegramBotId: botId },
+      { orgId, ownerUserId, telegramBotId: botId },
       context.signal,
     );
     builder.composeIds.push(installation.composeId);
     builder.telegramBotIds.push(installation.telegramBotId);
     fixtures.push(freezeTelegramFixture(builder));
+
+    if (args.linkUser) {
+      await store.set(
+        seedTelegramUserLink$,
+        {
+          installationId: botId,
+          telegramUserId: "99077",
+          vm0UserId: userId,
+          telegramUsername: "linked_user",
+          telegramDisplayName: "Linked User",
+        },
+        context.signal,
+      );
+    }
 
     return {
       token: mintZeroToken({
@@ -837,6 +857,37 @@ describe("GET /api/integrations/telegram/:botId", () => {
       userId,
     };
   }
+
+  it("returns 401 when no auth token is provided", async () => {
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getBot({
+        params: { botId: newTelegramBotId() },
+        headers: {},
+      }),
+      [401],
+    );
+
+    expectUnauthorized(response.body);
+  });
+
+  it("returns 404 for an unknown bot in the active org", async () => {
+    const { token } = await seedBotStatusContext();
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getBot({
+        params: { botId: newTelegramBotId() },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Telegram bot not found", code: "NOT_FOUND" },
+    });
+  });
 
   it("returns 404 when the custom bot is not in the active org", async () => {
     const { token } = await seedBotStatusContext();
@@ -868,7 +919,7 @@ describe("GET /api/integrations/telegram/:botId", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns full status for a visible custom bot", async () => {
+  it("returns full status for an owned custom bot", async () => {
     const { token, botId } = await seedBotStatusContext();
     const client = setupApp({ context })(zeroIntegrationsTelegramContract);
 
@@ -882,8 +933,14 @@ describe("GET /api/integrations/telegram/:botId", () => {
 
     expect(response.body).toMatchObject({
       id: botId,
+      username: `bot_${botId}`,
+      avatarUrl: expect.stringContaining(
+        `/api/integrations/telegram/${botId}/avatar?exp=`,
+      ),
+      agent: { id: expect.any(String), name: expect.any(String) },
       isOwner: true,
       isConnected: false,
+      connectedUser: null,
       tokenStatus: "valid",
       domainConfigured: false,
       environment: {
@@ -891,6 +948,86 @@ describe("GET /api/integrations/telegram/:botId", () => {
         requiredVars: expect.any(Array),
         missingSecrets: expect.any(Array),
         missingVars: expect.any(Array),
+      },
+    });
+  });
+
+  it("returns full status for a linked non-owner custom bot", async () => {
+    const { token, botId } = await seedBotStatusContext({
+      ownerUserId: `user_${randomUUID()}`,
+      linkUser: true,
+    });
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getBot({
+        params: { botId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: botId,
+      isOwner: false,
+      isConnected: true,
+      connectedUser: {
+        telegramUserId: "99077",
+        telegramUsername: "linked_user",
+        telegramDisplayName: "Linked User",
+      },
+    });
+  });
+
+  it("returns full status for an unlinked org member custom bot", async () => {
+    const { token, botId } = await seedBotStatusContext({
+      ownerUserId: `user_${randomUUID()}`,
+    });
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getBot({
+        params: { botId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: botId,
+      isOwner: false,
+      isConnected: false,
+      connectedUser: null,
+    });
+  });
+
+  it("returns the official bot status", async () => {
+    const { token } = await seedBotStatusContext();
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getBot({
+        params: { botId: OFFICIAL_TELEGRAM_BOT_ID },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: OFFICIAL_TELEGRAM_BOT_ID,
+      kind: "official",
+      username: OFFICIAL_BOT_USERNAME,
+      avatarUrl: expect.stringContaining(
+        `/api/integrations/telegram/${OFFICIAL_TELEGRAM_BOT_ID}/avatar?exp=`,
+      ),
+      isOwner: false,
+      isConnected: false,
+      connectedUser: null,
+      tokenStatus: "valid",
+      official: {
+        configured: true,
+        usesDefaultAgent: true,
+        linkedTelegramUserId: null,
       },
     });
   });
