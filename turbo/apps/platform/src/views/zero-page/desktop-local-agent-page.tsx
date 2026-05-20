@@ -7,6 +7,7 @@ import {
   IconLoader2,
   IconPlayerPlay,
   IconPlayerStop,
+  IconRefresh,
   IconTrash,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui/components/ui/button";
@@ -41,6 +42,7 @@ import {
   desktopLocalAgentDialogOpen$,
   desktopLocalAgentPermissionMode$,
   desktopLocalAgentSelectedBackend$,
+  refreshDesktopLocalAgentData$,
   runDesktopLocalAgentAction$,
   setDesktopLocalAgentDialogOpen$,
   setDesktopLocalAgentPermissionMode$,
@@ -138,6 +140,9 @@ function StatusBadge({ entry }: { readonly entry: DesktopLocalAgentEntry }) {
 function BackendSelect() {
   const backend = useGet(desktopLocalAgentSelectedBackend$);
   const probes = useLastResolved(desktopLocalAgentData$)?.probes ?? [];
+  const selectedProbe = probes.find((candidate) => {
+    return candidate.backend === backend;
+  });
   const setBackend = useSet(setDesktopLocalAgentSelectedBackend$);
   return (
     <div className="flex flex-col gap-2">
@@ -162,7 +167,11 @@ function BackendSelect() {
               return candidate.backend === value;
             });
             return (
-              <SelectItem key={value} value={value}>
+              <SelectItem
+                key={value}
+                value={value}
+                disabled={probe?.available === false}
+              >
                 {BACKEND_LABELS[value]}
                 {probe?.available === false ? " (not detected)" : ""}
               </SelectItem>
@@ -170,6 +179,11 @@ function BackendSelect() {
           })}
         </SelectContent>
       </Select>
+      {selectedProbe?.available === false ? (
+        <p className="text-xs text-destructive">
+          {selectedProbe.errorMessage ?? `${BACKEND_LABELS[backend]} not found`}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -214,6 +228,12 @@ function AddLocalAgentDialog() {
   const [submitLoadable, submit] = useLoadableSet(addDesktopLocalAgent$);
   const submitting = submitLoadable.state === "loading";
   const setOpen = useSet(setDesktopLocalAgentDialogOpen$);
+  const backend = useGet(desktopLocalAgentSelectedBackend$);
+  const probes = useLastResolved(desktopLocalAgentData$)?.probes ?? [];
+  const selectedProbe = probes.find((candidate) => {
+    return candidate.backend === backend;
+  });
+  const backendUnavailable = selectedProbe?.available === false;
   const pageSignal = useGet(pageSignal$);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -242,7 +262,7 @@ function AddLocalAgentDialog() {
             onClick={() => {
               detach(submit(pageSignal), Reason.DomCallback);
             }}
-            disabled={submitting}
+            disabled={submitting || backendUnavailable}
           >
             {submitting ? (
               <IconLoader2 size={16} className="animate-spin" />
@@ -282,7 +302,14 @@ function DesktopLocalAgentRow({
       <TableCell>{BACKEND_LABELS[entry.backend]}</TableCell>
       <TableCell>{entry.permissionMode}</TableCell>
       <TableCell>
-        <StatusBadge entry={entry} />
+        <div className="flex flex-col items-start gap-1">
+          <StatusBadge entry={entry} />
+          {entry.errorMessage ? (
+            <span className="max-w-[180px] text-xs text-destructive">
+              {entry.errorMessage}
+            </span>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell>
         <code className="text-xs">{entry.hostId ?? "-"}</code>
@@ -391,6 +418,7 @@ function DesktopLocalAgentTable() {
 function DesktopLocalAgentPageHeader() {
   const setOpen = useSet(setDesktopLocalAgentDialogOpen$);
   const setBackend = useSet(setDesktopLocalAgentSelectedBackend$);
+  const refresh = useSet(refreshDesktopLocalAgentData$);
   const probes = useLastResolved(desktopLocalAgentData$)?.probes ?? [];
   return (
     <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-4">
@@ -404,15 +432,27 @@ function DesktopLocalAgentPageHeader() {
             Desktop-managed workspaces for Codex and Claude Code
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setBackend(defaultBackendForProbes(probes));
-            setOpen(true);
-          }}
-        >
-          <IconFolderPlus size={16} />
-          Add local agent
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Refresh local agent health"
+            onClick={() => {
+              refresh();
+            }}
+          >
+            <IconRefresh size={16} />
+          </Button>
+          <Button
+            onClick={() => {
+              setBackend(defaultBackendForProbes(probes));
+              setOpen(true);
+            }}
+          >
+            <IconFolderPlus size={16} />
+            Add local agent
+          </Button>
+        </div>
       </div>
     </header>
   );

@@ -22,7 +22,9 @@ export interface DesktopLocalAgentBackendProbe {
   readonly backend: DesktopLocalAgentBackend;
   readonly command: string;
   readonly available: boolean;
+  readonly executablePath?: string;
   readonly version?: string;
+  readonly errorMessage?: string;
 }
 
 export interface DesktopLocalAgentEntry {
@@ -32,6 +34,7 @@ export interface DesktopLocalAgentEntry {
   readonly backend: DesktopLocalAgentBackend;
   readonly permissionMode: DesktopLocalAgentPermissionMode;
   readonly status: DesktopLocalAgentStatus;
+  readonly executablePath?: string;
   readonly hostId?: string;
   readonly lastHeartbeatAt?: string;
   readonly errorMessage?: string;
@@ -61,4 +64,5 @@ export interface DesktopLocalAgentExecutionResult {
   readonly output: string;
   readonly error?: string;
   readonly exitCode: number;
+  readonly backendHealthy?: boolean;
 }

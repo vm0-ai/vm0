@@ -80,6 +80,12 @@ export const setDesktopLocalAgentPermissionMode$ = command(
   },
 );
 
+export const refreshDesktopLocalAgentData$ = command(({ set }) => {
+  set(internalReload$, (previous) => {
+    return previous + 1;
+  });
+});
+
 export const setupDesktopLocalAgentBridge$ = command(
   async ({ set }, signal: AbortSignal) => {
     const api = desktopLocalAgentApi();
@@ -132,8 +138,10 @@ export const addDesktopLocalAgent$ = command(
     });
     signal.throwIfAborted();
     set(internalDialogOpen$, false);
-    if (entry) {
+    if (entry?.status === "online") {
       toast.success(`${entry.name} started`);
+    } else if (entry) {
+      toast.error(entry.errorMessage ?? `${entry.name} could not start`);
     }
     set(internalReload$, (previous) => {
       return previous + 1;

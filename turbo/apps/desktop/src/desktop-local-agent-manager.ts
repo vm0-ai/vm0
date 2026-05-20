@@ -1,9 +1,12 @@
+import { constants as fsConstants } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { DesktopLocalAgentApiClient } from "./desktop-local-agent-api";
 import {
   defaultPermissionMode,
   type detectLocalAgentBackends,
   type executeLocalAgentBackend,
+  type preflightLocalAgentBackend,
 } from "./desktop-local-agent-runtime";
 import type {
   DesktopLocalAgentAddOptions,
@@ -27,6 +30,7 @@ interface DesktopLocalAgentManagerDependencies {
   readonly selectFolder: () => Promise<string | null>;
   readonly openFolder: (folderPath: string) => Promise<void>;
   readonly detectBackends: typeof detectLocalAgentBackends;
+  readonly preflightBackend: typeof preflightLocalAgentBackend;
   readonly executeBackend: typeof executeLocalAgentBackend;
   readonly now?: () => number;
   readonly randomId?: () => string;
@@ -115,6 +119,7 @@ function uniqueName(
 export class DesktopLocalAgentManager {
   private entries: DesktopLocalAgentEntry[] | null = null;
   private readonly runningAgents = new Map<string, RunningAgent>();
+  private readonly backendRuntimePaths = new Map<string, string>();
   private nativeEnabled = false;
 
   constructor(private readonly deps: DesktopLocalAgentManagerDependencies) {}
@@ -187,6 +192,14 @@ export class DesktopLocalAgentManager {
     await this.persistAndNotify();
 
     try {
+      await fs.access(entry.folderPath, fsConstants.R_OK | fsConstants.X_OK);
+      const backendRuntime = await this.deps.preflightBackend(entry.backend);
+      this.updateEntry(id, {
+        executablePath: backendRuntime.executablePath,
+      });
+      this.backendRuntimePaths.set(id, backendRuntime.runtimePath);
+      await this.persistAndNotify();
+
       const controller = new AbortController();
       const supportedBackends = [entry.backend];
       const host = await this.deps.api.startHost({
@@ -215,6 +228,7 @@ export class DesktopLocalAgentManager {
       void promise;
       return cloneEntry(this.requireEntry(id));
     } catch (error) {
+      this.backendRuntimePaths.delete(id);
       this.updateEntry(id, {
         status: "error",
         errorMessage: errorMessage(error),
@@ -245,6 +259,7 @@ export class DesktopLocalAgentManager {
     await running.promise.catch(() => {});
     await this.closeRunningHost(running);
     this.runningAgents.delete(id);
+    this.backendRuntimePaths.delete(id);
     this.updateEntry(id, { status: "stopped", errorMessage: undefined });
     await this.persistAndNotify();
     return cloneEntry(this.requireEntry(id));
@@ -317,6 +332,8 @@ export class DesktopLocalAgentManager {
     } catch (error) {
       if (!signal.aborted) {
         this.runningAgents.delete(params.id);
+        this.backendRuntimePaths.delete(params.id);
+        await this.closeRunningHostToken(params.hostToken);
         this.updateEntry(params.id, {
           status: "error",
           errorMessage: errorMessage(error),
@@ -339,6 +356,8 @@ export class DesktopLocalAgentManager {
       prompt: params.prompt,
       workdir: params.entry.folderPath,
       permissionMode: params.entry.permissionMode,
+      executablePath: params.entry.executablePath,
+      runtimePath: this.backendRuntimePaths.get(params.entry.id),
       signal: params.signal,
     });
     await this.completeJob({
@@ -347,6 +366,9 @@ export class DesktopLocalAgentManager {
       result,
       signal: params.signal.aborted ? undefined : params.signal,
     });
+    if (result.backendHealthy === false) {
+      throw new Error(result.error ?? "Local agent backend is unavailable");
+    }
   }
 
   private async completeJob(params: {
@@ -387,9 +409,11 @@ export class DesktopLocalAgentManager {
   }
 
   private async closeRunningHost(running: RunningAgent): Promise<void> {
-    await this.deps.api
-      .closeHost({ hostToken: running.hostToken })
-      .catch(() => {});
+    await this.closeRunningHostToken(running.hostToken);
+  }
+
+  private async closeRunningHostToken(hostToken: string): Promise<void> {
+    await this.deps.api.closeHost({ hostToken }).catch(() => {});
   }
 
   private async ensureLoaded(): Promise<void> {

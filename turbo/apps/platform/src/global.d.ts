@@ -29,7 +29,9 @@ interface DesktopLocalAgentBackendProbe {
   readonly backend: DesktopLocalAgentBackend;
   readonly command: string;
   readonly available: boolean;
+  readonly executablePath?: string;
   readonly version?: string;
+  readonly errorMessage?: string;
 }
 
 interface DesktopLocalAgentEntry {
@@ -39,6 +41,7 @@ interface DesktopLocalAgentEntry {
   readonly backend: DesktopLocalAgentBackend;
   readonly permissionMode: DesktopLocalAgentPermissionMode;
   readonly status: DesktopLocalAgentStatus;
+  readonly executablePath?: string;
   readonly hostId?: string;
   readonly lastHeartbeatAt?: string;
   readonly errorMessage?: string;

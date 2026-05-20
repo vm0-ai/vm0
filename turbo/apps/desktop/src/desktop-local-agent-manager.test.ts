@@ -1,10 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resolveLocalAgentApiBaseUrl,
   type DesktopLocalAgentApiClient,
 } from "./desktop-local-agent-api";
 import { DesktopLocalAgentManager } from "./desktop-local-agent-manager";
-import type { executeLocalAgentBackend } from "./desktop-local-agent-runtime";
+import type {
+  executeLocalAgentBackend,
+  preflightLocalAgentBackend,
+} from "./desktop-local-agent-runtime";
 import type {
   DesktopLocalAgentBackendProbe,
   DesktopLocalAgentEntry,
@@ -15,26 +21,47 @@ const CODEX_PROBES: DesktopLocalAgentBackendProbe[] = [
     backend: "codex",
     command: "codex",
     available: true,
+    executablePath: "/opt/homebrew/bin/codex",
     version: "codex 1.0.0",
   },
   {
     backend: "claude-code",
     command: "claude",
     available: true,
+    executablePath: "/opt/homebrew/bin/claude",
     version: "claude 1.0.0",
   },
 ];
+
+let tempRoots: string[] = [];
+
+afterEach(() => {
+  for (const tempRoot of tempRoots) {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+  tempRoots = [];
+});
+
+function createWorkspace(name: string): string {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "desktop-agent-"));
+  const workspacePath = path.join(tempRoot, name);
+  mkdirSync(workspacePath, { recursive: true });
+  tempRoots.push(tempRoot);
+  return workspacePath;
+}
 
 function createHarness(
   options: {
     readonly folders?: readonly string[];
     readonly initialEntries?: readonly DesktopLocalAgentEntry[];
     readonly apiOverrides?: Partial<DesktopLocalAgentApiClient>;
+    readonly preflightBackend?: typeof preflightLocalAgentBackend;
     readonly executeBackend?: typeof executeLocalAgentBackend;
   } = {},
 ) {
   let entries = [...(options.initialEntries ?? [])];
-  const folders = [...(options.folders ?? ["/workspace/alpha"])];
+  const harnessFolders = options.folders ?? [createWorkspace("alpha")];
+  const folders = [...harnessFolders];
   const startedHosts: string[] = [];
   const closedHosts: string[] = [];
   const completedJobs: Array<{
@@ -84,6 +111,20 @@ function createHarness(
     detectBackends: vi.fn(async () => {
       return CODEX_PROBES;
     }),
+    preflightBackend:
+      options.preflightBackend ??
+      vi.fn(async (backend) => {
+        return {
+          backend,
+          command: backend === "codex" ? "codex" : "claude",
+          executablePath:
+            backend === "codex"
+              ? "/opt/homebrew/bin/codex"
+              : "/opt/homebrew/bin/claude",
+          runtimePath: "/opt/homebrew/bin:/usr/bin:/bin",
+          version: `${backend} 1.0.0`,
+        };
+      }),
     executeBackend:
       options.executeBackend ??
       vi.fn(async () => {
@@ -95,7 +136,13 @@ function createHarness(
       .mockReturnValueOnce("agent-2"),
   });
 
-  return { manager, startedHosts, closedHosts, completedJobs };
+  return {
+    manager,
+    startedHosts,
+    closedHosts,
+    completedJobs,
+    folders: harnessFolders,
+  };
 }
 
 describe("DesktopLocalAgentApiClient", () => {
@@ -121,7 +168,7 @@ describe("DesktopLocalAgentManager", () => {
   });
 
   it("adds a Codex workspace with workspace-write permissions by default", async () => {
-    const { manager, startedHosts, closedHosts } = createHarness();
+    const { manager, startedHosts, closedHosts, folders } = createHarness();
 
     await manager.setEnabled(true);
     const entry = await manager.add();
@@ -129,11 +176,12 @@ describe("DesktopLocalAgentManager", () => {
     expect(entry).toMatchObject({
       id: "agent-1",
       name: "alpha",
-      folderPath: "/workspace/alpha",
+      folderPath: folders[0],
       backend: "codex",
       permissionMode: "workspace-write",
       status: "online",
       hostId: "host-1",
+      executablePath: "/opt/homebrew/bin/codex",
     });
     expect(startedHosts).toStrictEqual(["alpha"]);
 
@@ -143,7 +191,7 @@ describe("DesktopLocalAgentManager", () => {
 
   it("runs multiple configured workspaces independently", async () => {
     const { manager, startedHosts, closedHosts } = createHarness({
-      folders: ["/workspace/alpha", "/workspace/beta"],
+      folders: [createWorkspace("alpha"), createWorkspace("beta")],
     });
 
     await manager.setEnabled(true);
@@ -168,12 +216,13 @@ describe("DesktopLocalAgentManager", () => {
   });
 
   it("restores persisted agents as stopped without autostarting them", async () => {
+    const folderPath = createWorkspace("alpha");
     const { manager, startedHosts } = createHarness({
       initialEntries: [
         {
           id: "agent-1",
           name: "alpha",
-          folderPath: "/workspace/alpha",
+          folderPath,
           backend: "codex",
           permissionMode: "workspace-write",
           status: "online",
@@ -189,7 +238,7 @@ describe("DesktopLocalAgentManager", () => {
       {
         id: "agent-1",
         name: "alpha",
-        folderPath: "/workspace/alpha",
+        folderPath,
         backend: "codex",
         permissionMode: "workspace-write",
         status: "stopped",
@@ -198,6 +247,74 @@ describe("DesktopLocalAgentManager", () => {
       },
     ]);
     expect(startedHosts).toStrictEqual([]);
+  });
+
+  it("does not advertise a host when backend preflight fails", async () => {
+    const preflightBackend = vi.fn<typeof preflightLocalAgentBackend>(
+      async () => {
+        throw new Error("Codex not found");
+      },
+    );
+    const { manager, startedHosts } = createHarness({ preflightBackend });
+
+    await manager.setEnabled(true);
+    const entry = await manager.add({ backend: "codex" });
+
+    expect(entry).toMatchObject({
+      id: "agent-1",
+      status: "error",
+      errorMessage: "Codex not found",
+    });
+    expect(startedHosts).toStrictEqual([]);
+    await expect(manager.list()).resolves.toMatchObject([
+      {
+        id: "agent-1",
+        status: "error",
+        errorMessage: "Codex not found",
+      },
+    ]);
+  });
+
+  it("uses the resolved executable path for jobs", async () => {
+    let claimCount = 0;
+    const executeBackend = vi.fn<typeof executeLocalAgentBackend>(async () => {
+      return { output: "ok", exitCode: 0 };
+    });
+    const { manager } = createHarness({
+      executeBackend,
+      apiOverrides: {
+        async claimNextJob() {
+          claimCount += 1;
+          if (claimCount === 1) {
+            return {
+              status: "job",
+              job: {
+                id: "job-1",
+                backend: "codex",
+                prompt: "run task",
+              },
+            };
+          }
+          return { status: "idle" };
+        },
+      },
+    });
+
+    await manager.setEnabled(true);
+    await manager.add();
+    await vi.waitFor(() => {
+      expect(executeBackend).toHaveBeenCalled();
+    });
+
+    expect(executeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: "codex",
+        executablePath: "/opt/homebrew/bin/codex",
+        runtimePath: "/opt/homebrew/bin:/usr/bin:/bin",
+      }),
+    );
+
+    await manager.stopAll();
   });
 
   it("fails an active job before closing the host when stopped", async () => {

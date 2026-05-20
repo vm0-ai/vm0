@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -47,6 +48,7 @@ describe("zero desktop local agent page", () => {
             backend: "codex",
             command: "codex",
             available: true,
+            executablePath: "/opt/homebrew/bin/codex",
             version: "codex 1.0.0",
           },
         ]);
@@ -84,5 +86,85 @@ describe("zero desktop local agent page", () => {
     expect(screen.getByText("workspace-write")).toBeInTheDocument();
     expect(screen.getByText("online")).toBeInTheDocument();
     expect(setEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it("surfaces backend health errors and blocks unavailable backend selection", async () => {
+    installDesktopLocalAgentApi({
+      setEnabled() {
+        return Promise.resolve();
+      },
+      list() {
+        return Promise.resolve([
+          {
+            id: "agent-1",
+            name: "alpha",
+            folderPath: "/workspace/alpha",
+            backend: "codex",
+            permissionMode: "workspace-write",
+            status: "error",
+            errorMessage: "Codex not found",
+          },
+        ]);
+      },
+      detectBackends() {
+        return Promise.resolve([
+          {
+            backend: "codex",
+            command: "codex",
+            available: false,
+            errorMessage: "Codex not found",
+          },
+          {
+            backend: "claude-code",
+            command: "claude",
+            available: false,
+            errorMessage: "Claude Code not found",
+          },
+        ]);
+      },
+      add() {
+        return Promise.resolve(null);
+      },
+      start() {
+        return Promise.reject(new Error("not used"));
+      },
+      stop() {
+        return Promise.reject(new Error("not used"));
+      },
+      remove() {
+        return Promise.resolve();
+      },
+      openFolder() {
+        return Promise.resolve();
+      },
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/local-agents",
+      featureSwitches: {
+        [FeatureSwitchKey.DesktopLocalAgent]: true,
+      },
+    });
+
+    await expect(screen.findByText("alpha")).resolves.toBeInTheDocument();
+    expect(screen.getByText("Codex not found")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Add local agent"));
+
+    await expect(screen.findAllByText("Codex not found")).resolves.toHaveLength(
+      2,
+    );
+    const selectFolderButton = screen
+      .getByText("Select folder")
+      .closest("button");
+    if (!selectFolderButton) {
+      throw new Error("Expected Select folder button");
+    }
+    expect(selectFolderButton).toBeDisabled();
   });
 });
