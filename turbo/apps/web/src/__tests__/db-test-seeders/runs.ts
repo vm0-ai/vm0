@@ -240,6 +240,38 @@ function enrichTestVolumeSnapshot(
   };
 }
 
+function recordOfStringsOrUndefined(
+  value: unknown,
+): Record<string, string> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const result: Record<string, string> = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (typeof entryValue !== "string") {
+      return undefined;
+    }
+    result[key] = entryValue;
+  }
+  return result;
+}
+
+function arrayOfStringsOrUndefined(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const result: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") {
+      return undefined;
+    }
+    result.push(entry);
+  }
+  return result;
+}
+
 export type CreateDispatchedTestRunOptions = {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
@@ -932,8 +964,10 @@ export async function seedTestCheckpointForRun(params: {
       id: agentRuns.id,
       agentComposeVersionId: agentRuns.agentComposeVersionId,
       additionalVolumes: agentRuns.additionalVolumes,
+      secretNames: agentRuns.secretNames,
       sessionId: agentRuns.sessionId,
       userId: agentRuns.userId,
+      vars: agentRuns.vars,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, params.runId))
@@ -986,11 +1020,16 @@ export async function seedTestCheckpointForRun(params: {
     params.volumeVersionsSnapshot,
     run.additionalVolumes,
   );
+  const vars = recordOfStringsOrUndefined(run.vars);
+  const secretNames = arrayOfStringsOrUndefined(run.secretNames);
+  const agentComposeSnapshot = {
+    agentComposeVersionId: run.agentComposeVersionId,
+    ...(vars ? { vars } : {}),
+    ...(secretNames ? { secretNames } : {}),
+  };
   const checkpointFields = {
     conversationId: conversation.id,
-    agentComposeSnapshot: {
-      agentComposeVersionId: run.agentComposeVersionId,
-    },
+    agentComposeSnapshot,
     artifactSnapshots: params.artifactSnapshots ?? null,
     volumeVersionsSnapshot,
   };
