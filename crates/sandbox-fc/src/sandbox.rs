@@ -1531,6 +1531,7 @@ fn supervised_stdout_receiver(
     tokio::spawn(async move {
         loop {
             tokio::select! {
+                biased;
                 () = task_close.cancelled() => {
                     break;
                 }
@@ -1544,8 +1545,16 @@ fn supervised_stdout_receiver(
                                 bytes: event.chunk,
                                 truncated: event.truncated,
                             };
-                            if stdout_tx.send(chunk).await.is_err() {
-                                break;
+                            tokio::select! {
+                                biased;
+                                () = task_close.cancelled() => {
+                                    break;
+                                }
+                                result = stdout_tx.send(chunk) => {
+                                    if result.is_err() {
+                                        break;
+                                    }
+                                }
                             }
                         }
                         ExecOutputStream::Stderr => {
@@ -4664,6 +4673,68 @@ mod tests {
             .await
             .expect("stdout adapter did not close");
         assert!(received.is_none());
+    }
+
+    #[tokio::test]
+    async fn supervised_stdout_receiver_cleanup_interrupts_blocked_forwarder() {
+        let (stream_tx, stream_rx) = mpsc::channel(1);
+        let (mut stdout_rx, close) = supervised_stdout_receiver(stream_rx, 1);
+
+        stream_tx
+            .send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 1,
+                chunk: b"first".to_vec(),
+                truncated: false,
+            })
+            .await
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while stdout_rx.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first stdout chunk was not buffered");
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            stream_tx.send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 2,
+                chunk: b"second".to_vec(),
+                truncated: false,
+            }),
+        )
+        .await
+        .expect("second stdout event was not accepted")
+        .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            stream_tx.send(ExecOutputEvent {
+                stream: ExecOutputStream::Stdout,
+                output_seq: 3,
+                chunk: b"third".to_vec(),
+                truncated: false,
+            }),
+        )
+        .await
+        .expect("third stdout event was not accepted")
+        .unwrap();
+
+        close();
+
+        let first = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("first stdout chunk was not received")
+            .expect("stdout stream closed before first chunk");
+        assert_eq!(first.bytes, b"first");
+
+        let closed = tokio::time::timeout(Duration::from_secs(1), stdout_rx.recv())
+            .await
+            .expect("stdout adapter did not close after cleanup");
+        assert!(closed.is_none());
     }
 
     #[tokio::test]
