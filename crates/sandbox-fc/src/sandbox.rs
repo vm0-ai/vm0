@@ -1372,13 +1372,11 @@ fn monitor_process_with_log_readers(
     ProcessMonitorHandle { kill_tx, task }
 }
 
-fn process_timeout_policy(timeout: Duration) -> ExecTimeoutPolicy {
-    if timeout.is_zero() {
+fn process_timeout_policy(timeout_ms: u32) -> ExecTimeoutPolicy {
+    if timeout_ms == 0 {
         ExecTimeoutPolicy::None
     } else {
-        ExecTimeoutPolicy::Duration {
-            timeout_ms: u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX),
-        }
+        ExecTimeoutPolicy::Duration { timeout_ms }
     }
 }
 
@@ -1914,7 +1912,7 @@ impl Sandbox for FirecrackerSandbox {
         options: CopyFileOptions,
     ) -> sandbox::Result<CopyFileResult> {
         let operation = SandboxOperation::Exec;
-        let timeout_ms = u32::try_from(options.timeout.as_millis()).unwrap_or(u32::MAX);
+        let timeout_ms = options.timeout_ms();
 
         self.run_bounded_guest_operation(operation, |guest| async move {
             guest
@@ -1954,7 +1952,7 @@ impl Sandbox for FirecrackerSandbox {
         let start_future = async move {
             vsock
                 .start_supervised_exec(SupervisedExecRequest {
-                    timeout: process_timeout_policy(request.timeout),
+                    timeout: process_timeout_policy(request.timeout_ms()),
                     command: request.cmd,
                     env: request.env,
                     sudo: request.sudo,
@@ -4531,17 +4529,14 @@ mod tests {
     }
 
     #[test]
-    fn process_timeout_policy_maps_zero_to_none_and_durations_to_millis() {
+    fn process_timeout_policy_maps_zero_to_none_and_millis_to_duration() {
+        assert_eq!(process_timeout_policy(0), ExecTimeoutPolicy::None);
         assert_eq!(
-            process_timeout_policy(Duration::ZERO),
-            ExecTimeoutPolicy::None
-        );
-        assert_eq!(
-            process_timeout_policy(Duration::from_millis(2500)),
+            process_timeout_policy(2500),
             ExecTimeoutPolicy::Duration { timeout_ms: 2500 }
         );
         assert_eq!(
-            process_timeout_policy(Duration::from_millis(u64::from(u32::MAX) + 1)),
+            process_timeout_policy(u32::MAX),
             ExecTimeoutPolicy::Duration {
                 timeout_ms: u32::MAX
             }

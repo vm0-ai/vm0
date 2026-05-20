@@ -52,7 +52,10 @@ pub struct ExecRequest<'a> {
 }
 
 impl ExecRequest<'_> {
-    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded operation into a zero-timeout request.
     pub fn timeout_ms(&self) -> u32 {
         duration_ms(self.timeout)
     }
@@ -76,14 +79,23 @@ pub struct StartProcessRequest<'a> {
 }
 
 impl StartProcessRequest<'_> {
-    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded process into an unbounded one.
     pub fn timeout_ms(&self) -> u32 {
         duration_ms(self.timeout)
     }
 }
 
 fn duration_ms(timeout: Duration) -> u32 {
-    u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX)
+    if timeout.is_zero() {
+        0
+    } else {
+        u32::try_from(timeout.as_millis())
+            .unwrap_or(u32::MAX)
+            .max(1)
+    }
 }
 
 /// Result of a bounded command execution.
@@ -121,6 +133,16 @@ pub struct CopyFileOptions {
     pub timeout: Duration,
     /// Treat a missing guest file as a successful zero-byte copy.
     pub missing_ok: bool,
+}
+
+impl CopyFileOptions {
+    /// Return the timeout as milliseconds, saturating at `u32::MAX`.
+    ///
+    /// Non-zero sub-millisecond durations round up to 1ms so callers do not
+    /// accidentally turn a bounded copy into a zero-timeout request.
+    pub fn timeout_ms(&self) -> u32 {
+        duration_ms(self.timeout)
+    }
 }
 
 /// Result of copying a guest file to a host path.
@@ -390,6 +412,41 @@ mod tests {
             output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
         };
         assert_eq!(req.timeout_ms(), 0);
+    }
+
+    #[test]
+    fn timeout_ms_rounds_nonzero_submillisecond_up() {
+        let req = ExecRequest {
+            cmd: "true",
+            timeout: Duration::from_nanos(1),
+            env: &[],
+            sudo: false,
+            output_limits: EXEC_OUTPUT_LIMIT_1_MIB,
+        };
+        assert_eq!(req.timeout_ms(), 1);
+    }
+
+    #[test]
+    fn start_process_timeout_ms_rounds_nonzero_submillisecond_up() {
+        let req = StartProcessRequest {
+            cmd: "true",
+            timeout: Duration::from_nanos(1),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::None,
+        };
+        assert_eq!(req.timeout_ms(), 1);
+    }
+
+    #[test]
+    fn copy_file_timeout_ms_rounds_nonzero_submillisecond_up() {
+        let options = CopyFileOptions {
+            max_bytes: 1024,
+            timeout: Duration::from_nanos(1),
+            missing_ok: false,
+        };
+        assert_eq!(options.timeout_ms(), 1);
     }
 
     #[test]
