@@ -294,6 +294,112 @@ describe("POST /api/runners/*", () => {
     });
   });
 
+  it("returns an affinity-matching poll job first when heldSessions is provided", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const runnerGroup = `vm0/poll-${randomUUID()}`;
+    await seedQueuedRun({ fixture, runnerGroup });
+    const affinityJob = await seedQueuedRun({
+      fixture,
+      runnerGroup,
+      sessionId: "session-X",
+    });
+
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: {
+          group: runnerGroup,
+          heldSessions: ["session-X"],
+        },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body.job?.runId).toBe(affinityJob.runId);
+  });
+
+  it("returns a poll job when heldSessions has no match", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const runnerGroup = `vm0/poll-${randomUUID()}`;
+    const queued = await seedQueuedRun({ fixture, runnerGroup });
+
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: {
+          group: runnerGroup,
+          heldSessions: ["session-no-match"],
+        },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body.job?.runId).toBe(queued.runId);
+  });
+
+  it("returns a poll job when heldSessions is empty", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const runnerGroup = `vm0/poll-${randomUUID()}`;
+    const queued = await seedQueuedRun({ fixture, runnerGroup });
+
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: {
+          group: runnerGroup,
+          heldSessions: [],
+        },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body.job?.runId).toBe(queued.runId);
+  });
+
+  it("returns a poll job when heldSessions is omitted", async () => {
+    const fixture = await trackUsageFixture(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const runnerGroup = `vm0/poll-${randomUUID()}`;
+    const queued = await seedQueuedRun({ fixture, runnerGroup });
+
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: { group: runnerGroup },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body.job?.runId).toBe(queued.runId);
+  });
+
+  it("returns null when no poll jobs exist for the group", async () => {
+    const client = setupApp({ context })(runnersPollContract);
+    const response = await accept(
+      client.poll({
+        body: {
+          group: `vm0/poll-${randomUUID()}`,
+          heldSessions: ["session-X"],
+        },
+        headers: { authorization: OFFICIAL_RUNNER_TOKEN },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ job: null });
+  });
+
   it("claims a queued job and returns prepared execution context", async () => {
     const fixture = await trackUsageFixture(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
