@@ -807,6 +807,12 @@ const TELEGRAM_INTEGRATIONS_NEXT_NEGATIVE_PATHS = [
   "/api/integrations/telegram/extra",
   "/api/integrations/telegrams",
 ] as const;
+const TELEGRAM_LINK_REWRITE_SOURCE = "/api/integrations/telegram/link";
+const TELEGRAM_LINK_PATH = "/api/integrations/telegram/link";
+const TELEGRAM_LINK_NEXT_NEGATIVE_PATHS = [
+  "/api/integrations/telegram/link/extra",
+  "/api/integrations/telegram/links",
+] as const;
 const TELEGRAM_AUTH_CALLBACK_REWRITE_SOURCE =
   "/api/integrations/telegram/auth-callback";
 const TELEGRAM_AUTH_CALLBACK_PATH = "/api/integrations/telegram/auth-callback";
@@ -1998,6 +2004,11 @@ describe("API backend rewrites", () => {
         {
           source: TELEGRAM_INTEGRATIONS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/integrations/telegram",
+        },
+        {
+          source: TELEGRAM_LINK_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/integrations/telegram/link",
         },
         {
           source: BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE,
@@ -7349,6 +7360,28 @@ describe("API backend rewrites", () => {
     }
   });
 
+  it("should match only the exact telegram link rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TELEGRAM_LINK_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TELEGRAM_LINK_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/integrations/telegram/link",
+    });
+
+    const matcher = getPathMatch(TELEGRAM_LINK_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(TELEGRAM_LINK_PATH)).toStrictEqual({});
+    for (const pathname of TELEGRAM_LINK_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
   it("should match only the exact telegram auth callback rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -7396,6 +7429,13 @@ describe("API backend rewrites", () => {
   it("should bypass web middleware only for the exact telegram integrations path", () => {
     expect(matchesApiBackendRewritePath(TELEGRAM_INTEGRATIONS_PATH)).toBe(true);
     for (const pathname of TELEGRAM_INTEGRATIONS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact telegram link path", () => {
+    expect(matchesApiBackendRewritePath(TELEGRAM_LINK_PATH)).toBe(true);
+    for (const pathname of TELEGRAM_LINK_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

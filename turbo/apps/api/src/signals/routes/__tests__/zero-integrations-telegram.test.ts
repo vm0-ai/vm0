@@ -5,7 +5,10 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { createStore } from "ccstate";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 
@@ -13,6 +16,7 @@ import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { writeDb$ } from "../../external/db";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../external/time";
 import { clearAllDetached } from "../../utils";
@@ -152,6 +156,57 @@ function signConnectParams(args: {
   return createHmac("sha256", args.botToken ?? "test-bot-token")
     .update(data)
     .digest("hex");
+}
+
+async function telegramUserLinksForUser(userId: string): Promise<
+  {
+    readonly installationId: string;
+    readonly telegramUserId: string;
+    readonly telegramUsername: string | null;
+    readonly telegramDisplayName: string | null;
+  }[]
+> {
+  const writeDb = store.set(writeDb$);
+  const rows = await writeDb
+    .select({
+      installationId: telegramUserLinks.installationId,
+      telegramUserId: telegramUserLinks.telegramUserId,
+      telegramUsername: telegramUserLinks.telegramUsername,
+      telegramDisplayName: telegramUserLinks.telegramDisplayName,
+    })
+    .from(telegramUserLinks)
+    .where(eq(telegramUserLinks.vm0UserId, userId));
+
+  return rows.sort((a, b) => {
+    return a.installationId.localeCompare(b.installationId);
+  });
+}
+
+async function officialTelegramUserLink(args: {
+  readonly orgId: string;
+  readonly telegramUserId: string;
+}): Promise<{
+  readonly vm0UserId: string;
+  readonly telegramUsername: string | null;
+  readonly telegramDisplayName: string | null;
+} | null> {
+  const writeDb = store.set(writeDb$);
+  const [row] = await writeDb
+    .select({
+      vm0UserId: telegramOfficialUserLinks.vm0UserId,
+      telegramUsername: telegramOfficialUserLinks.telegramUsername,
+      telegramDisplayName: telegramOfficialUserLinks.telegramDisplayName,
+    })
+    .from(telegramOfficialUserLinks)
+    .where(
+      and(
+        eq(telegramOfficialUserLinks.orgId, args.orgId),
+        eq(telegramOfficialUserLinks.telegramUserId, args.telegramUserId),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
 }
 
 describe("GET /api/zero/integrations/telegram/bots", () => {
@@ -836,6 +891,20 @@ describe("GET /api/integrations/telegram/link", () => {
     };
   }
 
+  it("returns 401 when no auth token is provided", async () => {
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getLinkStatus({
+        query: {},
+        headers: {},
+      }),
+      [401],
+    );
+
+    expectUnauthorized(response.body);
+  });
+
   it("returns linked false without installation when no link exists", async () => {
     const { token } = await seedLinkContext();
     const client = setupApp({ context })(zeroIntegrationsTelegramContract);
@@ -849,6 +918,44 @@ describe("GET /api/integrations/telegram/link", () => {
     );
 
     expect(response.body).toStrictEqual({ linked: false });
+  });
+
+  it("returns linked true with the latest custom bot link", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: telegramBotId,
+        telegramUserId: "tg-linked-user",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getLinkStatus({
+        query: {},
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      linked: true,
+      telegramUserId: "tg-linked-user",
+      botUsername: `bot_${telegramBotId}`,
+    });
   });
 
   it("scopes linked status to the requested bot", async () => {
@@ -909,6 +1016,69 @@ describe("GET /api/integrations/telegram/link", () => {
     });
   });
 
+  it("returns installation info for an unlinked custom bot with origin-scoped domain status", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    server.use(telegramOauthHead("2048", "https://app.example.com"));
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getLinkStatus({
+        query: {
+          botId: telegramBotId,
+          origin: "https://app.example.com/some/path",
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      linked: false,
+      installation: {
+        id: telegramBotId,
+        botUsername: `bot_${telegramBotId}`,
+        loginBotId: telegramBotId,
+        domainConfigured: true,
+      },
+    });
+  });
+
+  it("returns official bot link status with the login bot id", async () => {
+    const { token } = await seedLinkContext();
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getLinkStatus({
+        query: {
+          botId: OFFICIAL_TELEGRAM_BOT_ID,
+          origin: "https://app.example.com/settings/telegram",
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      linked: false,
+      installation: {
+        id: OFFICIAL_TELEGRAM_BOT_ID,
+        botUsername: OFFICIAL_BOT_USERNAME,
+        loginBotId: "9876543210",
+        domainConfigured: false,
+      },
+    });
+  });
+
   it("returns 403 when the requested bot belongs to another org", async () => {
     const { token } = await seedLinkContext();
     const otherOrgId = `org_${randomUUID()}`;
@@ -937,6 +1107,21 @@ describe("GET /api/integrations/telegram/link", () => {
     );
 
     expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns linked false without installation for an unknown bot", async () => {
+    const { token } = await seedLinkContext();
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.getLinkStatus({
+        query: { botId: newTelegramBotId() },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ linked: false });
   });
 });
 
@@ -1117,6 +1302,14 @@ describe("POST /api/integrations/telegram/link", () => {
       telegramUserId: "99002",
       botUsername: `bot_${telegramBotId}`,
     });
+    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
+      {
+        installationId: telegramBotId,
+        telegramUserId: "99002",
+        telegramUsername: "custom_tg",
+        telegramDisplayName: "Test",
+      },
+    ]);
   });
 
   it("returns 409 when connecting the official bot before onboarding creates a default agent", async () => {
@@ -1180,6 +1373,56 @@ describe("POST /api/integrations/telegram/link", () => {
       botUsername: OFFICIAL_BOT_USERNAME,
       telegramUserId: String(telegramUserId),
     });
+    await expect(
+      officialTelegramUserLink({
+        orgId,
+        telegramUserId: String(telegramUserId),
+      }),
+    ).resolves.toStrictEqual({
+      vm0UserId: userId,
+      telegramUsername: "official_tg",
+      telegramDisplayName: "Test",
+    });
+  });
+
+  it("returns 409 when an official Telegram user is already linked in another org", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    await seedDefaultAgentForLink(orgId, userId);
+    const otherOrgId = `org_${randomUUID()}`;
+    fixtures.push(
+      freezeTelegramFixture(makeTelegramFixtureBuilder(otherOrgId)),
+    );
+    const telegramUserId = Number(newTelegramBotId());
+    await store.set(
+      seedOfficialUserLink$,
+      {
+        orgId: otherOrgId,
+        userId: `user_${randomUUID()}`,
+        telegramUserId: String(telegramUserId),
+      },
+      context.signal,
+    );
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth: makeTelegramAuth(
+            telegramUserId,
+            "official_tg",
+            OFFICIAL_BOT_TOKEN,
+          ),
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toContain(
+      "Disconnect it before connecting",
+    );
   });
 
   it("returns 409 when a Telegram user is already linked to another user for the same bot", async () => {
@@ -1220,6 +1463,148 @@ describe("POST /api/integrations/telegram/link", () => {
     expect(response.body.error.message).toContain(
       "already connected to another VM0 account",
     );
+  });
+
+  it("returns 409 when the VM0 user is already linked to another Telegram user for the same bot", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: telegramBotId,
+        telegramUserId: "99009",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId,
+          telegramAuth: makeTelegramAuth(99_010, "replacement_tg"),
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.message).toContain(
+      "already connected to another Telegram account",
+    );
+    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
+      {
+        installationId: telegramBotId,
+        telegramUserId: "99009",
+        telegramUsername: null,
+        telegramDisplayName: null,
+      },
+    ]);
+  });
+
+  it("allows the same Telegram user to connect through a different custom bot", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const firstBotId = newTelegramBotId();
+    const secondBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+
+    for (const botId of [firstBotId, secondBotId]) {
+      const installation = await store.set(
+        seedTelegramInstallation$,
+        { orgId, ownerUserId: userId, telegramBotId: botId },
+        context.signal,
+      );
+      builder.composeIds.push(installation.composeId);
+      builder.telegramBotIds.push(installation.telegramBotId);
+    }
+    fixtures.push(freezeTelegramFixture(builder));
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: firstBotId,
+        telegramUserId: "99011",
+        vm0UserId: `user_${randomUUID()}`,
+      },
+      context.signal,
+    );
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId: secondBotId,
+          telegramAuth: makeTelegramAuth(99_011, "shared_tg"),
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.telegramUserId).toBe("99011");
+    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
+      {
+        installationId: secondBotId,
+        telegramUserId: "99011",
+        telegramUsername: "shared_tg",
+        telegramDisplayName: "Test",
+      },
+    ]);
+  });
+
+  it("treats reconnecting the same Telegram user to the same VM0 user as idempotent", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: telegramBotId,
+        telegramUserId: "99012",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId,
+          telegramAuth: makeTelegramAuth(99_012, "same_tg"),
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.telegramUserId).toBe("99012");
+    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
+      {
+        installationId: telegramBotId,
+        telegramUserId: "99012",
+        telegramUsername: "same_tg",
+        telegramDisplayName: "Test",
+      },
+    ]);
   });
 
   it("links a custom bot account via a valid connectSignature and sends confirmation", async () => {
@@ -1288,6 +1673,14 @@ describe("POST /api/integrations/telegram/link", () => {
         text: "✅ Account linked.\nSend me a message to start chatting with your agent.",
       },
     ]);
+    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
+      {
+        installationId: telegramBotId,
+        telegramUserId,
+        telegramUsername: "connect_tg",
+        telegramDisplayName: "Connect User",
+      },
+    ]);
   });
 
   it("returns 403 when connecting a custom bot from another org", async () => {
@@ -1354,6 +1747,40 @@ describe("POST /api/integrations/telegram/link", () => {
     );
 
     expect(response.body.error.message).toBe("Invalid Telegram authorization");
+  });
+
+  it("returns 400 for invalid connectSignature", async () => {
+    const { token, orgId, userId } = await seedLinkContext();
+    const telegramBotId = newTelegramBotId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.link({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          telegramBotId,
+          connectSignature: {
+            telegramUserId: "99013",
+            timestamp: Math.floor(now() / 1000),
+            signature: "a".repeat(64),
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toContain(
+      "Invalid or expired connect link",
+    );
   });
 
   it("returns 400 for expired connectSignature", async () => {

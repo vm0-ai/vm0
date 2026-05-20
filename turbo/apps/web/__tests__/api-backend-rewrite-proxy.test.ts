@@ -885,6 +885,9 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/auth-callback"),
     ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/link"),
+    ).toBe(true);
     expect(matchesApiBackendRewritePath("/api/telegram/register/extra")).toBe(
       false,
     );
@@ -903,10 +906,16 @@ describe("API backend rewrite proxy behavior", () => {
       ),
     ).toBe(false);
     expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/link/extra"),
+    ).toBe(false);
+    expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/extra"),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/auth"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/integrations/telegram/links"),
     ).toBe(false);
   });
 
@@ -2877,6 +2886,26 @@ describe("API backend rewrite proxy behavior", () => {
         const listPayload = (await listResponse.json()) as EchoPayload;
         expect(listPayload.method).toBe("GET");
         expect(listPayload.url).toBe("/api/integrations/telegram");
+
+        const linkBody = JSON.stringify({ telegramBotId: "official" });
+        const linkResponse = await fetch(
+          `${origin}/api/integrations/telegram/link?botId=official`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: linkBody,
+          },
+        );
+
+        const linkPayload = (await linkResponse.json()) as EchoPayload;
+        expect(linkPayload.method).toBe("POST");
+        expect(linkPayload.url).toBe(
+          "/api/integrations/telegram/link?botId=official",
+        );
+        expect(linkPayload.headers["content-type"]).toContain(
+          "application/json",
+        );
+        expect(linkPayload.body).toBe(linkBody);
       },
     );
   });
