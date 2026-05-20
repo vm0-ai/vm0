@@ -31,6 +31,7 @@ const EXEC_OPERATION_CLOSE_ACTIVE_LOG_LIMIT: usize = 16;
 const EXEC_OPERATION_FRAME_WRITE_SLOW_THRESHOLD: Duration = Duration::from_millis(500);
 const EXEC_OPERATION_STAGE_SLOW_THRESHOLD: Duration = Duration::from_secs(5);
 const EXEC_OPERATION_DROP_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
+const EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_millis(250);
 const EXEC_OPERATION_FRAME_WRITE_NOT_STARTED: u8 = 0;
 const EXEC_OPERATION_FRAME_WRITE_STARTED: u8 = 1;
 const EXEC_OPERATION_FRAME_WRITE_COMPLETED: u8 = 2;
@@ -2267,16 +2268,31 @@ pub(crate) async fn start_supervised_exec_on_shared(
         }
         _ = tokio::time::sleep(request.start_timeout) => {
             let payload = vsock_proto::encode_exec_cancel();
-            let cancel_result = write_frame(
-                shared,
-                MSG_EXEC_CANCEL,
-                seq,
-                &payload,
-                Some(diagnostic.frame("start-timeout-cancel")),
-                None,
-                FrameWriteObserver::default(),
+            let cancel_result = tokio::time::timeout(
+                EXEC_OPERATION_START_TIMEOUT_CANCEL_WRITE_TIMEOUT,
+                write_frame(
+                    shared,
+                    MSG_EXEC_CANCEL,
+                    seq,
+                    &payload,
+                    Some(diagnostic.frame("start-timeout-cancel")),
+                    None,
+                    FrameWriteObserver::default(),
+                ),
             )
-            .await;
+            .await
+            .unwrap_or_else(|_| {
+                tracing::warn!(
+                    seq = seq,
+                    label = %diagnostic.label_log,
+                    elapsed_ms = diagnostic.elapsed_ms(),
+                    "supervised exec start timeout cancel write timed out"
+                );
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "supervised exec start timeout cancel write timed out",
+                ))
+            });
             start_cancel_on_drop.disarm();
             shared.remove_operation(seq);
             registration_guard.disarm();

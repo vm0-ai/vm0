@@ -1078,6 +1078,48 @@ async fn supervised_exec_start_ack_timeout_sends_cancel() {
 }
 
 #[tokio::test]
+async fn supervised_exec_start_ack_timeout_cancel_write_is_bounded() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(SupervisedExecRequest {
+                start_timeout: Duration::from_millis(100),
+                ..supervised_request("blocked-start-timeout-cancel")
+            })
+            .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    assert_eq!(start.msg_type, MSG_EXEC_START);
+    let writer_guard = host.shared.writer.lock().await;
+
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("blocked start-timeout cancel write should be bounded")
+        .unwrap();
+    let err = match result {
+        Ok(_) => panic!("supervised exec should fail when start-timeout cancel write is blocked"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(
+        err.to_string(),
+        "supervised exec start timeout cancel write timed out"
+    );
+    assert_eq!(operation_count(&host), 0);
+
+    drop(writer_guard);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("bounded cancel write must not send after timing out; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after bounded cancel timeout: {err}"),
+    }
+}
+
+#[tokio::test]
 async fn supervised_exec_start_wait_cancellation_sends_cancel() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
