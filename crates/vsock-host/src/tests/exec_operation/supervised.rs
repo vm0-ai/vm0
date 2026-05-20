@@ -148,6 +148,41 @@ async fn supervised_exec_start_failed_before_started_returns_error() {
 }
 
 #[tokio::test]
+async fn supervised_exec_error_before_started_returns_error_without_cancel() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.start_supervised_exec(supervised_request("guest-error-before-started"))
+                .await
+        })
+    };
+
+    let start = read_guest_message(&mut guest).await;
+    send_guest_error(&mut guest, start.seq, "guest rejected start").await;
+
+    let err = match task.await.unwrap() {
+        Ok(_) => panic!("supervised exec should fail when guest returns an error before started"),
+        Err(err) => err,
+    };
+    assert_eq!(err.kind(), io::ErrorKind::Other);
+    assert_eq!(err.to_string(), "guest rejected start");
+    assert_eq!(operation_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("guest start error must not send exec cancel; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after guest start error: {err}"),
+    }
+
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn supervised_exec_output_before_started_poisons_connection() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
