@@ -1,5 +1,16 @@
 # Changelog
 
+## [12.380.1](https://github.com/vm0-ai/vm0/compare/web-v12.380.0...web-v12.380.1) (2026-05-20)
+
+
+### Refactoring
+
+* cut over agent complete webhook ([#14224](https://github.com/vm0-ai/vm0/issues/14224)) ([4ee88b4](https://github.com/vm0-ai/vm0/commit/4ee88b4059235ee6e12cfa78481708364807f5e6))
+* cut over runners poll route ([#14223](https://github.com/vm0-ai/vm0/issues/14223)) ([4b51be3](https://github.com/vm0-ai/vm0/commit/4b51be3a1d4febf9ed2af31a5e21c33e161a9713))
+* cut over telegram integrations list ([#14208](https://github.com/vm0-ai/vm0/issues/14208)) ([9a73c07](https://github.com/vm0-ai/vm0/commit/9a73c07fe78c6db1dbd15ae960bd6017f155408b))
+* cut over zero slack connect route ([#14216](https://github.com/vm0-ai/vm0/issues/14216)) ([8f097e1](https://github.com/vm0-ai/vm0/commit/8f097e1c5b5d0ba23532d5e8d473448e9697c6f7))
+* proxy zero connector sessions to api ([#14196](https://github.com/vm0-ai/vm0/issues/14196)) ([2270e43](https://github.com/vm0-ai/vm0/commit/2270e43691b7d132508daa8a656c8313cd486f36))
+
 ## [12.380.0](https://github.com/vm0-ai/vm0/compare/web-v12.379.1...web-v12.380.0) (2026-05-20)
 
 

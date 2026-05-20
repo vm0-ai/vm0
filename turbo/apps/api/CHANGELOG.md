@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.61.1](https://github.com/vm0-ai/vm0/compare/api-v1.61.0...api-v1.61.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* align slack api parity with web ([#14219](https://github.com/vm0-ai/vm0/issues/14219)) ([f5672b1](https://github.com/vm0-ai/vm0/commit/f5672b1353460da343b3b45b14fa054bdfe149ce))
+* align telegram api endpoints with web behavior ([#14220](https://github.com/vm0-ai/vm0/issues/14220)) ([db85904](https://github.com/vm0-ai/vm0/commit/db8590459093b2ee04ccbe8a28c3a4e0b0935a3b))
+
+
+### Refactoring
+
+* cut over agent complete webhook ([#14224](https://github.com/vm0-ai/vm0/issues/14224)) ([4ee88b4](https://github.com/vm0-ai/vm0/commit/4ee88b4059235ee6e12cfa78481708364807f5e6))
+* cut over runners poll route ([#14223](https://github.com/vm0-ai/vm0/issues/14223)) ([4b51be3](https://github.com/vm0-ai/vm0/commit/4b51be3a1d4febf9ed2af31a5e21c33e161a9713))
+* cut over telegram integrations list ([#14208](https://github.com/vm0-ai/vm0/issues/14208)) ([9a73c07](https://github.com/vm0-ai/vm0/commit/9a73c07fe78c6db1dbd15ae960bd6017f155408b))
+* cut over zero slack connect route ([#14216](https://github.com/vm0-ai/vm0/issues/14216)) ([8f097e1](https://github.com/vm0-ai/vm0/commit/8f097e1c5b5d0ba23532d5e8d473448e9697c6f7))
+
 ## [1.61.0](https://github.com/vm0-ai/vm0/compare/api-v1.60.1...api-v1.61.0) (2026-05-20)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.159.1](https://github.com/vm0-ai/vm0/compare/cli-v9.159.0...cli-v9.159.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* hide connector empty state for built-in generation ([#14210](https://github.com/vm0-ai/vm0/issues/14210)) ([5f654f9](https://github.com/vm0-ai/vm0/commit/5f654f942dd1f6e879c7d5afde41122a6a4ed965))
+
 ## [9.159.0](https://github.com/vm0-ai/vm0/compare/cli-v9.158.2...cli-v9.159.0) (2026-05-20)
 
 

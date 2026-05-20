@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.370.1](https://github.com/vm0-ai/vm0/compare/app-v0.370.0...app-v0.370.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* integrate desktop titlebar chrome ([#14226](https://github.com/vm0-ai/vm0/issues/14226)) ([950dec6](https://github.com/vm0-ai/vm0/commit/950dec6f2c076d6098cbe64e49514688377ab916))
+* revoke desktop local agent hosts on delete ([#14228](https://github.com/vm0-ai/vm0/issues/14228)) ([fdfd137](https://github.com/vm0-ai/vm0/commit/fdfd137d45adb2a0bd5c1cfce49f4013e7d27217))
+
 ## [0.370.0](https://github.com/vm0-ai/vm0/compare/app-v0.369.1...app-v0.370.0) (2026-05-20)
 
 
