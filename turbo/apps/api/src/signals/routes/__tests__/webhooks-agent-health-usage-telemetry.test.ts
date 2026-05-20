@@ -91,6 +91,29 @@ async function postRawHeartbeat(
   };
 }
 
+async function postRawUsageEvent(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/webhooks/agent/usage-event", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
 async function postRawTelemetry(
   body: unknown,
   headers: Record<string, string> = {},
@@ -322,6 +345,124 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
 
+  interface UsageEventItem {
+    readonly idempotencyKey: string;
+    readonly kind: "connector" | "model" | "image";
+    readonly provider: string;
+    readonly category: string;
+    readonly quantity: number;
+  }
+
+  function validUsageEvent(): UsageEventItem {
+    return {
+      idempotencyKey: randomUUID(),
+      kind: "connector" as const,
+      provider: "x",
+      category: "tweet.read",
+      quantity: 5,
+    };
+  }
+
+  function validBody(
+    fixture: AgentWebhookFixture,
+    event: UsageEventItem = validUsageEvent(),
+  ) {
+    return {
+      runId: fixture.runId,
+      events: [event],
+    };
+  }
+
+  function rawBody(
+    fixture: AgentWebhookFixture,
+    event: Record<string, unknown>,
+  ) {
+    return {
+      runId: fixture.runId,
+      events: [event],
+    };
+  }
+
+  async function rowsForRun(runId: string) {
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({
+        runId: usageEvent.runId,
+        orgId: usageEvent.orgId,
+        userId: usageEvent.userId,
+        kind: usageEvent.kind,
+        provider: usageEvent.provider,
+        category: usageEvent.category,
+        quantity: usageEvent.quantity,
+        idempotencyKey: usageEvent.idempotencyKey,
+        status: usageEvent.status,
+      })
+      .from(usageEvent)
+      .where(eq(usageEvent.runId, runId));
+
+    return [...rows].sort((left, right) => {
+      return left.idempotencyKey.localeCompare(right.idempotencyKey);
+    });
+  }
+
+  it("rejects missing sandbox auth", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    const response = await accept(
+      client.send({ body: validBody(fixture), headers: {} }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated or runId mismatch",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("rejects sandbox auth for a different run", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    const response = await accept(
+      client.send({
+        body: validBody(fixture),
+        headers: {
+          authorization: `Bearer ${sandboxToken({
+            ...fixture,
+            runId: randomUUID(),
+          })}`,
+        },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated or runId mismatch",
+        code: "UNAUTHORIZED",
+      },
+    });
+  });
+
+  it("rejects missing runId before inserting usage events", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await postRawUsageEvent(
+      { events: [validUsageEvent()] },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("runId");
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
+  });
+
   it("persists usage events idempotently for the sandbox run", async () => {
     const fixture = await track(seedFixture());
     const idempotencyKey = randomUUID();
@@ -345,22 +486,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     await accept(client.send(request), [200]);
     await accept(client.send(request), [200]);
 
-    const db = store.set(writeDb$);
-    const rows = await db
-      .select({
-        runId: usageEvent.runId,
-        orgId: usageEvent.orgId,
-        userId: usageEvent.userId,
-        kind: usageEvent.kind,
-        provider: usageEvent.provider,
-        category: usageEvent.category,
-        quantity: usageEvent.quantity,
-        idempotencyKey: usageEvent.idempotencyKey,
-      })
-      .from(usageEvent)
-      .where(eq(usageEvent.idempotencyKey, idempotencyKey));
-
-    expect(rows).toStrictEqual([
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([
       {
         runId: fixture.runId,
         orgId: fixture.orgId,
@@ -370,8 +496,286 @@ describe("POST /api/webhooks/agent/usage-event", () => {
         category: "tokens.input",
         quantity: 42,
         idempotencyKey,
+        status: "pending",
       },
     ]);
+  });
+
+  it("keeps the first value when a retry reuses an idempotency key", async () => {
+    const fixture = await track(seedFixture());
+    const sharedKey = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          ...validUsageEvent(),
+          idempotencyKey: sharedKey,
+          quantity: 5,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          ...validUsageEvent(),
+          idempotencyKey: sharedKey,
+          quantity: 99,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey: sharedKey,
+        quantity: 5,
+      },
+    ]);
+  });
+
+  it("writes separate rows for different categories", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          ...validUsageEvent(),
+          category: "tweet.read",
+          quantity: 3,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          ...validUsageEvent(),
+          category: "users.read",
+          quantity: 2,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    const byCategory = Object.fromEntries(
+      (await rowsForRun(fixture.runId)).map((row) => {
+        return [row.category, row.quantity];
+      }),
+    );
+    expect(byCategory).toStrictEqual({
+      "tweet.read": 3,
+      "users.read": 2,
+    });
+  });
+
+  it("accepts quantity zero", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    const response = await accept(
+      client.send({
+        body: validBody(fixture, { ...validUsageEvent(), quantity: 0 }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true });
+    await expect(rowsForRun(fixture.runId)).resolves.toMatchObject([
+      { quantity: 0 },
+    ]);
+  });
+
+  it("accepts a batch with model and image usage events", async () => {
+    const fixture = await track(seedFixture());
+    const modelEventId = randomUUID();
+    const imageEventId = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    const response = await accept(
+      client.send({
+        body: {
+          runId: fixture.runId,
+          events: [
+            {
+              idempotencyKey: modelEventId,
+              kind: "model",
+              provider: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 123,
+            },
+            {
+              idempotencyKey: imageEventId,
+              kind: "image",
+              provider: "gpt-image-1",
+              category: "output_image",
+              quantity: 1,
+            },
+          ],
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true });
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          idempotencyKey: modelEventId,
+          kind: "model",
+          provider: "claude-sonnet-4-6",
+          category: "tokens.input",
+          quantity: 123,
+          status: "pending",
+        }),
+        expect.objectContaining({
+          idempotencyKey: imageEventId,
+          kind: "image",
+          provider: "gpt-image-1",
+          category: "output_image",
+          quantity: 1,
+          status: "pending",
+        }),
+      ]),
+    );
+  });
+
+  it("deduplicates duplicate idempotency keys inside a batch", async () => {
+    const fixture = await track(seedFixture());
+    const sharedKey = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: {
+          runId: fixture.runId,
+          events: [
+            {
+              idempotencyKey: sharedKey,
+              kind: "connector",
+              provider: "x",
+              category: "tweet.read",
+              quantity: 3,
+            },
+            {
+              idempotencyKey: sharedKey,
+              kind: "connector",
+              provider: "x",
+              category: "users.read",
+              quantity: 7,
+            },
+          ],
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey: sharedKey,
+        provider: "x",
+        category: "tweet.read",
+        quantity: 3,
+      },
+    ]);
+  });
+
+  it("deduplicates a retried batch by idempotency key", async () => {
+    const fixture = await track(seedFixture());
+    const firstEventId = randomUUID();
+    const secondEventId = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+    const request = {
+      body: {
+        runId: fixture.runId,
+        events: [
+          {
+            idempotencyKey: firstEventId,
+            kind: "model" as const,
+            provider: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 10,
+          },
+          {
+            idempotencyKey: secondEventId,
+            kind: "model" as const,
+            provider: "claude-sonnet-4-6",
+            category: "tokens.output",
+            quantity: 20,
+          },
+        ],
+      },
+      headers: authHeaders(fixture),
+    };
+
+    await accept(client.send(request), [200]);
+    await accept(client.send(request), [200]);
+
+    const rows = await rowsForRun(fixture.runId);
+    expect(rows).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          idempotencyKey: firstEventId,
+          category: "tokens.input",
+          quantity: 10,
+        }),
+        expect.objectContaining({
+          idempotencyKey: secondEventId,
+          category: "tokens.output",
+          quantity: 20,
+        }),
+      ]),
+    );
+    expect(rows).toHaveLength(2);
+  });
+
+  it("accepts batches at the 100-event limit", async () => {
+    const fixture = await track(seedFixture());
+    const firstEventId = randomUUID();
+    const lastEventId = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: {
+          runId: fixture.runId,
+          events: Array.from({ length: 100 }, (_, index) => {
+            return {
+              idempotencyKey:
+                index === 0
+                  ? firstEventId
+                  : index === 99
+                    ? lastEventId
+                    : randomUUID(),
+              kind: "model" as const,
+              provider: "claude-sonnet-4-6",
+              category: index % 2 === 0 ? "tokens.input" : "tokens.output",
+              quantity: index + 1,
+            };
+          }),
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    const rows = await rowsForRun(fixture.runId);
+    expect(rows).toHaveLength(100);
+    expect(rows).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ idempotencyKey: firstEventId, quantity: 1 }),
+        expect.objectContaining({ idempotencyKey: lastEventId, quantity: 100 }),
+      ]),
+    );
   });
 
   it("returns 404 when the authenticated run no longer exists", async () => {
@@ -404,6 +808,108 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Run not found", code: "NOT_FOUND" },
     });
+  });
+
+  it.each([
+    {
+      name: "negative quantity",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, { ...validUsageEvent(), quantity: -1 });
+      },
+    },
+    {
+      name: "non-integer quantity",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, { ...validUsageEvent(), quantity: 1.5 });
+      },
+    },
+    {
+      name: "unknown kind",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, {
+          ...validUsageEvent(),
+          kind: "external-api",
+        });
+      },
+    },
+    {
+      name: "unexpected event field",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, { ...validUsageEvent(), unexpected: true });
+      },
+    },
+    {
+      name: "unexpected top-level field",
+      body: (fixture: AgentWebhookFixture) => {
+        return { ...validBody(fixture), unexpected: true };
+      },
+    },
+    {
+      name: "empty provider",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, { ...validUsageEvent(), provider: "" });
+      },
+    },
+    {
+      name: "empty category",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, { ...validUsageEvent(), category: "" });
+      },
+    },
+    {
+      name: "non-UUID idempotencyKey",
+      body: (fixture: AgentWebhookFixture) => {
+        return rawBody(fixture, {
+          ...validUsageEvent(),
+          idempotencyKey: "not-a-uuid",
+        });
+      },
+    },
+    {
+      name: "empty batch",
+      body: (fixture: AgentWebhookFixture) => {
+        return { runId: fixture.runId, events: [] };
+      },
+    },
+    {
+      name: "legacy single-event body",
+      body: (fixture: AgentWebhookFixture) => {
+        return {
+          runId: fixture.runId,
+          ...validUsageEvent(),
+        };
+      },
+    },
+    {
+      name: "batch with more than 100 events",
+      body: (fixture: AgentWebhookFixture) => {
+        return {
+          runId: fixture.runId,
+          events: Array.from({ length: 101 }, (_, index) => {
+            return {
+              idempotencyKey: randomUUID(),
+              kind: "model",
+              provider: "claude-sonnet-4-6",
+              category: index % 2 === 0 ? "tokens.input" : "tokens.output",
+              quantity: index,
+            };
+          }),
+        };
+      },
+    },
+  ])("rejects $name", async ({ body }) => {
+    const fixture = await track(seedFixture());
+
+    const response = await postRawUsageEvent(
+      body(fixture),
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
   });
 });
 
