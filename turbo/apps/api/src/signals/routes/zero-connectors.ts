@@ -28,9 +28,8 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  buildProviderAuthUrl,
   isOAuthConnectorType,
-  PROVIDER_HANDLERS,
+  CONNECTOR_OAUTH_PROVIDERS,
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -322,11 +321,8 @@ function connectorDoesNotUseOAuthResponse(type: string) {
   return jsonResponse({ error: `${type} connector does not use OAuth` }, 400);
 }
 
-function missingOAuthProviderHandlerResponse(type: string) {
-  return jsonResponse(
-    { error: `${type} OAuth provider handler not configured` },
-    500,
-  );
+function missingOAuthProviderResponse(type: string) {
+  return jsonResponse({ error: `${type} OAuth provider not configured` }, 500);
 }
 
 async function buildProviderAuthorizeUrl(args: {
@@ -335,8 +331,9 @@ async function buildProviderAuthorizeUrl(args: {
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<AuthUrlResult> {
+  const provider = CONNECTOR_OAUTH_PROVIDERS[args.type];
   return normalizeAuthUrlResult(
-    await buildProviderAuthUrl(PROVIDER_HANDLERS[args.type], {
+    await provider.buildAuthUrl({
       clientId: args.clientId,
       redirectUri: args.redirectUri,
       state: args.state,
@@ -596,7 +593,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return connectorDoesNotUseOAuthResponse(type);
     }
     if (!isOAuthConnectorType(type)) {
-      return missingOAuthProviderHandlerResponse(type);
+      return missingOAuthProviderResponse(type);
     }
 
     if (!auth.orgId) {
@@ -697,9 +694,7 @@ const startConnectorOauthInner$ = command(
       return badRequestMessage(`${type} connector does not use OAuth`);
     }
     if (!isOAuthConnectorType(type)) {
-      return internalServerError(
-        `${type} OAuth provider handler not configured`,
-      );
+      return internalServerError(`${type} OAuth provider not configured`);
     }
 
     if (!auth.orgId) {

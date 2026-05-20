@@ -1,27 +1,33 @@
-import { type ProviderHandler } from "../provider-types";
+import {
+  adaptClientCredentialCodeExchange,
+  adaptClientCredentialTokenRefresh,
+  adaptClientIdAuthUrl,
+  type OAuthConnectorProvider,
+} from "../provider-types";
 import {
   buildStravaAuthorizationUrl,
   exchangeStravaCode,
   getStravaSecretName,
   refreshStravaToken,
 } from "./strava";
-
-export const stravaHandler: ProviderHandler = {
-  buildAuthUrl: buildStravaAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code) {
-    const result = await exchangeStravaCode(clientId, clientSecret, code);
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.username,
-        email: result.userInfo.email,
-      },
-    };
-  },
+export const stravaHandler: OAuthConnectorProvider = {
+  buildAuthUrl: adaptClientIdAuthUrl(buildStravaAuthorizationUrl),
+  exchangeCode: adaptClientCredentialCodeExchange(
+    async (clientId, clientSecret, code) => {
+      const result = await exchangeStravaCode(clientId, clientSecret, code);
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.username,
+          email: result.userInfo.email,
+        },
+      };
+    },
+  ),
   getClientId: (e) => {
     return e.STRAVA_OAUTH_CLIENT_ID;
   },
@@ -32,5 +38,5 @@ export const stravaHandler: ProviderHandler = {
   getRefreshSecretName: () => {
     return "STRAVA_REFRESH_TOKEN";
   },
-  refreshToken: refreshStravaToken,
+  refreshToken: adaptClientCredentialTokenRefresh(refreshStravaToken),
 };

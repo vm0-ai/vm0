@@ -12,9 +12,8 @@ import {
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  exchangeProviderCode,
   isOAuthConnectorType,
-  PROVIDER_HANDLERS,
+  CONNECTOR_OAUTH_PROVIDERS,
   type OAuthTokenResult,
 } from "@vm0/connectors/oauth-providers";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -163,7 +162,7 @@ async function exchangeTokenForConnector(args: {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  const handler = PROVIDER_HANDLERS[args.connectorType];
+  const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
   const credentials = getConnectorOAuthCredentials(
     args.connectorType,
     optionalEnv,
@@ -172,7 +171,7 @@ async function exchangeTokenForConnector(args: {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
-  return await exchangeProviderCode(handler, {
+  return await provider.exchangeCode({
     clientId: credentials.clientId,
     clientSecret: credentials.clientSecret,
     code: args.code,
@@ -301,7 +300,7 @@ const completeOAuthCallback$ = command(
     });
     signal.throwIfAborted();
 
-    const handler = PROVIDER_HANDLERS[args.connectorType];
+    const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
     const result = await set(
       upsertOAuthConnector$,
       {
@@ -312,7 +311,7 @@ const completeOAuthCallback$ = command(
         userInfo: token.userInfo,
         oauthScopes: getRequestedScopes(args.connectorType),
         refreshToken: token.refreshToken,
-        refreshSecretName: handler.getRefreshSecretName?.(),
+        refreshSecretName: provider.getRefreshSecretName?.(),
         expiresIn: token.expiresIn,
       },
       signal,

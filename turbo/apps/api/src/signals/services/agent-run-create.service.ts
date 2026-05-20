@@ -36,10 +36,10 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import {
-  getConnectorOAuthProviderHandler,
-  providerSupportsRefresh,
+  getConnectorOAuthProvider,
+  isOAuthRefreshProvider,
 } from "@vm0/connectors/oauth-providers";
-import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
@@ -854,15 +854,12 @@ function modelProviderRefreshMaps(
       >;
     }
   | undefined {
-  const handler = getModelProviderOAuthHandler(providerType);
-  if (!handler) {
-    return undefined;
-  }
-  if (!handler.refreshToken) {
+  const provider = getModelProviderOAuthProvider(providerType);
+  if (!provider || !isOAuthRefreshProvider(provider)) {
     return undefined;
   }
 
-  const accessSecretName = handler.getSecretName();
+  const accessSecretName = provider.getSecretName();
   const secretConnectorMap: Record<string, string> = {
     [accessSecretName]: providerType,
   };
@@ -1473,11 +1470,11 @@ async function loadOauthConnectorContext(
       }
     }
 
-    const handler = getConnectorOAuthProviderHandler(connectorType);
-    if (!handler || !providerSupportsRefresh(handler)) {
+    const provider = getConnectorOAuthProvider(connectorType);
+    if (!provider || !isOAuthRefreshProvider(provider)) {
       continue;
     }
-    const secretName = handler.getSecretName();
+    const secretName = provider.getSecretName();
     secretConnectorMap[secretName] = connectorType;
     for (const [envName, valueRef] of Object.entries(mapping)) {
       if (valueRef === `$secrets.${secretName}`) {

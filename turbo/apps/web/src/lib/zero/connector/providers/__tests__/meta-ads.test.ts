@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
@@ -145,16 +145,16 @@ describe("connector/providers/meta-ads", () => {
   });
 
   describe("metaAdsHandler", () => {
-    it("is registered in PROVIDER_HANDLERS under meta-ads key", () => {
-      expect(PROVIDER_HANDLERS["meta-ads"]).toBe(metaAdsHandler);
+    it("is registered in CONNECTOR_OAUTH_PROVIDERS under meta-ads key", () => {
+      expect(CONNECTOR_OAUTH_PROVIDERS["meta-ads"]).toBe(metaAdsHandler);
     });
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
-      const url = metaAdsHandler.buildAuthUrl(
-        "test-client",
-        "https://example.com/callback",
-        "test-state",
-      );
+      const url = metaAdsHandler.buildAuthUrl({
+        clientId: "test-client",
+        redirectUri: "https://example.com/callback",
+        state: "test-state",
+      });
 
       expect(url).toContain("client_id=test-client");
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
@@ -181,7 +181,7 @@ describe("connector/providers/meta-ads", () => {
     });
 
     it("refreshToken is not registered (Meta uses long-lived token exchange)", () => {
-      expect(metaAdsHandler.refreshToken).toBeUndefined();
+      expect("refreshToken" in metaAdsHandler).toBe(false);
     });
   });
 });

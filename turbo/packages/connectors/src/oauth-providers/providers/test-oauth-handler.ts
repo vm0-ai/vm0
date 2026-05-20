@@ -1,4 +1,9 @@
-import { type ProviderHandler } from "../provider-types";
+import {
+  adaptClientCredentialCodeExchange,
+  adaptClientCredentialTokenRefresh,
+  adaptClientIdAuthUrl,
+  type OAuthConnectorProvider,
+} from "../provider-types";
 import {
   buildTestOAuthAuthorizationUrl,
   exchangeTestOAuthCode,
@@ -9,25 +14,26 @@ import {
   TEST_OAUTH_CLIENT_SECRET,
   TEST_OAUTH_REFRESH_SECRET_NAME,
 } from "./test-oauth";
-
-export const testOauthHandler: ProviderHandler = {
-  buildAuthUrl: buildTestOAuthAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
-    const token = await exchangeTestOAuthCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    const user = await fetchTestOAuthUserInfo(token.accessToken);
-    return {
-      accessToken: token.accessToken,
-      refreshToken: token.refreshToken,
-      expiresIn: token.expiresIn,
-      scopes: token.scopes,
-      userInfo: user,
-    };
-  },
+export const testOauthHandler: OAuthConnectorProvider = {
+  buildAuthUrl: adaptClientIdAuthUrl(buildTestOAuthAuthorizationUrl),
+  exchangeCode: adaptClientCredentialCodeExchange(
+    async (clientId, clientSecret, code, redirectUri) => {
+      const token = await exchangeTestOAuthCode(
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      const user = await fetchTestOAuthUserInfo(token.accessToken);
+      return {
+        accessToken: token.accessToken,
+        refreshToken: token.refreshToken,
+        expiresIn: token.expiresIn,
+        scopes: token.scopes,
+        userInfo: user,
+      };
+    },
+  ),
   getClientId: () => {
     return TEST_OAUTH_CLIENT_ID;
   },
@@ -40,16 +46,18 @@ export const testOauthHandler: ProviderHandler = {
   getRefreshSecretName: () => {
     return TEST_OAUTH_REFRESH_SECRET_NAME;
   },
-  refreshToken: async (clientId, clientSecret, refreshToken) => {
-    const result = await refreshTestOAuthToken(
-      clientId,
-      clientSecret,
-      refreshToken,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-    };
-  },
+  refreshToken: adaptClientCredentialTokenRefresh(
+    async (clientId, clientSecret, refreshToken) => {
+      const result = await refreshTestOAuthToken(
+        clientId,
+        clientSecret,
+        refreshToken,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+      };
+    },
+  ),
 };

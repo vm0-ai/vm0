@@ -8,7 +8,10 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import {
+  isOAuthRefreshProvider,
+  CONNECTOR_OAUTH_PROVIDERS,
+} from "@vm0/connectors/oauth-providers";
 
 // ---------------------------------------------------------------------------
 // DB-direct seeders for connector test setup.
@@ -32,6 +35,7 @@ export async function createTestUserConnector(
   connectorType: string,
 ): Promise<void> {
   initServices();
+
   await globalThis.services.db
     .insert(userConnectors)
     .values({ orgId, userId, agentId, connectorType })
@@ -83,7 +87,10 @@ export async function createTestOAuthConnectorRecord(options: {
 }): Promise<void> {
   initServices();
 
-  const handler = PROVIDER_HANDLERS[options.type];
+  const handler = CONNECTOR_OAUTH_PROVIDERS[options.type];
+  const tokenExpiresAt = isOAuthRefreshProvider(handler)
+    ? new Date(Date.now() + 60 * 60 * 1000)
+    : null;
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   await globalThis.services.db
     .insert(secrets)
@@ -115,9 +122,7 @@ export async function createTestOAuthConnectorRecord(options: {
       externalUsername: options.externalUsername,
       externalEmail: options.externalEmail,
       oauthScopes: JSON.stringify(options.oauthScopes),
-      tokenExpiresAt: handler.refreshToken
-        ? new Date(Date.now() + 60 * 60 * 1000)
-        : null,
+      tokenExpiresAt,
       needsReconnect: false,
     })
     .onConflictDoUpdate({
@@ -128,9 +133,7 @@ export async function createTestOAuthConnectorRecord(options: {
         externalUsername: options.externalUsername,
         externalEmail: options.externalEmail,
         oauthScopes: JSON.stringify(options.oauthScopes),
-        tokenExpiresAt: handler.refreshToken
-          ? new Date(Date.now() + 60 * 60 * 1000)
-          : null,
+        tokenExpiresAt,
         needsReconnect: false,
         updatedAt: new Date(),
       },

@@ -9,13 +9,10 @@ import {
   type OAuthExchangeArgs,
   type OAuthRefreshArgs,
   type OAuthRefreshResult,
-  buildProviderAuthUrl,
-  exchangeProviderCode,
-  refreshProviderToken,
   providerEnvFromObject,
-  providerSupportsRefresh,
+  isOAuthRefreshProvider,
   type OAuthTokenResult,
-  type ProviderHandler,
+  type OAuthConnectorProvider,
   type ProviderEnv,
 } from "./provider-types";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
@@ -73,15 +70,9 @@ export type {
   OAuthTokenResult,
 };
 export type { ProviderEnv };
-export {
-  buildProviderAuthUrl,
-  exchangeProviderCode,
-  providerEnvFromObject,
-  providerSupportsRefresh,
-  refreshProviderToken,
-};
+export { providerEnvFromObject, isOAuthRefreshProvider };
 
-export const PROVIDER_HANDLERS = {
+export const CONNECTOR_OAUTH_PROVIDERS = {
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
   asana: asanaHandler,
@@ -127,21 +118,19 @@ export const PROVIDER_HANDLERS = {
   xero: xeroHandler,
   zoom: zoomHandler,
   "test-oauth": testOauthHandler,
-} satisfies Record<OAuthConnectorType, ProviderHandler>;
-
-export type ConnectorOAuthProviderHandler = ProviderHandler;
+} satisfies Record<OAuthConnectorType, OAuthConnectorProvider>;
 
 export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
-  return Object.hasOwn(PROVIDER_HANDLERS, type);
+  return Object.hasOwn(CONNECTOR_OAUTH_PROVIDERS, type);
 }
 
-export function getConnectorOAuthProviderHandler(
+export function getConnectorOAuthProvider(
   type: string,
-): ConnectorOAuthProviderHandler | undefined {
+): OAuthConnectorProvider | undefined {
   if (!isOAuthConnectorType(type)) {
     return undefined;
   }
-  return PROVIDER_HANDLERS[type];
+  return CONNECTOR_OAUTH_PROVIDERS[type];
 }
 
 /**

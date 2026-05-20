@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
-import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import {
   refreshChatgptToken,
   getChatgptSecretName,
@@ -166,8 +166,8 @@ describe("connector/providers/codex-oauth", () => {
   });
 
   describe("codexOauthHandler", () => {
-    it("is registered as a model-provider refresh handler", () => {
-      expect(getModelProviderOAuthHandler("codex-oauth-token")).toBe(
+    it("is registered as a model-provider refresh provider", () => {
+      expect(getModelProviderOAuthProvider("codex-oauth-token")).toBe(
         codexOauthHandler,
       );
     });

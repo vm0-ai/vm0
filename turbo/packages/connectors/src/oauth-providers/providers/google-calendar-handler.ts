@@ -1,39 +1,45 @@
-import { type ProviderHandler } from "../provider-types";
+import {
+  adaptClientCredentialCodeExchange,
+  adaptClientCredentialTokenRefresh,
+  adaptClientIdAuthUrl,
+  type OAuthConnectorProvider,
+} from "../provider-types";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "./google-oauth";
-
-export const googleCalendarHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) => {
+export const googleCalendarHandler: OAuthConnectorProvider = {
+  buildAuthUrl: adaptClientIdAuthUrl((clientId, redirectUri, state) => {
     return buildGoogleAuthorizationUrl(
       "google-calendar",
       clientId,
       redirectUri,
       state,
     );
-  },
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
-    const result = await exchangeGoogleOAuthCode(
-      "google-calendar",
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.name,
-        email: result.userInfo.email,
-      },
-    };
-  },
+  }),
+  exchangeCode: adaptClientCredentialCodeExchange(
+    async (clientId, clientSecret, code, redirectUri) => {
+      const result = await exchangeGoogleOAuthCode(
+        "google-calendar",
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.name,
+          email: result.userInfo.email,
+        },
+      };
+    },
+  ),
   getClientId: (e) => {
     return e.GOOGLE_OAUTH_CLIENT_ID;
   },
@@ -46,12 +52,14 @@ export const googleCalendarHandler: ProviderHandler = {
   getRefreshSecretName: () => {
     return "GOOGLE_CALENDAR_REFRESH_TOKEN";
   },
-  refreshToken: (clientId, clientSecret, refreshToken) => {
-    return refreshGoogleToken(
-      "google-calendar",
-      clientId,
-      clientSecret,
-      refreshToken,
-    );
-  },
+  refreshToken: adaptClientCredentialTokenRefresh(
+    (clientId, clientSecret, refreshToken) => {
+      return refreshGoogleToken(
+        "google-calendar",
+        clientId,
+        clientSecret,
+        refreshToken,
+      );
+    },
+  ),
 };

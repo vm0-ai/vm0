@@ -9,7 +9,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { logger } from "../../shared/logger";
 import { getSecretValue } from "../secret/secret-service";
 import {
-  getConnectorOAuthProviderHandler,
+  getConnectorOAuthProvider,
   providerEnvFromObject,
 } from "@vm0/connectors/oauth-providers";
 
@@ -140,8 +140,8 @@ export async function listConnectors(
 
 /**
  * Best-effort revocation of an OAuth provider's remote token/grant.
- * Looks up the connector's handler, reads the access token from DB,
- * and calls the handler's revokeToken method if available.
+ * Looks up the connector's OAuth provider, reads the access token from DB,
+ * and calls the provider's revokeToken method if available.
  * Errors are logged and swallowed — revocation must never block disconnect.
  */
 export async function revokeConnectorToken(
@@ -151,12 +151,12 @@ export async function revokeConnectorToken(
 ): Promise<void> {
   if (type === "computer") return;
 
-  const handler = getConnectorOAuthProviderHandler(type);
-  if (!handler?.revokeToken) return;
+  const provider = getConnectorOAuthProvider(type);
+  if (!provider?.revokeToken) return;
 
   const env = providerEnvFromObject(globalThis.services.env);
-  const clientId = handler.getClientId(env);
-  const clientSecret = handler.getClientSecret(env);
+  const clientId = provider.getClientId(env);
+  const clientSecret = provider.getClientSecret(env);
   if (!clientId || !clientSecret) {
     log.debug(
       `${type} OAuth credentials not configured, skipping token revocation`,
@@ -164,7 +164,7 @@ export async function revokeConnectorToken(
     return;
   }
 
-  const accessTokenName = handler.getSecretName();
+  const accessTokenName = provider.getSecretName();
   const accessToken = await getSecretValue(
     orgId,
     userId,
@@ -177,7 +177,7 @@ export async function revokeConnectorToken(
   }
 
   try {
-    await handler.revokeToken(clientId, clientSecret, accessToken);
+    await provider.revokeToken({ clientId, clientSecret, accessToken });
     log.debug(`${type} token revoked successfully`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

@@ -10,7 +10,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -322,11 +322,11 @@ function configureDynamicTestOAuthRefresh(
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const handler = PROVIDER_HANDLERS["test-oauth"];
-  const originalRefreshTokenWithArgs = handler.refreshTokenWithArgs;
+  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const originalRefreshToken = provider.refreshToken;
 
   mutableOAuth.client = dynamicPublicClient;
-  handler.refreshTokenWithArgs = (args) => {
+  provider.refreshToken = (args) => {
     refreshes.push({
       clientId: args.clientId,
       clientSecret: args.clientSecret,
@@ -341,10 +341,10 @@ function configureDynamicTestOAuthRefresh(
 
   return () => {
     mutableOAuth.client = originalClient;
-    if (originalRefreshTokenWithArgs) {
-      handler.refreshTokenWithArgs = originalRefreshTokenWithArgs;
+    if (originalRefreshToken) {
+      provider.refreshToken = originalRefreshToken;
     } else {
-      delete handler.refreshTokenWithArgs;
+      delete provider.refreshToken;
     }
   };
 }

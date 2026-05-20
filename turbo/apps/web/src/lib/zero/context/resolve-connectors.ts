@@ -7,8 +7,8 @@ import { and, eq } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import { connectors } from "@vm0/db/schema/connector";
 import {
-  getConnectorOAuthProviderHandler,
-  providerSupportsRefresh,
+  getConnectorOAuthProvider,
+  isOAuthRefreshProvider,
 } from "@vm0/connectors/oauth-providers";
 import { getSecretValues } from "../secret/secret-service";
 
@@ -111,10 +111,10 @@ export async function resolveOauthConnectorSecrets(
   // reference either form.
   const secretConnectorMap: Record<string, string> = {};
   for (const { type } of allowedConnectors) {
-    const handler = getConnectorOAuthProviderHandler(type);
-    if (!handler || !providerSupportsRefresh(handler)) continue;
+    const provider = getConnectorOAuthProvider(type);
+    if (!provider || !isOAuthRefreshProvider(provider)) continue;
 
-    const secretName = handler.getSecretName();
+    const secretName = provider.getSecretName();
     secretConnectorMap[secretName] = type;
 
     const mapping = getConnectorEnvironmentMapping(type);

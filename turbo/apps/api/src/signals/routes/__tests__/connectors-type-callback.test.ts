@@ -5,7 +5,7 @@ import {
   type ConnectorOAuthClientConfig,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -219,11 +219,11 @@ function configureDynamicTestOAuthExchange(
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const handler = PROVIDER_HANDLERS["test-oauth"];
-  const originalExchangeCodeWithArgs = handler.exchangeCodeWithArgs;
+  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const originalExchangeCode = provider.exchangeCode;
 
   mutableOAuth.client = dynamicPublicClient;
-  handler.exchangeCodeWithArgs = (args) => {
+  provider.exchangeCode = (args) => {
     exchanges.push({
       clientId: args.clientId,
       clientSecret: args.clientSecret,
@@ -248,11 +248,7 @@ function configureDynamicTestOAuthExchange(
 
   return () => {
     mutableOAuth.client = originalClient;
-    if (originalExchangeCodeWithArgs) {
-      handler.exchangeCodeWithArgs = originalExchangeCodeWithArgs;
-    } else {
-      delete handler.exchangeCodeWithArgs;
-    }
+    provider.exchangeCode = originalExchangeCode;
   };
 }
 
@@ -1812,12 +1808,12 @@ describe("GET /api/connectors/:type/callback", () => {
         findDecryptedSecret({
           orgId,
           userId,
-          name: PROVIDER_HANDLERS[providerCase.type].getSecretName(),
+          name: CONNECTOR_OAUTH_PROVIDERS[providerCase.type].getSecretName(),
         }),
       ).resolves.toBe(accessToken);
 
       const refreshSecretName =
-        PROVIDER_HANDLERS[providerCase.type].getRefreshSecretName?.();
+        CONNECTOR_OAUTH_PROVIDERS[providerCase.type].getRefreshSecretName?.();
       if (refreshSecretName) {
         await expect(
           findDecryptedSecret({

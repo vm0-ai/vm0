@@ -5,7 +5,7 @@ import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { reloadEnv } from "../../../../../env";
 import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { googleAdsHandler } from "@vm0/connectors/oauth-providers/providers/google-ads-handler";
 
 const context = testContext();
@@ -18,16 +18,16 @@ describe("connector/providers/google-ads", () => {
   });
 
   describe("googleAdsHandler", () => {
-    it("is registered in PROVIDER_HANDLERS under google-ads key", () => {
-      expect(PROVIDER_HANDLERS["google-ads"]).toBe(googleAdsHandler);
+    it("is registered in CONNECTOR_OAUTH_PROVIDERS under google-ads key", () => {
+      expect(CONNECTOR_OAUTH_PROVIDERS["google-ads"]).toBe(googleAdsHandler);
     });
 
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
-      const url = googleAdsHandler.buildAuthUrl(
-        "test-client",
-        "https://example.com/callback",
-        "test-state",
-      );
+      const url = googleAdsHandler.buildAuthUrl({
+        clientId: "test-client",
+        redirectUri: "https://example.com/callback",
+        state: "test-state",
+      });
       if (typeof url !== "string") {
         throw new Error("Expected Google Ads auth URL to be a string");
       }
@@ -98,12 +98,12 @@ describe("connector/providers/google-ads", () => {
       });
       server.use(tokenHandler, userInfoHandler);
 
-      const result = await googleAdsHandler.exchangeCode(
-        "client-id",
-        "client-secret",
-        "auth-code",
-        "https://example.com/callback",
-      );
+      const result = await googleAdsHandler.exchangeCode({
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        code: "auth-code",
+        redirectUri: "https://example.com/callback",
+      });
 
       expect(result).toEqual({
         accessToken: "google-ads-access-token",
@@ -130,11 +130,16 @@ describe("connector/providers/google-ads", () => {
       });
       server.use(handler);
 
-      const result = await googleAdsHandler.refreshToken?.(
-        "client-id",
-        "client-secret",
-        "refresh-token",
-      );
+      const refreshToken = googleAdsHandler.refreshToken;
+      if (!refreshToken) {
+        throw new Error("Expected Google Ads handler to support refresh");
+      }
+
+      const result = await refreshToken({
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        refreshToken: "refresh-token",
+      });
 
       expect(result).toEqual({
         accessToken: "refreshed-google-ads-token",

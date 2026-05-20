@@ -1,32 +1,38 @@
-import { type ProviderHandler } from "../provider-types";
+import {
+  adaptClientCredentialCodeExchange,
+  adaptClientCredentialTokenRefresh,
+  adaptClientIdAuthUrl,
+  type OAuthConnectorProvider,
+} from "../provider-types";
 import {
   buildAhrefsAuthorizationUrl,
   exchangeAhrefsCode,
   getAhrefsSecretName,
   refreshAhrefsToken,
 } from "./ahrefs";
-
-export const ahrefsHandler: ProviderHandler = {
-  buildAuthUrl: buildAhrefsAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
-    const result = await exchangeAhrefsCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.name,
-        email: result.userInfo.email,
-      },
-    };
-  },
+export const ahrefsHandler: OAuthConnectorProvider = {
+  buildAuthUrl: adaptClientIdAuthUrl(buildAhrefsAuthorizationUrl),
+  exchangeCode: adaptClientCredentialCodeExchange(
+    async (clientId, clientSecret, code, redirectUri) => {
+      const result = await exchangeAhrefsCode(
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.name,
+          email: result.userInfo.email,
+        },
+      };
+    },
+  ),
   getClientId: (e) => {
     return e.AHREFS_OAUTH_CLIENT_ID;
   },
@@ -37,5 +43,5 @@ export const ahrefsHandler: ProviderHandler = {
   getRefreshSecretName: () => {
     return "AHREFS_REFRESH_TOKEN";
   },
-  refreshToken: refreshAhrefsToken,
+  refreshToken: adaptClientCredentialTokenRefresh(refreshAhrefsToken),
 };

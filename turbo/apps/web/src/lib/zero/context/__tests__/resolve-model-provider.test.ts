@@ -407,7 +407,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     });
   });
 
-  it("returns undefined secretConnectorMap for openai-api-key (no refreshToken on handler)", async () => {
+  it("returns undefined secretConnectorMap for openai-api-key (no refreshToken on provider)", async () => {
     const userId = uniqueId("scm-openai");
     const orgId = await setupOrg(userId);
     await insertOrgDefaultModelProvider(orgId, "openai-api-key");

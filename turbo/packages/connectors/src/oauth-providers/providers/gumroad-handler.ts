@@ -1,32 +1,38 @@
-import { type ProviderHandler } from "../provider-types";
+import {
+  adaptClientCredentialCodeExchange,
+  adaptClientCredentialTokenRefresh,
+  adaptClientIdAuthUrl,
+  type OAuthConnectorProvider,
+} from "../provider-types";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
   getGumroadSecretName,
   refreshGumroadToken,
 } from "./gumroad";
-
-export const gumroadHandler: ProviderHandler = {
-  buildAuthUrl: buildGumroadAuthorizationUrl,
-  async exchangeCode(clientId, clientSecret, code, redirectUri) {
-    const result = await exchangeGumroadCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.userInfo.id,
-        username: result.userInfo.username,
-        email: result.userInfo.email,
-      },
-    };
-  },
+export const gumroadHandler: OAuthConnectorProvider = {
+  buildAuthUrl: adaptClientIdAuthUrl(buildGumroadAuthorizationUrl),
+  exchangeCode: adaptClientCredentialCodeExchange(
+    async (clientId, clientSecret, code, redirectUri) => {
+      const result = await exchangeGumroadCode(
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      );
+      return {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+        scopes: result.scopes,
+        userInfo: {
+          id: result.userInfo.id,
+          username: result.userInfo.username,
+          email: result.userInfo.email,
+        },
+      };
+    },
+  ),
   getClientId: (e) => {
     return e.GUMROAD_OAUTH_CLIENT_ID;
   },
@@ -37,5 +43,5 @@ export const gumroadHandler: ProviderHandler = {
   getRefreshSecretName: () => {
     return "GUMROAD_REFRESH_TOKEN";
   },
-  refreshToken: refreshGumroadToken,
+  refreshToken: adaptClientCredentialTokenRefresh(refreshGumroadToken),
 };

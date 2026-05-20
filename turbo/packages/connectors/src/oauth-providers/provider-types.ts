@@ -63,111 +63,153 @@ export interface OAuthRefreshResult {
   readonly expiresIn?: number;
 }
 
-export interface ProviderHandler {
-  buildAuthUrl(
-    clientId: string,
-    redirectUri: string,
-    state: string,
-  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
-  buildAuthUrlWithArgs?(
-    args: OAuthAuthorizeArgs,
-  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
-  exchangeCode(
-    clientId: string,
-    clientSecret: string,
-    code: string,
-    redirectUri: string,
-    state?: string,
-    codeVerifier?: string,
-  ): Promise<OAuthTokenResult>;
-  exchangeCodeWithArgs?(args: OAuthExchangeArgs): Promise<OAuthTokenResult>;
-  getClientId(currentEnv: ProviderEnv): string | undefined;
-  getClientSecret(currentEnv: ProviderEnv): string | undefined;
-  getSecretName(): string;
-  getRefreshSecretName?(): string;
-  refreshToken?(
-    clientId: string,
-    clientSecret: string,
-    refreshToken: string,
-  ): Promise<OAuthRefreshResult>;
-  refreshTokenWithArgs?(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
-  revokeToken?(
-    clientId: string,
-    clientSecret: string,
-    accessToken: string,
-  ): Promise<void>;
-}
-
-export interface ModelProviderRefreshHandler {
-  getClientId(currentEnv: ProviderEnv): string | undefined;
-  getClientSecret(currentEnv: ProviderEnv): string | undefined;
-  getSecretName(): string;
-  getRefreshSecretName(): string;
-  refreshToken?(
-    clientId: string,
-    clientSecret: string,
-    refreshToken: string,
-  ): Promise<OAuthRefreshResult>;
-  refreshTokenWithArgs?(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
-}
-
-export function providerSupportsRefresh(handler: ProviderHandler): boolean {
-  return Boolean(handler.refreshToken || handler.refreshTokenWithArgs);
-}
-
-export async function buildProviderAuthUrl(
-  handler: ProviderHandler,
+export type BuildAuthUrlFn = (
   args: OAuthAuthorizeArgs,
-): Promise<string | AuthUrlResult> {
-  if (handler.buildAuthUrlWithArgs) {
-    return await handler.buildAuthUrlWithArgs(args);
-  }
-  if (!args.clientId) {
-    throw new Error("OAuth provider handler requires a client ID");
-  }
-  return await handler.buildAuthUrl(
-    args.clientId,
-    args.redirectUri,
-    args.state,
-  );
-}
+) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
 
-export async function exchangeProviderCode(
-  handler: ProviderHandler,
+export type ExchangeCodeFn = (
   args: OAuthExchangeArgs,
-): Promise<OAuthTokenResult> {
-  if (handler.exchangeCodeWithArgs) {
-    return await handler.exchangeCodeWithArgs(args);
-  }
-  if (!args.clientId || !args.clientSecret) {
-    throw new Error("OAuth provider handler requires client credentials");
-  }
-  return await handler.exchangeCode(
-    args.clientId,
-    args.clientSecret,
-    args.code,
-    args.redirectUri,
-    args.state,
-    args.codeVerifier,
-  );
+) => Promise<OAuthTokenResult>;
+
+export type RefreshTokenFn = (
+  args: OAuthRefreshArgs,
+) => Promise<OAuthRefreshResult>;
+
+export interface OAuthRevokeArgs {
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+  readonly accessToken: string;
 }
 
-export async function refreshProviderToken(
-  handler: ProviderHandler,
-  args: OAuthRefreshArgs,
-): Promise<OAuthRefreshResult> {
-  if (handler.refreshTokenWithArgs) {
-    return await handler.refreshTokenWithArgs(args);
+export type RevokeTokenFn = (args: OAuthRevokeArgs) => Promise<void>;
+
+type ClientIdBuildAuthUrlFn = (
+  clientId: string,
+  redirectUri: string,
+  state: string,
+) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
+
+type ClientCredentialExchangeCodeFn = (
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+  state?: string,
+  codeVerifier?: string,
+) => Promise<OAuthTokenResult>;
+
+type ClientCredentialRefreshTokenFn = (
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+) => Promise<OAuthRefreshResult>;
+
+type ClientCredentialRevokeTokenFn = (
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+) => Promise<void>;
+
+function requireOAuthClientId(args: { readonly clientId?: string }): string {
+  if (!args.clientId) {
+    throw new Error("OAuth provider requires a client ID");
   }
-  if (!handler.refreshToken) {
-    throw new Error("OAuth provider handler does not support token refresh");
-  }
+  return args.clientId;
+}
+
+function requireOAuthClientCredentials(args: {
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+}): { readonly clientId: string; readonly clientSecret: string } {
   if (!args.clientId || !args.clientSecret) {
-    throw new Error("OAuth provider handler requires client credentials");
+    throw new Error("OAuth provider requires client credentials");
   }
-  return await handler.refreshToken(
-    args.clientId,
-    args.clientSecret,
-    args.refreshToken,
+  return { clientId: args.clientId, clientSecret: args.clientSecret };
+}
+
+export function adaptClientIdAuthUrl(
+  buildAuthUrl: ClientIdBuildAuthUrlFn,
+): BuildAuthUrlFn {
+  return (args) => {
+    const clientId = requireOAuthClientId(args);
+    return buildAuthUrl(clientId, args.redirectUri, args.state);
+  };
+}
+
+export function adaptClientCredentialCodeExchange(
+  exchangeCode: ClientCredentialExchangeCodeFn,
+): ExchangeCodeFn {
+  return (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return exchangeCode(
+      clientId,
+      clientSecret,
+      args.code,
+      args.redirectUri,
+      args.state,
+      args.codeVerifier,
+    );
+  };
+}
+
+export function adaptClientCredentialTokenRefresh(
+  refreshToken: ClientCredentialRefreshTokenFn,
+): RefreshTokenFn {
+  return (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return refreshToken(clientId, clientSecret, args.refreshToken);
+  };
+}
+
+export function adaptClientCredentialTokenRevocation(
+  revokeToken: ClientCredentialRevokeTokenFn,
+): RevokeTokenFn {
+  return (args) => {
+    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    return revokeToken(clientId, clientSecret, args.accessToken);
+  };
+}
+
+export interface OAuthProvider {
+  getClientId(currentEnv: ProviderEnv): string | undefined;
+  getClientSecret(currentEnv: ProviderEnv): string | undefined;
+  getSecretName(): string;
+}
+
+export type OAuthAuthorizationCodeProvider = OAuthProvider & {
+  buildAuthUrl: BuildAuthUrlFn;
+  exchangeCode: ExchangeCodeFn;
+};
+
+export type OAuthRefreshProvider = OAuthProvider & {
+  getRefreshSecretName(): string;
+  refreshToken: RefreshTokenFn;
+};
+
+export type OAuthRevocationProvider = OAuthProvider & {
+  revokeToken: RevokeTokenFn;
+};
+
+type OAuthNoRefreshProvider = {
+  getRefreshSecretName?: never;
+  refreshToken?: never;
+};
+
+type OAuthNoRevocationProvider = {
+  revokeToken?: never;
+};
+
+export type OAuthConnectorProvider = OAuthAuthorizationCodeProvider &
+  (OAuthRefreshProvider | OAuthNoRefreshProvider) &
+  (OAuthRevocationProvider | OAuthNoRevocationProvider);
+
+export function isOAuthRefreshProvider(
+  provider: OAuthProvider,
+): provider is OAuthRefreshProvider {
+  return (
+    "getRefreshSecretName" in provider &&
+    typeof provider.getRefreshSecretName === "function" &&
+    "refreshToken" in provider &&
+    typeof provider.refreshToken === "function"
   );
 }

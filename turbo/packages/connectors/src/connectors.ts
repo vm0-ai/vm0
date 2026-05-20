@@ -722,7 +722,7 @@ const CONNECTOR_TYPES_DEF = {
   ...zoom,
 } as const satisfies Record<string, ConnectorConfig>;
 
-export type ConnectorType = keyof typeof CONNECTOR_TYPES_DEF;
+export type ConnectorType = Extract<keyof typeof CONNECTOR_TYPES_DEF, string>;
 export type OAuthConnectorType = {
   [Type in ConnectorType]: "oauth" extends keyof (typeof CONNECTOR_TYPES_DEF)[Type]["authMethods"]
     ? Type

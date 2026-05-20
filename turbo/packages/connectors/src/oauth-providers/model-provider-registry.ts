@@ -1,27 +1,33 @@
-import type { ModelProviderRefreshHandler } from "./provider-types";
+import type {
+  OAuthAuthorizationCodeProvider,
+  OAuthRefreshProvider,
+} from "./provider-types";
 import { codexOauthHandler } from "./providers/codex-oauth-handler";
 
-export const MODEL_PROVIDER_OAUTH_HANDLERS = {
+export const MODEL_PROVIDER_OAUTH_PROVIDERS = {
   "codex-oauth-token": codexOauthHandler,
-} as const satisfies Record<string, ModelProviderRefreshHandler>;
+} as const satisfies Record<
+  string,
+  OAuthAuthorizationCodeProvider | OAuthRefreshProvider
+>;
 
-export type ModelProviderOAuthHandlerKey =
-  keyof typeof MODEL_PROVIDER_OAUTH_HANDLERS;
+export type ModelProviderOAuthProviderKey =
+  keyof typeof MODEL_PROVIDER_OAUTH_PROVIDERS;
 
-export type ModelProviderOAuthHandler =
-  (typeof MODEL_PROVIDER_OAUTH_HANDLERS)[ModelProviderOAuthHandlerKey];
+export type ModelProviderOAuthProvider =
+  (typeof MODEL_PROVIDER_OAUTH_PROVIDERS)[ModelProviderOAuthProviderKey];
 
-export function isModelProviderOAuthHandlerKey(
-  handlerKey: string,
-): handlerKey is ModelProviderOAuthHandlerKey {
-  return Object.hasOwn(MODEL_PROVIDER_OAUTH_HANDLERS, handlerKey);
+export function isModelProviderOAuthProviderKey(
+  providerKey: string,
+): providerKey is ModelProviderOAuthProviderKey {
+  return Object.hasOwn(MODEL_PROVIDER_OAUTH_PROVIDERS, providerKey);
 }
 
-export function getModelProviderOAuthHandler(
-  handlerKey: string,
-): ModelProviderOAuthHandler | undefined {
-  if (!isModelProviderOAuthHandlerKey(handlerKey)) {
+export function getModelProviderOAuthProvider(
+  providerKey: string,
+): ModelProviderOAuthProvider | undefined {
+  if (!isModelProviderOAuthProviderKey(providerKey)) {
     return undefined;
   }
-  return MODEL_PROVIDER_OAUTH_HANDLERS[handlerKey];
+  return MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey];
 }

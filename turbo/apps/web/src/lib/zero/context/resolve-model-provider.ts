@@ -26,8 +26,9 @@ import {
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
-import { getModelProviderOAuthHandler } from "@vm0/connectors/oauth-providers/model-provider-registry";
+import { MODEL_PROVIDER_OAUTH_PROVIDER_KEY } from "../oauth-provider-key-bridge";
+import { isOAuthRefreshProvider } from "@vm0/connectors/oauth-providers";
+import { getModelProviderOAuthProvider } from "@vm0/connectors/oauth-providers/model-provider-registry";
 import { resolveModelFirstRouteDescriptor } from "../model-policy/model-first-route-service";
 import { getAppUrl } from "../url";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
@@ -233,7 +234,7 @@ interface ModelProviderSecretResult {
   credentialScope?: ModelProviderCredentialScope;
   /** Org-scoped model provider row used by model-first API-key routes. */
   modelProviderId?: string | null;
-  /** Maps secret/env-var names → model-provider handler key for refresh-capable
+  /** Maps secret/env-var names → model-provider provider key for refresh-capable
    *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth-token").
    *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
    *  runs — the filter would otherwise drop these because they also appear in
@@ -250,7 +251,7 @@ interface ModelProviderSecretResult {
  * Build the secretConnectorMap entries for a model-provider type whose
  * tokens are OAuth-refreshable (e.g. codex-oauth-token).
  *
- * Returns undefined when the provider has no bridged handler or its handler
+ * Returns undefined when the provider has no bridged OAuth provider or that provider
  * lacks `refreshToken` — for non-OAuth providers the firewall has nothing
  * to refresh and should not see the secret in the map.
  *
@@ -266,14 +267,14 @@ function buildModelProviderRefreshMaps(
       secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
     }
   | undefined {
-  const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
-  if (!handlerKey) return undefined;
+  const providerKey = MODEL_PROVIDER_OAUTH_PROVIDER_KEY[providerType];
+  if (!providerKey) return undefined;
 
-  const handler = getModelProviderOAuthHandler(handlerKey);
-  if (!handler?.refreshToken) return undefined;
+  const provider = getModelProviderOAuthProvider(providerKey);
+  if (!provider || !isOAuthRefreshProvider(provider)) return undefined;
 
-  const accessSecretName = handler.getSecretName();
-  const result: Record<string, string> = { [accessSecretName]: handlerKey };
+  const accessSecretName = provider.getSecretName();
+  const result: Record<string, string> = { [accessSecretName]: providerKey };
 
   // Mirror the connector-side aliasing logic: any environmentMapping entry
   // that references the access-token secret should also appear in the map
@@ -283,7 +284,7 @@ function buildModelProviderRefreshMaps(
   if (envMapping) {
     for (const [envVar, valueRef] of Object.entries(envMapping)) {
       if (valueRef === `$secrets.${accessSecretName}`) {
-        result[envVar] = handlerKey;
+        result[envVar] = providerKey;
       }
     }
   }

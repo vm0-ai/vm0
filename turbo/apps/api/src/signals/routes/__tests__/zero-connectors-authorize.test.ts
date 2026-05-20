@@ -4,7 +4,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorOAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { PROVIDER_HANDLERS } from "@vm0/connectors/oauth-providers";
+import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
@@ -95,11 +95,11 @@ function useDynamicTestOAuthAuthorize(): () => void {
 
   const mutableOAuth = oauth as { client: ConnectorOAuthClientConfig };
   const originalClient = oauth.client;
-  const handler = PROVIDER_HANDLERS["test-oauth"];
-  const originalBuildAuthUrlWithArgs = handler.buildAuthUrlWithArgs;
+  const provider = CONNECTOR_OAUTH_PROVIDERS["test-oauth"];
+  const originalBuildAuthUrl = provider.buildAuthUrl;
 
   mutableOAuth.client = dynamicPublicClient;
-  handler.buildAuthUrlWithArgs = (args) => {
+  provider.buildAuthUrl = (args) => {
     expect(args.clientId).toBeUndefined();
     return {
       url: `https://dynamic-oauth.test/authorize?state=${args.state}`,
@@ -109,11 +109,7 @@ function useDynamicTestOAuthAuthorize(): () => void {
 
   return () => {
     mutableOAuth.client = originalClient;
-    if (originalBuildAuthUrlWithArgs) {
-      handler.buildAuthUrlWithArgs = originalBuildAuthUrlWithArgs;
-    } else {
-      delete handler.buildAuthUrlWithArgs;
-    }
+    provider.buildAuthUrl = originalBuildAuthUrl;
   };
 }
 
