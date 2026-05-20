@@ -713,6 +713,14 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/model-providers", "/api/zero/model-providers"],
   [
+    "/api/zero/model-providers/codex/device-auth/sessions",
+    "/api/zero/model-providers/codex/device-auth/sessions",
+  ],
+  [
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+    "/api/zero/model-providers/codex/device-auth/sessions/complete",
+  ],
+  [
     ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE,
     "/api/zero/model-providers/:type",
     ZERO_MODEL_PROVIDER_TYPE_PATH_RE,

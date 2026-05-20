@@ -933,6 +933,12 @@ export {
   type ZeroCliAuthStripeContract,
 } from "./zero-connectors-cli-auth-stripe";
 export {
+  codexDeviceAuthScopeSchema,
+  zeroCodexDeviceAuthContract,
+  type CodexDeviceAuthScope,
+  type ZeroCodexDeviceAuthContract,
+} from "./zero-codex-device-auth";
+export {
   zeroOrgContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,

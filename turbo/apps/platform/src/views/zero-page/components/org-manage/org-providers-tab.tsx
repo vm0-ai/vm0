@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useLastResolved, useSet, useLoadable } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   orgAddProviderDialogOpen$,
@@ -8,6 +9,8 @@ import {
   orgConfiguredProviders$,
   setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
@@ -16,6 +19,10 @@ import {
   CodexAuthPasteDialog,
   PersonalCodexAuthPasteDialog,
 } from "../settings/codex-auth-paste-dialog.tsx";
+import {
+  CodexDeviceAuthDialog,
+  PersonalCodexDeviceAuthDialog,
+} from "../settings/codex-device-auth-dialog.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
 
@@ -39,10 +46,12 @@ export function OrgProvidersTab() {
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
       <CodexAuthPasteDialog />
+      <CodexDeviceAuthDialog />
       {isAdmin && (
         <>
           <PersonalProviderDialog />
           <PersonalCodexAuthPasteDialog />
+          <PersonalCodexDeviceAuthDialog />
         </>
       )}
     </div>
@@ -68,7 +77,11 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
+  const features = useLastResolved(featureSwitch$);
   const setPasteDialog = useSet(setCodexPasteDialogState$);
+  const setDeviceDialog = useSet(setCodexDeviceAuthDialogState$);
+  const codexDeviceAuthEnabled =
+    features?.[FeatureSwitchKey.CodexDeviceAuth] ?? false;
   const stale = providers.find((p) => {
     return p.type === "codex-oauth-token" && p.needsReconnect;
   });
@@ -91,11 +104,14 @@ function StaleProviderBanner({
       <button
         type="button"
         onClick={() => {
+          if (codexDeviceAuthEnabled) {
+            return setDeviceDialog({ open: true, mode: "reconnect" });
+          }
           return setPasteDialog({ open: true, mode: "reconnect" });
         }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
-        Re-paste auth.json
+        {codexDeviceAuthEnabled ? "Reconnect" : "Re-paste auth.json"}
       </button>
     </section>
   );

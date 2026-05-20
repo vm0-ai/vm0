@@ -3,11 +3,14 @@ import type {
   ModelProviderType,
   OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { useSet } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { useLastResolved, useSet } from "ccstate-react";
 import {
   personalOpenOAuthCredentialDialog$,
   setCodexPasteDialogStatePersonal$,
 } from "../../signals/zero-page/settings/personal-model-providers.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { setCodexDeviceAuthDialogStatePersonal$ } from "../../signals/zero-page/settings/codex-device-auth.ts";
 import type { ModelFirstPersonalOauthState } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 
@@ -128,6 +131,12 @@ export function resolveChatComposerSubmitBlocker(params: {
 }
 
 export function usePersonalOauthConfigurationAction() {
+  const features = useLastResolved(featureSwitch$);
+  const codexDeviceAuthEnabled =
+    features?.[FeatureSwitchKey.CodexDeviceAuth] ?? false;
+  const openCodexDeviceAuthDialog = useSet(
+    setCodexDeviceAuthDialogStatePersonal$,
+  );
   const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
   return (
@@ -135,6 +144,10 @@ export function usePersonalOauthConfigurationAction() {
     codexPasteMode: CodexPasteDialogMode,
   ) => {
     if (providerType === "codex-oauth-token") {
+      if (codexDeviceAuthEnabled) {
+        openCodexDeviceAuthDialog({ open: true, mode: codexPasteMode });
+        return;
+      }
       openCodexPasteDialog({ open: true, mode: codexPasteMode });
       return;
     }
