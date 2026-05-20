@@ -843,12 +843,7 @@ function AgentTabContent({
 
   switch (activeTab) {
     case "authorization": {
-      return (
-        <JobPermissionsTab
-          agentId={agentId}
-          displayName={displayName}
-        />
-      );
+      return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
     case "schedule": {
       return <JobScheduleTab displayName={displayName} />;
