@@ -12,7 +12,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { zeroSecretsContract } from "@vm0/api-contracts/contracts/zero-secrets";
 import { server } from "../../../mocks/server.ts";
@@ -61,6 +64,20 @@ function getButtonByText(matcher: string | RegExp): HTMLElement {
     throw new Error(`Button not found: ${String(matcher)}`);
   }
   return button;
+}
+
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow(closed: boolean) {
+  return { closed, close: vi.fn(), location: { href: "" } };
 }
 
 describe("connect modal - display", () => {
@@ -136,7 +153,10 @@ describe("connect modal - content by auth method", () => {
   });
 
   it("keeps API-only content visible while OAuth is settling elsewhere", async () => {
-    vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
+    mockConnectorOauthStart();
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow(false) as unknown as Window,
+    );
 
     let callCount = 0;
     server.use(
@@ -236,8 +256,11 @@ describe("connect modal - content by auth method", () => {
 
 describe("connect modal - loading states", () => {
   it("shows Connecting... while OAuth is in progress (CONN-D-020)", async () => {
+    mockConnectorOauthStart();
     // Keep popup "open" so polling never exits
-    vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow(false) as unknown as Window,
+    );
 
     // Allow the initial connectors load to succeed (returns empty), then block
     // subsequent polling calls so the polling loop stays in flight.
@@ -272,10 +295,12 @@ describe("connect modal - loading states", () => {
 
 describe("connect modal - interactions", () => {
   it("oAuth button initiates sign-in flow (CONN-I-022)", async () => {
+    mockConnectorOauthStart();
     // Return a closed popup so the connector flow doesn't hang waiting for polling
+    const mockWindow = createMockAuthWindow(true);
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
+      .mockReturnValue(mockWindow as unknown as Window);
 
     await openConnectModal("github");
 
@@ -287,9 +312,12 @@ describe("connect modal - interactions", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
+        "about:blank",
         "_blank",
-        expect.any(String),
+        "width=600,height=700",
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
       );
     });
   });

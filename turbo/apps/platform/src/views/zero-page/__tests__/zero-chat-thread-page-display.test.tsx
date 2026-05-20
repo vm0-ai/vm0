@@ -9,11 +9,26 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: false, close: vi.fn(), location: { href: "" } };
+}
 
 beforeEach(() => {
   server.use(
@@ -1668,9 +1683,11 @@ describe("zero chat thread page display - artifacts drawer", () => {
     let authorizeCalled = false;
     let syncSawAuthorize = false;
     let syncBody: unknown;
+    mockConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: false } as Window);
+      .mockReturnValue(mockWindow as unknown as Window);
 
     mockChatLifecycle({
       chatMessages: [
@@ -1748,8 +1765,12 @@ describe("zero chat thread page display - artifacts drawer", () => {
     await user.click(syncButton);
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/google-drive/authorize"),
+        "about:blank",
         "_blank",
+        "width=600,height=700",
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/google-drive/authorize",
       );
       expect(hasSubscription("connector:changed")).toBeTruthy();
     });

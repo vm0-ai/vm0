@@ -14,12 +14,29 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: false, close: vi.fn(), location: { href: "" } };
+}
 
 describe("connectors page - count display", () => {
   it("ai categories render before non-ai categories (CONN-D-001)", async () => {
@@ -189,7 +206,10 @@ describe("connectors page - connector status indicators", () => {
     ]);
 
     // Return a fake popup that stays open so the connector enters polling state.
-    vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
+    mockConnectorOauthStart();
+    vi.spyOn(window, "open").mockReturnValue(
+      createMockAuthWindow() as unknown as Window,
+    );
 
     detachedSetupPage({ context, path: "/connectors" });
 

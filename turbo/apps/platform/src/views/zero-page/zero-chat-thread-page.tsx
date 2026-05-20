@@ -69,7 +69,11 @@ import {
   Reason,
   onDomEventFn,
 } from "../../signals/utils.ts";
-import { zeroClient$ } from "../../signals/api-client.ts";
+import {
+  type ZeroClientFactory,
+  zeroClient$,
+} from "../../signals/api-client.ts";
+import { accept } from "../../lib/accept.ts";
 import {
   AttachmentLightbox,
   CsvPreviewTable,
@@ -151,7 +155,7 @@ import {
   syncArtifactFileToGoogleDrive,
   waitForGoogleDriveAndSyncArtifacts$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
-import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { createZipBlob } from "../../lib/zip.ts";
 import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
 import { PersonalCodexAuthPasteDialog } from "./components/settings/codex-auth-paste-dialog.tsx";
@@ -664,7 +668,7 @@ type WaitForGoogleDriveAndSyncArtifactsFn = (
 
 function startGoogleDriveConnectAndSync(params: {
   agentId: string | null | undefined;
-  apiBase: string | null | undefined;
+  createClient: ZeroClientFactory;
   files: readonly ArtifactGoogleDriveSyncFile[];
   pageSignal: AbortSignal;
   threadId: string;
@@ -678,11 +682,35 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Agent is still loading");
     return;
   }
-  if (!params.apiBase) {
-    toast.error("Google Drive connection page is still loading");
+  const authWindow = window.open(
+    "about:blank",
+    "_blank",
+    "width=600,height=700",
+  );
+  if (!authWindow) {
+    toast.error("Failed to open Google Drive connection page");
     return;
   }
   const agentId = params.agentId;
+  detach(
+    (async () => {
+      const client = params.createClient(zeroConnectorOauthStartContract, {
+        apiBase: "www",
+      });
+      const result = await accept(
+        client.start({
+          params: { type: "google-drive" },
+          body: {},
+          fetchOptions: { signal: params.pageSignal },
+        }),
+        [200],
+      );
+      params.pageSignal.throwIfAborted();
+      authWindow.location.href = result.body.authorizationUrl;
+    })(),
+    Reason.DomCallback,
+    "artifact google drive oauth start",
+  );
   detach(
     (async () => {
       await params.waitForGoogleDriveAndSyncArtifacts(
@@ -698,13 +726,6 @@ function startGoogleDriveConnectAndSync(params: {
     Reason.DomCallback,
     "artifact google drive connect sync",
   );
-  const authWindow = window.open(
-    `${params.apiBase}/api/zero/connectors/google-drive/authorize`,
-    "_blank",
-  );
-  if (!authWindow) {
-    toast.error("Failed to open Google Drive connection page");
-  }
 }
 
 function syncArtifactFilesAndRefresh(params: {
@@ -740,7 +761,7 @@ function ArtifactGoogleDriveConnectMenuItem({
   const waitForGoogleDriveAndSyncArtifacts = useSet(
     waitForGoogleDriveAndSyncArtifacts$,
   );
-  const apiBase = useLastResolved(apiBaseForNavigation$);
+  const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
 
   return (
@@ -753,7 +774,7 @@ function ArtifactGoogleDriveConnectMenuItem({
             onClick={() => {
               startGoogleDriveConnectAndSync({
                 agentId,
-                apiBase,
+                createClient,
                 files,
                 pageSignal,
                 threadId,
@@ -834,7 +855,6 @@ function ArtifactPreviewActions({
   const waitForGoogleDriveAndSyncArtifacts = useSet(
     waitForGoogleDriveAndSyncArtifacts$,
   );
-  const apiBase = useLastResolved(apiBaseForNavigation$);
   const pageSignal = useGet(pageSignal$);
   const { file } = item;
   const synced = isArtifactSyncedToGoogleDrive(item);
@@ -897,7 +917,7 @@ function ArtifactPreviewActions({
           }
           startGoogleDriveConnectAndSync({
             agentId,
-            apiBase,
+            createClient,
             files: artifactItemsToGoogleDriveFiles([item]),
             pageSignal,
             threadId,
