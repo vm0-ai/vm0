@@ -1313,6 +1313,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/logs/searches")).toBe(false);
   });
 
+  it("matches the zero default-agent rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/default-agent")).toBe(true);
+    expect(matchesApiBackendRewritePath("/api/zero/default-agent/extra")).toBe(
+      false,
+    );
+    expect(matchesApiBackendRewritePath("/api/zero/default-agents")).toBe(
+      false,
+    );
+  });
+
   it("matches the GitHub integration rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/integrations/github")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/integrations/github/extra")).toBe(

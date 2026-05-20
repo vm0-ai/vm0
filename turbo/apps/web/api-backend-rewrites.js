@@ -299,6 +299,7 @@ const ZERO_BILLING_PORTAL_REWRITE_SOURCE = "/api/zero/billing/portal";
 const ZERO_BILLING_REDEEM_REWRITE_SOURCE = "/api/zero/billing/redeem/:campaign";
 const ZERO_BILLING_REDEEM_PATH_RE = /^\/api\/zero\/billing\/redeem\/[^/]+$/;
 const ZERO_BILLING_STATUS_REWRITE_SOURCE = "/api/zero/billing/status";
+const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 
 export const API_BACKEND_REWRITES = [
   [
@@ -591,6 +592,7 @@ export const API_BACKEND_REWRITES = [
     ZERO_BILLING_REDEEM_PATH_RE,
   ],
   [ZERO_BILLING_STATUS_REWRITE_SOURCE, "/api/zero/billing/status"],
+  [ZERO_DEFAULT_AGENT_REWRITE_SOURCE, "/api/zero/default-agent"],
   [ZERO_CONNECTORS_LIST_REWRITE_SOURCE, "/api/zero/connectors"],
   [ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE, "/api/zero/connectors/search"],
   [

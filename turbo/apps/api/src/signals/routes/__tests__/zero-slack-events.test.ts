@@ -29,6 +29,14 @@ const context = testContext();
 const store = createStore();
 const SIGNING_SECRET = randomBytes(32).toString("hex");
 const EVENTS_PATH = "/api/zero/slack/events";
+const TEST_VM0_OPENAI_KEY = "vm0-key-gpt-5.5";
+
+afterEach(async () => {
+  await store
+    .set(writeDb$)
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_OPENAI_KEY));
+});
 
 function configureSlackWebhookTest(): void {
   mockOptionalEnv("SLACK_SIGNING_SECRET", SIGNING_SECRET);
@@ -596,7 +604,7 @@ describe("POST /api/zero/slack/events", () => {
     await db.insert(vm0ApiKeys).values({
       vendor: "openai",
       model: "gpt-5.5",
-      apiKey: "vm0-key-gpt-5.5",
+      apiKey: TEST_VM0_OPENAI_KEY,
     });
     await db.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
