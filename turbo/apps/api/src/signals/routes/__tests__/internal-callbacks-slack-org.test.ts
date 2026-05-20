@@ -502,7 +502,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocks).not.toContain("Responded by");
   });
 
-  it("posts failed-run errors without saving a thread session", async () => {
+  it("formats generic failed-run errors without saving a thread session", async () => {
     const fixture = await track(seedFixture());
 
     const response = await postSignedCallback({
@@ -514,8 +514,27 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(firstPostMessageCall().text).toContain("Something broke");
+    expect(firstPostMessageCall().text).toContain(
+      "Oops, something went wrong. Please try again later.",
+    );
     await expect(findThreadSession(fixture)).resolves.toBeNull();
+  });
+
+  it("preserves actionable failed-run errors", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: "Cannot continue session from checkpoint",
+      payload: fixture.payload,
+    });
+
+    expect(response.status).toBe(200);
+    expect(firstPostMessageCall().text).toContain(
+      "Cannot continue session from checkpoint",
+    );
   });
 
   it("returns 404 when installation is not found for terminal callbacks", async () => {

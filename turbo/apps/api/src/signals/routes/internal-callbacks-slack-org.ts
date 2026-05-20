@@ -6,6 +6,7 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   internalCallbacksSlackOrgContract,
   slackOrgCallbackPayloadSchema,
@@ -355,7 +356,11 @@ function buildResponseText(args: {
   readonly output: string | undefined;
 }): string {
   if (args.status === "failed") {
-    return `Error: ${args.error ?? "Agent execution failed."}`;
+    const error = formatRunErrorForExternalSurface({
+      code: "INTERNAL_SERVER_ERROR",
+      message: args.error ?? "Agent execution failed.",
+    });
+    return `Error: ${error}`;
   }
   return args.output ?? "Task completed successfully.";
 }

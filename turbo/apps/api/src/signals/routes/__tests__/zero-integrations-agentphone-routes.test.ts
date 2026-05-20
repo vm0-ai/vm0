@@ -395,7 +395,7 @@ describe("AgentPhone migrated API routes", () => {
     expect(sendCalls[0]?.body).toContain("/agentphone/connect?");
   });
 
-  it("post /api/internal/callbacks/agentphone sends failed run output back to AgentPhone", async () => {
+  it("post /api/internal/callbacks/agentphone formats generic failed run output", async () => {
     configureAgentPhoneEnv();
     const userId = uniqueId("user");
     const orgId = uniqueId("org");
@@ -444,7 +444,7 @@ describe("AgentPhone migrated API routes", () => {
       expect.objectContaining({
         agent_id: "agt-agentphone",
         to_number: phoneHandle,
-        body: "AgentPhone route failure",
+        body: "Oops, something went wrong. Please try again later.",
       }),
     );
   });

@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import {
   internalCallbacksTelegramContract,
   telegramCallbackPayloadSchema,
@@ -171,8 +172,10 @@ function buildCompletionOutput(args: {
     };
   }
 
-  const errorDetail =
-    args.error ?? "The agent encountered an error during execution.";
+  const errorDetail = formatRunErrorForExternalSurface({
+    code: "INTERNAL_SERVER_ERROR",
+    message: args.error ?? "The agent encountered an error during execution.",
+  });
   return {
     responseText: undefined,
     htmlOutput: buildTelegramErrorResponse(

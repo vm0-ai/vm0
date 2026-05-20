@@ -4,6 +4,7 @@ import {
   internalCallbacksAgentPhoneContract,
   type AgentPhoneCallbackPayload,
 } from "@vm0/api-contracts/contracts/internal-callbacks-agentphone";
+import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { eq } from "drizzle-orm";
 
@@ -113,7 +114,10 @@ async function resolveCompletionText(args: {
   readonly signal: AbortSignal;
 }): Promise<string> {
   if (args.status === "failed") {
-    return args.error ?? "The agent encountered an error during execution.";
+    return formatRunErrorForExternalSurface({
+      code: "INTERNAL_SERVER_ERROR",
+      message: args.error ?? "The agent encountered an error during execution.",
+    });
   }
 
   const output = await getRunOutputText(args.runId, {
