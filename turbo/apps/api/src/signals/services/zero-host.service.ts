@@ -18,6 +18,7 @@ import {
   putHostedSitesS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
+import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
 const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
@@ -225,6 +226,22 @@ function buildManifest(args: {
     createdAt: args.createdAt.toISOString(),
     spaFallback: args.spaFallback,
     files: manifestFiles,
+  };
+}
+
+function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
+  return {
+    runId: deployment.runId,
+    userId: deployment.userId,
+    orgId: deployment.orgId,
+    siteId: deployment.siteId,
+    deploymentId: deployment.id,
+    publicSlug: deployment.manifest.publicSlug,
+    url: deployment.url,
+    fileCount: deployment.fileCount,
+    sizeBytes: deployment.sizeBytes,
+    entrypoint: deployment.entrypoint,
+    spaFallback: deployment.spaFallback,
   };
 }
 
@@ -500,6 +517,13 @@ export const completeHostedSiteDeployment$ = command(
         JSON.stringify(pointer, null, 2),
         "application/json",
       ),
+    );
+    signal.throwIfAborted();
+
+    await set(
+      recordHostedSiteArtifact$,
+      hostedSiteArtifactArgs(deployment),
+      signal,
     );
     signal.throwIfAborted();
 

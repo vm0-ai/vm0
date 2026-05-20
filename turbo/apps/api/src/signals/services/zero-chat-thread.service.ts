@@ -832,12 +832,20 @@ export function zeroChatThreadArtifacts(args: {
         )
         .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 
-      const byRun = new Map<string, ChatThreadArtifactRun>();
+      const rowsByUrl = new Map<string, (typeof rows)[number]>();
       for (const row of rows) {
         if (!row.url) {
           continue;
         }
+        rowsByUrl.delete(row.url);
+        rowsByUrl.set(row.url, row);
+      }
 
+      const byRun = new Map<string, ChatThreadArtifactRun>();
+      for (const row of rowsByUrl.values()) {
+        if (!row.url) {
+          continue;
+        }
         const filename = row.filename ?? row.externalId;
         const existing = byRun.get(row.runId) ?? {
           runId: row.runId,

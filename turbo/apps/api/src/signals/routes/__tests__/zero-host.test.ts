@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -15,6 +16,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteUsageInsightFixture$,
+  seedCompose$,
+  seedRun$,
+} from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const store = createStore();
@@ -39,6 +45,7 @@ const track = createFixtureTracker<HostedSiteFixture>(async (fixture) => {
         eq(userFeatureSwitches.userId, fixture.userId),
       ),
     );
+  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
 async function seedHostedSitesEnabled(): Promise<HostedSiteFixture> {
@@ -245,5 +252,93 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       .from(hostedSites)
       .where(eq(hostedSites.id, prepared.body.siteId));
     expect(site?.activeDeploymentId).toBe(prepared.body.deploymentId);
+  });
+
+  it("records a run artifact that points at the hosted site URL", async () => {
+    const fixture = await seedHostedSitesEnabled();
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        triggerSource: "cli",
+        status: "completed",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+
+    await store
+      .set(writeDb$)
+      .update(hostedDeployments)
+      .set({ runId })
+      .where(eq(hostedDeployments.id, prepared.body.deploymentId));
+
+    const prefix = `sites/${prepared.body.publicSlug}/deployments/${prepared.body.deploymentId}`;
+    mockUploadedKeys([
+      `${prefix}/index.html`,
+      `${prefix}/assets/index-a1b2c3d4.js`,
+    ]);
+
+    const completed = await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [200],
+    );
+
+    const artifactRows = await store
+      .set(writeDb$)
+      .select()
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.runId, runId));
+    expect(artifactRows).toHaveLength(1);
+    expect(artifactRows[0]).toMatchObject({
+      runId,
+      source: "cli",
+      externalId: completed.body.url,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      filename: `${prepared.body.publicSlug}.html`,
+      contentType: "text/html",
+      sizeBytes: 540,
+      url: completed.body.url,
+      metadata: {
+        generatedBy: "zero-official-website",
+        artifactKind: "hosted-site",
+        siteId: prepared.body.siteId,
+        deploymentId: prepared.body.deploymentId,
+        publicSlug: prepared.body.publicSlug,
+        fileCount: 2,
+        entrypoint: "/index.html",
+        spaFallback: true,
+      },
+    });
   });
 });

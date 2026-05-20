@@ -9,7 +9,7 @@ import {
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { writeDb$ } from "../external/db";
+import { type Db, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 
 interface RecordWebUploadedFileArgs {
@@ -25,6 +25,20 @@ interface RecordWebUploadedFileArgs {
   readonly metadata: Record<string, unknown>;
 }
 
+interface RecordHostedSiteArtifactArgs {
+  readonly runId: string | null | undefined;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly siteId: string;
+  readonly deploymentId: string;
+  readonly publicSlug: string;
+  readonly url: string;
+  readonly fileCount: number;
+  readonly sizeBytes: number;
+  readonly entrypoint: string;
+  readonly spaFallback: boolean;
+}
+
 function isRunUploadedFileSource(
   source: string | null | undefined,
 ): source is RunUploadedFileSource {
@@ -35,6 +49,140 @@ function isRunUploadedFileSource(
     return candidate === source;
   });
 }
+
+async function publishArtifactsChangedForRun(
+  writeDb: Db,
+  runId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const [zeroRunThread] = await writeDb
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      userId: chatThreads.userId,
+    })
+    .from(zeroRuns)
+    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (zeroRunThread?.chatThreadId) {
+    await publishUserSignal(
+      [zeroRunThread.userId],
+      `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
+    );
+    signal.throwIfAborted();
+    return;
+  }
+
+  const [messageThread] = await writeDb
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      userId: chatThreads.userId,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
+    .where(eq(chatMessages.runId, runId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (messageThread) {
+    await publishUserSignal(
+      [messageThread.userId],
+      `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
+    );
+    signal.throwIfAborted();
+  }
+}
+
+async function sourceForRun(
+  writeDb: Db,
+  runId: string,
+  fallback: RunUploadedFileSource,
+  signal: AbortSignal,
+): Promise<RunUploadedFileSource> {
+  const [run] = await writeDb
+    .select({ triggerSource: zeroRuns.triggerSource })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  return isRunUploadedFileSource(run?.triggerSource)
+    ? run.triggerSource
+    : fallback;
+}
+
+/**
+ * Insert (or upsert) a `run_uploaded_files` row for a hosted website
+ * artifact. The artifact URL points at the hosted `*.sites` deployment;
+ * no user-storage upload is created. Idempotency is by (runId, source, url).
+ */
+export const recordHostedSiteArtifact$ = command(
+  async (
+    { set },
+    args: RecordHostedSiteArtifactArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!args.runId) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "web", signal);
+
+    await writeDb
+      .insert(runUploadedFiles)
+      .values({
+        runId: args.runId,
+        source,
+        externalId: args.url,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: `${args.publicSlug}.html`,
+        contentType: "text/html",
+        sizeBytes: args.sizeBytes,
+        url: args.url,
+        metadata: {
+          generatedBy: "zero-official-website",
+          artifactKind: "hosted-site",
+          siteId: args.siteId,
+          deploymentId: args.deploymentId,
+          publicSlug: args.publicSlug,
+          fileCount: args.fileCount,
+          entrypoint: args.entrypoint,
+          spaFallback: args.spaFallback,
+        },
+      })
+      .onConflictDoUpdate({
+        target: [
+          runUploadedFiles.runId,
+          runUploadedFiles.source,
+          runUploadedFiles.externalId,
+        ],
+        set: {
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: `${args.publicSlug}.html`,
+          contentType: "text/html",
+          sizeBytes: args.sizeBytes,
+          url: args.url,
+          metadata: {
+            generatedBy: "zero-official-website",
+            artifactKind: "hosted-site",
+            siteId: args.siteId,
+            deploymentId: args.deploymentId,
+            publicSlug: args.publicSlug,
+            fileCount: args.fileCount,
+            entrypoint: args.entrypoint,
+            spaFallback: args.spaFallback,
+          },
+          updatedAt: sql`now()`,
+        },
+      });
+    signal.throwIfAborted();
+
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+  },
+);
 
 /**
  * Insert (or upsert) a `run_uploaded_files` row for a successful web
@@ -55,20 +203,7 @@ export const recordWebUploadedFile$ = command(
       return;
     }
     const writeDb = set(writeDb$);
-
-    // Resolve `source` via zero_runs.trigger_source if it's a known value;
-    // else fall back to "web". Mirrors web's resolveRunUploadedFileSource.
-    const [run] = await writeDb
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-    const source: RunUploadedFileSource = isRunUploadedFileSource(
-      run?.triggerSource,
-    )
-      ? run.triggerSource
-      : "web";
+    const source = await sourceForRun(writeDb, args.runId, "web", signal);
 
     const metadata = {
       ...args.metadata,
@@ -108,47 +243,7 @@ export const recordWebUploadedFile$ = command(
       });
     signal.throwIfAborted();
 
-    // Resolve chat-thread linkage, then publish.
-    // Try zero_runs.chatThreadId first.
-    const [zeroRunThread] = await writeDb
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (zeroRunThread?.chatThreadId) {
-      await publishUserSignal(
-        [zeroRunThread.userId],
-        `chatThreadArtifactsChanged:${zeroRunThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
-    // Fallback: chat_messages.runId join.
-    const [messageThread] = await writeDb
-      .select({
-        chatThreadId: chatMessages.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
-      .where(eq(chatMessages.runId, args.runId))
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (messageThread) {
-      await publishUserSignal(
-        [messageThread.userId],
-        `chatThreadArtifactsChanged:${messageThread.chatThreadId}`,
-      );
-      signal.throwIfAborted();
-    }
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
   },
 );
 

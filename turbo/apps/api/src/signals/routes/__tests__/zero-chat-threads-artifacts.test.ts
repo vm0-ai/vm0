@@ -41,6 +41,7 @@ interface RunUploadedFileSeed {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly createdAt?: Date;
 }
 
 async function seedRunUploadedFile(args: RunUploadedFileSeed): Promise<void> {
@@ -55,6 +56,7 @@ async function seedRunUploadedFile(args: RunUploadedFileSeed): Promise<void> {
     contentType: args.contentType,
     sizeBytes: args.sizeBytes,
     url: args.url,
+    ...(args.createdAt ? { createdAt: args.createdAt } : {}),
   });
 }
 
@@ -193,6 +195,75 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(response.body.runs[0]?.files[0]?.url).toContain("/f/");
     expect(response.body.runs[0]?.files[0]?.googleDriveSync).toStrictEqual({
       status: "disconnected",
+    });
+  });
+
+  it("deduplicates artifacts by URL", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    const url = "https://demo-site.sites.example.com";
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "old-artifact",
+      filename: "old-site.html",
+      contentType: "text/html",
+      sizeBytes: 512,
+      url,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "new-artifact",
+      filename: "new-site.html",
+      contentType: "text/html",
+      sizeBytes: 640,
+      url,
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.runs).toHaveLength(1);
+    expect(response.body.runs[0]?.files).toHaveLength(1);
+    expect(response.body.runs[0]?.files[0]).toMatchObject({
+      id: "new-artifact",
+      filename: "new-site.html",
+      size: 640,
+      url,
     });
   });
 
