@@ -13,7 +13,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   exchangeProviderCode,
-  isConnectorOAuthProviderType,
+  isOAuthConnectorType,
   PROVIDER_HANDLERS,
   type OAuthTokenResult,
 } from "@vm0/connectors/oauth-providers";
@@ -423,7 +423,7 @@ const callbackConnectorInner$ = command(
         "Computer connector does not use OAuth",
       );
     }
-    if (!isConnectorOAuthProviderType(connectorType)) {
+    if (!isOAuthConnectorType(connectorType)) {
       return redirectWithError(
         origin,
         params.type,

@@ -29,7 +29,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   buildProviderAuthUrl,
-  isConnectorOAuthProviderType,
+  isOAuthConnectorType,
   PROVIDER_HANDLERS,
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
@@ -595,7 +595,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     if (!getConnectorAuthMethod(type, "oauth")) {
       return connectorDoesNotUseOAuthResponse(type);
     }
-    if (!isConnectorOAuthProviderType(type)) {
+    if (!isOAuthConnectorType(type)) {
       return missingOAuthProviderHandlerResponse(type);
     }
 
@@ -696,7 +696,7 @@ const startConnectorOauthInner$ = command(
     if (!getConnectorAuthMethod(type, "oauth")) {
       return badRequestMessage(`${type} connector does not use OAuth`);
     }
-    if (!isConnectorOAuthProviderType(type)) {
+    if (!isOAuthConnectorType(type)) {
       return internalServerError(
         `${type} OAuth provider handler not configured`,
       );

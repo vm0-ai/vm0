@@ -21,7 +21,7 @@ import {
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
-  isConnectorOAuthProviderType,
+  isOAuthConnectorType,
   PROVIDER_HANDLERS,
 } from "../oauth-providers/provider-registry";
 
@@ -124,7 +124,7 @@ describe("PROVIDER_HANDLERS", () => {
     expect(providerHandlerTypes).toEqual(oauthConnectorTypes);
 
     for (const type of connectorTypeSchema.options) {
-      expect(isConnectorOAuthProviderType(type)).toBe(
+      expect(isOAuthConnectorType(type)).toBe(
         oauthConnectorTypes.includes(type),
       );
     }

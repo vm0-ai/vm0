@@ -8,7 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
-  isConnectorOAuthProviderType,
+  isOAuthConnectorType,
   PROVIDER_HANDLERS,
 } from "@vm0/connectors/oauth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -211,7 +211,7 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    if (!isConnectorOAuthProviderType(connectorType)) {
+    if (!isOAuthConnectorType(connectorType)) {
       return stringError(400, `${connectorType} connector does not use OAuth`);
     }
     const handler = PROVIDER_HANDLERS[connectorType];

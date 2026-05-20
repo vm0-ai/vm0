@@ -20,7 +20,7 @@ import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import {
   getConnectorOAuthProviderHandler,
-  isConnectorOAuthProviderType,
+  isOAuthConnectorType,
   PROVIDER_HANDLERS,
   providerEnvFromObject,
   providerSupportsRefresh,
@@ -69,7 +69,7 @@ function isConnectorOAuthHandler(
 function getRequiredConnectorOAuthHandler(
   type: ConnectorType,
 ): ConnectorProviderHandler {
-  if (!isConnectorOAuthProviderType(type)) {
+  if (!isOAuthConnectorType(type)) {
     throw new Error(`${type} connector does not use OAuth`);
   }
   return PROVIDER_HANDLERS[type];

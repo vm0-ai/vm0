@@ -131,16 +131,14 @@ export const PROVIDER_HANDLERS = {
 
 export type ConnectorOAuthProviderHandler = ProviderHandler;
 
-export function isConnectorOAuthProviderType(
-  type: string,
-): type is OAuthConnectorType {
+export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
   return Object.hasOwn(PROVIDER_HANDLERS, type);
 }
 
 export function getConnectorOAuthProviderHandler(
   type: string,
 ): ConnectorOAuthProviderHandler | undefined {
-  if (!isConnectorOAuthProviderType(type)) {
+  if (!isOAuthConnectorType(type)) {
     return undefined;
   }
   return PROVIDER_HANDLERS[type];
