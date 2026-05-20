@@ -41,6 +41,7 @@ interface RunUploadedFileSeed {
   readonly contentType: string;
   readonly sizeBytes: number;
   readonly url: string;
+  readonly metadata?: Record<string, unknown>;
   readonly createdAt?: Date;
 }
 
@@ -56,6 +57,7 @@ async function seedRunUploadedFile(args: RunUploadedFileSeed): Promise<void> {
     contentType: args.contentType,
     sizeBytes: args.sizeBytes,
     url: args.url,
+    metadata: args.metadata ?? {},
     ...(args.createdAt ? { createdAt: args.createdAt } : {}),
   });
 }
@@ -265,6 +267,81 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
       size: 640,
       url,
     });
+  });
+
+  it("only returns hosted site artifacts for website runs", async () => {
+    const fixture = await track(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    const threadId = await store.set(
+      seedChatThread$,
+      { userId: fixture.userId, composeId },
+      context.signal,
+    );
+    const { runId } = await store.set(
+      seedRun$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        composeId,
+        status: "completed",
+        chatThreadId: threadId,
+      },
+      context.signal,
+    );
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: "website-zip",
+      filename: "website.zip",
+      contentType: "application/zip",
+      sizeBytes: 2048,
+      url: `http://localhost:3000/f/${fixture.userId}/website-zip/website.zip`,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const siteUrl = "https://demo-site.sites.example.com";
+    await seedRunUploadedFile({
+      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      externalId: siteUrl,
+      filename: "demo-site.html",
+      contentType: "text/html",
+      sizeBytes: 640,
+      url: siteUrl,
+      metadata: {
+        generatedBy: "zero-official-website",
+        artifactKind: "hosted-site",
+      },
+      createdAt: new Date("2026-01-02T00:00:00Z"),
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadArtifactsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.runs).toHaveLength(1);
+    expect(response.body.runs[0]?.files).toStrictEqual([
+      expect.objectContaining({
+        id: siteUrl,
+        filename: "demo-site.html",
+        contentType: "text/html",
+        size: 640,
+        url: siteUrl,
+      }),
+    ]);
   });
 
   it("uses chat message run ownership when zero run chat thread is missing", async () => {

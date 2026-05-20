@@ -811,6 +811,7 @@ export function zeroChatThreadArtifacts(args: {
           contentType: runUploadedFiles.contentType,
           sizeBytes: runUploadedFiles.sizeBytes,
           url: runUploadedFiles.url,
+          metadata: runUploadedFiles.metadata,
           createdAt: runUploadedFiles.createdAt,
         })
         .from(runUploadedFiles)
@@ -832,8 +833,24 @@ export function zeroChatThreadArtifacts(args: {
         )
         .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
 
-      const rowsByUrl = new Map<string, (typeof rows)[number]>();
-      for (const row of rows) {
+      const hostedSiteRunIds = new Set(
+        rows
+          .filter((row) => {
+            return row.metadata.artifactKind === "hosted-site";
+          })
+          .map((row) => {
+            return row.runId;
+          }),
+      );
+      const visibleRows = rows.filter((row) => {
+        return (
+          !hostedSiteRunIds.has(row.runId) ||
+          row.metadata.artifactKind === "hosted-site"
+        );
+      });
+
+      const rowsByUrl = new Map<string, (typeof visibleRows)[number]>();
+      for (const row of visibleRows) {
         if (!row.url) {
           continue;
         }

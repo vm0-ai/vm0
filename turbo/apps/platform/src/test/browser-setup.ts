@@ -16,6 +16,7 @@ vi.mock("@clerk/clerk-js", () => {
 vi.hoisted(() => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+  vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.vm7.io");
 });
 
 function shouldFailUnhandledRequest(request: Request): boolean {

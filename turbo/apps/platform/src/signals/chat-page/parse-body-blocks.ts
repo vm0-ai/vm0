@@ -43,7 +43,7 @@ interface ChatAttachmentDescriptor {
 
 type ExtractedPreviewUrl = {
   url: string;
-  source: "markdown-link" | "bare-url" | "platform-file-line";
+  source: "markdown-link" | "bare-url" | "preview-url-line";
 };
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,7 @@ const TEXT_PREVIEW_MAX_BYTES = 65_536;
 const PLATFORM_FILE_PATH_PATTERN = /^\/(?:f|artifacts)\/[^/]+\/[^/]+\/[^/]+$/;
 const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 const PLATFORM_FILE_CDN_HOSTS = ["cdn.vm0.io", "cdn.vm7.io"] as const;
+const HOSTED_SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;
 const URL_TOKEN_PATTERN = String.raw`(?:https?:\/\/|\/(?:f|artifacts)\/)[^\s<>"'()（）【】《》「」『』“”‘’，。；：！？、]+`;
 
 // ---------------------------------------------------------------------------
@@ -302,6 +303,89 @@ function isPlatformFileUrl(url: string): boolean {
   );
 }
 
+function normalizeHostedSiteDomain(value: string | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.includes("://")) {
+    if (!URL.canParse(trimmed)) {
+      return null;
+    }
+    return new URL(trimmed).hostname;
+  }
+  return trimmed.replace(/^\.+|\.+$/g, "");
+}
+
+function hostedSiteDomain(): string | null {
+  const domain = import.meta.env.VITE_ZERO_HOST_DOMAIN;
+  return normalizeHostedSiteDomain(
+    typeof domain === "string" ? domain : undefined,
+  );
+}
+
+function hostedSitePublicSlug(hostname: string): string | null {
+  const domain = hostedSiteDomain();
+  if (!domain) {
+    return null;
+  }
+
+  const suffix = `.${domain}`;
+  if (!hostname.endsWith(suffix)) {
+    return null;
+  }
+
+  const slug = hostname.slice(0, -suffix.length);
+  return HOSTED_SITE_SLUG_PATTERN.test(slug) ? slug : null;
+}
+
+function isHostedSiteUrl(url: string): boolean {
+  if (!hasExplicitUrlOrigin(url)) {
+    return false;
+  }
+
+  const host = browserHost();
+  const baseUrl = host ? `https://${host}` : "https://vm0.local";
+  if (!URL.canParse(url, baseUrl)) {
+    return false;
+  }
+
+  const parsed = new URL(url, baseUrl);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return false;
+  }
+
+  return hostedSitePublicSlug(parsed.hostname) !== null;
+}
+
+function hostedSiteAttachment(url: string): ChatAttachmentDescriptor | null {
+  const host = browserHost();
+  const baseUrl = host ? `https://${host}` : "https://vm0.local";
+  if (!URL.canParse(url, baseUrl)) {
+    return null;
+  }
+
+  const parsed = new URL(url, baseUrl);
+  const publicSlug = hostedSitePublicSlug(parsed.hostname);
+  if (!publicSlug) {
+    return null;
+  }
+
+  return {
+    filename: `${publicSlug}.html`,
+    url,
+    contentType: "text/html",
+  };
+}
+
+function isPreviewableChatUrl(url: string): boolean {
+  return isPlatformFileUrl(url) || isHostedSiteUrl(url);
+}
+
+function previewAttachmentFromUrl(url: string): ChatAttachmentDescriptor {
+  return hostedSiteAttachment(url) ?? { filename: filenameFromUrl(url), url };
+}
+
 function stripMarkdownLineDecorations(value: string): string {
   let candidate = value
     .trim()
@@ -377,10 +461,10 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
     return url.length > 0 && list.indexOf(url) === index;
   });
 
-  if (urls.length === 1 && isPlatformFileUrl(urls[0]!)) {
+  if (urls.length === 1 && isPreviewableChatUrl(urls[0]!)) {
     return {
       url: urls[0]!,
-      source: "platform-file-line",
+      source: "preview-url-line",
     };
   }
 
@@ -543,8 +627,8 @@ export function parseBodyRenderBlocks(content: string): {
     }
 
     const { url } = extracted;
-    const filename = filenameFromUrl(url);
-    const kind = classifyChatAttachment({ filename, url });
+    const attachment = previewAttachmentFromUrl(url);
+    const kind = classifyChatAttachment(attachment);
 
     if (
       extracted.source === "markdown-link" &&
@@ -556,10 +640,9 @@ export function parseBodyRenderBlocks(content: string): {
     }
 
     if (isBodyPreviewKind(kind)) {
-      // Only render platform artifact URLs as inline preview cards.
-      // External URLs stay as plain markdown links so the recipient
-      // isn't misled into thinking the file was uploaded to vm0.
-      if (!isPlatformFileUrl(url)) {
+      // Only render platform-managed files and hosted sites as inline previews.
+      // Other external URLs stay as plain markdown links.
+      if (!isPreviewableChatUrl(url)) {
         markdownBuffer.push(line);
         keptLines.push(line);
         continue;
@@ -568,7 +651,7 @@ export function parseBodyRenderBlocks(content: string): {
       blocks.push({
         type: "preview",
         id: nextBlockId("preview"),
-        preview: { filename, url, kind },
+        preview: { filename: attachment.filename, url, kind },
       });
       continue;
     }

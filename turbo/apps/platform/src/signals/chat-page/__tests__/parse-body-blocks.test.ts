@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseBodyRenderBlocks } from "../parse-body-blocks.ts";
 
 describe("parseBodyRenderBlocks", () => {
@@ -44,6 +44,59 @@ describe("parseBodyRenderBlocks", () => {
           url: imageUrl,
           kind: "image",
         },
+      },
+    ]);
+  });
+
+  it("renders hosted site URLs as html previews", () => {
+    vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.example.com");
+    const url = "https://demo-site-a1b2c3d4.sites.example.com";
+
+    const { blocks } = parseBodyRenderBlocks(url);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "preview",
+        id: "preview-1",
+        preview: {
+          filename: "demo-site-a1b2c3d4.html",
+          url,
+          kind: "html",
+        },
+      },
+    ]);
+  });
+
+  it("renders vm7 hosted site URLs from configured env", () => {
+    vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.vm7.io");
+    const url = "https://li-hua-mao-guide-0520-35a4112d.sites.vm7.io";
+
+    const { blocks } = parseBodyRenderBlocks(url);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "preview",
+        id: "preview-1",
+        preview: {
+          filename: "li-hua-mao-guide-0520-35a4112d.html",
+          url,
+          kind: "html",
+        },
+      },
+    ]);
+  });
+
+  it("keeps non-hosted external URLs as markdown", () => {
+    vi.stubEnv("VITE_ZERO_HOST_DOMAIN", "sites.example.com");
+    const url = "https://example.com/index.html";
+
+    const { blocks } = parseBodyRenderBlocks(url);
+
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content: url,
       },
     ]);
   });
