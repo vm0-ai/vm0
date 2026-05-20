@@ -1545,6 +1545,27 @@ class TestResponseHandler:
         # refreshes the token regardless of DB tokenExpiresAt (#9860).
         assert force_refresh_pending(cache_key)
 
+    def test_401_without_existing_state_marks_force_refresh(self, real_flow, mitm_ctx, headers):
+        """401 should request a forced refresh even if no cache entry exists yet."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata["vm_run_id"] = "run-conn-new"
+        flow.metadata["vm_client_ip"] = "10.200.0.5"
+        flow.metadata["vm_network_log_path"] = ""
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://api.github.com"
+        flow.metadata["firewall_api_id"] = "run-conn-new:0"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = ("run-conn-new", "run-conn-new:0")
+        assert cache_key not in auth._auth_state
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
+        assert force_refresh_pending(cache_key)
+
     def test_401_within_cooldown_does_not_re_mark(self, real_flow, mitm_ctx, headers):
         """A second 401 within the force-refresh cooldown window must NOT
         re-mark — otherwise a persistent non-token 401 (scope, resource-

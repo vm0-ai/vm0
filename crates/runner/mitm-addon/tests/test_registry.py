@@ -196,6 +196,19 @@ class TestLoadRegistry:
         assert force_refresh_pending(("run-abc-123", "api-0"))
         assert last_force_refresh_at(("run-abc-123", "api-0")) == 100.0
 
+    def test_evicts_marker_only_auth_state_on_run_removal(self, registry_file):
+        """Registry eviction removes auth state even when it has no cached headers."""
+        registry.load_registry(str(registry_file))
+
+        mark_force_refresh(("run-abc-123", "api-0"))
+        set_last_force_refresh_at(("run-abc-123", "api-0"), 100.0)
+
+        registry_file.write_text(json.dumps({"vms": {}, "updatedAt": 0}))
+
+        registry.load_registry(str(registry_file))
+
+        assert ("run-abc-123", "api-0") not in auth._auth_state
+
     def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
         """Registry entries with missing/empty runId are not active cache owners."""
         registry.load_registry(str(registry_file))
