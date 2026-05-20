@@ -21,6 +21,10 @@ fn unique_exec_control_nonce(seed: u64) -> ProcessControlNonce {
     nonce
 }
 
+fn sleep_command_with_pid(pid_path: &str) -> String {
+    format!("printf '%s' \"$$\" > '{pid_path}'; sleep 60")
+}
+
 fn send_supervised_exec_start(
     stream: &mut impl std::io::Write,
     seq: u32,
@@ -351,10 +355,15 @@ fn supervised_exec_control_spawn_failure_releases_registration() {
 
 #[test]
 fn supervised_exec_control_forwards_to_bootstrap_sink() {
+    let pid_path = unique_pid_path("supervised-exec-bootstrap-sink");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let target_seq = 203;
     let control_nonce = unique_exec_control_nonce(u64::from(target_seq));
     let endpoint = process_control_ipc::endpoint_name(target_seq, &control_nonce);
-    let command = "printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60";
+    let command = format!(
+        "printf '%s' \"$$\" > '{}'; printf '%s' \"$VM0_PROCESS_CONTROL_ENDPOINT\"; sleep 60",
+        pid_path.as_str()
+    );
     let (handle, mut host_stream) = start_guest_connection();
 
     send_exec_start_request(
@@ -363,7 +372,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         ExecStartEncodeRequest {
             lifecycle: ExecLifecyclePolicy::Supervised,
             timeout: ExecTimeoutPolicy::None,
-            command,
+            command: &command,
             env: &[(process_control_ipc::BOOTSTRAP_ENV, "stale-endpoint")],
             sudo: false,
             label: "supervised-test",
@@ -381,6 +390,7 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
         },
     );
     assert!(read_exec_started(&mut host_stream, target_seq) > 0);
+    let pid = child_guard.read_pid();
     assert_eq!(
         read_stdout_chunk(&mut host_stream, target_seq),
         endpoint.as_bytes()
@@ -420,18 +430,23 @@ fn supervised_exec_control_forwards_to_bootstrap_sink() {
     let (_chunks, result) = read_exec_result(&mut host_stream, target_seq);
     assert_eq!(result.termination, ExecTermination::Cancelled);
     assert_eq!(result.stdout, Some(endpoint.into_bytes()));
+    wait_for_pid_exit(pid, "supervised exec bootstrap sink cleanup");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
 
 #[test]
 fn supervised_exec_control_reports_unsupported_without_sink() {
+    let pid_path = unique_pid_path("supervised-exec-unsupported-control");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
+    let command = sleep_command_with_pid(pid_path.as_str());
 
     send_supervised_exec_start(
         &mut host_stream,
         204,
-        "sleep 60",
+        &command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Enabled {
@@ -440,6 +455,7 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
         },
     );
     assert!(read_exec_started(&mut host_stream, 204) > 0);
+    let pid = child_guard.read_pid();
 
     send_exec_control(&mut host_stream, 304, 204, EXEC_CONTROL_NONCE, "message");
     assert_exec_control_result(
@@ -455,19 +471,27 @@ fn supervised_exec_control_reports_unsupported_without_sink() {
     send_exec_cancel(&mut host_stream, 204);
     let (_chunks, result) = read_exec_result(&mut host_stream, 204);
     assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "supervised exec unsupported control cleanup");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
 
 #[test]
 fn supervised_exec_control_registries_are_isolated_per_connection() {
+    let first_pid_path = unique_pid_path("supervised-exec-first-isolated");
+    let second_pid_path = unique_pid_path("supervised-exec-second-isolated");
+    let mut first_child_guard = ProcessGroupFileGuard::new(first_pid_path.as_str());
+    let mut second_child_guard = ProcessGroupFileGuard::new(second_pid_path.as_str());
     let (first_handle, mut first_stream) = start_guest_connection();
     let (second_handle, mut second_stream) = start_guest_connection();
+    let first_command = sleep_command_with_pid(first_pid_path.as_str());
+    let second_command = sleep_command_with_pid(second_pid_path.as_str());
 
     send_supervised_exec_start(
         &mut first_stream,
         209,
-        "sleep 60",
+        &first_command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Enabled {
@@ -478,7 +502,7 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
     send_supervised_exec_start(
         &mut second_stream,
         209,
-        "sleep 60",
+        &second_command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Enabled {
@@ -489,6 +513,8 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
 
     assert!(read_exec_started(&mut first_stream, 209) > 0);
     assert!(read_exec_started(&mut second_stream, 209) > 0);
+    let first_pid = first_child_guard.read_pid();
+    let second_pid = second_child_guard.read_pid();
 
     send_exec_control(
         &mut first_stream,
@@ -531,6 +557,10 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
     let (_chunks, second_result) = read_exec_result(&mut second_stream, 209);
     assert_eq!(first_result.termination, ExecTermination::Cancelled);
     assert_eq!(second_result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(first_pid, "first supervised exec isolation cleanup");
+    wait_for_pid_exit(second_pid, "second supervised exec isolation cleanup");
+    first_child_guard.disarm();
+    second_child_guard.disarm();
 
     finish_guest_connection(first_handle, first_stream);
     finish_guest_connection(second_handle, second_stream);
@@ -538,12 +568,15 @@ fn supervised_exec_control_registries_are_isolated_per_connection() {
 
 #[test]
 fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
+    let pid_path = unique_pid_path("supervised-exec-duplicate-control");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
+    let command = sleep_command_with_pid(pid_path.as_str());
 
     send_supervised_exec_start(
         &mut host_stream,
         206,
-        "sleep 60",
+        &command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Enabled {
@@ -552,6 +585,7 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
         },
     );
     assert!(read_exec_started(&mut host_stream, 206) > 0);
+    let pid = child_guard.read_pid();
 
     send_supervised_exec_start(
         &mut host_stream,
@@ -606,6 +640,8 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
     send_exec_cancel(&mut host_stream, 206);
     let (_chunks, result) = read_exec_result(&mut host_stream, 206);
     assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "supervised exec duplicate control cleanup");
+    child_guard.disarm();
 
     send_quiesce_operations(&mut host_stream, 308);
     let quiesced = read_message(&mut host_stream);
@@ -618,17 +654,21 @@ fn supervised_exec_control_duplicate_start_preserves_active_nonce() {
 
 #[test]
 fn supervised_exec_duplicate_start_with_control_does_not_leak_registration() {
+    let pid_path = unique_pid_path("supervised-exec-duplicate-registration");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
+    let command = sleep_command_with_pid(pid_path.as_str());
 
     send_supervised_exec_start(
         &mut host_stream,
         210,
-        "sleep 60",
+        &command,
         ExecTimeoutPolicy::None,
         ExecOutputPolicy::Discard,
         ExecControlPolicy::Disabled,
     );
     assert!(read_exec_started(&mut host_stream, 210) > 0);
+    let pid = child_guard.read_pid();
 
     send_supervised_exec_start(
         &mut host_stream,
@@ -666,6 +706,8 @@ fn supervised_exec_duplicate_start_with_control_does_not_leak_registration() {
     send_exec_cancel(&mut host_stream, 210);
     let (_chunks, result) = read_exec_result(&mut host_stream, 210);
     assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "supervised exec duplicate registration cleanup");
+    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
