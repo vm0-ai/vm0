@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { integrationsTelegramUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -66,6 +67,8 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
   });
 
   it("returns a presigned upload URL and final file URL", async () => {
+    mockEnv("S3_ENDPOINT", "http://internal-s3.test");
+    mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.test");
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
@@ -106,6 +109,9 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
     expect(cmd.input.Bucket).toBe("test-user-artifacts");
     expect(cmd.input.Key).toBe(
       `artifacts/${userId}/${response.body.uploadId}/daily_report.pdf`,
+    );
+    expect(context.mocks.s3.clientConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ endpoint: "https://public-s3.test" }),
     );
   });
 

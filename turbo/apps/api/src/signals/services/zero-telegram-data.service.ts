@@ -15,7 +15,6 @@ import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -209,38 +208,8 @@ export function zeroTelegramBots(args: {
       );
 
     const customBots: TelegramBotListItem[] = await Promise.all(
-      installations.map(async (installation) => {
-        const [tokenStatus, userLink] = await Promise.all([
-          resolveTokenStatus(installation.encryptedBotToken),
-          get(
-            telegramUserLink({
-              botId: installation.telegramBotId,
-              userId: args.userId,
-            }),
-          ),
-        ]);
-
-        let agent: { id: string; name: string } | null = null;
-        const [agentRow] = await db
-          .select({ id: zeroAgents.id, name: zeroAgents.name })
-          .from(agentComposes)
-          .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-          .where(eq(agentComposes.id, installation.defaultComposeId))
-          .limit(1);
-        if (agentRow) {
-          agent = { id: agentRow.id, name: agentRow.name };
-        }
-
-        return {
-          id: installation.telegramBotId,
-          username: installation.botUsername ?? null,
-          avatarUrl: buildTelegramBotAvatarUrl(installation.telegramBotId),
-          agent,
-          isOwner: installation.ownerUserId === args.userId,
-          isConnected: tokenStatus === "valid",
-          connectedUser: userLink,
-          tokenStatus,
-        };
+      installations.map((installation) => {
+        return get(customTelegramBot({ installation, userId: args.userId }));
       }),
     );
 
@@ -693,14 +662,6 @@ export function telegramBotToken(args: {
       botUsername: row.botUsername ?? null,
     };
   });
-}
-
-async function resolveTokenStatus(
-  encryptedBotToken: string,
-): Promise<"valid" | "invalid" | "unknown"> {
-  const token = decryptSecretValue(encryptedBotToken);
-  const settled = await settle(getMe(token));
-  return settled.ok ? ("valid" as const) : ("unknown" as const);
 }
 
 function isInvalidTelegramTokenError(error: unknown): boolean {

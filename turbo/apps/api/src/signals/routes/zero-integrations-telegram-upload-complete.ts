@@ -7,7 +7,7 @@ import {
 import { env } from "../../lib/env";
 import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
-import { organizationAuthContext$ } from "../auth/auth-context";
+import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { listS3Objects } from "../external/s3";
@@ -39,6 +39,16 @@ const uploadedFileNotFound = Object.freeze({
     error: Object.freeze({
       message: "Uploaded file not found",
       code: "NOT_FOUND",
+    }),
+  }),
+});
+
+const organizationContextRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Organization context is required",
+      code: "FORBIDDEN",
     }),
   }),
 });
@@ -91,7 +101,10 @@ function telegramErrorResponse(
 }
 
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
+  const auth = get(authContext$);
+  if (!auth.orgId) {
+    return organizationContextRequired;
+  }
   const orgId = auth.orgId;
   const userId = auth.userId;
   const runId =
@@ -177,8 +190,6 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const telegramWriteAuth = {
-  requireOrganization: true,
-  missingOrganizationStatus: 401,
   requiredCapability: "telegram:write",
 } as const;
 

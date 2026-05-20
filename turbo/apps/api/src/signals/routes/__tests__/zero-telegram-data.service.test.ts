@@ -109,6 +109,8 @@ describe("zeroTelegramBots service", () => {
         orgId,
         ownerUserId: userId,
         telegramBotId: ownerBotId,
+        composeName: "compose-owned-agent",
+        agentName: "zero-owned-agent",
       },
       context.signal,
     );
@@ -157,6 +159,11 @@ describe("zeroTelegramBots service", () => {
       return bot.id === ownerBotId;
     });
     expect(ownerBot?.isOwner).toBeTruthy();
+    expect(ownerBot?.isConnected).toBeTruthy();
+    expect(ownerBot?.agent).toStrictEqual({
+      id: ownerInstall.composeId,
+      name: "compose-owned-agent",
+    });
     expect(ownerBot?.connectedUser).toStrictEqual({
       telegramUserId: "tg_owner",
       telegramUsername: "owner_tg",
@@ -166,6 +173,38 @@ describe("zeroTelegramBots service", () => {
       return bot.id === otherBotId;
     });
     expect(otherBot?.isOwner).toBeFalsy();
+    expect(otherBot?.isConnected).toBeFalsy();
+  });
+
+  it("marks a custom bot token invalid when getMe returns a different bot id", async () => {
+    const orgId = newOrgId();
+    const userId = newUserId();
+    const builder = makeTelegramFixtureBuilder(orgId);
+    builder.userIds.push(userId);
+    const botId = newTelegramBotId();
+
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: Number(botId) + 1,
+      is_bot: true,
+      first_name: "Wrong Bot",
+      username: "wrong_bot",
+    });
+
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId: botId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    trackFixture(freezeTelegramFixture(builder));
+
+    const bots = await store.get(zeroTelegramBots({ orgId, userId }));
+
+    const customBot = bots.find((bot) => {
+      return bot.id === botId;
+    });
+    expect(customBot?.tokenStatus).toBe("invalid");
   });
 
   it("returns the official bot with configured=false when env is unset", async () => {

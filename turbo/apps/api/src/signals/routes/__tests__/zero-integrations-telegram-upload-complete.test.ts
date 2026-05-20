@@ -261,6 +261,39 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
+  it("returns 403 when authenticated without an organization context", async () => {
+    const userId = `user_${randomUUID().slice(0, 8)}`;
+    const orgId = `org_${randomUUID().slice(0, 8)}`;
+    const runId = `run_${randomUUID()}`;
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [],
+    });
+    const client = setupApp({ context })(
+      integrationsTelegramUploadCompleteContract,
+    );
+
+    const response = await accept(
+      client.complete({
+        body: {
+          uploadId: randomUUID(),
+          botId: uniqueBotId(),
+          chatId: "-1001234567890",
+        },
+        headers: {
+          authorization: `Bearer ${zeroToken({ userId, orgId, runId })}`,
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Organization context is required",
+        code: "FORBIDDEN",
+      },
+    });
+  });
+
   it("returns 400 when Telegram rejects the sendDocument call", async () => {
     const fixture = await seedSendableContext();
     fixtures.push(fixture);

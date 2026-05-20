@@ -28,7 +28,13 @@ const initInner$ = command(async ({ get }, signal: AbortSignal) => {
   const s3Key = buildArtifactKey(auth.userId, uploadId, sanitized);
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
-    generatePresignedPutUrl(bucket, s3Key, contentType, PUT_URL_TTL_SECONDS),
+    generatePresignedPutUrl(
+      bucket,
+      s3Key,
+      contentType,
+      PUT_URL_TTL_SECONDS,
+      true,
+    ),
   );
   signal.throwIfAborted();
 
