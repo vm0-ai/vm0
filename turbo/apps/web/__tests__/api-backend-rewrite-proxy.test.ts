@@ -1588,6 +1588,16 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
   });
 
+  it("matches the agent telemetry webhook rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent/telemetry")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/webhooks/agent/telemetry/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
+  });
+
   it("matches the agent storages commit webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/storages/commit"),
@@ -3513,6 +3523,47 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe(
           "/api/webhooks/agent/heartbeat?from=heartbeat",
+        );
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent telemetry webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_telemetry_1",
+          systemLog: "boot ok",
+          metrics: [],
+          networkLogs: [],
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/telemetry?from=telemetry`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/telemetry?from=telemetry",
         );
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");

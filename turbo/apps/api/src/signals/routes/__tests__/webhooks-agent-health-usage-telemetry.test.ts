@@ -91,6 +91,29 @@ async function postRawHeartbeat(
   };
 }
 
+async function postRawTelemetry(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/webhooks/agent/telemetry", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
 async function seedFixture(status = "running"): Promise<AgentWebhookFixture> {
   const base = await store.set(
     seedUsageInsightFixture$,
@@ -389,9 +412,94 @@ describe("POST /api/webhooks/agent/telemetry", () => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
 
-  it("ingests sandbox telemetry and flushes network logs", async () => {
+  it("rejects missing sandbox auth", async () => {
+    const client = setupApp({ context })(webhookTelemetryContract);
+
+    const response = await accept(
+      client.send({
+        body: { runId: randomUUID(), systemLog: "boot ok" },
+        headers: {},
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Not authenticated or runId mismatch",
+        code: "UNAUTHORIZED",
+      },
+    });
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing runId before ingesting telemetry", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await postRawTelemetry(
+      { systemLog: "boot ok" },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+    expect(JSON.stringify(response.body)).toContain("runId");
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the authenticated run no longer exists", async () => {
+    const missingRun = {
+      runId: randomUUID(),
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+    };
+    const client = setupApp({ context })(webhookTelemetryContract);
+
+    const response = await accept(
+      client.send({
+        body: { runId: missingRun.runId, systemLog: "boot ok" },
+        headers: authHeaders(missingRun),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a run owned by a different user", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookTelemetryContract);
+
+    const response = await accept(
+      client.send({
+        body: { runId: fixture.runId, systemLog: "boot ok" },
+        headers: authHeaders({
+          runId: fixture.runId,
+          userId: `other_${randomUUID()}`,
+          orgId: fixture.orgId,
+        }),
+      }),
+      [404],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Agent run not found", code: "NOT_FOUND" },
+    });
+    expect(context.mocks.axiom.ingest).not.toHaveBeenCalled();
+    expect(context.mocks.axiom.flush).not.toHaveBeenCalled();
+  });
+
+  it("ingests sandbox telemetry and flushes uploaded telemetry", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookTelemetryContract);
+    context.mocks.axiom.sdkIngest.mockReset();
 
     const response = await accept(
       client.send({
@@ -474,6 +582,82 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       ],
     );
     expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
+      client: "telemetry",
+      throwOnError: true,
+    });
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          source: "sandbox",
+          op_type: "codex_exec",
+          sandbox_type: "runner",
+          duration_ms: 123,
+          success: false,
+          run_id: fixture.runId,
+          error: "exit 1",
+        }),
+      ],
+    );
+  });
+
+  it("accepts multiple telemetry uploads for the same run", async () => {
+    const fixture = await track(seedFixture());
+    const client = setupApp({ context })(webhookTelemetryContract);
+    const headers = { authorization: `Bearer ${sandboxToken(fixture)}` };
+
+    const firstResponse = await accept(
+      client.send({
+        body: { runId: fixture.runId, systemLog: "First batch" },
+        headers,
+      }),
+      [200],
+    );
+    const secondResponse = await accept(
+      client.send({
+        body: { runId: fixture.runId, systemLog: "Second batch" },
+        headers,
+      }),
+      [200],
+    );
+
+    expect(firstResponse.body).toStrictEqual({
+      success: true,
+      id: fixture.runId,
+    });
+    expect(secondResponse.body).toStrictEqual({
+      success: true,
+      id: fixture.runId,
+    });
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledTimes(2);
+    expect(context.mocks.axiom.ingest).toHaveBeenNthCalledWith(
+      1,
+      "sandbox-telemetry-system",
+      [
+        expect.objectContaining({
+          runId: fixture.runId,
+          userId: fixture.userId,
+          log: "First batch",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.ingest).toHaveBeenNthCalledWith(
+      2,
+      "sandbox-telemetry-system",
+      [
+        expect.objectContaining({
+          runId: fixture.runId,
+          userId: fixture.userId,
+          log: "Second batch",
+        }),
+      ],
+    );
+    expect(context.mocks.axiom.flush).toHaveBeenCalledTimes(2);
+    expect(context.mocks.axiom.flush).toHaveBeenNthCalledWith(1, {
+      client: "telemetry",
+      throwOnError: true,
+    });
+    expect(context.mocks.axiom.flush).toHaveBeenNthCalledWith(2, {
       client: "telemetry",
       throwOnError: true,
     });

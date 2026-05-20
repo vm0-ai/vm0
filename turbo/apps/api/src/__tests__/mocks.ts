@@ -21,6 +21,7 @@ export interface ApiTestMocks {
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
     readonly query: AsyncMock;
+    readonly sdkIngest: UnknownMock;
   };
   readonly axiomLogging: {
     readonly debug: SyncMock;
@@ -205,6 +206,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     ingest: vi.fn<(...args: unknown[]) => boolean>(),
     query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    sdkIngest: vi.fn<(...args: unknown[]) => unknown>(),
   };
 
   const clerk = {
@@ -806,7 +808,11 @@ vi.mock("../signals/external/axiom", () => {
 vi.mock("@axiomhq/js", () => {
   return {
     Axiom: vi.fn(function () {
-      return {};
+      return {
+        flush: apiTestMocks.axiom.flush,
+        ingest: apiTestMocks.axiom.sdkIngest,
+        query: apiTestMocks.axiom.query,
+      };
     }),
   };
 });
@@ -841,6 +847,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiom.ingest.mockReset();
   apiTestMocks.axiom.ingest.mockReturnValue(true);
   apiTestMocks.axiom.query.mockReset();
+  apiTestMocks.axiom.sdkIngest.mockReset();
   apiTestMocks.axiomLogging.debug.mockReset();
   apiTestMocks.axiomLogging.info.mockReset();
   apiTestMocks.axiomLogging.warn.mockReset();

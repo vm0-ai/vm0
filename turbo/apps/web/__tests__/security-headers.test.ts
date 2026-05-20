@@ -724,6 +724,12 @@ const AGENT_HEARTBEAT_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/heartbeat/extra",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_TELEMETRY_REWRITE_SOURCE = "/api/webhooks/agent/telemetry";
+const AGENT_TELEMETRY_PATH = "/api/webhooks/agent/telemetry";
+const AGENT_TELEMETRY_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/telemetry/extra",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_COMMIT_PATH = "/api/webhooks/agent/storages/commit";
@@ -2195,6 +2201,10 @@ describe("API backend rewrites", () => {
         {
           source: AGENT_HEARTBEAT_REWRITE_SOURCE,
           destination: "https://api.example.test/api/webhooks/agent/heartbeat",
+        },
+        {
+          source: AGENT_TELEMETRY_REWRITE_SOURCE,
+          destination: "https://api.example.test/api/webhooks/agent/telemetry",
         },
         {
           source: AGENT_STORAGES_COMMIT_REWRITE_SOURCE,
@@ -4946,6 +4956,29 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_HEARTBEAT_PATH)).toStrictEqual({});
     for (const pathname of AGENT_HEARTBEAT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent telemetry webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_TELEMETRY_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_TELEMETRY_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/webhooks/agent/telemetry",
+    });
+
+    const matcher = getPathMatch(AGENT_TELEMETRY_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_TELEMETRY_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_TELEMETRY_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

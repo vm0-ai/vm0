@@ -1,5 +1,4 @@
 export {
-  ingestToAxiom,
   flushAxiom,
   queryAxiom,
   isAxiomDatasetConfigured,

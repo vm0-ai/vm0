@@ -157,47 +157,55 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
+  let telemetryBuffered = false;
+
   if (body.systemLog) {
-    ingestToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
-      {
-        _time: nowDate().toISOString(),
-        runId: body.runId,
-        userId: auth.userId,
-        log: body.systemLog,
-      },
-    ]);
+    telemetryBuffered =
+      ingestToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
+        {
+          _time: nowDate().toISOString(),
+          runId: body.runId,
+          userId: auth.userId,
+          log: body.systemLog,
+        },
+      ]) || telemetryBuffered;
   }
 
   if (body.metrics && body.metrics.length > 0) {
-    ingestToAxiom(
-      getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
-      body.metrics.map((metric) => {
-        return {
-          _time: metric.ts,
-          runId: body.runId,
-          userId: auth.userId,
-          cpu: metric.cpu,
-          mem_used: metric.mem_used,
-          mem_total: metric.mem_total,
-          disk_used: metric.disk_used,
-          disk_total: metric.disk_total,
-        };
-      }),
-    );
+    telemetryBuffered =
+      ingestToAxiom(
+        getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
+        body.metrics.map((metric) => {
+          return {
+            _time: metric.ts,
+            runId: body.runId,
+            userId: auth.userId,
+            cpu: metric.cpu,
+            mem_used: metric.mem_used,
+            mem_total: metric.mem_total,
+            disk_used: metric.disk_used,
+            disk_total: metric.disk_total,
+          };
+        }),
+      ) || telemetryBuffered;
   }
 
   if (body.networkLogs && body.networkLogs.length > 0) {
-    ingestToAxiom(
-      getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
-      body.networkLogs.map(({ timestamp, ...rest }) => {
-        return {
-          ...rest,
-          _time: timestamp,
-          runId: body.runId,
-          userId: auth.userId,
-        };
-      }),
-    );
+    telemetryBuffered =
+      ingestToAxiom(
+        getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
+        body.networkLogs.map(({ timestamp, ...rest }) => {
+          return {
+            ...rest,
+            _time: timestamp,
+            runId: body.runId,
+            userId: auth.userId,
+          };
+        }),
+      ) || telemetryBuffered;
+  }
+
+  if (telemetryBuffered) {
     await flushAxiom({ client: "telemetry", throwOnError: true });
     signal.throwIfAborted();
   }

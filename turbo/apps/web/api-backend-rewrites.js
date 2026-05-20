@@ -166,6 +166,7 @@ const AGENT_COMPLETE_REWRITE_SOURCE = "/api/webhooks/agent/complete";
 const AGENT_EVENTS_REWRITE_SOURCE = "/api/webhooks/agent/events";
 const AGENT_FIREWALL_AUTH_REWRITE_SOURCE = "/api/webhooks/agent/firewall/auth";
 const AGENT_HEARTBEAT_REWRITE_SOURCE = "/api/webhooks/agent/heartbeat";
+const AGENT_TELEMETRY_REWRITE_SOURCE = "/api/webhooks/agent/telemetry";
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_PREPARE_REWRITE_SOURCE =
@@ -468,6 +469,7 @@ export const API_BACKEND_REWRITES = [
   [AGENT_EVENTS_REWRITE_SOURCE, "/api/webhooks/agent/events"],
   [AGENT_FIREWALL_AUTH_REWRITE_SOURCE, "/api/webhooks/agent/firewall/auth"],
   [AGENT_HEARTBEAT_REWRITE_SOURCE, "/api/webhooks/agent/heartbeat"],
+  [AGENT_TELEMETRY_REWRITE_SOURCE, "/api/webhooks/agent/telemetry"],
   [AGENT_STORAGES_COMMIT_REWRITE_SOURCE, "/api/webhooks/agent/storages/commit"],
   [
     AGENT_STORAGES_PREPARE_REWRITE_SOURCE,
