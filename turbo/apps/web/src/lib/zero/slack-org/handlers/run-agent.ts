@@ -5,6 +5,7 @@ import { isApiError } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type { UserInfoOptions } from "../../integration-prompt";
 import { resolveModelFirstRouteDescriptor } from "../../model-policy/model-first-route-service";
+import { getUserModelPreferenceModel } from "../../model-policy/user-model-preference-service";
 import { createZeroRun } from "../../zero-run-service";
 import { adaptSlackTrigger } from "./adapt-slack-trigger";
 
@@ -44,15 +45,26 @@ interface LogContext {
 async function resolveSlackRunModelRoute(params: {
   orgId: string;
   userId: string;
-}): Promise<{
-  modelProviderType: string;
-  modelProviderId: string | null;
-  modelProviderCredentialScope: string;
-  selectedModel: string;
-}> {
+}): Promise<
+  | {
+      modelProviderType: string;
+      modelProviderId: string | null;
+      modelProviderCredentialScope: string;
+      selectedModel: string;
+    }
+  | undefined
+> {
+  const selectedModel = await getUserModelPreferenceModel(
+    params.orgId,
+    params.userId,
+  );
+  if (!selectedModel) {
+    return undefined;
+  }
   const route = await resolveModelFirstRouteDescriptor({
     orgId: params.orgId,
     userId: params.userId,
+    selectedModel,
   });
   return {
     modelProviderType: route.providerType,
@@ -94,7 +106,7 @@ export async function runAgentForSlackOrg(
         threadTs: params.threadTs,
         callbackContext: params.callbackContext,
         apiStartTime: params.apiStartTime,
-        ...modelRoute,
+        ...(modelRoute ?? {}),
       }),
     );
 

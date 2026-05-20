@@ -1683,20 +1683,15 @@ async function resolveModelRouteForUser(
   userId: string,
   signal: AbortSignal,
 ): Promise<ModelRoutePin | undefined> {
-  const [preference, policies] = await Promise.all([
-    get(userModelPreference({ orgId, userId })),
-    set(listOrgModelPolicies$, { orgId, userId }, signal),
-  ]);
-  const selectedModel = preference.selectedModel;
-  const policy =
-    (selectedModel
-      ? policies.policies.find((candidate) => {
-          return candidate.model === selectedModel;
-        })
-      : undefined) ??
-    policies.policies.find((candidate) => {
-      return candidate.isDefault;
-    });
+  const selectedModel = (await get(userModelPreference({ orgId, userId })))
+    .selectedModel;
+  if (!selectedModel) {
+    return undefined;
+  }
+  const policies = await set(listOrgModelPolicies$, { orgId, userId }, signal);
+  const policy = policies.policies.find((candidate) => {
+    return candidate.model === selectedModel;
+  });
   if (!policy) {
     return undefined;
   }
