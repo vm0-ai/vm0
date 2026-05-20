@@ -715,6 +715,12 @@ const TEST_TELEGRAM_STATE_NEXT_NEGATIVE_PATHS = [
   "/api/test/telegram-state/extra",
   "/api/test/telegram-states",
 ] as const;
+const TELEGRAM_SETUP_STATUS_REWRITE_SOURCE = "/api/telegram/setup-status";
+const TELEGRAM_SETUP_STATUS_PATH = "/api/telegram/setup-status";
+const TELEGRAM_SETUP_STATUS_NEXT_NEGATIVE_PATHS = [
+  "/api/telegram/setup-status/extra",
+  "/api/telegram/setup",
+] as const;
 const USER_MODEL_PREFERENCE_REWRITE_SOURCE = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_PATH = "/api/zero/user-model-preference";
 const USER_MODEL_PREFERENCE_NEXT_NEGATIVE_PATHS = [
@@ -6305,6 +6311,35 @@ describe("API backend rewrites", () => {
         return rewrite.source === "/api/:path*";
       }),
     ).toBe(false);
+  });
+
+  it("should match only the exact telegram setup-status rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === TELEGRAM_SETUP_STATUS_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: TELEGRAM_SETUP_STATUS_REWRITE_SOURCE,
+      destination: "https://api.example.test/api/telegram/setup-status",
+    });
+
+    const matcher = getPathMatch(TELEGRAM_SETUP_STATUS_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+    expect(matcher(TELEGRAM_SETUP_STATUS_PATH)).toStrictEqual({});
+    for (const pathname of TELEGRAM_SETUP_STATUS_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should bypass web middleware only for the exact telegram setup-status path", () => {
+    expect(matchesApiBackendRewritePath(TELEGRAM_SETUP_STATUS_PATH)).toBe(true);
+    for (const pathname of TELEGRAM_SETUP_STATUS_NEXT_NEGATIVE_PATHS) {
+      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
+    }
   });
 
   it("should match the zero web download route for middleware pass-through", async () => {

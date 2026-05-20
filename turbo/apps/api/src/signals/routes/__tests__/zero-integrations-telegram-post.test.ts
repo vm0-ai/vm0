@@ -381,6 +381,43 @@ describe("POST /api/telegram/setup-status", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
+  it("returns 400 when botToken is missing", async () => {
+    mocks.clerk.session("user_missing_token", "org_missing_token");
+
+    const response = await createApp({ signal: context.signal }).request(
+      "/api/telegram/setup-status",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: { message: "botToken is required", code: "BAD_REQUEST" },
+    });
+  });
+
+  it("returns 400 when bot token is invalid", async () => {
+    mocks.clerk.session("user_invalid_token", "org_invalid_token");
+    context.mocks.telegram.getMe.mockRejectedValue(new Error("Unauthorized"));
+
+    const response = await accept(
+      telegramClient().setupStatus({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { botToken: TEST_BOT_TOKEN },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Invalid bot token");
+  });
+
   it("returns setup status for a valid bot token", async () => {
     const botId = newTelegramBotId();
     const orgId = `org_${randomUUID().slice(0, 8)}`;
@@ -391,7 +428,7 @@ describe("POST /api/telegram/setup-status", () => {
       username: "setup_bot",
       privacyDisabled: true,
     });
-    server.use(telegramOauthHead("0", "https://example.test"));
+    server.use(telegramOauthHead("2048", "https://example.test"));
 
     const response = await accept(
       telegramClient().setupStatus({
@@ -407,7 +444,7 @@ describe("POST /api/telegram/setup-status", () => {
     expect(response.body).toStrictEqual({
       id: botId,
       username: "setup_bot",
-      domainConfigured: false,
+      domainConfigured: true,
       privacyDisabled: true,
     });
   });

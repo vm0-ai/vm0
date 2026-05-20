@@ -739,6 +739,9 @@ describe("API backend rewrite proxy behavior", () => {
   });
 
   it("matches Telegram callback rewrite paths exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/telegram/setup-status")).toBe(
+      true,
+    );
     expect(
       matchesApiBackendRewritePath(
         "/api/telegram/webhook/123456789:telegram-bot-token",
@@ -747,6 +750,9 @@ describe("API backend rewrite proxy behavior", () => {
     expect(
       matchesApiBackendRewritePath("/api/integrations/telegram/auth-callback"),
     ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath("/api/telegram/setup-status/extra"),
+    ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/telegram/webhook")).toBe(false);
     expect(
       matchesApiBackendRewritePath(
