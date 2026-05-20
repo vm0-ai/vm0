@@ -904,11 +904,12 @@ fn send_final_and_complete(
     let result = send_exec_result_after_lock(frame, writer, || {
         release_exec_control_guard(exec_control_guard);
         operation_guard.release();
+        registration.complete();
     });
-    registration.complete();
     if result.is_err() {
         release_exec_control_guard(exec_control_guard);
         operation_guard.release();
+        registration.complete();
     }
     if let Err(e) = result {
         log("ERROR", &format!("Failed to send exec_result: {e}"));
@@ -1077,15 +1078,12 @@ mod tests {
         crate::quiesce::OperationState::default().acquire().unwrap()
     }
 
-    fn wait_for_registry_release(registry: &ExecOperationRegistry, seq: u32) {
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while Instant::now() < deadline {
-            if registry.register(seq, "test").is_ok() {
-                return;
-            }
-            std::thread::yield_now();
-        }
-        panic!("exec operation registry entry for seq={seq} was not released");
+    fn assert_registry_released(registry: &ExecOperationRegistry, seq: u32) {
+        let registration = registry.register(seq, "test");
+        assert!(
+            registration.is_ok(),
+            "exec operation registry entry for seq={seq} was not released"
+        );
     }
 
     #[test]
@@ -1163,7 +1161,7 @@ mod tests {
         let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
         assert_eq!(result.termination, ExecTermination::StartFailed);
         assert!(result.diagnostic.contains("exec operation worker thread"));
-        wait_for_registry_release(&registry, 42);
+        assert_registry_released(&registry, 42);
     }
 
     #[test]
@@ -1213,7 +1211,7 @@ mod tests {
         let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
         assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("stdout drain thread"));
-        wait_for_registry_release(&registry, 43);
+        assert_registry_released(&registry, 43);
     }
 
     #[test]
@@ -1239,7 +1237,7 @@ mod tests {
         let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
         assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("stderr drain thread"));
-        wait_for_registry_release(&registry, 45);
+        assert_registry_released(&registry, 45);
     }
 
     #[test]
@@ -1270,6 +1268,6 @@ mod tests {
         let result = vsock_proto::decode_exec_result(&msg.payload).unwrap();
         assert_eq!(result.termination, ExecTermination::WaitFailed);
         assert!(result.diagnostic.contains("output writer thread"));
-        wait_for_registry_release(&registry, 44);
+        assert_registry_released(&registry, 44);
     }
 }
