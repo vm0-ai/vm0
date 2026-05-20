@@ -23,11 +23,7 @@ const adminRequired = Object.freeze({
   }),
 });
 
-const downgradeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!optionalEnv("STRIPE_SECRET_KEY")) {
-    return providerUnavailable("Billing not configured");
-  }
-
+const downgradeAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired;
@@ -65,12 +61,23 @@ const downgradeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+const downgrade$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!optionalEnv("STRIPE_SECRET_KEY")) {
+    return providerUnavailable("Billing not configured");
+  }
+
+  return await set(
+    authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      downgradeAuthed$,
+    ),
+    signal,
+  );
+});
+
 export const zeroBillingDowngradeRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingDowngradeContract.create,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      downgradeInner$,
-    ),
+    handler: downgrade$,
   },
 ];

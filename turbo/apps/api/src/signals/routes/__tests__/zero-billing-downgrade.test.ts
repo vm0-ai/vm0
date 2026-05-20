@@ -40,13 +40,12 @@ describe("POST /api/zero/billing/downgrade", () => {
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
     mockOptionalEnv("STRIPE_SECRET_KEY", undefined);
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
         body: { targetTier: "free" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: {},
       }),
       [503],
     );

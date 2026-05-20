@@ -1292,6 +1292,19 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero billing downgrade rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/billing/downgrade")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/billing/downgrade/extra"),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing")).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/zero/billing/downgrades")).toBe(
+      false,
+    );
+  });
+
   it("matches the zero billing status rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/billing/status")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/billing/status/extra")).toBe(

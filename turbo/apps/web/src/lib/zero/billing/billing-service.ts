@@ -101,11 +101,6 @@ function tierFromPriceId(priceId: string): OrgTier {
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
 }
 
-/** Returns the active (first) price ID for a given tier. */
-function activePriceId(tier: "pro" | "team"): string | undefined {
-  return env().ZERO_PRICE?.[tier]?.[0];
-}
-
 /**
  * Get or create a Stripe customer for an org.
  * Returns the Stripe customer ID.
@@ -578,114 +573,6 @@ export async function handleSubscriptionDeleted(
   log.info("subscription deleted — downgraded to free", {
     subscriptionId: subscription.id,
   });
-}
-
-// ---------------------------------------------------------------------------
-// Tier ranking for downgrade validation
-// ---------------------------------------------------------------------------
-
-const TIER_RANK: Record<OrgTier, number> = {
-  free: 0,
-  pro: 1,
-  team: 2,
-};
-
-type DowngradeResult =
-  | { ok: true; effectiveDate: string | null }
-  | { ok: false; reason: "no_subscription" }
-  | {
-      ok: false;
-      reason: "invalid_target_tier";
-      currentTier: OrgTier;
-      targetTier: "free" | "pro";
-    };
-
-/**
- * Downgrade a subscription to a lower tier.
- *
- * - Team -> Pro: updates the subscription's price via Stripe API (immediate).
- * - Paid -> Free: cancels the subscription at period end.
- *
- * Expected client-facing validation failures (no active subscription, target
- * tier not lower than current) are returned as `{ ok: false, reason }` so the
- * route layer can map them to 4xx responses. Unexpected failures (Stripe
- * errors, misconfigured price IDs) continue to throw.
- */
-export async function downgradeSubscription(
-  orgId: string,
-  targetTier: "free" | "pro",
-): Promise<DowngradeResult> {
-  const db = globalThis.services.db;
-
-  const [org] = await db
-    .select({
-      tier: orgMetadata.tier,
-      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-      currentPeriodEnd: orgMetadata.currentPeriodEnd,
-    })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (!org?.stripeSubscriptionId) {
-    return { ok: false, reason: "no_subscription" };
-  }
-
-  const currentTier = org.tier as OrgTier;
-  if (TIER_RANK[targetTier] >= TIER_RANK[currentTier]) {
-    return {
-      ok: false,
-      reason: "invalid_target_tier",
-      currentTier,
-      targetTier,
-    };
-  }
-
-  const stripe = getStripe();
-
-  if (targetTier === "free") {
-    await stripe.subscriptions.update(org.stripeSubscriptionId, {
-      cancel_at_period_end: true,
-    });
-    await db
-      .update(orgMetadata)
-      .set({ cancelAtPeriodEnd: true, updatedAt: new Date() })
-      .where(eq(orgMetadata.orgId, orgId));
-    const effectiveDate = org.currentPeriodEnd
-      ? org.currentPeriodEnd.toISOString()
-      : null;
-    log.info("subscription cancellation initiated", {
-      orgId,
-      targetTier,
-      effectiveDate,
-    });
-    return { ok: true, effectiveDate };
-  }
-
-  const subscription = await stripe.subscriptions.retrieve(
-    org.stripeSubscriptionId,
-  );
-  const currentItem = subscription.items.data[0];
-  if (!currentItem) {
-    throw new Error("Subscription has no items");
-  }
-
-  const proPriceId = activePriceId("pro");
-  if (!proPriceId) {
-    throw new Error("Pro plan price ID not configured");
-  }
-
-  await stripe.subscriptions.update(org.stripeSubscriptionId, {
-    items: [{ id: currentItem.id, price: proPriceId }],
-    proration_behavior: "always_invoice",
-  });
-
-  log.info("subscription downgraded", {
-    orgId,
-    from: currentTier,
-    to: targetTier,
-  });
-  return { ok: true, effectiveDate: null };
 }
 
 /**
