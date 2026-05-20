@@ -9,7 +9,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   onboardingStatusContract,
   onboardingSetupContract,
@@ -59,11 +62,26 @@ function mockAdminOnboarding() {
   );
 }
 
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: false, close: vi.fn(), location: { href: "" } };
+}
+
 describe("onboarding connector permission dialog suppression", () => {
   it("should not set permissionDialogType$ after OAuth connect during onboarding", async () => {
     mockAdminOnboarding();
+    mockConnectorOauthStart();
 
-    const mockWindow = { closed: false, close: vi.fn() };
+    const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     // A use-case deep link drives the admin flow into the condensed step-3
@@ -97,6 +115,12 @@ describe("onboarding connector permission dialog suppression", () => {
     // Click "Connect" on GitHub — this triggers connectConnector$ without
     // opting into the post-connect permission dialog.
     click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+    });
 
     // Wait for the Ably subscription to be registered, then simulate the
     // OAuth callback publishing `connector:changed` so connectConnector$

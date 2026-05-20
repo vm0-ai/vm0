@@ -14,7 +14,10 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorScopeDiffContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -41,6 +44,20 @@ async function openScopeReviewModal(
     ).toBeInTheDocument();
   });
   context.store.set(setScopeReviewType$, connectorType);
+}
+
+function mockConnectorOauthStart() {
+  server.use(
+    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    }),
+  );
+}
+
+function createMockAuthWindow() {
+  return { closed: true, close: vi.fn(), location: { href: "" } };
 }
 
 describe("scope review modal - display", () => {
@@ -185,9 +202,11 @@ describe("scope review modal - states", () => {
 
 describe("scope review modal - interactions", () => {
   it("reconnect button triggers connector reconnection (CONN-I-039)", async () => {
+    mockConnectorOauthStart();
+    const mockWindow = createMockAuthWindow();
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as unknown as Window);
+      .mockReturnValue(mockWindow as unknown as Window);
 
     await openScopeReviewModal("github", {
       addedScopes: ["repo"],
@@ -212,9 +231,12 @@ describe("scope review modal - interactions", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
+        "about:blank",
         "_blank",
-        expect.any(String),
+        "width=600,height=700",
+      );
+      expect(mockWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
       );
     });
   });
