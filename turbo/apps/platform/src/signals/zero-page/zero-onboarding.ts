@@ -37,7 +37,7 @@ export const zeroNeedsOnboarding$ = computed(async (get) => {
   return status.needsOnboarding;
 });
 
-type ZeroOnboardingStep = "1" | "2" | "3" | "done";
+type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
 const userStep$ = state<ZeroOnboardingStep | null>(null);
 

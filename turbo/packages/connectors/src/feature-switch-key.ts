@@ -56,4 +56,5 @@ export enum FeatureSwitchKey {
   HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
   ZeroMaps = "zeroMaps",
+  ProTrialOnboarding = "proTrialOnboarding",
 }

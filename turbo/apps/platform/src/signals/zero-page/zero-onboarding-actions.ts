@@ -18,6 +18,8 @@ import {
   updateSearchParams$,
 } from "../route.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
@@ -74,9 +76,19 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 });
 
 /**
+ * Whether the post-connector Pro features + 7-day trial step is enabled.
+ * Gated by the `proTrialOnboarding` feature switch — off by default, so the
+ * regular flow stays a two-step (workspace + connectors) admin setup.
+ */
+const onboardingProTrialEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.ProTrialOnboarding] ?? false;
+});
+
+/**
  * Steps shown in the progress bar. The regular admin flow is step 1
- * (workspace) + step 2 (connectors). A use-case deep link collapses to step 3
- * (plus step 1 when the admin still has to create the workspace).
+ * (workspace) + step 2 (connectors). When the Pro trial switch is on, step 4
+ * (Pro features + 7-day trial) is appended. A use-case deep link collapses to
+ * step 3 (plus step 1 when the admin still has to create the workspace).
  */
 export const onboardingVisibleSteps$ = computed(async (get) => {
   const isAdmin = await get(onboardingIsAdmin$);
@@ -84,7 +96,12 @@ export const onboardingVisibleSteps$ = computed(async (get) => {
   if (isUseCase) {
     return (isAdmin ? ["1", "3"] : ["3"]) as readonly string[];
   }
-  return (isAdmin ? ["1", "2"] : []) as readonly string[];
+  if (!isAdmin) {
+    return [] as readonly string[];
+  }
+  return (
+    get(onboardingProTrialEnabled$) ? ["1", "2", "4"] : ["1", "2"]
+  ) as readonly string[];
 });
 
 /** Current step index within visible steps. */
@@ -104,6 +121,9 @@ export const onboardingStepKey$ = computed(async (get) => {
     case "2":
     case "3": {
       return "connectors";
+    }
+    case "4": {
+      return "trial";
     }
     default: {
       return "workspace";
@@ -152,7 +172,9 @@ export const onboardingNextDisabled$ = computed(async (get) => {
 
 /**
  * Label on the primary forward button. "Try It" finishes a use-case flow,
- * "Get Started" finishes the regular admin flow, "Next" advances step 1.
+ * "Get Started" finishes the regular admin flow, "Next" advances earlier
+ * steps. When the Pro trial step is on, step 2 advances ("Next") and the
+ * trial step (4) becomes the terminal "Get Started".
  */
 export const onboardingNextLabel$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
@@ -160,8 +182,11 @@ export const onboardingNextLabel$ = computed(async (get) => {
   if (isUseCase && step === "3") {
     return "Try It";
   }
-  if (step === "2") {
+  if (step === "4") {
     return "Get Started";
+  }
+  if (step === "2") {
+    return get(onboardingProTrialEnabled$) ? "Next" : "Get Started";
   }
   return "Next";
 });
@@ -188,9 +213,19 @@ export const onboardingStepNext$ = command(
         set(setZeroStep$, isUseCase ? "3" : "2");
         break;
       }
-      case "2":
-      case "3": {
-        // Step 2 (regular admin) and step 3 (use-case "Try It") both finish
+      case "2": {
+        // With the Pro trial step on, step 2 advances to it; otherwise step 2
+        // is terminal and finishes onboarding into the web chat.
+        if (get(onboardingProTrialEnabled$)) {
+          set(setZeroStep$, "4");
+          break;
+        }
+        await set(onboardingContinueWeb$, signal);
+        break;
+      }
+      case "3":
+      case "4": {
+        // Step 3 (use-case "Try It") and step 4 (Pro trial) both finish
         // onboarding by continuing into the web chat.
         await set(onboardingContinueWeb$, signal);
         break;

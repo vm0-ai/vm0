@@ -371,6 +371,184 @@ function UseCasePromptComposer() {
 }
 
 // ---------------------------------------------------------------------------
+// Pro trial step (step 4) — gated by the `proTrialOnboarding` feature switch.
+//
+// The benefit list below is a temporary constant. Once billing/Stripe is
+// wired, the entitlements (and the trial dates) should come from the pricing
+// config rather than being hardcoded here.
+// ---------------------------------------------------------------------------
+
+type ProTrialBenefit = {
+  title: string;
+  description?: string;
+};
+
+const PRO_TRIAL_BENEFITS: readonly ProTrialBenefit[] = [
+  {
+    title: "$20 in VM0 credits to get started",
+    description: "Enough to run agents from day one",
+  },
+  { title: "2 concurrent agent runs" },
+  { title: "All advanced features" },
+  {
+    title: "Multimodal generation",
+    description: "Create images, video and voice from a prompt",
+  },
+  {
+    title: "Slack & Telegram agents",
+    description: "Trigger and chat with agents where you already work",
+  },
+  { title: "Bring your own model keys" },
+  { title: "200+ connectors" },
+  { title: "Scheduled & recurring agents" },
+];
+
+const TRIAL_LENGTH_DAYS = 7;
+const TRIAL_REMINDER_LEAD_DAYS = 2;
+
+function formatTrialDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** Step 4: what Pro unlocks + the 7-day trial framing. */
+function TrialStepContent() {
+  const selectedConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
+
+  const connectorEntries = (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).filter(([type]) => {
+    return selectedConnectors.includes(type);
+  });
+
+  return (
+    <>
+      <h2
+        data-testid="onboarding-step-trial"
+        className="text-2xl font-semibold tracking-tight"
+      >
+        Your 7-day Pro trial is ready
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
+        Here&apos;s everything Pro unlocks. Your trial starts the moment you
+        finish setup.
+      </p>
+
+      {connectorEntries.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {connectorEntries.map(([type, config]) => {
+            return (
+              <span
+                key={type}
+                className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1 text-xs text-foreground"
+              >
+                <ConnectorIcon type={type} size={14} />
+                {config.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      <ul
+        data-testid="onboarding-trial-benefits"
+        className="w-full flex flex-col"
+      >
+        {PRO_TRIAL_BENEFITS.map((benefit) => {
+          return (
+            <li key={benefit.title} className="flex items-start gap-3 py-2.5">
+              <IconCircleCheckFilled className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-foreground">
+                  {benefit.title}
+                </span>
+                {benefit.description && (
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    {benefit.description}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** Left-panel trial-status illustration for step 4 — a reassurance timeline. */
+function OnboardingTrialPanel() {
+  const reminderDate = formatTrialDate(
+    TRIAL_LENGTH_DAYS - TRIAL_REMINDER_LEAD_DAYS,
+  );
+  const chargeDate = formatTrialDate(TRIAL_LENGTH_DAYS);
+
+  const stops = [
+    { label: "Today", detail: "Trial begins", active: true },
+    { label: reminderDate, detail: "Email reminder", active: false },
+    { label: chargeDate, detail: "First charge", active: false },
+  ];
+
+  return (
+    <>
+      <img
+        src={zeroAnimatedSrc}
+        alt=""
+        role="presentation"
+        className="h-24 w-24 object-contain mb-8"
+      />
+      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+        7 days of Pro, on us
+      </h3>
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+        Full access while you explore. We&apos;ll remind you before your trial
+        ends.
+      </p>
+
+      <div className="relative w-full max-w-[320px] mt-8">
+        <div
+          className="absolute top-[5px] h-px bg-border"
+          style={{ left: "16.66%", right: "16.66%" }}
+        />
+        <div className="relative flex justify-between">
+          {stops.map((stop) => {
+            return (
+              <div
+                key={stop.detail}
+                className="flex w-1/3 flex-col items-center text-center"
+              >
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    stop.active
+                      ? "bg-foreground"
+                      : "border border-muted-foreground/40 bg-background"
+                  }`}
+                />
+                <span className="text-xs font-medium text-foreground mt-2">
+                  {stop.label}
+                </span>
+                <span className="text-[11px] text-muted-foreground mt-0.5">
+                  {stop.detail}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground text-center mt-6">
+        $0 today&ensp;|&ensp;Cancel anytime
+      </p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Chat preview for workspace step
 // ---------------------------------------------------------------------------
 
@@ -707,13 +885,14 @@ function OnboardingIllustrationPanel() {
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
+  const showTrial = stepKey === "trial";
 
   return (
     <div
       className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
     >
-      {/* Decorative circles (non-orbit, non-chat steps) */}
-      {!showOrbit && !showChat && (
+      {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
+      {!showOrbit && !showChat && !showTrial && (
         <div className="absolute inset-0 pointer-events-none" aria-hidden>
           <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
           <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
@@ -727,6 +906,8 @@ function OnboardingIllustrationPanel() {
           <ChatPreview />
         ) : showOrbit ? (
           <OnboardingOrbitPanel />
+        ) : showTrial ? (
+          <OnboardingTrialPanel />
         ) : (
           <>
             <img
@@ -898,6 +1079,9 @@ function OnboardingStepContent() {
     }
     case "3": {
       return <ConnectStepContent />;
+    }
+    case "4": {
+      return <TrialStepContent />;
     }
     default: {
       return null;

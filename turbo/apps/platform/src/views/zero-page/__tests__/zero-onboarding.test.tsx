@@ -13,6 +13,8 @@ import {
   onboardingSetupContract,
   onboardingStatusContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -145,6 +147,74 @@ describe("zero onboarding - step 2: choose tools", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Get Started/)).toBeInTheDocument();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pro trial step (step 4) — gated by the proTrialOnboarding feature switch
+// ---------------------------------------------------------------------------
+
+describe("zero onboarding - Pro trial step (proTrialOnboarding)", () => {
+  it("appends the trial step after connectors when the switch is on", async () => {
+    setMockFeatureSwitches({ [FeatureSwitchKey.ProTrialOnboarding]: true });
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Step 1 -> fill name -> Next
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    click(screen.getByText("Next"));
+
+    // Step 2: connectors. The trial step adds a third progress segment, and
+    // step 2 is no longer terminal — its primary button advances ("Next").
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+        "Next",
+      );
+    });
+
+    // Advance into the trial step.
+    click(screen.getByTestId("onboarding-next-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
+    });
+    // The benefit checklist renders, and the trial step is now terminal.
+    expect(screen.getByTestId("onboarding-trial-benefits")).toBeInTheDocument();
+    expect(screen.getByText("Multimodal generation")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+      "Get Started",
+    );
+  });
+
+  it("keeps step 2 terminal when the switch is off", async () => {
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    click(screen.getByText("Next"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+    });
+    // No trial step: two segments, and step 2's button finishes onboarding.
+    expect(screen.getAllByTestId("progress-step")).toHaveLength(2);
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).toHaveTextContent(
+        "Get Started",
+      );
     });
   });
 });
