@@ -12,6 +12,7 @@ import {
   countSlackWebhookConnections$,
   deleteSlackWebhookFixture$,
   seedSlackWebhookFixture$,
+  setSlackWebhookUserSelectedModel$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
 
@@ -97,6 +98,51 @@ async function postCommand(
       ? await response.json()
       : await response.text(),
   };
+}
+
+interface SlackSelectOption {
+  readonly value: string;
+  readonly text?: { readonly text?: string };
+}
+
+interface SlackSelectElement {
+  readonly options?: readonly SlackSelectOption[];
+  readonly initial_option?: SlackSelectOption;
+}
+
+interface SlackModalBlock {
+  readonly element?: SlackSelectElement;
+}
+
+interface SlackModalView {
+  readonly callback_id?: string;
+  readonly private_metadata?: string;
+  readonly blocks?: readonly SlackModalBlock[];
+}
+
+interface SlackViewOpenCall {
+  readonly trigger_id?: string;
+  readonly view?: SlackModalView;
+}
+
+function latestSlackViewOpenCall(): SlackViewOpenCall {
+  const call = context.mocks.slack.views.open.mock.calls.at(-1)?.[0] as
+    | SlackViewOpenCall
+    | undefined;
+  if (!call) {
+    throw new Error("Expected Slack views.open to be called");
+  }
+  return call;
+}
+
+function getStaticSelectElement(view: SlackModalView): SlackSelectElement {
+  const block = view.blocks?.find((candidate) => {
+    return candidate.element?.options !== undefined;
+  });
+  if (!block?.element) {
+    throw new Error("Expected Slack modal to include a static select element");
+  }
+  return block.element;
 }
 
 describe("POST /api/zero/slack/commands", () => {
@@ -238,7 +284,35 @@ describe("POST /api/zero/slack/commands", () => {
     expect(context.mocks.slack.views.publish).toHaveBeenCalledOnce();
   });
 
-  it("opens switch and model modals for connected users", async () => {
+  it("returns a not-connected response when disconnecting without a connection", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: false },
+        context.signal,
+      ),
+    );
+
+    const response = await postCommand(
+      buildCommandBody({
+        teamId: fixture.slackWorkspaceId,
+        userId: fixture.slackUserId,
+        text: "disconnect",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(response.body)).toContain("not connected");
+    await expect(
+      store.set(
+        countSlackWebhookConnections$,
+        fixture.slackWorkspaceId,
+        context.signal,
+      ),
+    ).resolves.toBe(0);
+  });
+
+  it("opens the switch picker with org default and non-default agent options", async () => {
     const fixture = await track(
       store.set(
         seedSlackWebhookFixture$,
@@ -250,6 +324,9 @@ describe("POST /api/zero/slack/commands", () => {
         context.signal,
       ),
     );
+    if (!fixture.defaultAgentId || !fixture.switchAgentId) {
+      throw new Error("Expected Slack fixture to include switchable agents");
+    }
 
     const switchResponse = await postCommand(
       buildCommandBody({
@@ -258,6 +335,74 @@ describe("POST /api/zero/slack/commands", () => {
         text: "switch",
       }),
     );
+
+    expect(switchResponse.status).toBe(200);
+    const call = latestSlackViewOpenCall();
+    expect(call.trigger_id).toBe("trigger-123");
+    expect(call.view?.callback_id).toBe("switch_agent_modal");
+    expect(call.view?.private_metadata).toBe(
+      JSON.stringify({ channelId: "C-test" }),
+    );
+    const select = getStaticSelectElement(call.view ?? {});
+    const values =
+      select.options?.map((option) => {
+        return option.value;
+      }) ?? [];
+    const labels =
+      select.options?.map((option) => {
+        return option.text?.text;
+      }) ?? [];
+
+    expect(values).toContain("__org_default__");
+    expect(values).toContain(fixture.switchAgentId);
+    expect(values).not.toContain(fixture.defaultAgentId);
+    expect(labels).toContainEqual(expect.stringContaining("Use org default"));
+  });
+
+  it("returns a login prompt for switch when the Slack user is not connected", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: false, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+
+    const response = await postCommand(
+      buildCommandBody({
+        teamId: fixture.slackWorkspaceId,
+        userId: fixture.slackUserId,
+        text: "switch",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ response_type: "ephemeral" });
+    expect(JSON.stringify(response.body)).toContain("connect");
+    expect(context.mocks.slack.views.open).not.toHaveBeenCalled();
+  });
+
+  it("opens the model picker with default, available models, and current selection", async () => {
+    const fixture = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        {
+          withConnection: true,
+          withDefaultAgent: true,
+        },
+        context.signal,
+      ),
+    );
+    await store.set(
+      setSlackWebhookUserSelectedModel$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        selectedModel: "deepseek-v4-pro",
+      },
+      context.signal,
+    );
+
     const modelResponse = await postCommand(
       buildCommandBody({
         teamId: fixture.slackWorkspaceId,
@@ -266,8 +411,68 @@ describe("POST /api/zero/slack/commands", () => {
       }),
     );
 
-    expect(switchResponse.status).toBe(200);
     expect(modelResponse.status).toBe(200);
-    expect(context.mocks.slack.views.open).toHaveBeenCalledTimes(2);
+    const call = latestSlackViewOpenCall();
+    expect(call.trigger_id).toBe("trigger-123");
+    expect(call.view?.callback_id).toBe("model_preference_modal");
+    expect(call.view?.private_metadata).toBe(
+      JSON.stringify({ channelId: "C-test" }),
+    );
+    const select = getStaticSelectElement(call.view ?? {});
+    const values =
+      select.options?.map((option) => {
+        return option.value;
+      }) ?? [];
+    const labels =
+      select.options?.map((option) => {
+        return option.text?.text;
+      }) ?? [];
+
+    expect(values).toContain("claude-sonnet-4-6");
+    expect(values).toContain("deepseek-v4-pro");
+    expect(values).toContain("gpt-5.5");
+    expect(labels).toContain("Claude Sonnet 4.6 (workspace default)");
+    expect(select.initial_option?.value).toBe("deepseek-v4-pro");
+  });
+
+  it("advertises switch and model commands only when available", async () => {
+    const unbound = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { installationOrgId: null },
+        context.signal,
+      ),
+    );
+    const unboundHelp = await postCommand(
+      buildCommandBody({
+        teamId: unbound.slackWorkspaceId,
+        userId: unbound.slackUserId,
+        text: "help",
+      }),
+    );
+    const unboundBody = JSON.stringify(unboundHelp.body);
+    expect(unboundHelp.status).toBe(200);
+    expect(unboundBody).not.toContain("/zero switch");
+    expect(unboundBody).not.toContain("/zero model");
+    expect(unboundBody).toContain("/zero connect");
+
+    const connected = await track(
+      store.set(
+        seedSlackWebhookFixture$,
+        { withConnection: true, withDefaultAgent: true },
+        context.signal,
+      ),
+    );
+    const connectedHelp = await postCommand(
+      buildCommandBody({
+        teamId: connected.slackWorkspaceId,
+        userId: connected.slackUserId,
+        text: "help",
+      }),
+    );
+    const connectedBody = JSON.stringify(connectedHelp.body);
+    expect(connectedHelp.status).toBe(200);
+    expect(connectedBody).toContain("/zero switch");
+    expect(connectedBody).toContain("/zero model");
   });
 });

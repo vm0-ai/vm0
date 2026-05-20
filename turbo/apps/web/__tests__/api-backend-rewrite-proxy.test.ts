@@ -846,6 +846,9 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/slack/events/extra")).toBe(
       false,
     );
+    expect(matchesApiBackendRewritePath("/api/zero/slack/commands/extra")).toBe(
+      false,
+    );
     expect(matchesApiBackendRewritePath("/api/zero/slack/command")).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/slack/interactions")).toBe(
       false,
