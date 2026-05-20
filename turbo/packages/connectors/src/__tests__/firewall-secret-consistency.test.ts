@@ -9,7 +9,7 @@ import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 const PLATFORM_INJECTED_SECRET_NAMES: Partial<
   Record<string, readonly string[]>
 > = {
-  "google-ads": ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_LOGIN_CUSTOMER_ID"],
+  "google-ads": ["GOOGLE_ADS_DEVELOPER_TOKEN"],
 };
 
 /**

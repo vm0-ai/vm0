@@ -147,14 +147,12 @@ describe("connector/providers/google-ads", () => {
       expect(injectPlatformEnvSecrets(["github"])).toBeUndefined();
     });
 
-    it("injects whitelisted platform env secrets for google ads contexts", () => {
+    it("injects the Google Ads developer token for google ads contexts", () => {
       vi.stubEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
-      vi.stubEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "1234567890");
       reloadEnv();
 
       expect(injectPlatformEnvSecrets(["google-ads"])).toEqual({
         GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
-        GOOGLE_ADS_LOGIN_CUSTOMER_ID: "1234567890",
       });
     });
   });

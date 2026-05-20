@@ -94,10 +94,7 @@ export function filterDbSecretsByConnectorPermissions(
  * the secrets map, making it available for ${{ secrets.XXX }} template
  * resolution in firewall auth headers.
  */
-const ENV_SECRET_NAMES = [
-  "GOOGLE_ADS_DEVELOPER_TOKEN",
-  "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
-] as const;
+const ENV_SECRET_NAMES = ["GOOGLE_ADS_DEVELOPER_TOKEN"] as const;
 
 /**
  * Read whitelisted env vars into the secrets map.

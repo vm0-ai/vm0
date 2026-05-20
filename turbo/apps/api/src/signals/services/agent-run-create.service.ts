@@ -151,10 +151,7 @@ function getEffectiveConcurrencyLimit(tier: keyof typeof TIER_LIMITS): number {
 
 const ORG_SENTINEL_USER_ID = "__org__";
 const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
-const PLATFORM_ENV_SECRET_NAMES = [
-  "GOOGLE_ADS_DEVELOPER_TOKEN",
-  "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
-] as const;
+const PLATFORM_ENV_SECRET_NAMES = ["GOOGLE_ADS_DEVELOPER_TOKEN"] as const;
 const L = logger("AgentRunCreate");
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;

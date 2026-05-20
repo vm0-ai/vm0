@@ -1179,9 +1179,8 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
-  it("adds Google Ads platform secrets for authorized OAuth connector runs", async () => {
+  it("adds the Google Ads developer token for authorized OAuth connector runs", async () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
-    mockOptionalEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "1234567890");
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1225,7 +1224,6 @@ describe("POST /api/zero/runs", () => {
     expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads-access",
       GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
-      GOOGLE_ADS_LOGIN_CUSTOMER_ID: "1234567890",
     });
     expect(executionContext.secretConnectorMap).toMatchObject({
       GOOGLE_ADS_ACCESS_TOKEN: "google-ads",
