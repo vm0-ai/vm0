@@ -27,6 +27,7 @@ import {
   freezeTelegramFixture,
   makeTelegramFixtureBuilder,
   seedOrgDefaultAgent$,
+  seedOfficialUserLink$,
   seedTelegramInstallation$,
   seedTelegramUserLink$,
   type TelegramFixture,
@@ -351,6 +352,196 @@ describe("GET /api/integrations/telegram", () => {
     const response = await accept(client.list({ headers: {} }), [401]);
 
     expectUnauthorized(response.body);
+  });
+
+  it("returns the configured official bot when the active org has no custom Telegram bots", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
+
+    const token = mintZeroToken({
+      userId,
+      orgId,
+      capabilities: ["telegram:read"],
+    });
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.list({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.bots).toHaveLength(1);
+    expect(response.body.bots[0]).toMatchObject({
+      id: OFFICIAL_TELEGRAM_BOT_ID,
+      kind: "official",
+      username: OFFICIAL_BOT_USERNAME,
+      avatarUrl: expect.stringContaining(
+        `/api/integrations/telegram/${OFFICIAL_TELEGRAM_BOT_ID}/avatar?exp=`,
+      ),
+      isOwner: false,
+      isConnected: false,
+      connectedUser: null,
+      tokenStatus: "valid",
+      official: {
+        configured: true,
+        usesDefaultAgent: true,
+        linkedTelegramUserId: null,
+      },
+    });
+  });
+
+  it("includes connected official and non-owner custom Telegram user profiles", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const customBotId = newTelegramBotId();
+
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
+
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: Number(customBotId),
+      is_bot: true,
+      first_name: "Bot",
+      username: "x",
+    });
+
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const customInstall = await store.set(
+      seedTelegramInstallation$,
+      {
+        orgId,
+        ownerUserId: `user_${randomUUID()}`,
+        telegramBotId: customBotId,
+      },
+      context.signal,
+    );
+    builder.composeIds.push(customInstall.composeId);
+    builder.telegramBotIds.push(customInstall.telegramBotId);
+    await store.set(
+      seedOfficialUserLink$,
+      {
+        orgId,
+        userId,
+        telegramUserId: "tg-official-user",
+        telegramUsername: "official_ada",
+        telegramDisplayName: "Official Ada",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedTelegramUserLink$,
+      {
+        installationId: customInstall.telegramBotId,
+        telegramUserId: "tg-custom-user",
+        telegramUsername: "custom_ada",
+        telegramDisplayName: "Custom Ada",
+        vm0UserId: userId,
+      },
+      context.signal,
+    );
+    fixtures.push(freezeTelegramFixture(builder));
+
+    const token = mintZeroToken({
+      userId,
+      orgId,
+      capabilities: ["telegram:read"],
+    });
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.list({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.bots).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg-official-user",
+            telegramUsername: "official_ada",
+            telegramDisplayName: "Official Ada",
+          },
+          official: expect.objectContaining({
+            linkedTelegramUserId: "tg-official-user",
+          }),
+        }),
+        expect.objectContaining({
+          id: customBotId,
+          isOwner: false,
+          isConnected: true,
+          connectedUser: {
+            telegramUserId: "tg-custom-user",
+            telegramUsername: "custom_ada",
+            telegramDisplayName: "Custom Ada",
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("marks a custom bot token invalid when Telegram returns a different bot id", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const botId = newTelegramBotId();
+
+    const membership = await store.set(
+      seedOrgMembership$,
+      { orgId, userId, seedOrgCache: false },
+      context.signal,
+    );
+    memberships.push(membership);
+
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: Number(botId) + 1,
+      is_bot: true,
+      first_name: "Bot",
+      username: "mismatched_bot",
+    });
+
+    const builder = makeTelegramFixtureBuilder(orgId);
+    const installation = await store.set(
+      seedTelegramInstallation$,
+      { orgId, ownerUserId: userId, telegramBotId: botId },
+      context.signal,
+    );
+    builder.composeIds.push(installation.composeId);
+    builder.telegramBotIds.push(installation.telegramBotId);
+    fixtures.push(freezeTelegramFixture(builder));
+
+    const token = mintZeroToken({
+      userId,
+      orgId,
+      capabilities: ["telegram:read"],
+    });
+    const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+
+    const response = await accept(
+      client.list({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.bots).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: botId,
+          tokenStatus: "invalid",
+        }),
+      ]),
+    );
   });
 
   it("lists official and active-org custom bots with link status", async () => {
