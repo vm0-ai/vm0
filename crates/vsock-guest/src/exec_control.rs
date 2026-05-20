@@ -359,7 +359,9 @@ impl ControlSinkState {
                         .wait_timeout(guard, wait)
                         .unwrap_or_else(|e| e.into_inner());
                     guard = next_guard;
-                    if wait_result.timed_out() {
+                    // A timeout can race with a notify; re-check the condition
+                    // unless the request deadline has actually elapsed.
+                    if wait_result.timed_out() && duration_until(deadline).is_none() {
                         return Err((
                             ExecControlStatus::SinkTimeout,
                             EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
@@ -478,7 +480,9 @@ impl ControlStreamState {
                 .wait_timeout(locked, wait)
                 .unwrap_or_else(|e| e.into_inner());
             locked = next_locked;
-            if wait_result.timed_out() {
+            // A timeout can race with unlock notification; re-check the locked
+            // flag unless the request deadline has actually elapsed.
+            if wait_result.timed_out() && duration_until(deadline).is_none() {
                 return Err(request_timeout_error());
             }
         }
