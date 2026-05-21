@@ -251,6 +251,9 @@ const trackAgentPhoneGroupFixture = createFixtureTracker(
     await writeDb
       .delete(agentComposes)
       .where(eq(agentComposes.id, fixture.composeId));
+    await writeDb
+      .delete(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.label, fixture.composeId));
   },
 );
 
@@ -394,6 +397,12 @@ async function seedAgentPhoneGroupFixture(): Promise<AgentPhoneGroupFixture> {
     orgId,
     userId,
     timezone: "UTC",
+  });
+  await writeDb.insert(vm0ApiKeys).values({
+    vendor: "deepseek",
+    model: "deepseek-v4-pro",
+    apiKey: `vm0-key-deepseek-${composeId}`,
+    label: composeId,
   });
   await seedAgentPhoneLink({ phoneHandle, userId, orgId });
 

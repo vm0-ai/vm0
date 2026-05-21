@@ -383,7 +383,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const removedModel = "deepseek-v4-pro";
+    const removedModel = "claude-sonnet-4-6";
     const updates = toUpdate(listResponse.body).filter((policy) => {
       return policy.model !== removedModel;
     });

@@ -35,6 +35,7 @@ const store = createStore();
 const SIGNING_SECRET = randomBytes(32).toString("hex");
 const EVENTS_PATH = "/api/zero/slack/events";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-claude-sonnet-4-6";
+const TEST_VM0_DEEPSEEK_KEY = "vm0-key-deepseek-v4-pro";
 const TEST_VM0_OPENAI_KEY = "vm0-key-gpt-5.5";
 
 afterEach(async () => {
@@ -42,19 +43,32 @@ afterEach(async () => {
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
   await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.apiKey, TEST_VM0_OPENAI_KEY));
 });
 
-async function seedVm0AnthropicKey(): Promise<void> {
+async function seedVm0ManagedKeys(): Promise<void> {
   const db = store.set(writeDb$);
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
-  await db.insert(vm0ApiKeys).values({
-    vendor: "anthropic",
-    model: "claude-sonnet-4-6",
-    apiKey: TEST_VM0_ANTHROPIC_KEY,
-  });
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
+  await db.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: TEST_VM0_ANTHROPIC_KEY,
+    },
+    {
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: TEST_VM0_DEEPSEEK_KEY,
+    },
+  ]);
 }
 
 function configureSlackWebhookTest(): void {
@@ -733,7 +747,7 @@ describe("POST /api/zero/slack/events", () => {
   });
 
   it("creates a Slack-triggered zero run for connected app mentions", async () => {
-    await seedVm0AnthropicKey();
+    await seedVm0ManagedKeys();
     const fixture = await track(
       store.set(
         seedSlackWebhookFixture$,
@@ -919,7 +933,7 @@ describe("POST /api/zero/slack/events", () => {
   });
 
   it("starts a new Slack session when the selected model changed", async () => {
-    await seedVm0AnthropicKey();
+    await seedVm0ManagedKeys();
     const fixture = await track(
       store.set(
         seedSlackWebhookFixture$,
@@ -992,7 +1006,7 @@ describe("POST /api/zero/slack/events", () => {
     );
     expect(fixture.defaultAgentId).toBeTruthy();
     const db = store.set(writeDb$);
-    await seedVm0AnthropicKey();
+    await seedVm0ManagedKeys();
     await db.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "claude-sonnet-4-6",
@@ -1073,7 +1087,7 @@ describe("POST /api/zero/slack/events", () => {
     );
     expect(fixture.defaultAgentId).toBeTruthy();
     const db = store.set(writeDb$);
-    await seedVm0AnthropicKey();
+    await seedVm0ManagedKeys();
     await db.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "claude-sonnet-4-6",

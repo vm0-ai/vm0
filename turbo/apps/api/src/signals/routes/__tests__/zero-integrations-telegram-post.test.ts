@@ -219,12 +219,20 @@ const seedTelegramPostFixture$ = command(
         });
       signal.throwIfAborted();
     }
-    await db.insert(vm0ApiKeys).values({
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: `vm0-key-${composeId}`,
-      label: composeId,
-    });
+    await db.insert(vm0ApiKeys).values([
+      {
+        vendor: "anthropic",
+        model: "claude-sonnet-4-6",
+        apiKey: `vm0-key-anthropic-${composeId}`,
+        label: composeId,
+      },
+      {
+        vendor: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: `vm0-key-deepseek-${composeId}`,
+        label: composeId,
+      },
+    ]);
     signal.throwIfAborted();
 
     if (args.installBot ?? true) {

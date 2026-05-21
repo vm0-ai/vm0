@@ -22,24 +22,38 @@ const context = testContext();
 const store = createStore();
 const ROUTE = "/api/test/slack-dispatch-probe";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
+const TEST_VM0_DEEPSEEK_KEY = "vm0-key-slack-dispatch-probe-deepseek-v4-pro";
 
 afterEach(async () => {
   const db = store.set(writeDb$);
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
 });
 
-async function seedVm0AnthropicKey(): Promise<void> {
+async function seedVm0ManagedKeys(): Promise<void> {
   const db = store.set(writeDb$);
   await db
     .delete(vm0ApiKeys)
     .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
-  await db.insert(vm0ApiKeys).values({
-    vendor: "anthropic",
-    model: "claude-sonnet-4-6",
-    apiKey: TEST_VM0_ANTHROPIC_KEY,
-  });
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
+  await db.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: TEST_VM0_ANTHROPIC_KEY,
+    },
+    {
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: TEST_VM0_DEEPSEEK_KEY,
+    },
+  ]);
 }
 
 function configureSlackProbeTest(): void {
@@ -136,7 +150,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
   });
 
   beforeEach(async () => {
-    await seedVm0AnthropicKey();
+    await seedVm0ManagedKeys();
     configureSlackProbeTest();
   });
 

@@ -74,7 +74,7 @@ async function openThreadWithPicker(): Promise<HTMLTextAreaElement> {
   // the modelPicker prop wiring has resolved (feature switch + providers).
   await waitFor(() => {
     expect(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+      screen.getByRole("combobox", { name: "DeepSeek V4 Pro" }),
     ).toBeInTheDocument();
   });
 
@@ -117,9 +117,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
 
     await openThreadWithPicker();
 
-    await user.click(
-      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
+    await user.click(screen.getByRole("combobox", { name: "DeepSeek V4 Pro" }));
 
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
@@ -145,7 +143,7 @@ describe("chat composer — mod+alt+. opens the model picker", () => {
     });
 
     expect(
-      screen.getByRole("combobox", { name: /claude sonnet/i }),
+      screen.getByRole("combobox", { name: /deepseek/i }),
     ).toBeInTheDocument();
 
     click(textarea);
@@ -172,14 +170,14 @@ describe("chat composer — mobile icon trigger", () => {
     enableModelPicker();
     await openThreadWithPicker();
 
-    const trigger = screen.getByRole("combobox", { name: "Claude Sonnet 4.6" });
+    const trigger = screen.getByRole("combobox", { name: "DeepSeek V4 Pro" });
 
     // Desktop branch: label text lives inside a `hidden sm:inline-flex` span.
     const desktopSpan = trigger.querySelector(
       String.raw`span.hidden.sm\:inline-flex`,
     );
     expect(desktopSpan).not.toBeNull();
-    expect(desktopSpan?.textContent).toContain("Claude Sonnet 4.6");
+    expect(desktopSpan?.textContent).toContain("DeepSeek V4 Pro");
 
     // Mobile branch: provider icon lives inside a `sm:hidden` span.
     const mobileSpan = trigger.querySelector(String.raw`span.sm\:hidden`);
