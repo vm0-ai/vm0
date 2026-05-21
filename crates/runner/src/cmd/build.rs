@@ -1755,7 +1755,7 @@ mod tests {
         parts.next().is_none()
             && [major, minor, patch]
                 .iter()
-                .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+                .all(|part| matches!(part.parse::<u32>(), Ok(value) if *part == value.to_string()))
     }
 
     fn rootfs_input<'a>(
