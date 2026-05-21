@@ -5,7 +5,6 @@ import io
 import json
 import time
 import urllib.error
-from contextlib import suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
@@ -51,6 +50,13 @@ def _grant_all(firewalls, unknown_policy="deny"):
             "unknownPolicy": unknown_policy,
         }
     return result
+
+
+async def _cancel_pending_task(task: asyncio.Task | None) -> None:
+    if task is None or task.done():
+        return
+    task.cancel()
+    _ = await asyncio.gather(task, return_exceptions=True)
 
 
 # =========================================================================
@@ -1599,10 +1605,7 @@ class TestGetFirewallHeaders:
                 result = await task
             finally:
                 allow_fetch_return.set()
-                if not task.done():
-                    task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await task
+                await _cancel_pending_task(task)
 
         assert first_force_refresh_values == [False]
         assert result["headers"] == {"Authorization": "Bearer maybe-stale"}
@@ -1668,10 +1671,7 @@ class TestGetFirewallHeaders:
             finally:
                 allow_first_fetch_return.set()
                 for task in (leader, waiter):
-                    if task is not None and not task.done():
-                        task.cancel()
-                        with suppress(asyncio.CancelledError):
-                            await task
+                    await _cancel_pending_task(task)
 
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
