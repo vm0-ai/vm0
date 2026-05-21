@@ -15,9 +15,9 @@
 //!
 //! ## Message Types
 //!
-//! Message types are continuous and grouped by protocol domain: connection
-//! lifecycle, operation gates, file operations, exec operations, and the generic
-//! protocol error sentinel at `0xFF`.
+//! Non-error message types are continuous and grouped by protocol domain:
+//! connection lifecycle, operation gates, file operations, exec operations, and
+//! the generic protocol error sentinel at `0xFF`.
 //!
 //! | Type | Direction | Name              | Payload |
 //! |------|-----------|-------------------|---------|

@@ -92,24 +92,31 @@ mod tests {
 
     #[test]
     fn message_type_wire_values_are_grouped_by_domain() {
-        assert_eq!(MSG_READY, 0x00);
-        assert_eq!(MSG_PING, 0x01);
-        assert_eq!(MSG_PONG, 0x02);
-        assert_eq!(MSG_SHUTDOWN, 0x03);
-        assert_eq!(MSG_SHUTDOWN_ACK, 0x04);
-        assert_eq!(MSG_QUIESCE_OPERATIONS, 0x05);
-        assert_eq!(MSG_OPERATIONS_QUIESCED, 0x06);
-        assert_eq!(MSG_RESUME_OPERATIONS, 0x07);
-        assert_eq!(MSG_OPERATIONS_RESUMED, 0x08);
-        assert_eq!(MSG_WRITE_FILE, 0x09);
-        assert_eq!(MSG_WRITE_FILE_RESULT, 0x0A);
-        assert_eq!(MSG_EXEC_START, 0x0B);
-        assert_eq!(MSG_EXEC_STARTED, 0x0C);
-        assert_eq!(MSG_EXEC_OUTPUT, 0x0D);
-        assert_eq!(MSG_EXEC_RESULT, 0x0E);
-        assert_eq!(MSG_EXEC_CANCEL, 0x0F);
-        assert_eq!(MSG_EXEC_CONTROL, 0x10);
-        assert_eq!(MSG_EXEC_CONTROL_RESULT, 0x11);
+        let non_error_types = [
+            MSG_READY,
+            MSG_PING,
+            MSG_PONG,
+            MSG_SHUTDOWN,
+            MSG_SHUTDOWN_ACK,
+            MSG_QUIESCE_OPERATIONS,
+            MSG_OPERATIONS_QUIESCED,
+            MSG_RESUME_OPERATIONS,
+            MSG_OPERATIONS_RESUMED,
+            MSG_WRITE_FILE,
+            MSG_WRITE_FILE_RESULT,
+            MSG_EXEC_START,
+            MSG_EXEC_STARTED,
+            MSG_EXEC_OUTPUT,
+            MSG_EXEC_RESULT,
+            MSG_EXEC_CANCEL,
+            MSG_EXEC_CONTROL,
+            MSG_EXEC_CONTROL_RESULT,
+        ];
+
+        for (expected, actual) in (0_u8..).zip(non_error_types) {
+            assert_eq!(actual, expected);
+        }
+
         assert_eq!(MSG_ERROR, 0xFF);
     }
 }
