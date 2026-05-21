@@ -317,7 +317,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Prefer AWS KMS material when reading persistent secret envelopes such as bot tokens, callback secrets, OAuth tokens, and queued execution secrets. Legacy AES remains as a fallback while backfills complete.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.PersistentSecretKmsWrite]: {
     maintainer: "ethan@vm0.ai",
