@@ -736,7 +736,10 @@ describe("isGoogleOAuthConnector", () => {
       if (!oauthConfig?.authorizationUrl) {
         continue;
       }
-      if (oauthConfig.authorizationUrl.startsWith("/")) {
+      if (
+        oauthConfig.authorizationUrl.startsWith("/") &&
+        !oauthConfig.authorizationUrl.startsWith("//")
+      ) {
         continue;
       }
 
