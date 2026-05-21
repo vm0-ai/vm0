@@ -43,8 +43,7 @@ use operation_tracker::{
     NormalOperationTransitionError, NormalOperationTransitionHandle,
 };
 use vsock_proto::{
-    Decoder, MSG_ERROR, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
-    MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
+    Decoder, MSG_ERROR, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG,
     MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
     RawMessage,
 };
@@ -455,73 +454,46 @@ async fn reader_loop(
             Err(_) => break,
         };
         for msg in messages {
-            if msg.msg_type == MSG_ERROR {
-                // Intercept active exec-operation errors before the
-                // pending-request dispatch. If no exec operation owns this seq,
-                // the error falls through as a normal request response.
-                match exec_operation::dispatch_error(&shared, &msg) {
-                    Ok(true) => {
-                        continue;
-                    }
-                    Ok(false) => {}
-                    Err(_) => {
-                        shared.poison_connection();
-                        return;
-                    }
+            match exec_operation::dispatch_incoming_frame(&shared, &msg) {
+                Ok(true) => {
+                    continue;
+                }
+                Ok(false) => {}
+                Err(_) => {
+                    shared.poison_connection();
+                    return;
                 }
             }
 
-            if msg.msg_type == MSG_EXEC_OUTPUT {
-                if exec_operation::dispatch_output(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
-            } else if msg.msg_type == MSG_EXEC_STARTED {
-                if exec_operation::dispatch_started(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
-            } else if msg.msg_type == MSG_EXEC_RESULT {
-                if exec_operation::dispatch_result(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
-            } else if msg.msg_type == MSG_EXEC_CONTROL_RESULT {
-                if exec_operation::dispatch_control_result(&shared, &msg).is_err() {
-                    shared.poison_connection();
-                    return;
-                }
-            } else {
-                let mut normal_operation_transition_failed = false;
-                let pending_response = {
-                    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-                    match &mut *guard {
-                        ConnectionState::Connected { pending, .. } => {
-                            if let Some(mut pending_response) = pending.remove(&msg.seq) {
-                                if pending_response
-                                    .normal_terminal_msg_types
-                                    .contains(&msg.msg_type)
-                                    && let Some(normal_operation) =
-                                        pending_response.normal_operation.take()
-                                    && complete_pending_normal_operation(normal_operation).is_err()
-                                {
-                                    normal_operation_transition_failed = true;
-                                }
-                                Some(pending_response)
-                            } else {
-                                None
+            let mut normal_operation_transition_failed = false;
+            let pending_response = {
+                let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                match &mut *guard {
+                    ConnectionState::Connected { pending, .. } => {
+                        if let Some(mut pending_response) = pending.remove(&msg.seq) {
+                            if pending_response
+                                .normal_terminal_msg_types
+                                .contains(&msg.msg_type)
+                                && let Some(normal_operation) =
+                                    pending_response.normal_operation.take()
+                                && complete_pending_normal_operation(normal_operation).is_err()
+                            {
+                                normal_operation_transition_failed = true;
                             }
+                            Some(pending_response)
+                        } else {
+                            None
                         }
-                        ConnectionState::Closed => None,
                     }
-                };
-                if normal_operation_transition_failed {
-                    shared.poison_connection();
-                    return;
+                    ConnectionState::Closed => None,
                 }
-                if let Some(pending_response) = pending_response {
-                    let _ = pending_response.response_tx.send(msg);
-                }
+            };
+            if normal_operation_transition_failed {
+                shared.poison_connection();
+                return;
+            }
+            if let Some(pending_response) = pending_response {
+                let _ = pending_response.response_tx.send(msg);
             }
         }
     }

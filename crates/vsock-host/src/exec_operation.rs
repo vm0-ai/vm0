@@ -17,7 +17,8 @@ use crate::{
 use vsock_proto::{
     ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecControlStatus,
     ExecLifecyclePolicy, ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy,
-    MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, RawMessage,
+    MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, RawMessage,
 };
 
 pub(crate) const DEFAULT_EXEC_CAPTURE_LIMIT_BYTES: u32 = 1024 * 1024;
@@ -1469,6 +1470,19 @@ fn owned_result(
         stderr: owned_captured_output(result.stderr),
         diagnostic: result.diagnostic.to_string(),
         stream_overflowed,
+    }
+}
+
+/// Returns true when exec handling consumed the frame; false lets the normal
+/// pending-response dispatcher handle it.
+pub(crate) fn dispatch_incoming_frame(shared: &Arc<Shared>, msg: &RawMessage) -> io::Result<bool> {
+    match msg.msg_type {
+        MSG_ERROR => dispatch_error(shared, msg),
+        MSG_EXEC_OUTPUT => dispatch_output(shared, msg).map(|_| true),
+        MSG_EXEC_STARTED => dispatch_started(shared, msg).map(|_| true),
+        MSG_EXEC_RESULT => dispatch_result(shared, msg).map(|_| true),
+        MSG_EXEC_CONTROL_RESULT => dispatch_control_result(shared, msg).map(|_| true),
+        _ => Ok(false),
     }
 }
 
