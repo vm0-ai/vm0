@@ -166,7 +166,12 @@ export function detach(
   mechanism: Mechanism,
   description?: string,
 ): void {
-  const silenced = promise.then(
+  // Attach a rejection handler the moment work is detached so a background
+  // failure is logged and never escalates to an unhandledRejection. The
+  // original promise is what gets tracked: clearAllDetached re-awaits it in
+  // afterEach so a non-abort rejection fails the test instead of passing
+  // silently behind this catch.
+  void promise.then(
     () => {},
     (error: unknown) => {
       if (!isAbortError(error)) {
@@ -176,26 +181,39 @@ export function detach(
   );
 
   if (IN_VITEST) {
-    tracker().collected.add(silenced);
-    tracker().mechanisms.set(silenced, mechanism);
+    tracker().collected.add(promise);
+    tracker().mechanisms.set(promise, mechanism);
     if (description) {
-      tracker().descriptions.set(silenced, description);
+      tracker().descriptions.set(promise, description);
     }
   }
 }
 
 export async function clearAllDetached(): Promise<void> {
-  if (!IN_VITEST) {
-    tracker().collected.clear();
-    tracker().mechanisms.clear();
-    tracker().descriptions.clear();
-    return;
-  }
-
-  for (const promise of tracker().collected) {
-    await promise;
-  }
+  const pending = [...tracker().collected];
   tracker().collected.clear();
   tracker().mechanisms.clear();
   tracker().descriptions.clear();
+
+  if (!IN_VITEST) {
+    return;
+  }
+
+  // Await every detached promise so background work cannot leak into the next
+  // test. Only AbortError is swallowed — any other rejection is re-thrown so a
+  // failing waitUntil task fails the test that scheduled it.
+  const errors: unknown[] = [];
+  for (const promise of pending) {
+    await promise.then(
+      () => {},
+      (error: unknown) => {
+        if (!isAbortError(error)) {
+          errors.push(error);
+        }
+      },
+    );
+  }
+  if (errors.length > 0) {
+    throw errors[0];
+  }
 }
