@@ -1667,6 +1667,60 @@ describe("GET /api/connectors/:type/callback", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("does not store a connector when the session is completed concurrently", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({ userId });
+    sessionIds.push(sessionId);
+    const db = store.set(writeDb$);
+    server.use(
+      http.post(GITHUB_TOKEN_URL, async () => {
+        await db
+          .update(connectorSessions)
+          .set({ status: "expired" })
+          .where(eq(connectorSessions.id, sessionId));
+        return HttpResponse.json({
+          access_token: "github-access-token",
+          scope: "repo",
+          token_type: "bearer",
+        });
+      }),
+      http.get(GITHUB_USER_URL, () => {
+        return HttpResponse.json({
+          id: 98_765,
+          login: "octocat",
+          email: "octocat@example.com",
+        });
+      }),
+    );
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+
+    const [session] = await db
+      .select({ status: connectorSessions.status })
+      .from(connectorSessions)
+      .where(eq(connectorSessions.id, sessionId));
+    expect(session?.status).toBe("expired");
+  });
+
   it("stores a connector from a server-side OAuth handoff without Clerk cookies", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
@@ -1693,6 +1747,60 @@ describe("GET /api/connectors/:type/callback", () => {
     const response = await requestCallback({
       type: "github",
       query: { code: "code-123", state },
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/success");
+    expect(url.searchParams.get("type")).toBe("github");
+    expect(url.searchParams.get("username")).toBe("octocat");
+
+    const connector = await findConnector({ orgId, userId, type: "github" });
+    expect(connector).toMatchObject({
+      type: "github",
+      authMethod: "oauth",
+      externalId: "98765",
+      externalUsername: "octocat",
+      externalEmail: "octocat@example.com",
+      needsReconnect: false,
+    });
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthStateId));
+    expect(storedState?.consumedAt).toBeInstanceOf(Date);
+  });
+
+  it("uses server-side OAuth state when a stale browser state cookie exists", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+    });
+    oauthStateIds.push(oauthStateId);
+    mockGitHubOAuth({
+      accessToken: "github-token",
+      userId: 98_765,
+      username: "octocat",
+      email: "octocat@example.com",
+    });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state },
+      headers: callbackHeaders({ stateCookie: "stale-state" }),
     });
 
     expect(response.status).toBe(307);

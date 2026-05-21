@@ -32,7 +32,10 @@ import {
   getConnectorOAuthStateStatus,
   type StoredOAuthState,
 } from "../services/connector-oauth-state.service";
-import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import {
+  completeOAuthConnectorSession$,
+  upsertOAuthConnector$,
+} from "../services/zero-connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 import {
@@ -322,35 +325,6 @@ async function rejectInvalidStoredOAuthStateForCallback(args: {
   return invalidStateRedirectResponse(args.origin, args.type);
 }
 
-async function completeConnectorSession(
-  db: Db,
-  input: ConnectorSessionTransitionInput,
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (!input.sessionId) {
-    return true;
-  }
-  const updatedAt = nowDate();
-  const [updatedSession] = await db
-    .update(connectorSessions)
-    .set({
-      status: "complete",
-      completedAt: updatedAt,
-    })
-    .where(
-      and(
-        eq(connectorSessions.id, input.sessionId),
-        eq(connectorSessions.type, input.connectorType),
-        eq(connectorSessions.userId, input.userId),
-        eq(connectorSessions.status, "pending"),
-        gt(connectorSessions.expiresAt, updatedAt),
-      ),
-    )
-    .returning({ id: connectorSessions.id });
-  signal.throwIfAborted();
-  return Boolean(updatedSession);
-}
-
 async function hasPendingConnectorSession(
   db: Db,
   input: ConnectorSessionTransitionInput,
@@ -461,40 +435,34 @@ const completeOAuthCallback$ = command(
     });
     signal.throwIfAborted();
 
-    const sessionStillValid = await hasPendingConnectorSession(
-      writeDb,
-      session,
-      signal,
-    );
-    if (!sessionStillValid) {
-      return redirectWithError(
-        args.origin,
-        args.type,
-        "Invalid session - please try again",
-        true,
-      );
-    }
-
     const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
-    const result = await set(
-      upsertOAuthConnector$,
-      {
-        orgId: args.identity.orgId,
-        userId: args.identity.userId,
-        type: args.connectorType,
-        accessToken: token.accessToken,
-        userInfo: token.userInfo,
-        oauthScopes: getRequestedScopes(args.connectorType),
-        refreshToken: token.refreshToken,
-        refreshSecretName: provider.getRefreshSecretName?.(),
-        expiresIn: token.expiresIn,
-      },
-      signal,
-    );
+    const connectorInput = {
+      orgId: args.identity.orgId,
+      userId: args.identity.userId,
+      type: args.connectorType,
+      accessToken: token.accessToken,
+      userInfo: token.userInfo,
+      oauthScopes: getRequestedScopes(args.connectorType),
+      refreshToken: token.refreshToken,
+      refreshSecretName: provider.getRefreshSecretName?.(),
+      expiresIn: token.expiresIn,
+    };
+    const result = args.sessionId
+      ? await set(
+          completeOAuthConnectorSession$,
+          {
+            ...connectorInput,
+            sessionId: args.sessionId,
+          },
+          signal,
+        )
+      : {
+          status: "complete" as const,
+          ...(await set(upsertOAuthConnector$, connectorInput, signal)),
+        };
     signal.throwIfAborted();
 
-    const completed = await completeConnectorSession(writeDb, session, signal);
-    if (!completed) {
+    if (result.status === "invalid_session") {
       return redirectWithError(
         args.origin,
         args.type,

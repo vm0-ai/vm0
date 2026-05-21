@@ -33,9 +33,10 @@ import {
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -71,6 +72,36 @@ type StoredConnectorRow = {
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
+
+type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type ConnectorWriteDb = Db | WriteTx;
+
+interface OAuthConnectorUpsertInput {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: OAuthConnectorType;
+  readonly accessToken: string;
+  readonly userInfo: ExternalUserInfo;
+  readonly oauthScopes: readonly string[];
+  readonly refreshToken?: string | null;
+  readonly refreshSecretName?: string;
+  readonly expiresIn?: number;
+}
+
+interface PreparedConnectorSecret {
+  readonly name: string;
+  readonly encryptedValue: string;
+  readonly description: string;
+}
+
+interface PreparedOAuthConnectorWrite {
+  readonly tokenExpiresAt: Date | null;
+  readonly apiTokenFields: {
+    readonly secrets: readonly string[];
+    readonly variables: readonly string[];
+  } | null;
+  readonly secrets: readonly PreparedConnectorSecret[];
+}
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 3600;
@@ -544,7 +575,7 @@ async function revokeExistingConnectorToken(args: {
 }
 
 async function hasApiTokenConnectorLocalState(args: {
-  readonly db: Db;
+  readonly db: ConnectorWriteDb;
   readonly orgId: string;
   readonly userId: string;
   readonly fields: {
@@ -598,7 +629,7 @@ async function hasApiTokenConnectorLocalState(args: {
 }
 
 async function deleteApiTokenConnectorLocalState(args: {
-  readonly db: Db;
+  readonly db: ConnectorWriteDb;
   readonly orgId: string;
   readonly userId: string;
   readonly fields: {
@@ -759,26 +790,21 @@ export const deleteZeroConnectorLocalState$ = command(
 );
 
 async function upsertConnectorSecret(
-  db: Db,
+  db: ConnectorWriteDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly name: string;
-    readonly value: string;
+    readonly encryptedValue: string;
     readonly description: string;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(
-    args.value,
-    args.featureSwitchContext,
-  );
   await db
     .insert(secrets)
     .values({
       userId: args.userId,
       name: args.name,
-      encryptedValue,
+      encryptedValue: args.encryptedValue,
       type: "connector",
       description: args.description,
       orgId: args.orgId,
@@ -786,7 +812,7 @@ async function upsertConnectorSecret(
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: {
-        encryptedValue,
+        encryptedValue: args.encryptedValue,
         description: args.description,
         updatedAt: nowDate(),
       },
@@ -806,32 +832,123 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
+async function prepareOAuthConnectorWrite(args: {
+  readonly input: OAuthConnectorUpsertInput;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<PreparedOAuthConnectorWrite> {
+  const provider = CONNECTOR_OAUTH_PROVIDERS[args.input.type];
+  const secretsToWrite: PreparedConnectorSecret[] = [
+    {
+      name: provider.getSecretName(),
+      encryptedValue: await encryptStoredSecretValue(
+        args.input.accessToken,
+        args.featureSwitchContext,
+      ),
+      description: `OAuth token for ${args.input.type} connector`,
+    },
+  ];
+
+  if (args.input.refreshToken && args.input.refreshSecretName) {
+    secretsToWrite.push({
+      name: args.input.refreshSecretName,
+      encryptedValue: await encryptStoredSecretValue(
+        args.input.refreshToken,
+        args.featureSwitchContext,
+      ),
+      description: `OAuth refresh token for ${args.input.type} connector`,
+    });
+  }
+
+  return {
+    tokenExpiresAt: connectorTokenExpiresAt({
+      isRefreshable: isOAuthRefreshProvider(provider),
+      expiresIn: args.input.expiresIn,
+    }),
+    apiTokenFields: getApiTokenFieldsByType(args.input.type),
+    secrets: secretsToWrite,
+  };
+}
+
+async function writeOAuthConnectorLocalState(args: {
+  readonly db: ConnectorWriteDb;
+  readonly input: OAuthConnectorUpsertInput;
+  readonly prepared: PreparedOAuthConnectorWrite;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly connector: ConnectorResponse;
+  readonly created: boolean;
+}> {
+  for (const secret of args.prepared.secrets) {
+    await upsertConnectorSecret(args.db, {
+      orgId: args.input.orgId,
+      userId: args.input.userId,
+      name: secret.name,
+      encryptedValue: secret.encryptedValue,
+      description: secret.description,
+    });
+    args.signal.throwIfAborted();
+  }
+
+  const [connectorRow] = await args.db
+    .insert(connectors)
+    .values({
+      userId: args.input.userId,
+      type: args.input.type,
+      authMethod: "oauth",
+      externalId: args.input.userInfo.id,
+      externalUsername: args.input.userInfo.username,
+      externalEmail: args.input.userInfo.email,
+      oauthScopes: JSON.stringify(args.input.oauthScopes),
+      tokenExpiresAt: args.prepared.tokenExpiresAt,
+      needsReconnect: false,
+      orgId: args.input.orgId,
+    })
+    .onConflictDoUpdate({
+      target: [connectors.orgId, connectors.userId, connectors.type],
+      set: {
+        authMethod: "oauth",
+        externalId: args.input.userInfo.id,
+        externalUsername: args.input.userInfo.username,
+        externalEmail: args.input.userInfo.email,
+        oauthScopes: JSON.stringify(args.input.oauthScopes),
+        tokenExpiresAt: args.prepared.tokenExpiresAt,
+        needsReconnect: false,
+        updatedAt: nowDate(),
+      },
+    })
+    .returning();
+  args.signal.throwIfAborted();
+
+  if (!connectorRow) {
+    throw new Error("Failed to upsert connector");
+  }
+
+  await deleteApiTokenConnectorLocalState({
+    db: args.db,
+    orgId: args.input.orgId,
+    userId: args.input.userId,
+    fields: args.prepared.apiTokenFields,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  return {
+    connector: storedConnectorRowToResponse(connectorRow, args.input.type),
+    created:
+      connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
+  };
+}
+
 export const upsertOAuthConnector$ = command(
   async (
     { get, set },
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly type: OAuthConnectorType;
-      readonly accessToken: string;
-      readonly userInfo: ExternalUserInfo;
-      readonly oauthScopes: readonly string[];
-      readonly refreshToken?: string | null;
-      readonly refreshSecretName?: string;
-      readonly expiresIn?: number;
-    },
+    args: OAuthConnectorUpsertInput,
     signal: AbortSignal,
   ): Promise<{
     readonly connector: ConnectorResponse;
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const provider = CONNECTOR_OAUTH_PROVIDERS[args.type];
-    const tokenExpiresAt = connectorTokenExpiresAt({
-      isRefreshable: isOAuthRefreshProvider(provider),
-      expiresIn: args.expiresIn,
-    });
-    const apiTokenFields = getApiTokenFieldsByType(args.type);
 
     await invalidateActiveCliAuthSessionsForConnectorType({
       writeDb,
@@ -847,79 +964,110 @@ export const upsertOAuthConnector$ = command(
     );
     signal.throwIfAborted();
 
-    await upsertConnectorSecret(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      name: provider.getSecretName(),
-      value: args.accessToken,
-      description: `OAuth token for ${args.type} connector`,
+    const prepared = await prepareOAuthConnectorWrite({
+      input: args,
       featureSwitchContext,
     });
     signal.throwIfAborted();
 
-    if (args.refreshToken && args.refreshSecretName) {
-      await upsertConnectorSecret(writeDb, {
-        orgId: args.orgId,
-        userId: args.userId,
-        name: args.refreshSecretName,
-        value: args.refreshToken,
-        description: `OAuth refresh token for ${args.type} connector`,
-        featureSwitchContext,
-      });
-      signal.throwIfAborted();
-    }
-
-    const [connectorRow] = await writeDb
-      .insert(connectors)
-      .values({
-        userId: args.userId,
-        type: args.type,
-        authMethod: "oauth",
-        externalId: args.userInfo.id,
-        externalUsername: args.userInfo.username,
-        externalEmail: args.userInfo.email,
-        oauthScopes: JSON.stringify(args.oauthScopes),
-        tokenExpiresAt,
-        needsReconnect: false,
-        orgId: args.orgId,
-      })
-      .onConflictDoUpdate({
-        target: [connectors.orgId, connectors.userId, connectors.type],
-        set: {
-          authMethod: "oauth",
-          externalId: args.userInfo.id,
-          externalUsername: args.userInfo.username,
-          externalEmail: args.userInfo.email,
-          oauthScopes: JSON.stringify(args.oauthScopes),
-          tokenExpiresAt,
-          needsReconnect: false,
-          updatedAt: nowDate(),
-        },
-      })
-      .returning();
-    signal.throwIfAborted();
-
-    if (!connectorRow) {
-      throw new Error("Failed to upsert connector");
-    }
-
-    await deleteApiTokenConnectorLocalState({
+    const result = await writeOAuthConnectorLocalState({
       db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      fields: apiTokenFields,
+      input: args,
+      prepared,
       signal,
     });
-    signal.throwIfAborted();
 
     await publishUserSignal([args.userId], "connector:changed");
     signal.throwIfAborted();
 
-    return {
-      connector: storedConnectorRowToResponse(connectorRow, args.type),
-      created:
-        connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
-    };
+    return result;
+  },
+);
+
+export const completeOAuthConnectorSession$ = command(
+  async (
+    { get, set },
+    args: OAuthConnectorUpsertInput & {
+      readonly sessionId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<
+    | {
+        readonly status: "complete";
+        readonly connector: ConnectorResponse;
+        readonly created: boolean;
+      }
+    | { readonly status: "invalid_session" }
+  > => {
+    const writeDb = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    const prepared = await prepareOAuthConnectorWrite({
+      input: args,
+      featureSwitchContext,
+    });
+    signal.throwIfAborted();
+
+    const result = await writeDb.transaction(async (tx) => {
+      const completedAt = nowDate();
+      const [updatedSession] = await tx
+        .update(connectorSessions)
+        .set({
+          status: "complete",
+          completedAt,
+        })
+        .where(
+          and(
+            eq(connectorSessions.id, args.sessionId),
+            eq(connectorSessions.type, args.type),
+            eq(connectorSessions.userId, args.userId),
+            eq(connectorSessions.status, "pending"),
+            gt(connectorSessions.expiresAt, completedAt),
+          ),
+        )
+        .returning({ id: connectorSessions.id });
+      if (!updatedSession) {
+        return { status: "invalid_session" as const };
+      }
+
+      const writeResult = await writeOAuthConnectorLocalState({
+        db: tx,
+        input: args,
+        prepared,
+        signal,
+      });
+
+      return {
+        status: "complete" as const,
+        connector: writeResult.connector,
+        created: writeResult.created,
+      };
+    });
+    signal.throwIfAborted();
+
+    if (result.status === "invalid_session") {
+      return result;
+    }
+
+    await bestEffort(
+      invalidateActiveCliAuthSessionsForConnectorType({
+        writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorType: args.type,
+        signal,
+      }),
+      signal,
+    );
+    await bestEffort(
+      publishUserSignal([args.userId], "connector:changed"),
+      signal,
+    );
+
+    return result;
   },
 );
 
