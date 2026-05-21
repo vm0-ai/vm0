@@ -6,7 +6,6 @@ import {
   notifyDesktopComputerUseChanged,
 } from "./computer-use-electron";
 import { ComputerUseHostRuntime } from "./computer-use-host";
-import { buildDesktopComputerUsePageUrl } from "./computer-use-page-url";
 import { captureComputerUseScreenshot } from "./computer-use-screenshot";
 import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
@@ -114,10 +113,6 @@ function installDesktopLocalAgent(): void {
   });
 }
 
-async function openComputerUsePage(): Promise<void> {
-  await createMainWindow(buildDesktopComputerUsePageUrl(config.platformUrl));
-}
-
 function getComputerUseBridgeState(): DesktopComputerUseState {
   return {
     featureSwitchKey: COMPUTER_USE_FEATURE_SWITCH_KEY,
@@ -187,18 +182,7 @@ function applyApplicationMenu(): void {
   const menu = Menu.buildFromTemplate([
     {
       label: config.identity.displayName,
-      submenu: [
-        { role: "about" },
-        { type: "separator" },
-        {
-          label: "Computer Use",
-          click: () => {
-            void openComputerUsePage();
-          },
-        },
-        { type: "separator" },
-        { role: "quit" },
-      ],
+      submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }],
     },
     {
       label: "Edit",

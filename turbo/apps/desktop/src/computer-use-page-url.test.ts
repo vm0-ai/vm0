@@ -1,26 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildDesktopComputerUsePageUrl,
-  isDesktopComputerUsePageUrl,
-} from "./computer-use-page-url";
+import { isDesktopComputerUsePageUrl } from "./computer-use-page-url";
 
 const ALLOWED_ORIGINS = new Set([
   "https://app.vm0.ai",
   "http://localhost:3000",
 ]);
-
-describe("buildDesktopComputerUsePageUrl", () => {
-  it("builds a platform Computer Use page URL", () => {
-    expect(buildDesktopComputerUsePageUrl(new URL("https://app.vm0.ai"))).toBe(
-      "https://app.vm0.ai/computer-use",
-    );
-    expect(
-      buildDesktopComputerUsePageUrl(
-        new URL("http://localhost:3000/settings?tab=computer"),
-      ),
-    ).toBe("http://localhost:3000/computer-use");
-  });
-});
 
 describe("isDesktopComputerUsePageUrl", () => {
   it("allows the desktop Computer Use page from configured app origins", () => {
