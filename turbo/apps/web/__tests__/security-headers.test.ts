@@ -1679,24 +1679,26 @@ const ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS = [
   `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
   `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
 ] as const;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE =
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/device/sessions";
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH =
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_PATH =
   "/api/zero/connectors/base44/oauth/device/sessions";
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_NEXT_NEGATIVE_PATHS = [
-  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
-  "/api/zero/connectors/base44/oauth/device/session",
-  "/api/zero/connectors/oauth/device/sessions",
-] as const;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE =
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_NEXT_NEGATIVE_PATHS =
+  [
+    `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
+    "/api/zero/connectors/base44/oauth/device/session",
+    "/api/zero/connectors/oauth/device/sessions",
+  ] as const;
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/device/sessions/:sessionId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/poll";
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH = `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/base44/oauth/device/sessions/not-a-uuid/poll",
-  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
-  `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/complete`,
-  `/api/zero/connectors/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
-] as const;
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH = `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`;
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_NEXT_NEGATIVE_PATHS =
+  [
+    "/api/zero/connectors/base44/oauth/device/sessions/not-a-uuid/poll",
+    `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
+    `/api/zero/connectors/base44/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/complete`,
+    `/api/zero/connectors/oauth/device/sessions/${ZERO_CONNECTOR_SESSION_ID}/poll`,
+  ] as const;
 const ZERO_SLACK_CHANNELS_REWRITE_SOURCE = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_PATH = "/api/zero/slack/channels";
 const ZERO_SLACK_CHANNELS_NEXT_NEGATIVE_PATHS = [
@@ -4474,27 +4476,31 @@ describe("API backend rewrites", () => {
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
       return (
-        entry.source === ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE
+        entry.source ===
+        ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE
       );
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE,
+      source:
+        ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE,
       destination:
         "https://api.example.test/api/zero/connectors/:type/oauth/device/sessions",
     });
 
     const matcher = getPathMatch(
-      ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE,
+      ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE,
       {
         removeUnnamedParams: true,
         strict: true,
       },
     );
 
-    expect(matcher(ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH)).toStrictEqual({
+    expect(
+      matcher(ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_PATH),
+    ).toStrictEqual({
       type: "base44",
     });
-    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -4506,17 +4512,18 @@ describe("API backend rewrites", () => {
     const rewrite = rewrites.find((entry) => {
       return (
         entry.source ===
-        ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE
+        ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE
       );
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE,
+      source:
+        ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE,
       destination:
         "https://api.example.test/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
     });
 
     const matcher = getPathMatch(
-      ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE,
+      ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE,
       {
         removeUnnamedParams: true,
         strict: true,
@@ -4524,12 +4531,12 @@ describe("API backend rewrites", () => {
     );
 
     expect(
-      matcher(ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH),
+      matcher(ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH),
     ).toStrictEqual({
       type: "base44",
       sessionId: ZERO_CONNECTOR_SESSION_ID,
     });
-    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

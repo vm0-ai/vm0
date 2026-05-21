@@ -2,8 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type {
   ConnectorResponse,
-  ConnectorOauthDeviceSessionPollResponse,
-  ConnectorOauthDeviceSessionStartResponse,
+  ConnectorOauthDeviceAuthorizationSessionPollResponse,
+  ConnectorOauthDeviceAuthorizationSessionStartResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorType,
@@ -52,11 +52,11 @@ type ConfiguredConnectorOAuthCredentials = Extract<
   { readonly configured: true }
 >;
 
-type DeviceSessionRow =
+type DeviceAuthorizationSessionRow =
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
 
 type PendingPollBody = Extract<
-  ConnectorOauthDeviceSessionPollResponse,
+  ConnectorOauthDeviceAuthorizationSessionPollResponse,
   { status: "pending" }
 >;
 
@@ -67,7 +67,7 @@ type PendingSuccess = {
 
 type PollSuccess = {
   readonly status: 200;
-  readonly body: ConnectorOauthDeviceSessionPollResponse;
+  readonly body: ConnectorOauthDeviceAuthorizationSessionPollResponse;
 };
 
 const encryptedProviderStateSchema = z.object({
@@ -82,7 +82,7 @@ type PollClaimedSessionArgs = {
   readonly writeDb: Db;
   readonly type: OAuthDeviceAuthorizationConnectorType;
   readonly credentials: ConfiguredConnectorOAuthCredentials;
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
   readonly persistConnector: (args: {
@@ -121,8 +121,8 @@ function generateSessionToken(): string {
 }
 
 function terminalErrorBody(
-  session: DeviceSessionRow,
-): ConnectorOauthDeviceSessionPollResponse {
+  session: DeviceAuthorizationSessionRow,
+): ConnectorOauthDeviceAuthorizationSessionPollResponse {
   if (
     session.status !== "denied" &&
     session.status !== "expired" &&
@@ -140,19 +140,19 @@ function terminalErrorBody(
 }
 
 function pendingBody(
-  session: Pick<DeviceSessionRow, "intervalSeconds">,
+  session: Pick<DeviceAuthorizationSessionRow, "intervalSeconds">,
 ): PendingPollBody {
   return { status: "pending", interval: session.intervalSeconds };
 }
 
 function pendingResponse(
-  session: Pick<DeviceSessionRow, "intervalSeconds">,
+  session: Pick<DeviceAuthorizationSessionRow, "intervalSeconds">,
 ): PendingSuccess {
   return { status: 200, body: pendingBody(session) };
 }
 
 function shouldWaitBeforeProviderPoll(
-  session: DeviceSessionRow,
+  session: DeviceAuthorizationSessionRow,
   now: Date,
 ): boolean {
   return (
@@ -161,7 +161,10 @@ function shouldWaitBeforeProviderPoll(
   );
 }
 
-function isFreshPollingSession(session: DeviceSessionRow, now: Date): boolean {
+function isFreshPollingSession(
+  session: DeviceAuthorizationSessionRow,
+  now: Date,
+): boolean {
   return (
     session.status === "polling" &&
     session.updatedAt.getTime() > now.getTime() - POLLING_STALE_MS
@@ -235,7 +238,7 @@ async function loadOwnedSession(args: {
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
-}): Promise<DeviceSessionRow | null> {
+}): Promise<DeviceAuthorizationSessionRow | null> {
   const [session] = await args.writeDb
     .select()
     .from(connectorOauthDeviceAuthorizationSessions)
@@ -258,7 +261,7 @@ async function loadOwnedSession(args: {
 
 async function expireSession(args: {
   readonly writeDb: Db;
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly now: Date;
   readonly signal: AbortSignal;
 }): Promise<PollSuccess> {
@@ -294,10 +297,10 @@ async function expireSession(args: {
 
 async function claimSession(args: {
   readonly writeDb: Db;
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
-}): Promise<DeviceSessionRow | null> {
+}): Promise<DeviceAuthorizationSessionRow | null> {
   const staleBefore = new Date(
     args.claimStartedAt.getTime() - POLLING_STALE_MS,
   );
@@ -328,7 +331,7 @@ async function claimSession(args: {
 }
 
 function parseEncryptedProviderState(args: {
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly type: OAuthDeviceAuthorizationConnectorType;
 }): EncryptedProviderState {
   const providerState = encryptedProviderStateSchema.parse(
@@ -364,7 +367,7 @@ async function claimStillCurrent(args: {
 
 async function markClaimTerminal(args: {
   readonly writeDb: Db;
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly claimStartedAt: Date;
   readonly result: Extract<
     OAuthDeviceAuthorizationPollResult,
@@ -403,7 +406,7 @@ async function markClaimTerminal(args: {
 
 async function markClaimComplete(args: {
   readonly writeDb: Db;
-  readonly session: DeviceSessionRow;
+  readonly session: DeviceAuthorizationSessionRow;
   readonly claimStartedAt: Date;
   readonly connector: ConnectorResponse;
   readonly signal: AbortSignal;
@@ -531,7 +534,7 @@ async function pollClaimedSession(
   throw result.error;
 }
 
-export const startConnectorOauthDeviceSession$ = command(
+export const startConnectorOauthDeviceAuthorizationSession$ = command(
   async (
     { get, set },
     args: {
@@ -605,7 +608,7 @@ export const startConnectorOauthDeviceSession$ = command(
       throw new Error("Failed to create OAuth device authorization session");
     }
 
-    const body: ConnectorOauthDeviceSessionStartResponse = {
+    const body: ConnectorOauthDeviceAuthorizationSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
       type: resolvedType,
@@ -620,7 +623,7 @@ export const startConnectorOauthDeviceSession$ = command(
   },
 );
 
-export const pollConnectorOauthDeviceSession$ = command(
+export const pollConnectorOauthDeviceAuthorizationSession$ = command(
   async (
     { get, set },
     args: {

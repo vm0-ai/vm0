@@ -81,7 +81,7 @@ import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
 import { zeroCliAuthStripeRoutes } from "./routes/zero-connectors-cli-auth-stripe";
-import { zeroConnectorsOauthDeviceRoutes } from "./routes/zero-connectors-oauth-device";
+import { zeroConnectorsOauthDeviceAuthorizationRoutes } from "./routes/zero-connectors-oauth-device-authorization";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
 import { zeroDefaultAgentRoutes } from "./routes/zero-default-agent";
@@ -263,7 +263,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
   ...zeroCliAuthStripeRoutes,
-  ...zeroConnectorsOauthDeviceRoutes,
+  ...zeroConnectorsOauthDeviceAuthorizationRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroDefaultAgentRoutes,

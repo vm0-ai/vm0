@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { zeroConnectorOauthDeviceSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroConnectorOauthDeviceAuthorizationSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
@@ -181,7 +181,7 @@ describe("OAuth device authorization connector routes", () => {
   it("starts a session and stores only encrypted provider state plus a token hash", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -221,7 +221,7 @@ describe("OAuth device authorization connector routes", () => {
   it("rejects authorization-code OAuth connectors", async () => {
     await setupUser();
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -244,7 +244,7 @@ describe("OAuth device authorization connector routes", () => {
     users.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -269,7 +269,7 @@ describe("OAuth device authorization connector routes", () => {
       deviceCode: "pending",
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -297,7 +297,7 @@ describe("OAuth device authorization connector routes", () => {
       intervalSeconds: 5,
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -316,7 +316,7 @@ describe("OAuth device authorization connector routes", () => {
   it("completes a session through OAuth connector persistence without leaking tokens", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
     const start = await accept(
       client.create({
@@ -373,7 +373,7 @@ describe("OAuth device authorization connector routes", () => {
   it("returns terminal denied, expired, and error states", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
     const cases = [
       {
@@ -433,7 +433,7 @@ describe("OAuth device authorization connector routes", () => {
       updatedAt: nowDate(),
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
     let pollCount = 0;
     testOauthDeviceProvider.pollDeviceAuthorization = () => {
@@ -468,7 +468,7 @@ describe("OAuth device authorization connector routes", () => {
       deviceCode: "pending",
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(
@@ -493,7 +493,7 @@ describe("OAuth device authorization connector routes", () => {
       deviceCode: "pending",
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
     let pollCount = 0;
     let releaseProviderPoll: (() => void) | undefined;
@@ -547,7 +547,7 @@ describe("OAuth device authorization connector routes", () => {
       expiresAt: new Date(now.getTime() - 1000),
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
     let pollCount = 0;
     testOauthDeviceProvider.pollDeviceAuthorization = () => {
@@ -577,7 +577,7 @@ describe("OAuth device authorization connector routes", () => {
       deviceCode: "test-device:test-oauth-device-client:read",
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const first = await accept(
@@ -617,7 +617,7 @@ describe("OAuth device authorization connector routes", () => {
       updatedAt: new Date(nowDate().getTime() - 60_000),
     });
     const client = setupApp({ context })(
-      zeroConnectorOauthDeviceSessionContract,
+      zeroConnectorOauthDeviceAuthorizationSessionContract,
     );
 
     const response = await accept(

@@ -283,14 +283,15 @@ const ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/start";
 const ZERO_CONNECTORS_OAUTH_START_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/oauth\/start$/;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE =
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/device/sessions";
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH_RE =
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/oauth\/device\/sessions$/;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE = `/api/zero/connectors/:type/oauth/device/sessions/:sessionId(${UUID_PATH_SEGMENT_PATTERN})/poll`;
-const ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH_RE = new RegExp(
-  `^/api/zero/connectors/[^/]+/oauth/device/sessions/${UUID_PATH_SEGMENT_PATTERN}/poll$`,
-);
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE = `/api/zero/connectors/:type/oauth/device/sessions/:sessionId(${UUID_PATH_SEGMENT_PATTERN})/poll`;
+const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH_RE =
+  new RegExp(
+    `^/api/zero/connectors/[^/]+/oauth/device/sessions/${UUID_PATH_SEGMENT_PATTERN}/poll$`,
+  );
 const ZERO_SLACK_OAUTH_INSTALL_REWRITE_SOURCE = "/api/zero/slack/oauth/install";
 const ZERO_SLACK_OAUTH_CONNECT_REWRITE_SOURCE = "/api/zero/slack/oauth/connect";
 const ZERO_SLACK_OAUTH_CALLBACK_REWRITE_SOURCE =
@@ -701,14 +702,14 @@ export const API_BACKEND_REWRITES = [
     ZERO_CONNECTORS_OAUTH_START_PATH_RE,
   ],
   [
-    ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_REWRITE_SOURCE,
+    ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE,
     "/api/zero/connectors/:type/oauth/device/sessions",
-    ZERO_CONNECTORS_OAUTH_DEVICE_SESSIONS_PATH_RE,
+    ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_PATH_RE,
   ],
   [
-    ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_REWRITE_SOURCE,
+    ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_REWRITE_SOURCE,
     "/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
-    ZERO_CONNECTORS_OAUTH_DEVICE_SESSION_POLL_PATH_RE,
+    ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSION_POLL_PATH_RE,
   ],
   [ZERO_SLACK_OAUTH_INSTALL_REWRITE_SOURCE, "/api/zero/slack/oauth/install"],
   [ZERO_SLACK_OAUTH_CONNECT_REWRITE_SOURCE, "/api/zero/slack/oauth/connect"],

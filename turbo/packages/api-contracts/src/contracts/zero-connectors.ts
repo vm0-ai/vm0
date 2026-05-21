@@ -4,9 +4,9 @@ import { apiErrorSchema } from "./errors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
   computerConnectorCreateResponseSchema,
-  connectorOauthDeviceSessionPollRequestSchema,
-  connectorOauthDeviceSessionPollResponseSchema,
-  connectorOauthDeviceSessionStartResponseSchema,
+  connectorOauthDeviceAuthorizationSessionPollRequestSchema,
+  connectorOauthDeviceAuthorizationSessionPollResponseSchema,
+  connectorOauthDeviceAuthorizationSessionStartResponseSchema,
   connectorOauthStartResponseSchema,
   connectorListResponseSchema,
   connectorResponseSchema,
@@ -128,7 +128,7 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-export const zeroConnectorOauthDeviceSessionContract = c.router({
+export const zeroConnectorOauthDeviceAuthorizationSessionContract = c.router({
   create: {
     method: "POST",
     path: "/api/zero/connectors/:type/oauth/device/sessions",
@@ -136,7 +136,7 @@ export const zeroConnectorOauthDeviceSessionContract = c.router({
     pathParams: z.object({ type: connectorTypeSchema }),
     body: z.object({}).optional(),
     responses: {
-      200: connectorOauthDeviceSessionStartResponseSchema,
+      200: connectorOauthDeviceAuthorizationSessionStartResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -152,9 +152,9 @@ export const zeroConnectorOauthDeviceSessionContract = c.router({
       type: connectorTypeSchema,
       sessionId: z.uuid(),
     }),
-    body: connectorOauthDeviceSessionPollRequestSchema,
+    body: connectorOauthDeviceAuthorizationSessionPollRequestSchema,
     responses: {
-      200: connectorOauthDeviceSessionPollResponseSchema,
+      200: connectorOauthDeviceAuthorizationSessionPollResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -345,8 +345,8 @@ export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorAuthorizeContract =
   typeof zeroConnectorAuthorizeContract;
-export type ZeroConnectorOauthDeviceSessionContract =
-  typeof zeroConnectorOauthDeviceSessionContract;
+export type ZeroConnectorOauthDeviceAuthorizationSessionContract =
+  typeof zeroConnectorOauthDeviceAuthorizationSessionContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;
 export type ZeroConnectorSessionsContract =
   typeof zeroConnectorSessionsContract;
