@@ -76,8 +76,9 @@ function mockAgentWith(params: {
 }
 
 function setupProviders() {
-  // Single provider (Anthropic, workspace default = Sonnet). Keeps model
-  // names unique in the dropdown so getByRole("option") is unambiguous.
+  // Single Anthropic provider so the org has a provider configured. The
+  // picker's workspace default is resolved from the default model-policy
+  // seed (DeepSeek V4 Pro), not from this provider row.
   setMockOrgModelProviders([
     {
       id: ANTHROPIC_PROVIDER_ID,
@@ -137,7 +138,7 @@ describe("model-provider-picker - user/workspace default source", () => {
     const user = userEvent.setup();
     mockAgentWith({ modelProviderId: null, selectedModel: null });
 
-    await openPickerOnAgentChat(user, "Claude Sonnet 4.6");
+    await openPickerOnAgentChat(user, "DeepSeek V4 Pro");
 
     expect(screen.queryByLabelText(/Use .+ default model/)).toBeNull();
     expect(screen.queryByText("Agent default")).not.toBeInTheDocument();
@@ -150,14 +151,14 @@ describe("model-provider-picker - user/workspace default source", () => {
     const user = userEvent.setup();
     mockAgentWith({ modelProviderId: null, selectedModel: null });
 
-    await openPickerOnAgentChat(user, "Claude Sonnet 4.6");
+    await openPickerOnAgentChat(user, "DeepSeek V4 Pro");
 
     expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     const listbox = screen.getByRole("listbox");
     expect(within(listbox).queryByText("Default")).toBeNull();
     expect(within(listbox).getByText("Models")).toBeInTheDocument();
     expect(
-      within(listbox).getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      within(listbox).getByRole("option", { name: /DeepSeek V4 Pro/ }),
     ).toHaveAttribute("aria-selected", "true");
   });
 
@@ -173,7 +174,7 @@ describe("model-provider-picker - user/workspace default source", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+        screen.getByRole("combobox", { name: "DeepSeek V4 Pro" }),
       ).toBeInTheDocument();
     });
   });

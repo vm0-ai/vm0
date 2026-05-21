@@ -140,7 +140,7 @@ describe("chat thread page — model picker editable", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+      return screen.getByRole("combobox", { name: /DeepSeek V4 Pro/i });
     });
   });
 
@@ -151,7 +151,7 @@ describe("chat thread page — model picker editable", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+      return screen.getByRole("combobox", { name: /DeepSeek V4 Pro/i });
     });
   });
 
@@ -183,7 +183,7 @@ describe("chat thread page — model picker editable", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      return screen.getByRole("combobox", { name: /Claude Sonnet 4\.6/i });
+      return screen.getByRole("combobox", { name: /DeepSeek V4 Pro/i });
     });
   });
 

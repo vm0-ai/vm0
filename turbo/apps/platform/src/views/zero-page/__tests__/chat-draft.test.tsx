@@ -11,6 +11,7 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { createMockApi, createMockHttp } from "../../../mocks/msw-contract.ts";
 import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =
@@ -23,6 +24,12 @@ vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
 
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
+  // Pin a vision-capable model — the workspace default model does not accept
+  // image/video attachments, which the composer silently drops.
+  setMockUserModelPreference({
+    selectedModel: "claude-sonnet-4-6",
+    updatedAt: "2026-03-10T00:00:00Z",
+  });
 });
 
 const context = testContext();

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -18,6 +18,7 @@ import {
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -106,6 +107,15 @@ describe("zero chat composer - textarea interaction", () => {
 });
 
 describe("zero chat composer - file input", () => {
+  beforeEach(() => {
+    // Pin a vision-capable model — the workspace default model does not accept
+    // image/video attachments, which the composer silently drops.
+    setMockUserModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+  });
+
   // CHAT-I-022
   it("renders attachment button with correct accessible label", async () => {
     mockChatLifecycle();

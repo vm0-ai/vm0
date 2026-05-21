@@ -106,10 +106,10 @@ describe("chat composer — model picker display vs. send body", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    // Trigger advertises the org default.
+    // Trigger advertises the workspace default model.
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+        screen.getByRole("combobox", { name: "DeepSeek V4 Pro" }),
       ).toBeInTheDocument();
     });
 

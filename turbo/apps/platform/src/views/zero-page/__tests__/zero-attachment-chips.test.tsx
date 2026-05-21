@@ -22,6 +22,7 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "../zero-attachment-chips.tsx";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -29,6 +30,12 @@ const mockApi = createMockApi(context);
 beforeEach(() => {
   vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
   vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
+  // Pin a vision-capable model — the workspace default model does not accept
+  // image/video attachments, which the composer silently drops.
+  setMockUserModelPreference({
+    selectedModel: "claude-sonnet-4-6",
+    updatedAt: "2026-03-10T00:00:00Z",
+  });
 });
 
 function mockChatAPI() {

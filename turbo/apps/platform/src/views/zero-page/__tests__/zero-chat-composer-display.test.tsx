@@ -18,6 +18,7 @@ import {
   PLACEHOLDER,
 } from "./chat-test-helpers.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockUserModelPreference } from "../../../mocks/handlers/api-user-model-preference.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -57,6 +58,12 @@ describe("chat-d-015: attachment chips in composer", () => {
       }),
     );
     mockChatAPI();
+    // Pin a vision-capable model — the workspace default model does not accept
+    // image/video attachments, which the composer silently drops.
+    setMockUserModelPreference({
+      selectedModel: "claude-sonnet-4-6",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
   });
 
   it("should render attachment chip with remove button after file upload", async () => {
