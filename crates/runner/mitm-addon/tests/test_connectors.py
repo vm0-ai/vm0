@@ -153,6 +153,7 @@ class TestMatchFirewallRequest:
             network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "unknown_endpoint"
         assert result.base == "https://api.github.com"
         assert result.name == "github"
         assert result.method == "GET"
@@ -3027,6 +3028,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
 
     def test_denied_permission_blocked_with_case_mixed_static_host(self):
         policies = {
@@ -3040,6 +3042,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
 
     def test_uncategorized_permission_allowed(self):
         """Permission not in allow/deny/ask defaults to allowed."""
@@ -3065,6 +3068,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
 
     def test_deny_and_ask_union(self):
         """Permissions in deny and ask are both blocked."""
@@ -3084,6 +3088,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
         # repo-write in ask → blocked
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
@@ -3092,6 +3097,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
 
     def test_unknown_policy_key_missing_defaults_to_allow(self):
         """Ref present but unknownPolicy key absent → defaults to allow."""
@@ -3117,6 +3123,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
 
     def test_unknown_endpoint_allowed_when_unknown_policy_allow(self):
         policies = {
@@ -3143,6 +3150,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "unknown_endpoint"
 
     def test_unknown_endpoint_blocked_when_unknown_policy_ask(self):
         """unknownPolicy 'ask' is treated as deny at the proxy level."""
@@ -3156,6 +3164,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "unknown_endpoint"
 
     def test_name_absent_allows(self):
         """Name not in networkPolicies → fully permissive."""
@@ -3275,6 +3284,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read", "repo-admin")
+        assert result.reason == "permission_denied"
 
     def test_multi_firewall_different_names(self, headers):
         """Two firewalls with different names, each with own policies."""
@@ -3326,6 +3336,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "permission_denied"
 
         # Slack: unknown endpoint → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
@@ -3362,6 +3373,7 @@ class TestThreeLevelMatching:
             network_policies=policies,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.reason == "unknown_endpoint"
 
         # Slack unknown → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
@@ -3396,6 +3408,7 @@ class TestThreeLevelMatching:
         # repo-write explicitly denied → DENY, not overridden by unknownPolicy
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-write",)
+        assert result.reason == "permission_denied"
 
     def test_denied_permission_deduped_across_rules(self, headers):
         """Same permission with multiple matching rules appears once in permissions."""
@@ -3426,6 +3439,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
 
     def test_empty_permissions_list_denies_all_known(self, headers):
         """All permissions in deny list — all known endpoints denied."""
@@ -3734,6 +3748,7 @@ class TestCompiledFirewallMatching:
         )
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, FirewallBlock)
+        assert compiled.reason == "unknown_endpoint"
 
     def test_matches_raw_for_ask_permission_block(self):
         fws = _wrap_firewalls(
@@ -3769,6 +3784,7 @@ class TestCompiledFirewallMatching:
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, FirewallBlock)
         assert compiled.permissions == ("repo-read",)
+        assert compiled.reason == "permission_denied"
 
     def test_later_allowed_firewall_wins_after_earlier_unknown_match(self):
         fws = [
@@ -3917,6 +3933,7 @@ class TestCompiledFirewallMatching:
         self._assert_same_result(raw, compiled)
         assert isinstance(compiled, FirewallBlock)
         assert compiled.permissions == ("repo-read", "repo-admin")
+        assert compiled.reason == "permission_denied"
 
     def test_malformed_rule_fails_closed_without_allowing_permission(self):
         fws = _wrap_firewalls(
@@ -3942,6 +3959,7 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
 
     def test_malformed_rule_blocks_unknown_policy_allow(self):
         fws = _wrap_firewalls(
@@ -3967,6 +3985,40 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
+    def test_denied_match_takes_priority_over_malformed_config_reason(self):
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "bad", "rules": ["GET /repos/{a}literal{b}"]},
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {
+            "github": {
+                "allow": [],
+                "deny": ["repo-read"],
+                "unknownPolicy": "allow",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
 
     def test_valid_later_permission_can_still_allow_after_malformed_rule(self):
         fws = _wrap_firewalls(
@@ -4024,6 +4076,7 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, FirewallBlock)
         assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
 
     def test_malformed_api_list_shape_is_skipped_without_compile_error(self):
         assert matching.compile_firewalls([{"name": "github", "apis": None}]) is None

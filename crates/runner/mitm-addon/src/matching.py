@@ -3,7 +3,7 @@
 Pure functions with no module-level state or I/O.
 """
 
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
@@ -69,6 +69,7 @@ class _CompiledApi(NamedTuple):
     raw_api_entry: dict
     base: _CompiledBase
     permissions: tuple[_CompiledPermission, ...]
+    # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
 
 
@@ -737,14 +738,22 @@ class FirewallAllow(NamedTuple):
     match_info: dict
 
 
+FirewallBlockReason = Literal[
+    "permission_denied",
+    "unknown_endpoint",
+    "malformed_firewall_config",
+]
+
+
 class FirewallBlock(NamedTuple):
-    """Base URL matched but no permission granted — return 403."""
+    """Base URL matched but the request should return 403."""
 
     base: str
     name: str
     method: str
     path: str
-    permissions: tuple[str, ...]  # denied permission names; empty for unknown-endpoint blocks
+    permissions: tuple[str, ...]  # denied/asked permission names only
+    reason: FirewallBlockReason
 
 
 def _build_block_set(
@@ -786,7 +795,14 @@ def match_compiled_firewall_request(
     compiled_firewalls: CompiledFirewallSet | None,
     network_policies: dict | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
-    """Match request against precompiled firewall permissions."""
+    """Match request against production precompiled firewall permissions.
+
+    Returns:
+      FirewallAllow — granted permission matched or unknown endpoint allowed
+      FirewallBlock — permission denied, unknown endpoint blocked, or matched
+        malformed firewall config failed closed
+      None — no base URL match (not a firewall request)
+    """
     if not compiled_firewalls:
         return None
 
@@ -864,9 +880,13 @@ def match_compiled_firewall_request(
 
     if blocked_base is not None:
         if denied_match is not None:
-            return FirewallBlock(*denied_match, tuple(denied_perm_names))
+            return FirewallBlock(
+                *denied_match,
+                tuple(denied_perm_names),
+                "permission_denied",
+            )
         if malformed_match is not None:
-            return FirewallBlock(*malformed_match, ())
+            return FirewallBlock(*malformed_match, (), "malformed_firewall_config")
         if _get_unknown_policy(blocked_name, network_policies) == "allow":
             return FirewallAllow(
                 first_matched_api_entry,
@@ -878,7 +898,14 @@ def match_compiled_firewall_request(
                     "rel_path": blocked_rel_path,
                 },
             )
-        return FirewallBlock(blocked_base, blocked_name, upper_method, blocked_rel_path, ())
+        return FirewallBlock(
+            blocked_base,
+            blocked_name,
+            upper_method,
+            blocked_rel_path,
+            (),
+            "unknown_endpoint",
+        )
     return None
 
 
@@ -889,6 +916,10 @@ def match_firewall_request(
     network_policies: dict | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions with three-level matching.
+
+    The compiled matcher is the production-authoritative path. This legacy
+    matcher is kept for direct raw-config comparisons and does not fail closed
+    on malformed compiled config.
 
     Returns:
       FirewallAllow — granted permission matched or unknown endpoint allowed
@@ -983,7 +1014,11 @@ def match_firewall_request(
     if blocked_base is not None:
         # A non-granted permission matched — DENY takes priority over unknown.
         if denied_match is not None:
-            return FirewallBlock(*denied_match, tuple(denied_perm_names))
+            return FirewallBlock(
+                *denied_match,
+                tuple(denied_perm_names),
+                "permission_denied",
+            )
         # No permission rule matched — this is an "unknown" endpoint.
         # "ask" is treated as "deny" at the proxy level (same as ask permissions).
         if _get_unknown_policy(blocked_name, network_policies) == "allow":
@@ -997,5 +1032,12 @@ def match_firewall_request(
                     "rel_path": blocked_rel_path,
                 },
             )
-        return FirewallBlock(blocked_base, blocked_name, upper_method, blocked_rel_path, ())
+        return FirewallBlock(
+            blocked_base,
+            blocked_name,
+            upper_method,
+            blocked_rel_path,
+            (),
+            "unknown_endpoint",
+        )
     return None

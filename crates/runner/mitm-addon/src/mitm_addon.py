@@ -216,6 +216,7 @@ async def request(flow: http.HTTPFlow) -> None:
                     f"{result.name}: no matching permission for {result.method} {result.path}",
                     type="firewall_block",
                     name=result.name,
+                    reason=result.reason,
                 )
                 flow.metadata["firewall_action"] = "DENY"
                 flow.metadata["firewall_base"] = result.base
@@ -228,6 +229,7 @@ async def request(flow: http.HTTPFlow) -> None:
                         "path": result.path,
                         "name": result.name,
                         "permissions": list(result.permissions),
+                        "reason": result.reason,
                         "base": result.base,
                     }
                 )

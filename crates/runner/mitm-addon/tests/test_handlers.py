@@ -301,6 +301,7 @@ class TestRequestHandler:
                     "billableFirewalls": [],
                     "sandboxToken": "tok-conn",
                     "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
                     "firewalls": [
                         {
                             "name": "github",
@@ -356,7 +357,147 @@ class TestRequestHandler:
         assert body["path"] == "/orgs"
         assert body["name"] == "github"
         assert body["permissions"] == []
+        assert body["reason"] == "unknown_endpoint"
         assert body["base"] == "https://api.github.com"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "firewall_block"
+        assert proxy_log_entry["name"] == "github"
+        assert proxy_log_entry["reason"] == "unknown_endpoint"
+
+    async def test_firewall_malformed_config_block_reports_reason(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """Malformed firewall config blocks fail closed with an explicit reason."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "billableFirewalls": [],
+                    "sandboxToken": "tok-conn",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {
+                                        "headers": {
+                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                        }
+                                    },
+                                    "permissions": [
+                                        {
+                                            "name": "read-repos",
+                                            "rules": ["GET /repos/{a}literal{b}"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "github": {
+                            "allow": ["read-repos"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "allow",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/org/repo",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "permission_denied"
+        assert body["permissions"] == []
+        assert body["reason"] == "malformed_firewall_config"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "firewall_block"
+        assert proxy_log_entry["reason"] == "malformed_firewall_config"
+
+    async def test_firewall_permission_denied_block_reports_reason(
+        self, tmp_path, real_flow, mitm_ctx, headers
+    ):
+        """Denied permission blocks include the explicit runtime reason."""
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-conn-1",
+                    "billableFirewalls": [],
+                    "sandboxToken": "tok-conn",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": "github",
+                            "apis": [
+                                {
+                                    "base": "https://api.github.com",
+                                    "auth": {
+                                        "headers": {
+                                            "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                        }
+                                    },
+                                    "permissions": [
+                                        {
+                                            "name": "read-repos",
+                                            "rules": ["GET /repos/{owner}/{repo}"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        "github": {
+                            "allow": [],
+                            "deny": ["read-repos"],
+                            "ask": [],
+                            "unknownPolicy": "allow",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/org/repo",
+        )
+
+        with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["permissions"] == ["read-repos"]
+        assert body["reason"] == "permission_denied"
+        proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+        assert proxy_log_entry["type"] == "firewall_block"
+        assert proxy_log_entry["reason"] == "permission_denied"
 
     async def test_firewall_permission_allows_matched(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
