@@ -5,12 +5,12 @@ from pathlib import Path
 
 from mitmproxy import ctx
 
+import matching
 from auth import evict_stale_cache_keys
-from matching import CompiledFirewallSet, compile_firewalls
 
 # Cache for proxy registry (invalidated by file stat change).
 _registry_cache: dict = {}
-_registry_compiled_cache: dict[str, CompiledFirewallSet] = {}
+_registry_compiled_cache: dict[str, matching.CompiledFirewallSet] = {}
 _registry_cache_key: tuple[int, int] = (0, 0)
 # One-shot guard for stat-path failures: no cache key is available in that
 # branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
@@ -30,11 +30,11 @@ def reset_cache_for_tests() -> None:
     _registry_load_error_logged = False
 
 
-def _compile_registry(new_registry: dict) -> dict[str, CompiledFirewallSet]:
-    compiled: dict[str, CompiledFirewallSet] = {}
+def _compile_registry(new_registry: dict) -> dict[str, matching.CompiledFirewallSet]:
+    compiled: dict[str, matching.CompiledFirewallSet] = {}
     for client_ip, vm in new_registry.items():
         firewalls = vm.get("firewalls") if isinstance(vm, dict) else None
-        compiled_firewalls = compile_firewalls(firewalls)
+        compiled_firewalls = matching.compile_firewalls(firewalls)
         if compiled_firewalls is not None:
             compiled[client_ip] = compiled_firewalls
     return compiled
@@ -104,7 +104,7 @@ def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
 def get_vm_context(
     client_ip: str,
     registry_path: str,
-) -> tuple[dict, CompiledFirewallSet | None] | None:
+) -> tuple[dict, matching.CompiledFirewallSet | None] | None:
     """Look up raw VM info with its compiled firewall matcher sidecar."""
     vm_info = load_registry(registry_path).get(client_ip)
     if vm_info is None:

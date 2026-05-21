@@ -21,15 +21,16 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# Usage/body_utils/registry/response_streaming are imported by module
+# Usage/body_utils/matching/registry/response_streaming are imported by module
 # (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)`` /
-#      ``registry.X(...)`` / ``response_streaming.X(...)``,
+#      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
+import matching
 import registry
 import response_streaming
 import usage
@@ -40,7 +41,6 @@ from auth import (
     request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
-from matching import FirewallAllow, FirewallBlock, match_compiled_firewall_request
 from url_utils import AuthorityValidationError, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
@@ -242,13 +242,13 @@ async def request(flow: http.HTTPFlow) -> None:
         # Match base URL, then check permission rules before injecting auth headers.
         if compiled_firewalls:
             network_policies = vm_info.get("networkPolicies") or {}
-            result = match_compiled_firewall_request(
+            result = matching.match_compiled_firewall_request(
                 original_url,
                 flow.request.method,
                 compiled_firewalls,
                 network_policies,
             )
-            if isinstance(result, FirewallBlock):
+            if isinstance(result, matching.FirewallBlock):
                 proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
                 log_proxy_entry(
                     proxy_log_path,
@@ -280,7 +280,7 @@ async def request(flow: http.HTTPFlow) -> None:
                     {"Content-Type": "application/json"},
                 )
                 return
-            if isinstance(result, FirewallAllow):
+            if isinstance(result, matching.FirewallAllow):
                 _maybe_track_usage_flow(
                     flow,
                     is_billable_firewall(result.match_info, vm_info),

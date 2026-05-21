@@ -32,6 +32,7 @@ select = [
     "E",        # pycodestyle errors
     "F",        # pyflakes
     "I",        # isort
+    "ICN003",   # flake8-import-conventions: banned member imports
     "B",        # flake8-bugbear (real correctness bugs)
     "S",        # flake8-bandit (security)
     "ASYNC",    # flake8-async (this addon is async-heavy)
@@ -74,6 +75,9 @@ extend-ignore = [
     "RUF002",
     "RUF003",
 ]
+
+[tool.ruff.lint.flake8-import-conventions]
+banned-from = ["matching"]
 
 [tool.ruff.lint.per-file-ignores]
 # S101: pytest uses `assert` universally; S105: tests hardcode fixture tokens
