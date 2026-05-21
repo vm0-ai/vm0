@@ -448,6 +448,7 @@ impl ConnectedControlSink {
 
     fn shutdown(&self) {
         let _ = self.shutdown.shutdown(std::net::Shutdown::Both);
+        self.stream.notify_waiters();
     }
 }
 
@@ -460,9 +461,19 @@ impl ControlStreamState {
         }
     }
 
-    fn lock_until(&self, deadline: Instant) -> io::Result<ControlStreamGuard<'_>> {
+    fn lock_until(
+        &self,
+        deadline: Instant,
+        active: &AtomicBool,
+    ) -> io::Result<ControlStreamGuard<'_>> {
         let mut locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
         loop {
+            if !active.load(Ordering::Acquire) {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    EXEC_OPERATION_INACTIVE_MESSAGE,
+                ));
+            }
             if !*locked {
                 *locked = true;
                 drop(locked);
@@ -486,6 +497,11 @@ impl ControlStreamState {
                 return Err(request_timeout_error());
             }
         }
+    }
+
+    fn notify_waiters(&self) {
+        let _locked = self.locked.lock().unwrap_or_else(|e| e.into_inner());
+        self.ready.notify_all();
     }
 }
 
@@ -567,7 +583,7 @@ fn forward_control_request(
     } = request;
     let (status, diagnostic, mark_failed) = {
         match sink.wait_for_stream(deadline) {
-            Ok(stream) => match stream.lock_until(deadline) {
+            Ok(stream) => match stream.lock_until(deadline, &sink.active) {
                 Ok(mut stream) => {
                     if !sink.active.load(Ordering::Acquire) {
                         (
@@ -1508,7 +1524,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(request_deadline(5000), &sink.active)
+            .unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1540,7 +1558,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(request_deadline(5000), &sink.active)
+            .unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
 
         let worker = std::thread::spawn({
@@ -1573,7 +1593,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(request_deadline(5000), &sink.active)
+            .unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
 
@@ -1593,7 +1615,6 @@ mod tests {
         );
 
         sink.close();
-        drop(stream_guard);
 
         let (msg_type, seq, status, message_id, diagnostic) = read_exec_control_result(&mut host);
         assert_eq!(msg_type, MSG_EXEC_CONTROL_RESULT);
@@ -1601,6 +1622,8 @@ mod tests {
         assert_eq!(status, ExecControlStatus::Inactive);
         assert_eq!(message_id, "msg-after-close");
         assert_eq!(diagnostic, "exec operation is not active");
+        assert_eq!(sink.pending.load(Ordering::Acquire), 0);
+        drop(stream_guard);
 
         let err = process_control_ipc::read_request(&mut peer).unwrap_err();
         assert!(matches!(
@@ -1621,7 +1644,9 @@ mod tests {
             ControlSinkInner::Connected(connected) => Arc::clone(&connected.stream),
             _ => panic!("sink should be connected"),
         };
-        let stream_guard = stream.lock_until(request_deadline(5000)).unwrap();
+        let stream_guard = stream
+            .lock_until(request_deadline(5000), &sink.active)
+            .unwrap();
         let pending_slot = sink.reserve_pending_slot().unwrap();
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
