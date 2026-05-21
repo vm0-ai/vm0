@@ -262,6 +262,44 @@ fn remove_dir_all_if_exists_sync(path: &Path) -> std::io::Result<()> {
     }
 }
 
+fn cleanup_remove_file_result(
+    result: std::io::Result<()>,
+    path: &Path,
+    warning: &'static str,
+) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %path.display(),
+                "{warning}"
+            );
+            false
+        }
+    }
+}
+
+fn cleanup_remove_dir_result(
+    result: std::io::Result<()>,
+    dir: &Path,
+    warning: &'static str,
+) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                dir = %dir.display(),
+                "{warning}"
+            );
+            false
+        }
+    }
+}
+
 async fn prepare_snapshot_output(output: &SnapshotOutputPaths) -> Result<PathBuf, SnapshotError> {
     // Paths inside work_dir get baked into the snapshot and are used as
     // bind-mount targets during restore, so they must be deterministic.
@@ -359,36 +397,22 @@ async fn cleanup_snapshot_attempt_dir_for_cow(cow_file: &Path) -> bool {
     let Some(dir) = cow_file.parent() else {
         return true;
     };
-    match tokio::fs::remove_dir(dir).await {
-        Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                dir = %dir.display(),
-                "failed to cleanup snapshot attempt dir"
-            );
-            false
-        }
-    }
+    cleanup_remove_dir_result(
+        tokio::fs::remove_dir(dir).await,
+        dir,
+        "failed to cleanup snapshot attempt dir",
+    )
 }
 
 fn cleanup_snapshot_attempt_dir_for_cow_sync(cow_file: &Path) -> bool {
     let Some(dir) = cow_file.parent() else {
         return true;
     };
-    match std::fs::remove_dir(dir) {
-        Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                dir = %dir.display(),
-                "failed to cleanup snapshot attempt dir"
-            );
-            false
-        }
-    }
+    cleanup_remove_dir_result(
+        std::fs::remove_dir(dir),
+        dir,
+        "failed to cleanup snapshot attempt dir",
+    )
 }
 
 fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(), SnapshotError> {
@@ -892,17 +916,12 @@ fn snapshot_output_from_config(config: SnapshotConfig) -> SnapshotOutput {
 async fn cleanup_kept_cow_paths_after_publish_cancellation(paths: &KeptCowCleanupPaths) -> bool {
     let mut cleaned = true;
     for path in [&paths.bitmap_file, &paths.cow_file] {
-        match tokio::fs::remove_file(path).await {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    path = %path.display(),
-                    "failed to cleanup kept COW artifact after snapshot publish cancellation"
-                );
-                cleaned = false;
-            }
+        if !cleanup_remove_file_result(
+            tokio::fs::remove_file(path).await,
+            path,
+            "failed to cleanup kept COW artifact after snapshot publish cancellation",
+        ) {
+            cleaned = false;
         }
     }
     cleanup_snapshot_attempt_dir_for_cow(&paths.cow_file).await && cleaned
@@ -954,17 +973,12 @@ fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
 fn cleanup_kept_cow_paths_after_publish_drop(paths: &KeptCowCleanupPaths) -> bool {
     let mut cleaned = true;
     for path in [&paths.bitmap_file, &paths.cow_file] {
-        match std::fs::remove_file(path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    path = %path.display(),
-                    "failed to cleanup kept COW artifact after pending snapshot publish drop"
-                );
-                cleaned = false;
-            }
+        if !cleanup_remove_file_result(
+            std::fs::remove_file(path),
+            path,
+            "failed to cleanup kept COW artifact after pending snapshot publish drop",
+        ) {
+            cleaned = false;
         }
     }
     cleanup_snapshot_attempt_dir_for_cow_sync(&paths.cow_file) && cleaned
