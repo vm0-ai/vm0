@@ -19,7 +19,7 @@ import {
   type OAuthTokenResult,
 } from "@vm0/connectors/oauth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 
 import { requiredAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
@@ -39,12 +39,14 @@ import {
   getConnectorOAuthCanonicalRedirectUrl,
   getConnectorOAuthOrigin,
 } from "./connector-oauth-origin";
-
-const STATE_COOKIE_NAME = "connector_oauth_state";
-const SESSION_COOKIE_NAME = "connector_oauth_session";
-const PKCE_COOKIE_NAME = "connector_oauth_pkce";
-const OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
-const REDIRECT_STATUS = 307;
+import {
+  clearOAuthCookies,
+  CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+  CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+  CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+  CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+  redirectResponse,
+} from "./connector-oauth-route-state";
 
 type CallbackIdentity = {
   readonly userId: string;
@@ -62,6 +64,13 @@ type CompleteOAuthCallbackInput = {
   readonly sessionId: string | undefined;
   readonly origin: string;
   readonly type: string;
+};
+
+type CallbackCookies = {
+  readonly savedState: string | undefined;
+  readonly sessionId: string | undefined;
+  readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
 };
 
 type ResolveCallbackStateInput = {
@@ -111,6 +120,12 @@ type ResolvedOAuthConnectorType =
 
 const connectorCallbackAuth = { requireOrganization: true } as const;
 
+type ConnectorSessionTransitionInput = {
+  readonly sessionId: string | undefined;
+  readonly connectorType: OAuthConnectorType;
+  readonly userId: string;
+};
+
 function getCookie(request: Request, name: string): string | undefined {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) {
@@ -126,34 +141,13 @@ function getCookie(request: Request, name: string): string | undefined {
   return undefined;
 }
 
-function buildDeleteCookieHeader(name: string): string {
-  return `${name}=; Max-Age=0; Path=/`;
-}
-
-function redirectResponse(url: string): Response {
-  return new Response(null, {
-    status: REDIRECT_STATUS,
-    headers: { location: url },
-  });
-}
-
-function clearOAuthCookies(response: Response): void {
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(STATE_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(SESSION_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(PKCE_COOKIE_NAME),
-  );
-  response.headers.append(
-    "Set-Cookie",
-    buildDeleteCookieHeader(OAUTH_CONTEXT_COOKIE_NAME),
-  );
+function getCallbackCookies(request: Request): CallbackCookies {
+  return {
+    savedState: getCookie(request, CONNECTOR_OAUTH_STATE_COOKIE_NAME),
+    sessionId: getCookie(request, CONNECTOR_OAUTH_SESSION_COOKIE_NAME),
+    codeVerifier: getCookie(request, CONNECTOR_OAUTH_PKCE_COOKIE_NAME),
+    oauthContext: getCookie(request, CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME),
+  };
 }
 
 function redirectWithError(
@@ -330,39 +324,87 @@ async function rejectInvalidStoredOAuthStateForCallback(args: {
 
 async function completeConnectorSession(
   db: Db,
-  sessionId: string | undefined,
+  input: ConnectorSessionTransitionInput,
   signal: AbortSignal,
-): Promise<void> {
-  if (!sessionId) {
-    return;
+): Promise<boolean> {
+  if (!input.sessionId) {
+    return true;
   }
-  await db
+  const updatedAt = nowDate();
+  const [updatedSession] = await db
     .update(connectorSessions)
     .set({
       status: "complete",
-      completedAt: nowDate(),
+      completedAt: updatedAt,
     })
-    .where(eq(connectorSessions.id, sessionId));
+    .where(
+      and(
+        eq(connectorSessions.id, input.sessionId),
+        eq(connectorSessions.type, input.connectorType),
+        eq(connectorSessions.userId, input.userId),
+        eq(connectorSessions.status, "pending"),
+        gt(connectorSessions.expiresAt, updatedAt),
+      ),
+    )
+    .returning({ id: connectorSessions.id });
   signal.throwIfAborted();
+  return Boolean(updatedSession);
+}
+
+async function hasPendingConnectorSession(
+  db: Db,
+  input: ConnectorSessionTransitionInput,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!input.sessionId) {
+    return true;
+  }
+  const currentDate = nowDate();
+  const [session] = await db
+    .select({ id: connectorSessions.id })
+    .from(connectorSessions)
+    .where(
+      and(
+        eq(connectorSessions.id, input.sessionId),
+        eq(connectorSessions.type, input.connectorType),
+        eq(connectorSessions.userId, input.userId),
+        eq(connectorSessions.status, "pending"),
+        gt(connectorSessions.expiresAt, currentDate),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return Boolean(session);
 }
 
 async function markConnectorSessionError(
   db: Db,
-  sessionId: string | undefined,
+  input: ConnectorSessionTransitionInput,
   errorMessage: string,
   signal: AbortSignal,
-): Promise<void> {
-  if (!sessionId) {
-    return;
+): Promise<boolean> {
+  if (!input.sessionId) {
+    return true;
   }
-  await db
+  const updatedAt = nowDate();
+  const [updatedSession] = await db
     .update(connectorSessions)
     .set({
       status: "error",
       errorMessage,
     })
-    .where(eq(connectorSessions.id, sessionId));
+    .where(
+      and(
+        eq(connectorSessions.id, input.sessionId),
+        eq(connectorSessions.type, input.connectorType),
+        eq(connectorSessions.userId, input.userId),
+        eq(connectorSessions.status, "pending"),
+        gt(connectorSessions.expiresAt, updatedAt),
+      ),
+    )
+    .returning({ id: connectorSessions.id });
   signal.throwIfAborted();
+  return Boolean(updatedSession);
 }
 
 function successRedirectResponse(args: {
@@ -389,6 +431,26 @@ const completeOAuthCallback$ = command(
     args: CompleteOAuthCallbackInput,
     signal: AbortSignal,
   ): Promise<Response> => {
+    const writeDb = set(writeDb$);
+    const session = {
+      sessionId: args.sessionId,
+      connectorType: args.connectorType,
+      userId: args.identity.userId,
+    };
+    const hasValidSession = await hasPendingConnectorSession(
+      writeDb,
+      session,
+      signal,
+    );
+    if (!hasValidSession) {
+      return redirectWithError(
+        args.origin,
+        args.type,
+        "Invalid session - please try again",
+        true,
+      );
+    }
+
     const token = await exchangeTokenForConnector({
       connectorType: args.connectorType,
       code: args.code,
@@ -398,6 +460,20 @@ const completeOAuthCallback$ = command(
       oauthContext: args.oauthContext,
     });
     signal.throwIfAborted();
+
+    const sessionStillValid = await hasPendingConnectorSession(
+      writeDb,
+      session,
+      signal,
+    );
+    if (!sessionStillValid) {
+      return redirectWithError(
+        args.origin,
+        args.type,
+        "Invalid session - please try again",
+        true,
+      );
+    }
 
     const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
     const result = await set(
@@ -417,7 +493,15 @@ const completeOAuthCallback$ = command(
     );
     signal.throwIfAborted();
 
-    await completeConnectorSession(set(writeDb$), args.sessionId, signal);
+    const completed = await completeConnectorSession(writeDb, session, signal);
+    if (!completed) {
+      return redirectWithError(
+        args.origin,
+        args.type,
+        "Invalid session - please try again",
+        true,
+      );
+    }
     return successRedirectResponse({
       origin: args.origin,
       type: args.type,
@@ -514,11 +598,10 @@ const callbackConnectorInner$ = command(
     const { connectorType } = connectorTypeResult;
 
     const writeDb = set(writeDb$);
-    const savedState = getCookie(request, STATE_COOKIE_NAME);
-    const sessionId = getCookie(request, SESSION_COOKIE_NAME);
-    const codeVerifier = getCookie(request, PKCE_COOKIE_NAME);
-    const oauthContext = getCookie(request, OAUTH_CONTEXT_COOKIE_NAME);
+    const callbackCookies = getCallbackCookies(request);
     const state = query.state;
+    const storedStateValue =
+      callbackCookies.savedState === state ? undefined : state;
     const storedStateCallbackArgs = {
       db: writeDb,
       connectorType,
@@ -528,10 +611,10 @@ const callbackConnectorInner$ = command(
     };
 
     if (query.error) {
-      if (state) {
+      if (storedStateValue) {
         const claimedState = await claimStoredOAuthStateForCallback({
           ...storedStateCallbackArgs,
-          state,
+          state: storedStateValue,
         });
         signal.throwIfAborted();
         if (!claimedState.ok) {
@@ -548,11 +631,11 @@ const callbackConnectorInner$ = command(
 
     const code = query.code;
     if (!code) {
-      if (state) {
+      if (storedStateValue) {
         const invalidStateResponse =
           await rejectInvalidStoredOAuthStateForCallback({
             ...storedStateCallbackArgs,
-            state,
+            state: storedStateValue,
           });
         signal.throwIfAborted();
         if (invalidStateResponse) {
@@ -566,11 +649,17 @@ const callbackConnectorInner$ = command(
       return missingStateRedirectResponse(origin, params.type);
     }
 
-    const claimedState = await claimStoredOAuthStateForCallback({
-      ...storedStateCallbackArgs,
-      state,
-    });
-    signal.throwIfAborted();
+    let claimedState: ClaimedCallbackState = {
+      ok: true,
+      storedState: undefined,
+    };
+    if (storedStateValue) {
+      claimedState = await claimStoredOAuthStateForCallback({
+        ...storedStateCallbackArgs,
+        state: storedStateValue,
+      });
+      signal.throwIfAborted();
+    }
     if (!claimedState.ok) {
       return claimedState.response;
     }
@@ -580,11 +669,11 @@ const callbackConnectorInner$ = command(
       {
         origin,
         type: params.type,
-        savedState,
+        savedState: callbackCookies.savedState,
         state,
-        sessionId,
-        codeVerifier,
-        oauthContext,
+        sessionId: callbackCookies.sessionId,
+        codeVerifier: callbackCookies.codeVerifier,
+        oauthContext: callbackCookies.oauthContext,
         storedState: claimedState.storedState,
       },
       signal,
@@ -620,7 +709,11 @@ const callbackConnectorInner$ = command(
 
     await markConnectorSessionError(
       writeDb,
-      resolvedState.sessionId,
+      {
+        sessionId: resolvedState.sessionId,
+        connectorType,
+        userId: resolvedState.identity.userId,
+      },
       errorMessageFromUnknown(callbackResult.error),
       signal,
     );

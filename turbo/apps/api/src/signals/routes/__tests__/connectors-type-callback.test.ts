@@ -210,6 +210,8 @@ type CapturedOAuthExchange = {
   readonly oauthContext: string | undefined;
 };
 
+type ConnectorSessionStatus = "pending" | "complete" | "expired" | "error";
+
 function useDynamicTestOAuthExchange(): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
@@ -914,16 +916,25 @@ function mockProviderOAuth(options: ProviderMockOptions): void {
   mocker(resolvedProviderMockOptions(options));
 }
 
-async function seedSession(userId: string): Promise<string> {
+async function seedSession(args: {
+  readonly userId: string;
+  readonly type?: string;
+  readonly status?: ConnectorSessionStatus;
+  readonly expiresAt?: Date;
+  readonly completedAt?: Date;
+  readonly errorMessage?: string | null;
+}): Promise<string> {
   const db = store.set(writeDb$);
   const [session] = await db
     .insert(connectorSessions)
     .values({
       code: randomUUID().slice(0, 9).toUpperCase(),
-      type: "github",
-      userId,
-      status: "pending",
-      expiresAt: new Date(now() + 15 * 60 * 1000),
+      type: args.type ?? "github",
+      userId: args.userId,
+      status: args.status ?? "pending",
+      expiresAt: args.expiresAt ?? new Date(now() + 15 * 60 * 1000),
+      completedAt: args.completedAt,
+      errorMessage: args.errorMessage,
     })
     .returning({ id: connectorSessions.id });
   expect(session).toBeDefined();
@@ -1434,7 +1445,7 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
+    const sessionId = await seedSession({ userId });
     sessionIds.push(sessionId);
     mockGitHubOAuth({ accessToken: "github-token", userError: true });
 
@@ -1467,7 +1478,7 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
+    const sessionId = await seedSession({ userId });
     sessionIds.push(sessionId);
     mockGitHubOAuth({
       accessToken: "github-token",
@@ -1531,6 +1542,129 @@ describe("GET /api/connectors/:type/callback", () => {
       .where(eq(connectorSessions.id, sessionId));
     expect(session?.status).toBe("complete");
     expect(session?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejects callbacks when the session belongs to another user", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const ownerUserId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({ userId: ownerUserId });
+    sessionIds.push(sessionId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .select({ status: connectorSessions.status })
+      .from(connectorSessions)
+      .where(eq(connectorSessions.id, sessionId));
+    expect(session?.status).toBe("pending");
+  });
+
+  it("rejects callbacks when the session belongs to another connector type", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({ userId, type: "slack" });
+    sessionIds.push(sessionId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    { status: "complete" as const, completedAt: new Date(now()) },
+    { status: "error" as const, errorMessage: "previous failure" },
+    { status: "expired" as const },
+  ])("rejects callbacks when the session is $status", async (sessionState) => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({ userId, ...sessionState });
+    sessionIds.push(sessionId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects callbacks when the session is expired", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession({
+      userId,
+      expiresAt: new Date(now() - 1000),
+    });
+    sessionIds.push(sessionId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
   });
 
   it("stores a connector from a server-side OAuth handoff without Clerk cookies", async () => {
@@ -2216,7 +2350,7 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
+    const sessionId = await seedSession({ userId });
     sessionIds.push(sessionId);
     mockGitHubOAuth({ tokenError: "bad code" });
 

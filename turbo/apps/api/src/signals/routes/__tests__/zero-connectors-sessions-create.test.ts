@@ -4,9 +4,10 @@ import { zeroConnectorSessionsContract } from "@vm0/api-contracts/contracts/zero
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -16,6 +17,11 @@ const mocks = createZeroRouteMocks(context);
 
 describe("POST /api/zero/connectors/:type/sessions", () => {
   const sessionIds: string[] = [];
+
+  beforeEach(() => {
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
+  });
 
   afterEach(async () => {
     const db = store.set(writeDb$);
@@ -72,6 +78,46 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
       userId,
       status: "pending",
     });
+  });
+
+  it("rejects non-OAuth connector sessions", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "computer" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toBe(
+      "Computer connector does not use OAuth",
+    );
+  });
+
+  it("rejects sessions for misconfigured OAuth connectors", async () => {
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", undefined);
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "github" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body.error.code).toBe("INTERNAL_SERVER_ERROR");
+    expect(response.body.error.message).toBe("github OAuth not configured");
   });
 
   it("returns 401 when unauthenticated", async () => {
