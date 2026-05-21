@@ -87,7 +87,6 @@ type PollClaimedSessionArgs = {
   readonly signal: AbortSignal;
   readonly persistConnector: (args: {
     readonly result: OAuthDeviceAuthorizationCompleteResult;
-    readonly providerState: EncryptedProviderState;
   }) => Promise<ConnectorResponse>;
 };
 
@@ -502,7 +501,6 @@ async function runClaimedSession(
 
   const connector = await args.persistConnector({
     result: pollResult,
-    providerState,
   });
   args.signal.throwIfAborted();
 
@@ -722,7 +720,7 @@ export const pollConnectorOauthDeviceSession$ = command(
       session: claimedSession,
       claimStartedAt,
       signal,
-      persistConnector: async ({ result, providerState }) => {
+      persistConnector: async ({ result }) => {
         const provider = CONNECTOR_OAUTH_PROVIDERS[resolvedType];
         const connectorResult = await set(
           upsertOAuthConnector$,
@@ -732,7 +730,7 @@ export const pollConnectorOauthDeviceSession$ = command(
             type: resolvedType,
             accessToken: result.token.accessToken,
             userInfo: result.token.userInfo,
-            oauthScopes: providerState.scopes,
+            oauthScopes: result.token.scopes,
             refreshToken: result.token.refreshToken,
             refreshSecretName: provider.getRefreshSecretName?.(),
             expiresIn: result.token.expiresIn,

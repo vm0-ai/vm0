@@ -327,6 +327,16 @@ describe("OAuth device authorization connector routes", () => {
       [200],
     );
     await makeSessionPollable(start.body.sessionId);
+    testOauthDeviceProvider.pollDeviceAuthorization = async (args) => {
+      const result = await originalPollDeviceAuthorization(args);
+      if (result.status !== "complete") {
+        return result;
+      }
+      return {
+        ...result,
+        token: { ...result.token, scopes: ["read", "granted"] },
+      };
+    };
 
     const response = await accept(
       client.poll({
@@ -355,7 +365,7 @@ describe("OAuth device authorization connector routes", () => {
       .from(connectors)
       .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
     expect(stored).toStrictEqual([
-      { authMethod: "oauth", oauthScopes: JSON.stringify(["read"]) },
+      { authMethod: "oauth", oauthScopes: JSON.stringify(["read", "granted"]) },
     ]);
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
