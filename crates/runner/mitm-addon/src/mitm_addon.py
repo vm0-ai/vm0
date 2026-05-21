@@ -41,7 +41,7 @@ from auth import (
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_compiled_firewall_request
-from url_utils import get_original_url
+from url_utils import AuthorityValidationError, get_trusted_authority
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -104,6 +104,40 @@ def get_registry_path() -> str:
 _request_start_times: dict = {}
 
 
+def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
+    proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
+    flow.metadata["original_url"] = error.fallback_url
+    flow.metadata["firewall_action"] = "DENY"
+    flow.metadata["firewall_error"] = error.reason
+
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        error.message,
+        type="authority_validation",
+        reason=error.reason,
+        sni=error.sni,
+        request_host=error.request_host,
+        host_header=error.host_header,
+        request_port=error.request_port,
+    )
+
+    flow.response = http.Response.make(
+        403,
+        json.dumps(
+            {
+                "error": error.reason,
+                "message": error.message,
+                "sni": error.sni,
+                "request_host": error.request_host,
+                "host_header": error.host_header,
+                "request_port": error.request_port,
+            }
+        ).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -163,10 +197,7 @@ async def request(flow: http.HTTPFlow) -> None:
     _request_start_times[flow.id] = time.time()
 
     try:
-        original_url = get_original_url(flow)
-
         # Store info for response handler
-        flow.metadata["original_url"] = original_url
         flow.metadata["vm_run_id"] = run_id
         flow.metadata["vm_client_ip"] = client_ip
         flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
@@ -175,8 +206,18 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
         flow.metadata["cli_agent_type"] = vm_info.get("cliAgentType") or "claude-code"
 
-        # Get target hostname
-        hostname = flow.request.pretty_host.lower()
+        try:
+            trusted_authority = get_trusted_authority(flow)
+        except AuthorityValidationError as e:
+            _block_authority_validation_error(flow, e)
+            return
+
+        original_url = trusted_authority.url
+        flow.metadata["original_url"] = original_url
+        flow.metadata["trusted_authority_host"] = trusted_authority.host
+        flow.metadata["trusted_authority_port"] = trusted_authority.port
+
+        hostname = trusted_authority.host.lower()
 
         # --- Step 1: Auto-allow VM0 API requests ---
         # The agent MUST be able to communicate with the platform (heartbeat,

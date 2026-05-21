@@ -76,6 +76,48 @@ def _assert_pending(path: Path, flows: int, reports: int) -> dict:
     return state
 
 
+def _write_github_firewall_registry(tmp_path: Path, *, client_ip: str = "10.200.0.5") -> Path:
+    registry = {
+        "vms": {
+            client_ip: {
+                "runId": "run-conn-1",
+                "billableFirewalls": [],
+                "sandboxToken": "tok-conn",
+                "networkLogPath": str(tmp_path / "net.jsonl"),
+                "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                "firewalls": [
+                    {
+                        "name": "github",
+                        "apis": [
+                            {
+                                "base": "https://api.github.com",
+                                "auth": {
+                                    "headers": {
+                                        "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"
+                                    }
+                                },
+                                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                            },
+                        ],
+                    },
+                ],
+                "networkPolicies": {
+                    "github": {
+                        "allow": ["full-access"],
+                        "deny": [],
+                        "ask": [],
+                        "unknownPolicy": "allow",
+                    },
+                },
+                "encryptedSecrets": "iv:tag:data",
+            }
+        }
+    }
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(registry))
+    return path
+
+
 class TestAddonConfiguration:
     def test_load_registers_usage_state_id_without_pending_write(self):
         loader = MagicMock()
@@ -229,6 +271,177 @@ class TestRequestHandler:
         assert flow.response is None
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata.get("original_url") == "https://api.anthropic.com/v1/messages"
+
+    async def test_rejects_spoofed_host_before_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="attacker.example.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "authority_mismatch"
+        assert flow.metadata["firewall_action"] == "DENY"
+        auth_fetch.assert_not_called()
+        assert "Authorization" not in flow.request.headers
+
+    async def test_matching_sni_and_host_allows_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.metadata["firewall_name"] == "github"
+        assert flow.metadata["firewall_permission"] == "full-access"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+        assert flow.metadata["original_url"] == "https://api.github.com/repos"
+
+    async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
+        self, registry_file, real_flow, mitm_ctx, headers
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            sni="attacker.example.com",
+            path="/api/runs/heartbeat",
+            request_headers=headers(("Host", "api.vm0.ai")),
+        )
+
+        with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "authority_mismatch"
+        assert flow.metadata["firewall_action"] == "DENY"
+
+    async def test_accepts_equivalent_host_authority_default_https_port(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com:443")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+
+    async def test_rejects_host_authority_port_mismatch(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com:444")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "authority_port_mismatch"
+        assert flow.metadata["firewall_action"] == "DENY"
+        auth_fetch.assert_not_called()
+
+    async def test_accepts_authority_host_case_differences(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "API.GITHUB.COM")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://api.github.com"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+
+    async def test_rejects_missing_https_sni_before_firewall_auth(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(tmp_path)
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+        flow.client_conn.sni = None
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers() as auth_fetch,
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 403
+        body = json.loads(flow.response.content)
+        assert body["error"] == "missing_sni"
+        assert flow.metadata["firewall_action"] == "DENY"
+        auth_fetch.assert_not_called()
 
     async def test_firewall_match_calls_handler(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers

@@ -728,11 +728,13 @@ async def handle_firewall_request(
     flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
     flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
 
+    trusted_host = flow.metadata.get("trusted_authority_host") or flow.request.pretty_host
     log_proxy_entry(
         proxy_log_path,
         "info",
-        f"Firewall {firewall_base}: {flow.request.pretty_host}",
+        f"Firewall {firewall_base}: {trusted_host}",
         type="firewall",
         firewall_base=firewall_base,
-        host=flow.request.pretty_host,
+        host=trusted_host,
+        request_host_header=flow.request.host_header,
     )

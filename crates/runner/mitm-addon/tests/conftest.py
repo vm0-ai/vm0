@@ -80,6 +80,7 @@ def real_flow():
         path: str = "/",
         method: str = "GET",
         scheme: str = "https",
+        sni: str | None = None,
         request_body: bytes | None = None,
         request_headers: http.Headers | None = None,
         request_content_type: str | None = None,
@@ -134,6 +135,7 @@ def real_flow():
 
         flow = tflow.tflow(req=req, resp=resp)
         flow.client_conn.peername = (client_ip, 12345)
+        flow.client_conn.sni = sni if sni is not None else (host if scheme == "https" else None)
         return flow
 
     return _build

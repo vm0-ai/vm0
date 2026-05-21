@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import logging_utils
-from url_utils import get_original_url
+from url_utils import AuthorityValidationError, get_original_url
 
 
 class TestGetOriginalUrl:
@@ -41,6 +41,27 @@ class TestGetOriginalUrl:
     def test_with_path_and_query(self, real_flow):
         flow = real_flow(host="api.example.com", port=443, path="/v1/data?key=val")
         assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
+
+    def test_https_uses_sni_for_transparent_destination(self, real_flow, headers):
+        flow = real_flow(
+            host="203.0.113.10",
+            sni="api.example.com",
+            path="/v1/data?key=val",
+            request_headers=headers(("Host", "api.example.com")),
+        )
+        assert get_original_url(flow) == "https://api.example.com/v1/data?key=val"
+
+    def test_https_rejects_host_sni_mismatch(self, real_flow, headers):
+        flow = real_flow(
+            host="203.0.113.10",
+            sni="attacker.example.com",
+            path="/v1/data",
+            request_headers=headers(("Host", "api.example.com")),
+        )
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_original_url(flow)
+
+        assert exc_info.value.reason == "authority_mismatch"
 
 
 class TestLogProxyEntry:
