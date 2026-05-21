@@ -7,6 +7,7 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { composeJobs } from "@vm0/db/schema/compose-job";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -480,6 +481,9 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   await db.delete(connectors).where(eq(connectors.orgId, orgId));
+  await db
+    .delete(connectorOauthStates)
+    .where(eq(connectorOauthStates.orgId, orgId));
   await db.delete(variables).where(eq(variables.orgId, orgId));
   await db.delete(usageDaily).where(eq(usageDaily.orgId, orgId));
   await db.delete(exportJobs).where(eq(exportJobs.orgId, orgId));
@@ -536,6 +540,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db
     .delete(connectorSessions)
     .where(eq(connectorSessions.userId, userId));
+  await db
+    .delete(connectorOauthStates)
+    .where(eq(connectorOauthStates.userId, userId));
   await db.delete(deviceCodes).where(eq(deviceCodes.userId, userId));
   await db.delete(orgMembersCache).where(eq(orgMembersCache.userId, userId));
   await db

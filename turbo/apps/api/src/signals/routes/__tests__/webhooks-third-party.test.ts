@@ -13,6 +13,7 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -818,6 +819,12 @@ const deleteClerkFixture$ = command(
     const db = set(writeDb$);
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
+    await db
+      .delete(connectorOauthStates)
+      .where(eq(connectorOauthStates.userId, fixture.userId));
+    await db
+      .delete(connectorOauthStates)
+      .where(eq(connectorOauthStates.orgId, fixture.orgId));
     await db
       .delete(orgMembersMetadata)
       .where(eq(orgMembersMetadata.userId, fixture.userId));
@@ -2301,6 +2308,20 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
+    const db = store.set(writeDb$);
+    const [oauthState] = await db
+      .insert(connectorOauthStates)
+      .values({
+        state: `state-${randomUUID()}`,
+        type: "github",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        redirectUri: "https://www.vm0.ai/api/connectors/github/callback",
+        expiresAt: nowDate(),
+      })
+      .returning({ id: connectorOauthStates.id });
+    expect(oauthState).toBeDefined();
+
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -2316,7 +2337,6 @@ describe("POST /api/webhooks/clerk", () => {
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
 
-    const db = store.set(writeDb$);
     const cacheRows = await db
       .select({ orgId: orgCache.orgId })
       .from(orgCache)
@@ -2329,9 +2349,14 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ orgId: orgMembersCache.orgId })
       .from(orgMembersCache)
       .where(eq(orgMembersCache.orgId, fixture.orgId));
+    const oauthStateRows = await db
+      .select({ id: connectorOauthStates.id })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthState!.id));
     expect(cacheRows).toHaveLength(0);
     expect(metadataRows).toHaveLength(0);
     expect(membershipRows).toHaveLength(0);
+    expect(oauthStateRows).toHaveLength(0);
   });
 
   it("does not schedule organization deletion cleanup without an org ID", async () => {
@@ -2394,6 +2419,20 @@ describe("POST /api/webhooks/clerk", () => {
     const fixture = await trackClerk(
       store.set(seedClerkFixture$, undefined, context.signal),
     );
+    const db = store.set(writeDb$);
+    const [oauthState] = await db
+      .insert(connectorOauthStates)
+      .values({
+        state: `state-${randomUUID()}`,
+        type: "github",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        redirectUri: "https://www.vm0.ai/api/connectors/github/callback",
+        expiresAt: nowDate(),
+      })
+      .returning({ id: connectorOauthStates.id });
+    expect(oauthState).toBeDefined();
+
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "user.deleted",
       data: { id: fixture.userId },
@@ -2409,7 +2448,6 @@ describe("POST /api/webhooks/clerk", () => {
     expect(response.status).toBe(200);
     expect(response.body).toBe("OK");
 
-    const db = store.set(writeDb$);
     const cacheRows = await db
       .select({ userId: userCache.userId })
       .from(userCache)
@@ -2422,9 +2460,14 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ orgId: orgCache.orgId })
       .from(orgCache)
       .where(eq(orgCache.orgId, fixture.orgId));
+    const oauthStateRows = await db
+      .select({ id: connectorOauthStates.id })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthState!.id));
     expect(cacheRows).toHaveLength(0);
     expect(userRows).toHaveLength(0);
     expect(orgRows).toHaveLength(1);
+    expect(oauthStateRows).toHaveLength(0);
   });
 
   it("does not schedule user deletion cleanup without a user ID", async () => {
