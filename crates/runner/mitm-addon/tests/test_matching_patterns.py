@@ -1,7 +1,6 @@
 """Tests for low-level firewall URL and pattern matching."""
 
 import matching
-from matching import match_base_url, match_host, match_path_prefix
 
 
 class TestMatchPath:
@@ -79,49 +78,49 @@ class TestMatchPath:
 
 class TestMatchHost:
     def test_exact_host(self):
-        assert match_host("api.github.com", "api.github.com") == {}
+        assert matching.match_host("api.github.com", "api.github.com") == {}
 
     def test_single_param(self):
-        result = match_host("acme.zendesk.com", "{subdomain}.zendesk.com")
+        result = matching.match_host("acme.zendesk.com", "{subdomain}.zendesk.com")
         assert result == {"subdomain": "acme"}
 
     def test_single_param_no_match_multi_level(self):
         """Single {param} must not match multiple host segments."""
-        result = match_host("a.b.zendesk.com", "{subdomain}.zendesk.com")
+        result = matching.match_host("a.b.zendesk.com", "{subdomain}.zendesk.com")
         assert result is None
 
     def test_greedy_plus_matches_multi(self):
-        result = match_host("a.b.c.example.com", "{sub+}.example.com")
+        result = matching.match_host("a.b.c.example.com", "{sub+}.example.com")
         assert result == {"sub": "a.b.c"}
 
     def test_greedy_plus_matches_single(self):
-        result = match_host("x.example.com", "{sub+}.example.com")
+        result = matching.match_host("x.example.com", "{sub+}.example.com")
         assert result == {"sub": "x"}
 
     def test_greedy_plus_rejects_zero(self):
-        result = match_host("example.com", "{sub+}.example.com")
+        result = matching.match_host("example.com", "{sub+}.example.com")
         assert result is None
 
     def test_greedy_star_matches_multi(self):
-        result = match_host("a.b.example.com", "{sub*}.example.com")
+        result = matching.match_host("a.b.example.com", "{sub*}.example.com")
         assert result == {"sub": "a.b"}
 
     def test_greedy_star_matches_zero(self):
-        result = match_host("example.com", "{sub*}.example.com")
+        result = matching.match_host("example.com", "{sub*}.example.com")
         assert result == {"sub": ""}
 
     def test_literal_mismatch(self):
-        assert match_host("api.gitlab.com", "api.github.com") is None
+        assert matching.match_host("api.gitlab.com", "api.github.com") is None
 
     def test_case_insensitive(self):
-        assert match_host("API.GitHub.COM", "api.github.com") == {}
+        assert matching.match_host("API.GitHub.COM", "api.github.com") == {}
 
     def test_host_too_few_segments(self):
-        assert match_host("github.com", "api.github.com") is None
+        assert matching.match_host("github.com", "api.github.com") is None
 
     def test_param_name_preserves_case(self):
         """Param names should preserve original case from the pattern."""
-        result = match_host("acme.zendesk.com", "{Subdomain}.zendesk.com")
+        result = matching.match_host("acme.zendesk.com", "{Subdomain}.zendesk.com")
         assert "Subdomain" in result
         assert result["Subdomain"] == "acme"
 
@@ -133,27 +132,27 @@ class TestMatchHost:
 
 class TestMatchPathPrefix:
     def test_exact_match(self):
-        result = match_path_prefix(["v1", "projects"], ["v1", "projects"])
+        result = matching.match_path_prefix(["v1", "projects"], ["v1", "projects"])
         assert result == ({}, 2)
 
     def test_single_param(self):
-        result = match_path_prefix(["v1", "acme", "projects"], ["v1", "{org}"])
+        result = matching.match_path_prefix(["v1", "acme", "projects"], ["v1", "{org}"])
         assert result == ({"org": "acme"}, 2)
 
     def test_remaining_segments(self):
-        result = match_path_prefix(["v1", "acme", "projects", "123"], ["v1", "{org}"])
+        result = matching.match_path_prefix(["v1", "acme", "projects", "123"], ["v1", "{org}"])
         assert result == ({"org": "acme"}, 2)
 
     def test_mismatch(self):
-        result = match_path_prefix(["v2", "acme"], ["v1", "{org}"])
+        result = matching.match_path_prefix(["v2", "acme"], ["v1", "{org}"])
         assert result is None
 
     def test_empty_pattern(self):
-        result = match_path_prefix(["v1", "acme"], [])
+        result = matching.match_path_prefix(["v1", "acme"], [])
         assert result == ({}, 0)
 
     def test_path_too_short(self):
-        result = match_path_prefix(["v1"], ["v1", "{org}"])
+        result = matching.match_path_prefix(["v1"], ["v1", "{org}"])
         assert result is None
 
 
@@ -164,70 +163,84 @@ class TestMatchPathPrefix:
 
 class TestMatchBaseUrl:
     def test_static_base(self):
-        result = match_base_url("https://api.github.com/repos", "https://api.github.com")
+        result = matching.match_base_url("https://api.github.com/repos", "https://api.github.com")
         assert result == ("/repos", {})
 
     def test_static_base_case_insensitive_authority(self):
-        result = match_base_url("https://API.GitHub.com/repos", "https://api.github.com")
+        result = matching.match_base_url("https://API.GitHub.com/repos", "https://api.github.com")
         assert result == ("/repos", {})
 
     def test_static_base_case_insensitive_scheme(self):
-        result = match_base_url("HTTPS://API.GitHub.com/repos", "https://api.github.com")
+        result = matching.match_base_url("HTTPS://API.GitHub.com/repos", "https://api.github.com")
         assert result == ("/repos", {})
 
     def test_static_base_preserves_path_case(self):
-        result = match_base_url("https://API.GitHub.com/REPOS", "https://api.github.com")
+        result = matching.match_base_url("https://API.GitHub.com/REPOS", "https://api.github.com")
         assert result == ("/REPOS", {})
 
     def test_static_base_path_is_case_sensitive(self):
-        result = match_base_url("https://api.github.com/V1/repos", "https://api.github.com/v1")
+        result = matching.match_base_url(
+            "https://api.github.com/V1/repos", "https://api.github.com/v1"
+        )
         assert result is None
 
     def test_static_base_exact(self):
-        result = match_base_url("https://api.github.com", "https://api.github.com")
+        result = matching.match_base_url("https://api.github.com", "https://api.github.com")
         assert result == ("/", {})
 
     def test_static_base_query_only_case_insensitive_authority(self):
-        result = match_base_url("https://API.GitHub.com?tab=repos", "https://api.github.com")
+        result = matching.match_base_url(
+            "https://API.GitHub.com?tab=repos", "https://api.github.com"
+        )
         assert result == ("/", {})
 
     def test_static_base_strips_query_and_fragment_from_rel_path(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://API.GitHub.com/repos?tab=code#readme",
             "https://api.github.com",
         )
         assert result == ("/repos", {})
 
     def test_static_base_evil_domain(self):
-        result = match_base_url("https://api.github.com.evil.com/steal", "https://api.github.com")
+        result = matching.match_base_url(
+            "https://api.github.com.evil.com/steal", "https://api.github.com"
+        )
         assert result is None
 
     def test_static_base_case_mixed_evil_domain(self):
-        result = match_base_url("https://API.GitHub.com.evil.com/steal", "https://api.github.com")
+        result = matching.match_base_url(
+            "https://API.GitHub.com.evil.com/steal", "https://api.github.com"
+        )
         assert result is None
 
     def test_static_base_rejects_nonstandard_port(self):
-        result = match_base_url("https://API.GitHub.com:8443/repos", "https://api.github.com")
+        result = matching.match_base_url(
+            "https://API.GitHub.com:8443/repos", "https://api.github.com"
+        )
         assert result is None
 
     def test_static_base_with_query_is_rejected(self):
-        result = match_base_url("https://api.github.com/repos", "https://api.github.com?token=1")
+        result = matching.match_base_url(
+            "https://api.github.com/repos", "https://api.github.com?token=1"
+        )
         assert result is None
 
     def test_static_base_with_fragment_is_rejected(self):
-        result = match_base_url("https://api.github.com/repos", "https://api.github.com#token")
+        result = matching.match_base_url(
+            "https://api.github.com/repos", "https://api.github.com#token"
+        )
         assert result is None
 
     def test_malformed_request_url_returns_none(self):
-        result = match_base_url("https://[::1", "https://api.github.com")
+        result = matching.match_base_url("https://[::1", "https://api.github.com")
         assert result is None
 
     def test_malformed_base_url_returns_none(self):
-        result = match_base_url("https://api.github.com/repos", "https://[::1")
+        result = matching.match_base_url("https://api.github.com/repos", "https://[::1")
         assert result is None
 
     def test_parameterized_host(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
             "https://{subdomain}.zendesk.com",
         )
@@ -237,21 +250,21 @@ class TestMatchBaseUrl:
         assert params == {"subdomain": "acme"}
 
     def test_parameterized_base_with_query_is_rejected(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
             "https://{subdomain}.zendesk.com?token=1",
         )
         assert result is None
 
     def test_parameterized_base_with_fragment_is_rejected(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
             "https://{subdomain}.zendesk.com#token",
         )
         assert result is None
 
     def test_parameterized_path(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://api.example.com/v1/acme/projects/123",
             "https://api.example.com/v1/{org}",
         )
@@ -261,7 +274,7 @@ class TestMatchBaseUrl:
         assert params == {"org": "acme"}
 
     def test_parameterized_host_and_path(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://us.api.example.com/v1/acme/data",
             "https://{region}.api.example.com/v1/{org}",
         )
@@ -271,15 +284,17 @@ class TestMatchBaseUrl:
         assert params == {"region": "us", "org": "acme"}
 
     def test_host_mismatch_returns_none(self):
-        result = match_base_url("https://api.github.com/repos", "https://{sub}.zendesk.com")
+        result = matching.match_base_url(
+            "https://api.github.com/repos", "https://{sub}.zendesk.com"
+        )
         assert result is None
 
     def test_scheme_mismatch_returns_none(self):
-        result = match_base_url("http://acme.zendesk.com/api", "https://{sub}.zendesk.com")
+        result = matching.match_base_url("http://acme.zendesk.com/api", "https://{sub}.zendesk.com")
         assert result is None
 
     def test_query_stripped(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com/api?key=val",
             "https://{sub}.zendesk.com",
         )
@@ -288,7 +303,7 @@ class TestMatchBaseUrl:
         assert rel_path == "/api"
 
     def test_no_path_after_parameterized_base(self):
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com",
             "https://{sub}.zendesk.com",
         )
@@ -299,7 +314,7 @@ class TestMatchBaseUrl:
 
     def test_nonstandard_port_rejected(self):
         """Non-standard port in URL must not match base without port."""
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://acme.zendesk.com:8443/api",
             "https://{sub}.zendesk.com",
         )
@@ -307,7 +322,7 @@ class TestMatchBaseUrl:
 
     def test_base_with_port_matches_url_with_same_port(self):
         """Base with explicit port matches URL with same port."""
-        result = match_base_url(
+        result = matching.match_base_url(
             "https://internal.example.com:8443/api",
             "https://{sub}.example.com:8443",
         )
@@ -438,32 +453,39 @@ class TestAnthropicFirewallScope:
     BASE = "https://api.anthropic.com/v1/messages"
 
     def test_messages_endpoint_matches(self):
-        assert match_base_url(self.BASE, self.BASE) == ("/", {})
+        assert matching.match_base_url(self.BASE, self.BASE) == ("/", {})
 
     def test_count_tokens_endpoint_matches(self):
-        result = match_base_url(f"{self.BASE}/count_tokens", self.BASE)
+        result = matching.match_base_url(f"{self.BASE}/count_tokens", self.BASE)
         assert result == ("/count_tokens", {})
 
     def test_batches_endpoint_matches(self):
-        result = match_base_url(f"{self.BASE}/batches/abc123", self.BASE)
+        result = matching.match_base_url(f"{self.BASE}/batches/abc123", self.BASE)
         assert result == ("/batches/abc123", {})
 
     def test_organizations_endpoint_rejected(self):
-        assert match_base_url("https://api.anthropic.com/v1/organizations/foo", self.BASE) is None
+        assert (
+            matching.match_base_url("https://api.anthropic.com/v1/organizations/foo", self.BASE)
+            is None
+        )
 
     def test_usage_endpoint_rejected(self):
-        assert match_base_url("https://api.anthropic.com/v1/usage_report", self.BASE) is None
+        assert (
+            matching.match_base_url("https://api.anthropic.com/v1/usage_report", self.BASE) is None
+        )
 
     def test_complete_endpoint_rejected(self):
-        assert match_base_url("https://api.anthropic.com/v1/complete", self.BASE) is None
+        assert matching.match_base_url("https://api.anthropic.com/v1/complete", self.BASE) is None
 
     def test_models_endpoint_rejected(self):
-        assert match_base_url("https://api.anthropic.com/v1/models", self.BASE) is None
+        assert matching.match_base_url("https://api.anthropic.com/v1/models", self.BASE) is None
 
     def test_prefix_confusion_attack_rejected(self):
         """Paths like /v1/messages_fake must not match /v1/messages."""
-        assert match_base_url("https://api.anthropic.com/v1/messages_fake", self.BASE) is None
+        assert (
+            matching.match_base_url("https://api.anthropic.com/v1/messages_fake", self.BASE) is None
+        )
 
     def test_messages_with_query_string_matches(self):
-        result = match_base_url(f"{self.BASE}?beta=1", self.BASE)
+        result = matching.match_base_url(f"{self.BASE}?beta=1", self.BASE)
         assert result == ("/", {})

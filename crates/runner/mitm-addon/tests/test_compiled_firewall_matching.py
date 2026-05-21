@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 import matching
-from matching import FirewallAllow, FirewallBlock
 from tests.firewall_helpers import _wrap_firewalls
 
 
@@ -15,12 +14,12 @@ class TestCompiledFirewallMatching:
 
     def _assert_same_result(self, raw, compiled):
         assert type(compiled) is type(raw)
-        if isinstance(raw, FirewallAllow):
-            assert isinstance(compiled, FirewallAllow)
+        if isinstance(raw, matching.FirewallAllow):
+            assert isinstance(compiled, matching.FirewallAllow)
             assert compiled.api_entry is raw.api_entry
             assert compiled.match_info == raw.match_info
             return
-        if isinstance(raw, FirewallBlock):
+        if isinstance(raw, matching.FirewallBlock):
             assert compiled == raw
             return
         assert compiled is raw
@@ -50,7 +49,7 @@ class TestCompiledFirewallMatching:
         )
 
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["params"] == {
             "region": "us",
             "org": "acme",
@@ -95,7 +94,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["params"] == {"sub": "a.b", "id": "123"}
 
         url = "https://example.org/items/123"
@@ -107,7 +106,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["params"] == {"sub": "", "id": "123"}
 
     def test_matches_raw_for_static_base_boundary_and_query(self):
@@ -135,7 +134,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["rel_path"] == "/"
 
         url = "https://api.anthropic.com/v1/messages_fake"
@@ -199,7 +198,7 @@ class TestCompiledFirewallMatching:
             allow_policies,
         )
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["permission"] == ""
 
         ask_policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "ask"}}
@@ -211,7 +210,7 @@ class TestCompiledFirewallMatching:
             ask_policies,
         )
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallBlock)
+        assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unknown_endpoint"
 
     def test_matches_raw_for_ask_permission_block(self):
@@ -246,7 +245,7 @@ class TestCompiledFirewallMatching:
         )
 
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallBlock)
+        assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.permissions == ("repo-read",)
         assert compiled.reason == "permission_denied"
 
@@ -290,7 +289,7 @@ class TestCompiledFirewallMatching:
         )
 
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["name"] == "specific"
         assert compiled.match_info["permission"] == "items-read"
 
@@ -318,7 +317,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallAllow)
+        assert isinstance(result, matching.FirewallAllow)
         assert result.api_entry is api_entry
         assert result.match_info["rule"] == "ANY /repos/{owner}/{repo}"
 
@@ -354,7 +353,7 @@ class TestCompiledFirewallMatching:
         )
 
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallAllow)
+        assert isinstance(compiled, matching.FirewallAllow)
         assert compiled.match_info["permission"] == "repo-admin"
 
     def test_denied_permission_names_keep_encounter_order_and_deduplicate(self):
@@ -395,7 +394,7 @@ class TestCompiledFirewallMatching:
         )
 
         self._assert_same_result(raw, compiled)
-        assert isinstance(compiled, FirewallBlock)
+        assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.permissions == ("repo-read", "repo-admin")
         assert compiled.reason == "permission_denied"
 
@@ -421,7 +420,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallBlock)
+        assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
@@ -447,7 +446,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallBlock)
+        assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
@@ -480,7 +479,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallBlock)
+        assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ("repo-read",)
         assert result.reason == "permission_denied"
 
@@ -513,7 +512,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallAllow)
+        assert isinstance(result, matching.FirewallAllow)
         assert result.match_info["permission"] == "repo-read"
 
     def test_malformed_rules_shape_fails_closed_without_compile_error(self):
@@ -538,7 +537,7 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, FirewallBlock)
+        assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
@@ -574,5 +573,5 @@ class TestCompiledFirewallMatching:
                 policies,
             )
 
-        assert isinstance(result, FirewallAllow)
+        assert isinstance(result, matching.FirewallAllow)
         assert spy.call_count == 1
