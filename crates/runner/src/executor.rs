@@ -3866,6 +3866,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_appends_stream_limit_marker_after_oom_rewrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"partial stdout".to_vec(),
+            truncated: true,
+        }]);
+        overrides.push_wait_process_exit(ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new()));
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "dmesg".to_string(),
+            exit_code: 0,
+            stdout: b"Out of memory: Killed process 1234".to_vec(),
+            stderr: Vec::new(),
+        });
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+            .await
+            .unwrap();
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            error_msg.as_deref(),
+            Some("Agent process killed by OOM killer")
+        );
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let mut expected = b"partial stdout\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        assert_eq!(system_log, expected);
+    }
+
+    #[tokio::test]
     async fn execute_inner_passes_device_rate_limits_to_sandbox_create() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
