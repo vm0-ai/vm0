@@ -464,18 +464,23 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
     "data-automation-infrastructure",
   ];
 
-/**
- * Base configuration shape for all connector types.
- */
-export interface ConnectorConfig {
+type ConnectorAuthMethodsBase = Partial<
+  Record<Exclude<ConnectorAuthMethodType, "oauth">, ConnectorAuthMethodConfig>
+>;
+
+type ConnectorAuthMethodsWithOAuth = ConnectorAuthMethodsBase & {
+  readonly oauth: ConnectorAuthMethodConfig;
+};
+
+type ConnectorAuthMethodsWithoutOAuth = ConnectorAuthMethodsBase & {
+  readonly oauth?: never;
+};
+
+type ConnectorConfigBase = {
   readonly label: string;
   readonly helpText: string;
   readonly category: ConnectorDisplayCategory;
-  readonly authMethods: Partial<
-    Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
-  >;
   readonly defaultAuthMethod?: ConnectorAuthMethodType;
-  readonly oauth?: ConnectorOAuthConfig;
   readonly cliAuth?: ConnectorCliAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
@@ -490,7 +495,20 @@ export interface ConnectorConfig {
    * `environmentMapping` keys, or `authMethods[*].secrets` keys.
    */
   readonly tags?: readonly string[];
-}
+};
+
+/**
+ * Base configuration shape for all connector types.
+ */
+export type ConnectorConfig =
+  | (ConnectorConfigBase & {
+      readonly authMethods: ConnectorAuthMethodsWithOAuth;
+      readonly oauth: ConnectorOAuthConfig;
+    })
+  | (ConnectorConfigBase & {
+      readonly authMethods: ConnectorAuthMethodsWithoutOAuth;
+      readonly oauth?: never;
+    });
 
 /**
  * Connector type configuration
@@ -743,8 +761,7 @@ export type ConnectorBrowserVerificationCliAuthConnectorType = {
     : never;
 }[ConnectorCliAuthConnectorType];
 
-export const CONNECTOR_TYPES: Record<ConnectorType, ConnectorConfig> =
-  CONNECTOR_TYPES_DEF;
+export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const connectorTypeSchema = z.enum(
   Object.keys(CONNECTOR_TYPES_DEF) as [ConnectorType, ...ConnectorType[]],
 );

@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -42,11 +42,7 @@ export async function exchangeVercelCode(
   code: string,
   redirectUri: string,
 ): Promise<VercelTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("vercel");
-  if (!oauthConfig) {
-    throw new Error("Vercel OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("vercel");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

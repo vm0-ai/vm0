@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -30,11 +30,7 @@ export function buildSentryAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
-  if (!oauthConfig) {
-    throw new Error("Sentry OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("sentry");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -56,11 +52,7 @@ export async function exchangeSentryCode(
   code: string,
   redirectUri: string,
 ): Promise<SentryTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
-  if (!oauthConfig) {
-    throw new Error("Sentry OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("sentry");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -132,11 +124,7 @@ export async function refreshSentryToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SentryRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("sentry");
-  if (!oauthConfig) {
-    throw new Error("Sentry OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("sentry");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

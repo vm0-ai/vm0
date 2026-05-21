@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,11 +32,7 @@ export function buildMondayAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("monday");
-  if (!oauthConfig) {
-    throw new Error("Monday.com OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("monday");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,11 +54,7 @@ export async function exchangeMondayCode(
   code: string,
   redirectUri: string,
 ): Promise<MondayTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("monday");
-  if (!oauthConfig) {
-    throw new Error("Monday.com OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("monday");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -120,11 +112,7 @@ export async function refreshMondayToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<MondayRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("monday");
-  if (!oauthConfig) {
-    throw new Error("Monday.com OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("monday");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

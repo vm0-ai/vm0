@@ -6,6 +6,7 @@ import {
   type ConnectorGenerationType,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { getConnectorGenerationTypes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
@@ -255,8 +256,8 @@ function getBuiltInCommand(
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
   const available = new Set<ConnectorGenerationType>();
-  for (const config of Object.values(CONNECTOR_TYPES)) {
-    for (const generationType of config.generation ?? []) {
+  for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+    for (const generationType of getConnectorGenerationTypes(type)) {
       available.add(generationType);
     }
   }
@@ -286,8 +287,8 @@ function getGenerationConnectors(
   return (
     Object.entries(CONNECTOR_TYPES) as Array<[ConnectorType, ConnectorConfig]>
   )
-    .filter(([, config]) => {
-      return config.generation?.includes(generationType) === true;
+    .filter(([type]) => {
+      return getConnectorGenerationTypes(type).includes(generationType);
     })
     .sort(([a], [b]) => {
       return a.localeCompare(b);

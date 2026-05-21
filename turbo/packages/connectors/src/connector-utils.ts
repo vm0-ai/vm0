@@ -7,9 +7,11 @@ import {
   type ConnectorCliAuthConfig,
   type ConnectorCliAuthFlow,
   type ConnectorConfig,
+  type ConnectorGenerationType,
   type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
   type ConnectorType,
+  type OAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 
@@ -51,7 +53,8 @@ export function getConnectorAuthMethod(
 function getConnectorCliAuthConfig(
   type: ConnectorType,
 ): ConnectorCliAuthConfig | undefined {
-  return CONNECTOR_TYPES[type].cliAuth;
+  const config = CONNECTOR_TYPES[type];
+  return "cliAuth" in config ? config.cliAuth : undefined;
 }
 
 /**
@@ -76,6 +79,18 @@ function getConnectorDefaultAuthMethod(
   type: ConnectorType,
 ): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
+}
+
+export function getConnectorGenerationTypes(
+  type: ConnectorType,
+): readonly ConnectorGenerationType[] {
+  const config = CONNECTOR_TYPES[type];
+  return "generation" in config ? (config.generation ?? []) : [];
+}
+
+export function getConnectorTags(type: ConnectorType): readonly string[] {
+  const config = CONNECTOR_TYPES[type];
+  return "tags" in config ? (config.tags ?? []) : [];
 }
 
 export type ConnectorFeatureStates =
@@ -397,6 +412,12 @@ export function getConnectorOAuthConfig(
 ): ConnectorOAuthConfig | undefined {
   const config = CONNECTOR_TYPES[type];
   return "oauth" in config ? config.oauth : undefined;
+}
+
+export function getOAuthConnectorConfig(
+  type: OAuthConnectorType,
+): ConnectorOAuthConfig {
+  return CONNECTOR_TYPES[type].oauth;
 }
 
 /**

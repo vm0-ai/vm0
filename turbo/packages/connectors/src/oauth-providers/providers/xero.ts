@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,11 +32,7 @@ export function buildXeroAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("xero");
-  if (!oauthConfig) {
-    throw new Error("Xero OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("xero");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,11 +54,7 @@ export async function exchangeXeroCode(
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("xero");
-  if (!oauthConfig) {
-    throw new Error("Xero OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("xero");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -122,11 +114,7 @@ export async function refreshXeroToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<XeroRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("xero");
-  if (!oauthConfig) {
-    throw new Error("Xero OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("xero");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

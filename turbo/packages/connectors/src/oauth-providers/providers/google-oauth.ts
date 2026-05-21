@@ -1,9 +1,20 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import type { OAuthConnectorType } from "@vm0/connectors/connectors";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+
+type GoogleOAuthConnectorType = Extract<
+  OAuthConnectorType,
+  | "gmail"
+  | "google-ads"
+  | "google-calendar"
+  | "google-docs"
+  | "google-drive"
+  | "google-meet"
+  | "google-sheets"
+>;
 
 interface GoogleUserInfo {
   id: string;
@@ -30,16 +41,12 @@ interface GoogleRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildGoogleAuthorizationUrl(
-  connectorType: ConnectorType,
+  connectorType: GoogleOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,17 +65,13 @@ export function buildGoogleAuthorizationUrl(
  * Uses the Google userinfo endpoint to identify the user.
  */
 export async function exchangeGoogleOAuthCode(
-  connectorType: ConnectorType,
+  connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -124,16 +127,12 @@ export async function exchangeGoogleOAuthCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
-  connectorType: ConnectorType,
+  connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
 ): Promise<GoogleRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

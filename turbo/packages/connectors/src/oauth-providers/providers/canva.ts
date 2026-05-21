@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -66,11 +66,7 @@ export async function buildCanvaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
-  if (!oauthConfig) {
-    throw new Error("Canva OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -97,11 +93,7 @@ export async function refreshCanvaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<CanvaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
-  if (!oauthConfig) {
-    throw new Error("Canva OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("canva");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -157,11 +149,7 @@ export async function exchangeCanvaCode(
   redirectUri: string,
   state: string,
 ): Promise<CanvaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("canva");
-  if (!oauthConfig) {
-    throw new Error("Canva OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

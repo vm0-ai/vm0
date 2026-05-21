@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -33,11 +33,7 @@ export function buildStravaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("strava");
-  if (!oauthConfig) {
-    throw new Error("Strava OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("strava");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -59,11 +55,7 @@ export async function exchangeStravaCode(
   clientSecret: string,
   code: string,
 ): Promise<StravaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("strava");
-  if (!oauthConfig) {
-    throw new Error("Strava OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("strava");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -139,11 +131,7 @@ export async function refreshStravaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<StravaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("strava");
-  if (!oauthConfig) {
-    throw new Error("Strava OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("strava");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

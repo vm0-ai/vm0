@@ -1,9 +1,14 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import type { OAuthConnectorType } from "@vm0/connectors/connectors";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
 const MICROSOFT_USERINFO_URL = "https://graph.microsoft.com/v1.0/me";
+
+type MicrosoftOAuthConnectorType = Extract<
+  OAuthConnectorType,
+  "outlook-calendar" | "outlook-mail"
+>;
 
 interface MicrosoftUserInfo {
   id: string;
@@ -30,16 +35,12 @@ interface MicrosoftRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildMicrosoftAuthorizationUrl(
-  connectorType: ConnectorType,
+  connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -57,17 +58,13 @@ export function buildMicrosoftAuthorizationUrl(
  * Uses the Microsoft Graph /me endpoint to identify the user.
  */
 export async function exchangeMicrosoftOAuthCode(
-  connectorType: ConnectorType,
+  connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -123,16 +120,12 @@ export async function exchangeMicrosoftOAuthCode(
  * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
-  connectorType: ConnectorType,
+  connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
 ): Promise<MicrosoftRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig(connectorType);
-  if (!oauthConfig) {
-    throw new Error(`${connectorType} OAuth config not found`);
-  }
-
+  const oauthConfig = getOAuthConnectorConfig(connectorType);
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

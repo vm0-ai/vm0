@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -65,11 +65,7 @@ export async function buildSupabaseAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
-  if (!oauthConfig) {
-    throw new Error("Supabase OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -96,11 +92,7 @@ export async function refreshSupabaseToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<SupabaseRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
-  if (!oauthConfig) {
-    throw new Error("Supabase OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -157,11 +149,7 @@ export async function exchangeSupabaseCode(
   redirectUri: string,
   state: string,
 ): Promise<SupabaseTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("supabase");
-  if (!oauthConfig) {
-    throw new Error("Supabase OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

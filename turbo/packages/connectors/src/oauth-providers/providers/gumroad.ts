@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -29,11 +29,7 @@ export function buildGumroadAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("gumroad");
-  if (!oauthConfig) {
-    throw new Error("Gumroad OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("gumroad");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -51,11 +47,7 @@ export async function exchangeGumroadCode(
   code: string,
   redirectUri: string,
 ): Promise<GumroadTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("gumroad");
-  if (!oauthConfig) {
-    throw new Error("Gumroad OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("gumroad");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -109,11 +101,7 @@ export async function refreshGumroadToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GumroadRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("gumroad");
-  if (!oauthConfig) {
-    throw new Error("Gumroad OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("gumroad");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

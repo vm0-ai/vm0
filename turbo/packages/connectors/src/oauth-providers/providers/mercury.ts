@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -33,11 +33,7 @@ export function buildMercuryAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
-  if (!oauthConfig) {
-    throw new Error("Mercury OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("mercury");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,11 +54,7 @@ export async function exchangeMercuryCode(
   code: string,
   redirectUri: string,
 ): Promise<MercuryTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
-  if (!oauthConfig) {
-    throw new Error("Mercury OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("mercury");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -121,11 +113,7 @@ export async function refreshMercuryToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<MercuryRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("mercury");
-  if (!oauthConfig) {
-    throw new Error("Mercury OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("mercury");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

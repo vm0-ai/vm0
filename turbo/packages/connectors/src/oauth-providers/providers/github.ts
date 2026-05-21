@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -18,11 +18,7 @@ export function buildGitHubAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("github");
-  if (!oauthConfig) {
-    throw new Error("GitHub OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("github");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -42,11 +38,7 @@ export async function exchangeGitHubCode(
   code: string,
   redirectUri: string,
 ): Promise<{ accessToken: string; scopes: string[] }> {
-  const oauthConfig = getConnectorOAuthConfig("github");
-  if (!oauthConfig) {
-    throw new Error("GitHub OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("github");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

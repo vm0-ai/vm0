@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -30,11 +30,7 @@ export function buildAsanaAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("asana");
-  if (!oauthConfig) {
-    throw new Error("Asana OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("asana");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -55,11 +51,7 @@ export async function exchangeAsanaCode(
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("asana");
-  if (!oauthConfig) {
-    throw new Error("Asana OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("asana");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -166,11 +158,7 @@ export async function refreshAsanaToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<AsanaRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("asana");
-  if (!oauthConfig) {
-    throw new Error("Asana OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("asana");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

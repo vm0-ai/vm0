@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -21,11 +21,7 @@ export function buildIntervalsIcuAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("intervals-icu");
-  if (!oauthConfig) {
-    throw new Error("Intervals.icu OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("intervals-icu");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -47,11 +43,7 @@ export async function exchangeIntervalsIcuCode(
   clientSecret: string,
   code: string,
 ): Promise<IntervalsIcuTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("intervals-icu");
-  if (!oauthConfig) {
-    throw new Error("Intervals.icu OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("intervals-icu");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

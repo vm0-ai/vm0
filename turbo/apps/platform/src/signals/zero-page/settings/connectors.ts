@@ -15,6 +15,7 @@ import {
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethod,
   getConnectorCliAuthModes,
+  getConnectorTags,
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -266,7 +267,7 @@ function buildConnectorTypeStatus(params: {
         : config.label,
     helpText: config.helpText,
     category: config.category,
-    tags: config.tags ?? [],
+    tags: getConnectorTags(params.type),
     connected,
     connector: params.connector,
     availableAuthMethods,

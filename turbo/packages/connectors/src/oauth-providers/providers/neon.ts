@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -33,11 +33,7 @@ export function buildNeonAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("neon");
-  if (!oauthConfig) {
-    throw new Error("Neon OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("neon");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -59,11 +55,7 @@ export async function exchangeNeonCode(
   code: string,
   redirectUri: string,
 ): Promise<NeonTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("neon");
-  if (!oauthConfig) {
-    throw new Error("Neon OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("neon");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -122,11 +114,7 @@ export async function refreshNeonToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<NeonRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("neon");
-  if (!oauthConfig) {
-    throw new Error("Neon OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("neon");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

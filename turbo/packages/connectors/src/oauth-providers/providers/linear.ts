@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -34,11 +34,7 @@ export function buildLinearAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("linear");
-  if (!oauthConfig) {
-    throw new Error("Linear OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("linear");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -62,11 +58,7 @@ export async function exchangeLinearCode(
   code: string,
   redirectUri: string,
 ): Promise<LinearTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("linear");
-  if (!oauthConfig) {
-    throw new Error("Linear OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("linear");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -125,11 +117,7 @@ export async function refreshLinearToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<LinearRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("linear");
-  if (!oauthConfig) {
-    throw new Error("Linear OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("linear");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

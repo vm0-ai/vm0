@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -36,11 +36,7 @@ export function buildRedditAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
-  if (!oauthConfig) {
-    throw new Error("Reddit OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("reddit");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -63,11 +59,7 @@ export async function exchangeRedditCode(
   code: string,
   redirectUri: string,
 ): Promise<RedditTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
-  if (!oauthConfig) {
-    throw new Error("Reddit OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("reddit");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -166,11 +158,7 @@ export async function refreshRedditToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<RedditRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("reddit");
-  if (!oauthConfig) {
-    throw new Error("Reddit OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("reddit");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

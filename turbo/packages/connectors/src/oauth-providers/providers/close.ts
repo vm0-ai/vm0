@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -30,11 +30,7 @@ export function buildCloseAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("close");
-  if (!oauthConfig) {
-    throw new Error("Close OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("close");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,11 +50,7 @@ export async function exchangeCloseCode(
   code: string,
   redirectUri: string,
 ): Promise<CloseTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("close");
-  if (!oauthConfig) {
-    throw new Error("Close OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("close");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -122,11 +114,7 @@ export async function refreshCloseToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<CloseRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("close");
-  if (!oauthConfig) {
-    throw new Error("Close OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("close");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

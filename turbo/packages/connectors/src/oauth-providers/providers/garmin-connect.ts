@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -67,11 +67,7 @@ export async function buildGarminConnectAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
-  if (!oauthConfig) {
-    throw new Error("Garmin Connect OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -96,11 +92,7 @@ export async function exchangeGarminConnectCode(
   code: string,
   state: string,
 ): Promise<GarminConnectTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
-  if (!oauthConfig) {
-    throw new Error("Garmin Connect OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
 
   const response = await fetch(oauthConfig.tokenUrl, {
@@ -162,11 +154,7 @@ export async function refreshGarminConnectToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<GarminConnectRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("garmin-connect");
-  if (!oauthConfig) {
-    throw new Error("Garmin Connect OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("garmin-connect");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

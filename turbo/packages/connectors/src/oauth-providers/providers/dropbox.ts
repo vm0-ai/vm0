@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -34,11 +34,7 @@ export function buildDropboxAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
-  if (!oauthConfig) {
-    throw new Error("Dropbox OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("dropbox");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -61,11 +57,7 @@ export async function exchangeDropboxCode(
   code: string,
   redirectUri: string,
 ): Promise<DropboxTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
-  if (!oauthConfig) {
-    throw new Error("Dropbox OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("dropbox");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -124,11 +116,7 @@ export async function refreshDropboxToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DropboxRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("dropbox");
-  if (!oauthConfig) {
-    throw new Error("Dropbox OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("dropbox");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

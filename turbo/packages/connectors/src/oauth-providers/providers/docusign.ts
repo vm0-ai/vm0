@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -65,11 +65,7 @@ export async function buildDocuSignAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
-  if (!oauthConfig) {
-    throw new Error("DocuSign OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -97,11 +93,7 @@ export async function exchangeDocuSignCode(
   redirectUri: string,
   state: string,
 ): Promise<DocuSignTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
-  if (!oauthConfig) {
-    throw new Error("DocuSign OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
@@ -166,11 +158,7 @@ export async function refreshDocuSignToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<DocuSignRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("docusign");
-  if (!oauthConfig) {
-    throw new Error("DocuSign OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("docusign");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );

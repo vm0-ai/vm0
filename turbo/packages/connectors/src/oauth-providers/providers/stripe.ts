@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,11 +32,7 @@ export function buildStripeAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
-  if (!oauthConfig) {
-    throw new Error("Stripe OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("stripe");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -57,11 +53,7 @@ export async function exchangeStripeCode(
   clientSecret: string,
   code: string,
 ): Promise<StripeTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
-  if (!oauthConfig) {
-    throw new Error("Stripe OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("stripe");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -122,11 +114,7 @@ export async function refreshStripeToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<StripeRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("stripe");
-  if (!oauthConfig) {
-    throw new Error("Stripe OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("stripe");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {

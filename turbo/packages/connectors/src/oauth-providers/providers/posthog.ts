@@ -1,4 +1,4 @@
-import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
+import { getOAuthConnectorConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
 import { throwOAuthError } from "./oauth-error";
 
@@ -32,11 +32,7 @@ export function buildPosthogAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
-  if (!oauthConfig) {
-    throw new Error("PostHog OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("posthog");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -57,11 +53,7 @@ export async function exchangePosthogCode(
   code: string,
   redirectUri: string,
 ): Promise<PosthogTokenResult> {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
-  if (!oauthConfig) {
-    throw new Error("PostHog OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("posthog");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
@@ -119,11 +111,7 @@ export async function refreshPosthogToken(
   clientSecret: string,
   refreshToken: string,
 ): Promise<PosthogRefreshResult> {
-  const oauthConfig = getConnectorOAuthConfig("posthog");
-  if (!oauthConfig) {
-    throw new Error("PostHog OAuth config not found");
-  }
-
+  const oauthConfig = getOAuthConnectorConfig("posthog");
   const response = await fetch(oauthConfig.tokenUrl, {
     method: "POST",
     headers: {
