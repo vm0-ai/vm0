@@ -387,6 +387,303 @@ async function runJxa(script: string): Promise<string> {
   return stdout.trim();
 }
 
+const CG_EVENT_FLAG_SHIFT = 131_072;
+const CG_EVENT_FLAG_CONTROL = 262_144;
+const CG_EVENT_FLAG_OPTION = 524_288;
+const CG_EVENT_FLAG_COMMAND = 1_048_576;
+
+type ComputerUseKeyModifier = "command" | "control" | "option" | "shift";
+
+interface ComputerUseModifierDefinition {
+  readonly name: ComputerUseKeyModifier;
+  readonly displayName: string;
+  readonly keyCode: number;
+  readonly flag: number;
+}
+
+interface ParsedComputerUseKeyPress {
+  readonly keyCode: number;
+  readonly modifiers: readonly {
+    readonly keyCode: number;
+    readonly flag: number;
+  }[];
+  readonly flags: number;
+  readonly normalizedKey: string;
+}
+
+const MODIFIER_DEFINITIONS: readonly ComputerUseModifierDefinition[] = [
+  {
+    name: "command",
+    displayName: "Command",
+    keyCode: 55,
+    flag: CG_EVENT_FLAG_COMMAND,
+  },
+  {
+    name: "control",
+    displayName: "Control",
+    keyCode: 59,
+    flag: CG_EVENT_FLAG_CONTROL,
+  },
+  {
+    name: "option",
+    displayName: "Option",
+    keyCode: 58,
+    flag: CG_EVENT_FLAG_OPTION,
+  },
+  {
+    name: "shift",
+    displayName: "Shift",
+    keyCode: 56,
+    flag: CG_EVENT_FLAG_SHIFT,
+  },
+] as const;
+
+const MODIFIER_ALIASES: Readonly<Record<string, ComputerUseKeyModifier>> =
+  Object.freeze({
+    alt: "option",
+    cmd: "command",
+    command: "command",
+    control: "control",
+    ctrl: "control",
+    meta: "command",
+    option: "option",
+    shift: "shift",
+    super: "command",
+  });
+
+const KEY_CODES: Readonly<Record<string, number>> = Object.freeze({
+  "'": 39,
+  ",": 43,
+  "-": 27,
+  ".": 47,
+  "/": 44,
+  "0": 29,
+  "1": 18,
+  "2": 19,
+  "3": 20,
+  "4": 21,
+  "5": 23,
+  "6": 22,
+  "7": 26,
+  "8": 28,
+  "9": 25,
+  ";": 41,
+  "=": 24,
+  "[": 33,
+  "\\": 42,
+  "]": 30,
+  "`": 50,
+  a: 0,
+  b: 11,
+  backspace: 51,
+  c: 8,
+  d: 2,
+  delete: 51,
+  down: 125,
+  downarrow: 125,
+  e: 14,
+  end: 119,
+  enter: 36,
+  esc: 53,
+  escape: 53,
+  f: 3,
+  f1: 122,
+  f2: 120,
+  f3: 99,
+  f4: 118,
+  f5: 96,
+  f6: 97,
+  f7: 98,
+  f8: 100,
+  f9: 101,
+  f10: 109,
+  f11: 103,
+  f12: 111,
+  forwarddelete: 117,
+  g: 5,
+  h: 4,
+  home: 115,
+  i: 34,
+  j: 38,
+  k: 40,
+  l: 37,
+  left: 123,
+  leftarrow: 123,
+  m: 46,
+  n: 45,
+  o: 31,
+  p: 35,
+  pagedown: 121,
+  pageup: 116,
+  q: 12,
+  r: 15,
+  return: 36,
+  right: 124,
+  rightarrow: 124,
+  s: 1,
+  space: 49,
+  spacebar: 49,
+  t: 17,
+  tab: 48,
+  u: 32,
+  up: 126,
+  uparrow: 126,
+  v: 9,
+  w: 13,
+  x: 7,
+  y: 16,
+  z: 6,
+});
+
+const KEY_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  backspace: "Backspace",
+  delete: "Backspace",
+  down: "Down",
+  downarrow: "Down",
+  enter: "Return",
+  esc: "Escape",
+  escape: "Escape",
+  forwarddelete: "ForwardDelete",
+  left: "Left",
+  leftarrow: "Left",
+  pagedown: "PageDown",
+  pageup: "PageUp",
+  return: "Return",
+  right: "Right",
+  rightarrow: "Right",
+  space: "Space",
+  spacebar: "Space",
+  tab: "Tab",
+  up: "Up",
+  uparrow: "Up",
+});
+
+class UnsupportedComputerUseCommandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedComputerUseCommandError";
+  }
+}
+
+function normalizeKeyToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[\s_-]+/g, "");
+}
+
+function displayKeyToken(token: string): string {
+  if (KEY_DISPLAY_NAMES[token]) {
+    return KEY_DISPLAY_NAMES[token];
+  }
+  if (/^f\d{1,2}$/.test(token)) {
+    return token.toUpperCase();
+  }
+  if (token.length === 1) {
+    return token.toUpperCase();
+  }
+  return token;
+}
+
+function unsupportedCommand(message: string): ComputerUseCommandFailure {
+  return {
+    status: "failed",
+    error: {
+      code: "unsupported_command",
+      message,
+    },
+  };
+}
+
+function parseComputerUseKeyPress(key: string): ParsedComputerUseKeyPress {
+  const rawParts = key.split("+").map((part) => {
+    return part.trim();
+  });
+  if (
+    rawParts.length === 0 ||
+    rawParts.some((part) => {
+      return part.length === 0;
+    })
+  ) {
+    throw new UnsupportedComputerUseCommandError(
+      "keyboard.press_key requires a non-empty key or key combination",
+    );
+  }
+
+  const modifiers = new Set<ComputerUseKeyModifier>();
+  let keyCode: number | null = null;
+  let displayKey: string | null = null;
+
+  for (const rawPart of rawParts) {
+    const token = normalizeKeyToken(rawPart);
+    const modifier = MODIFIER_ALIASES[token];
+    if (modifier) {
+      modifiers.add(modifier);
+      continue;
+    }
+
+    const code = KEY_CODES[token];
+    if (code === undefined) {
+      throw new UnsupportedComputerUseCommandError(
+        `Unsupported key specification: ${rawPart}`,
+      );
+    }
+    if (keyCode !== null) {
+      throw new UnsupportedComputerUseCommandError(
+        "keyboard.press_key supports exactly one non-modifier key",
+      );
+    }
+    keyCode = code;
+    displayKey = displayKeyToken(token);
+  }
+
+  if (keyCode === null || displayKey === null) {
+    throw new UnsupportedComputerUseCommandError(
+      "keyboard.press_key requires a non-modifier key",
+    );
+  }
+
+  const activeModifiers = MODIFIER_DEFINITIONS.filter((modifier) => {
+    return modifiers.has(modifier.name);
+  });
+  return {
+    keyCode,
+    modifiers: activeModifiers.map((modifier) => {
+      return {
+        keyCode: modifier.keyCode,
+        flag: modifier.flag,
+      };
+    }),
+    flags: activeModifiers.reduce((flags, modifier) => {
+      return flags | modifier.flag;
+    }, 0),
+    normalizedKey: [
+      ...activeModifiers.map((modifier) => {
+        return modifier.displayName;
+      }),
+      displayKey,
+    ].join("+"),
+  };
+}
+
+function parseJsonRecord(output: string): Record<string, unknown> {
+  const value = JSON.parse(output) as unknown;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function recordString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
 export function renderAccessibilityTree(
   snapshot: AccessibilityAppStateSnapshot,
 ): string {
@@ -642,7 +939,6 @@ if (processes.length === 0) {
   JSON.stringify({ app: appName, snapshotId, elements: [] });
 } else {
   const process = processes[0];
-  process.frontmost = true;
   enableBestEffortAccessibilityModes(process);
   const windows = process.windows().slice(0, limits.maxWindows);
   JSON.stringify({
@@ -656,6 +952,86 @@ if (processes.length === 0) {
     truncationReasons,
   });
 }
+`;
+}
+
+function targetProcessScript(app: string): string {
+  return `
+const appName = ${jxaString(app)};
+const systemEvents = Application("System Events");
+const processes = systemEvents.processes.whose({ name: appName })();
+if (processes.length === 0) throw new Error("App is not running: " + appName);
+const process = processes[0];
+const pid = Number(process.unixId());
+if (!Number.isFinite(pid) || pid <= 0) {
+  throw new Error("Unable to resolve process id for app: " + appName);
+}
+`;
+}
+
+function targetedKeyPressScript(
+  app: string,
+  parsed: ParsedComputerUseKeyPress,
+): string {
+  return `
+ObjC.import("ApplicationServices");
+${targetProcessScript(app)}
+function postKey(keyCode, keyDown, flags) {
+  const event = $.CGEventCreateKeyboardEvent(null, keyCode, keyDown);
+  $.CGEventSetFlags(event, flags);
+  $.CGEventPostToPid(pid, event);
+  $.CFRelease(event);
+}
+const flags = ${parsed.flags};
+const modifiers = ${JSON.stringify(parsed.modifiers)};
+let activeFlags = 0;
+for (const modifier of modifiers) {
+  activeFlags |= modifier.flag;
+  postKey(modifier.keyCode, true, activeFlags);
+}
+postKey(${parsed.keyCode}, true, flags);
+postKey(${parsed.keyCode}, false, flags);
+for (let index = modifiers.length - 1; index >= 0; index -= 1) {
+  activeFlags &= ~modifiers[index].flag;
+  postKey(modifiers[index].keyCode, false, activeFlags);
+}
+JSON.stringify({ pid });
+`;
+}
+
+const MOUSE_BUTTON_EVENT_CONFIG = Object.freeze({
+  left: { button: 0, down: 1, up: 2 },
+  right: { button: 1, down: 3, up: 4 },
+  middle: { button: 2, down: 25, up: 26 },
+} satisfies Record<
+  ComputerUseMouseButton,
+  { readonly button: number; readonly down: number; readonly up: number }
+>);
+
+function targetedMouseClickScript(
+  app: string,
+  x: number,
+  y: number,
+  button: ComputerUseMouseButton,
+  clickCount: number,
+): string {
+  const events = MOUSE_BUTTON_EVENT_CONFIG[button];
+  return `
+ObjC.import("ApplicationServices");
+${targetProcessScript(app)}
+const point = $.CGPointMake(${x}, ${y});
+function postMouseEvent(type, clickState) {
+  const event = $.CGEventCreateMouseEvent(null, type, point, ${events.button});
+  $.CGEventSetIntegerValueField(event, $.kCGMouseEventClickState, clickState);
+  $.CGEventPostToPid(pid, event);
+  $.CFRelease(event);
+}
+for (let clickIndex = 1; clickIndex <= ${clickCount}; clickIndex += 1) {
+  postMouseEvent(${events.down}, clickIndex);
+  postMouseEvent(${events.up}, clickIndex);
+  if (clickIndex < ${clickCount}) delay(0.05);
+}
+JSON.stringify({ pid });
 `;
 }
 
@@ -791,48 +1167,14 @@ async function openApp(
   runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
   await runJxaCommand(`Application(${jxaString(app)}).activate();`);
-  return { status: "succeeded", result: { app, text: `Opened ${app}` } };
-}
-
-const MOUSE_BUTTON_EVENT_CONFIG = Object.freeze({
-  left: { button: 0, down: 1, up: 2 },
-  right: { button: 1, down: 3, up: 4 },
-  middle: { button: 2, down: 25, up: 26 },
-} satisfies Record<
-  ComputerUseMouseButton,
-  { readonly button: number; readonly down: number; readonly up: number }
->);
-
-function quartzMouseClickScript(args: {
-  readonly x: number;
-  readonly y: number;
-  readonly button: ComputerUseMouseButton;
-  readonly clickCount: number;
-}): string {
-  const events = MOUSE_BUTTON_EVENT_CONFIG[args.button];
-  return `
-ObjC.import("ApplicationServices");
-const point = $.CGPointMake(${args.x}, ${args.y});
-function postMouseEvent(type, clickState) {
-  const event = $.CGEventCreateMouseEvent(null, type, point, ${events.button});
-  $.CGEventSetIntegerValueField(event, $.kCGMouseEventClickState, clickState);
-  $.CGEventPost($.kCGHIDEventTap, event);
-  $.CFRelease(event);
-}
-for (let clickIndex = 1; clickIndex <= ${args.clickCount}; clickIndex += 1) {
-  postMouseEvent(${events.down}, clickIndex);
-  postMouseEvent(${events.up}, clickIndex);
-  if (clickIndex < ${args.clickCount}) delay(0.05);
-}
-`;
-}
-
-function unsupportedCommand(message: string): ComputerUseCommandFailure {
   return {
-    status: "failed",
-    error: {
-      code: "unsupported_command",
-      message,
+    status: "succeeded",
+    result: {
+      app,
+      dispatchMode: "app_activation",
+      dispatchTarget: "target_app",
+      inputRisk: "activates_app",
+      text: `Opened ${app}`,
     },
   };
 }
@@ -924,6 +1266,9 @@ element.click();
         elementId: args.elementId,
         button: args.button,
         clickCount: args.clickCount,
+        dispatchMode: "accessibility_action",
+        dispatchTarget: "element",
+        inputRisk: "targeted_app_action",
         text: `Clicked ${args.elementId}`,
       },
     };
@@ -942,12 +1287,13 @@ element.click();
       return screenPoint;
     }
     await args.runJxaCommand(
-      quartzMouseClickScript({
-        x: screenPoint.screenX,
-        y: screenPoint.screenY,
-        button: args.button,
-        clickCount: args.clickCount,
-      }),
+      targetedMouseClickScript(
+        args.app,
+        screenPoint.screenX,
+        screenPoint.screenY,
+        args.button,
+        args.clickCount,
+      ),
     );
     return {
       status: "succeeded",
@@ -960,6 +1306,9 @@ element.click();
         screenY: screenPoint.screenY,
         button: args.button,
         clickCount: args.clickCount,
+        dispatchMode: "targeted_mouse_event",
+        dispatchTarget: "app_process",
+        inputRisk: "targeted_app_pointer",
         text: `Clicked ${args.x},${args.y}`,
       },
     };
@@ -981,7 +1330,14 @@ element.value = ${jxaString(value)};
 `);
   return {
     status: "succeeded",
-    result: { app, elementId, text: `Set ${elementId}` },
+    result: {
+      app,
+      elementId,
+      dispatchMode: "accessibility_value",
+      dispatchTarget: "element",
+      inputRisk: "targeted_app_text",
+      text: `Set ${elementId}`,
+    },
   };
 }
 
@@ -997,7 +1353,15 @@ element.actions.byName(${jxaString(action)}).perform();
 `);
   return {
     status: "succeeded",
-    result: { app, elementId, action, text: `Performed ${action}` },
+    result: {
+      app,
+      elementId,
+      action,
+      dispatchMode: "accessibility_action",
+      dispatchTarget: "element",
+      inputRisk: "targeted_app_action",
+      text: `Performed ${action}`,
+    },
   };
 }
 
@@ -1005,12 +1369,80 @@ async function typeText(
   app: string,
   text: string,
   runJxaCommand: RunJxa,
-): Promise<ComputerUseCommandSuccess> {
-  await runJxaCommand(`
-Application(${jxaString(app)}).activate();
-Application("System Events").keystroke(${jxaString(text)});
+): Promise<ComputerUseCommandExecutionResult> {
+  const output = await runJxaCommand(`
+const inputText = ${jxaString(text)};
+${targetProcessScript(app)}
+function safeString(read) {
+  try {
+    const value = read();
+    if (value === undefined || value === null) return undefined;
+    return String(value);
+  } catch (_error) {
+    return undefined;
+  }
+}
+function focusedElement(process) {
+  try {
+    return process.attributes.byName("AXFocusedUIElement").value();
+  } catch (_error) {
+    return null;
+  }
+}
+const element = focusedElement(process);
+if (!element) {
+  JSON.stringify({
+    status: "failed",
+    message: "keyboard.type_text requires a focused editable text element in " + appName,
+  });
+} else {
+  const role = safeString(() => element.role());
+  const description = safeString(() => element.description());
+  const editableRoles = [
+    "AXComboBox",
+    "AXSearchField",
+    "AXTextArea",
+    "AXTextField",
+    "AXTextView",
+  ];
+  const editable = editableRoles.includes(role);
+  if (!editable) {
+    JSON.stringify({
+      status: "failed",
+      message: "keyboard.type_text requires a focused editable text element in " + appName,
+      role,
+      description,
+    });
+  } else {
+    const currentValue = safeString(() => element.value()) ?? "";
+    element.value = currentValue + inputText;
+    JSON.stringify({
+      status: "succeeded",
+      role,
+      description,
+    });
+  }
+}
 `);
-  return { status: "succeeded", result: { app, text: "Typed text" } };
+  const result = parseJsonRecord(output);
+  if (result.status === "failed") {
+    return unsupportedCommand(
+      recordString(result, "message") ??
+        "keyboard.type_text requires a focused editable text element",
+    );
+  }
+
+  return {
+    status: "succeeded",
+    result: {
+      app,
+      dispatchMode: "accessibility_value",
+      dispatchTarget: "focused_editable_element",
+      inputRisk: "targeted_app_text",
+      role: recordString(result, "role"),
+      text: "Typed text",
+    },
+  };
 }
 
 async function pressKey(
@@ -1018,11 +1450,19 @@ async function pressKey(
   key: string,
   runJxaCommand: RunJxa,
 ): Promise<ComputerUseCommandSuccess> {
-  await runJxaCommand(`
-Application(${jxaString(app)}).activate();
-Application("System Events").keystroke(${jxaString(key)});
-`);
-  return { status: "succeeded", result: { app, key, text: `Pressed ${key}` } };
+  const parsed = parseComputerUseKeyPress(key);
+  await runJxaCommand(targetedKeyPressScript(app, parsed));
+  return {
+    status: "succeeded",
+    result: {
+      app,
+      key: parsed.normalizedKey,
+      dispatchMode: "targeted_keyboard_event",
+      dispatchTarget: "app_process",
+      inputRisk: "targeted_app_shortcut",
+      text: `Pressed ${parsed.normalizedKey}`,
+    },
+  };
 }
 
 async function scrollElement(
@@ -1047,7 +1487,16 @@ if (scrollBars.length > 0) {
 `);
   return {
     status: "succeeded",
-    result: { app, elementId, direction, pages, text: `Scrolled ${elementId}` },
+    result: {
+      app,
+      elementId,
+      direction,
+      pages,
+      dispatchMode: "accessibility_action",
+      dispatchTarget: "element",
+      inputRisk: "targeted_app_action",
+      text: `Scrolled ${elementId}`,
+    },
   };
 }
 
@@ -1217,6 +1666,9 @@ export async function executeComputerUseCommand(
         : missingField("key");
     }
   } catch (error) {
+    if (error instanceof UnsupportedComputerUseCommandError) {
+      return unsupportedCommand(error.message);
+    }
     return {
       status: "failed",
       error: {

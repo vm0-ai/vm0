@@ -217,11 +217,40 @@ function redactedResultForAudit(
   if (!result) {
     return null;
   }
+  const redacted: Record<string, unknown> = {};
+  for (const key of [
+    "action",
+    "app",
+    "button",
+    "clickCount",
+    "direction",
+    "dispatchMode",
+    "dispatchTarget",
+    "elementId",
+    "inputRisk",
+    "key",
+    "pages",
+    "role",
+    "x",
+    "y",
+  ]) {
+    const value = result[key];
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      redacted[key] = value;
+    }
+  }
   if (typeof result.text === "string") {
-    return { textLength: result.text.length };
+    redacted.textLength = result.text.length;
   }
   if (typeof result.screenshot === "string") {
-    return { screenshot: "[redacted]" };
+    redacted.screenshot = "[redacted]";
+  }
+  if (Object.keys(redacted).length > 0) {
+    return redacted;
   }
   return result;
 }

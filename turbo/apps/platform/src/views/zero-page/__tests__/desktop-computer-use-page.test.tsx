@@ -51,6 +51,10 @@ function computerUseState(): TestDesktopComputerUseState {
           app: "Safari",
           event: "created",
           approvalOutcome: null,
+          redactedResult: {
+            dispatchMode: "targeted_mouse_event",
+            inputRisk: "targeted_app_pointer",
+          },
           createdAt: "2026-05-20T00:02:00.000Z",
         },
       ],
@@ -132,8 +136,58 @@ describe("zero desktop Computer Use page", () => {
     expect(screen.getByText("host-1")).toBeInTheDocument();
     expect(screen.getAllByText("element.click")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Safari")[0]).toBeInTheDocument();
-    expect(screen.queryByText("Pending approvals")).not.toBeInTheDocument();
-    expect(screen.queryByText("Approve")).not.toBeInTheDocument();
+    expect(screen.getByText("Pending approvals")).toBeInTheDocument();
+    expect(screen.getByText("targeted pointer")).toBeInTheDocument();
+    expect(screen.getByText("targeted_mouse_event")).toBeInTheDocument();
+    expect(screen.getByText("targeted_app_pointer")).toBeInTheDocument();
+    expect(screen.getByText("Approve")).toBeInTheDocument();
+  });
+
+  it("submits pending approval decisions through the native bridge", async () => {
+    const user = userEvent.setup();
+    const state = computerUseState();
+    const decideCommand = vi.fn(() => {
+      return Promise.resolve(state);
+    });
+    installDesktopComputerUseApi({
+      getState() {
+        return Promise.resolve(state);
+      },
+      start() {
+        return Promise.resolve(state);
+      },
+      requestAccessibilityPermission() {
+        return Promise.resolve(state);
+      },
+      openAccessibilitySettings() {
+        return Promise.resolve();
+      },
+      openScreenRecordingSettings() {
+        return Promise.resolve();
+      },
+      decideCommand,
+      subscribe() {
+        return () => {};
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/computer-use",
+      featureSwitches: {
+        [FeatureSwitchKey.ComputerUse]: true,
+      },
+    });
+
+    await screen.findByRole("heading", { name: "Computer Use" });
+    await user.click(buttonByText("Approve"));
+
+    await waitFor(() => {
+      expect(decideCommand).toHaveBeenCalledWith({
+        commandId: "command-1",
+        decision: "approve",
+      });
+    });
   });
 
   it("runs native permission onboarding actions", async () => {

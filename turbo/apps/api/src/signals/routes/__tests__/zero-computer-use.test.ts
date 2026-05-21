@@ -354,7 +354,12 @@ describe("desktop computer-use runtime", () => {
         params: { commandId: created.body.commandId },
         body: {
           status: "succeeded",
-          result: { text: "clicked" },
+          result: {
+            text: "clicked",
+            dispatchMode: "accessibility_action",
+            dispatchTarget: "element",
+            inputRisk: "targeted_app_action",
+          },
         },
         headers: { authorization: `Bearer ${hostToken}` },
       }),
@@ -373,5 +378,11 @@ describe("desktop computer-use runtime", () => {
         })
         .sort(),
     ).toStrictEqual(["completed"]);
+    expect(auditEvents[0]?.redactedResult).toStrictEqual({
+      dispatchMode: "accessibility_action",
+      dispatchTarget: "element",
+      inputRisk: "targeted_app_action",
+      textLength: 7,
+    });
   });
 });

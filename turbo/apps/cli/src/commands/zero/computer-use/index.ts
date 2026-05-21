@@ -322,13 +322,25 @@ function appOption(command: Command): Command {
   return command.requiredOption("--app <name>", "Target app name or bundle id");
 }
 
+function auditMetadataValue(
+  metadata: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function formatAuditEvent(event: ComputerUseAuditEvent): string {
+  const dispatchMode = auditMetadataValue(event.redactedResult, "dispatchMode");
+  const inputRisk = auditMetadataValue(event.redactedResult, "inputRisk");
   return [
     `${event.createdAt} ${event.event} ${event.kind}`,
     `command=${event.commandId}`,
     event.hostId ? `host=${event.hostId}` : null,
     event.app ? `app=${event.app}` : null,
     event.approvalOutcome ? `approval=${event.approvalOutcome}` : null,
+    dispatchMode ? `dispatch=${dispatchMode}` : null,
+    inputRisk ? `risk=${inputRisk}` : null,
   ]
     .filter((part): part is string => {
       return part !== null;
@@ -458,7 +470,10 @@ const pressKeyCommand = appOption(
     new Command()
       .name("press-key")
       .description("Press a key or key combination in the target app")
-      .requiredOption("--key <key>", "Key or key combination to press")
+      .requiredOption(
+        "--key <key>",
+        "Key or key combination to press, for example Command+K or Control+K",
+      )
       .action(
         withErrorHandler(async (options: ComputerUsePressKeyOptions) => {
           await runWriteCommand("keyboard.press_key", options, {

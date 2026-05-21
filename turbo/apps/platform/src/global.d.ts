@@ -78,6 +78,7 @@ interface DesktopComputerUseAuditEvent {
   readonly app: string | null;
   readonly event: "created" | "approved" | "denied" | "completed";
   readonly approvalOutcome: "approved" | "denied" | null;
+  readonly redactedResult?: Record<string, unknown> | null;
   readonly createdAt: string;
 }
 

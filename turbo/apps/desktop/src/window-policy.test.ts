@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
   ComputerUseSnapshotStore,
@@ -772,13 +772,18 @@ describe("computer use desktop runtime", () => {
         screenY: 800,
         button: "right",
         clickCount: 2,
+        dispatchMode: "targeted_mouse_event",
+        dispatchTarget: "app_process",
+        inputRisk: "targeted_app_pointer",
       },
     });
     const clickScript = scripts.at(-1);
     expect(clickScript).toContain("$.CGPointMake(900, 800)");
     expect(clickScript).toContain("$.CGEventCreateMouseEvent");
+    expect(clickScript).toContain("$.CGEventPostToPid(pid, event)");
     expect(clickScript).toContain("postMouseEvent(3, clickIndex)");
-    expect(clickScript).not.toContain("System Events");
+    expect(clickScript).not.toContain("$.CGEventPost($.kCGHIDEventTap");
+    expect(clickScript).not.toContain("systemEvents.click");
   });
 
   it("captures fresh app state for coordinate clicks without a cached snapshot", async () => {
@@ -839,11 +844,15 @@ describe("computer use desktop runtime", () => {
         screenY: 380,
         button: "left",
         clickCount: 1,
+        dispatchMode: "targeted_mouse_event",
+        dispatchTarget: "app_process",
+        inputRisk: "targeted_app_pointer",
       },
     });
     expect(captureCount).toBe(1);
     expect(scripts).toHaveLength(2);
     expect(scripts[1]).toContain("$.CGPointMake(440, 380)");
+    expect(scripts[1]).toContain("$.CGEventPostToPid(pid, event)");
   });
 
   it("requires screen recording permission for app state screenshots", async () => {
@@ -863,6 +872,156 @@ describe("computer use desktop runtime", () => {
       error: {
         code: "screen_recording_unavailable",
         message: "macOS Screen Recording permission is required",
+      },
+    });
+  });
+
+  it("parses press-key combinations before posting targeted input", async () => {
+    const cases = [
+      {
+        key: "Command+K",
+        normalizedKey: "Command+K",
+        keyCodeSnippet: "postKey(40, true, flags)",
+        flagsSnippet: "const flags = 1048576;",
+      },
+      {
+        key: "Control+K",
+        normalizedKey: "Control+K",
+        keyCodeSnippet: "postKey(40, true, flags)",
+        flagsSnippet: "const flags = 262144;",
+      },
+      {
+        key: "Command+Shift+S",
+        normalizedKey: "Command+Shift+S",
+        keyCodeSnippet: "postKey(1, true, flags)",
+        flagsSnippet: "const flags = 1179648;",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const scripts: string[] = [];
+      const result = await executeComputerUseCommand(
+        {
+          id: "cmd_1",
+          kind: "keyboard.press_key",
+          payload: { app: "Safari", key: testCase.key },
+        },
+        { accessibility: true, screenRecording: true },
+        {
+          platform: "darwin",
+          runJxa: async (script) => {
+            scripts.push(script);
+            return JSON.stringify({ pid: 123 });
+          },
+          captureScreenshot: async () => {
+            throw new Error("unexpected screenshot capture");
+          },
+        },
+      );
+
+      expect(result).toMatchObject({
+        status: "succeeded",
+        result: { key: testCase.normalizedKey },
+      });
+      expect(scripts[0]).toContain(testCase.keyCodeSnippet);
+      expect(scripts[0]).toContain(testCase.flagsSnippet);
+    }
+  });
+
+  it("posts press-key combinations to the target process without app activation", async () => {
+    const scripts: string[] = [];
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.press_key",
+        payload: { app: "Safari", key: "Command+K" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        runJxa: async (script) => {
+          scripts.push(script);
+          return JSON.stringify({ pid: 123 });
+        },
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        key: "Command+K",
+        dispatchMode: "targeted_keyboard_event",
+        dispatchTarget: "app_process",
+        inputRisk: "targeted_app_shortcut",
+      },
+    });
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]).toContain("$.CGEventPostToPid(pid, event)");
+    expect(scripts[0]).toContain("postKey(40, true, flags)");
+    expect(scripts[0]).not.toContain("activate()");
+    expect(scripts[0]).not.toContain("keystroke");
+  });
+
+  it("rejects unsupported press-key syntax before dispatching input", async () => {
+    const runJxa = vi.fn<(script: string) => Promise<string>>();
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.press_key",
+        payload: { app: "Safari", key: "Command+Launchpad" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        runJxa,
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message: "Unsupported key specification: Launchpad",
+      },
+    });
+    expect(runJxa).not.toHaveBeenCalled();
+  });
+
+  it("rejects type-text when the target app has no focused editable element", async () => {
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.type_text",
+        payload: { app: "Safari", text: "hello" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        runJxa: async () => {
+          return JSON.stringify({
+            status: "failed",
+            message:
+              "keyboard.type_text requires a focused editable text element in Safari",
+          });
+        },
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(result).toStrictEqual({
+      status: "failed",
+      error: {
+        code: "unsupported_command",
+        message:
+          "keyboard.type_text requires a focused editable text element in Safari",
       },
     });
   });

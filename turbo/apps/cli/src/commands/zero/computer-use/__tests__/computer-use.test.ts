@@ -301,4 +301,48 @@ describe("computer-use command visibility", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('"text": "clicked"');
   });
+
+  it("should include dispatch and input risk metadata in audit output", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/audit-events",
+        () => {
+          return HttpResponse.json({
+            auditEvents: [
+              {
+                id: "audit_1",
+                commandId: "cmd_1",
+                runId: null,
+                hostId: "host_1",
+                kind: "keyboard.press_key",
+                app: "Safari",
+                event: "completed",
+                approvalOutcome: null,
+                redactedResult: {
+                  dispatchMode: "targeted_keyboard_event",
+                  inputRisk: "targeted_app_shortcut",
+                },
+                error: null,
+                createdAt: "2026-05-21T10:00:00.000Z",
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "audit",
+      "--limit",
+      "1",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("dispatch=targeted_keyboard_event");
+    expect(output).toContain("risk=targeted_app_shortcut");
+  });
 });

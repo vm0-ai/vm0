@@ -3,6 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertCircle,
   IconCircleCheck,
+  IconCircleX,
   IconDeviceDesktop,
   IconExternalLink,
   IconLoader2,
@@ -22,6 +23,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  decideDesktopComputerUseCommand$,
   desktopComputerUseData$,
   openDesktopComputerUseAccessibilitySettings$,
   openDesktopComputerUseScreenRecordingSettings$,
@@ -55,6 +57,46 @@ function statusClassName(status: string): string {
     return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
   }
   return "bg-muted text-muted-foreground";
+}
+
+function auditMetadataValue(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function inputRiskLabel(kind: string): string {
+  if (kind === "keyboard.press_key") {
+    return "targeted shortcut";
+  }
+  if (kind === "keyboard.type_text" || kind === "element.set_value") {
+    return "focused text edit";
+  }
+  if (kind === "element.click") {
+    return "targeted pointer";
+  }
+  if (kind === "app.open") {
+    return "app activation";
+  }
+  return "targeted app action";
+}
+
+function inputRiskDescription(kind: string): string {
+  if (kind === "keyboard.press_key") {
+    return "Shortcut events are posted to the target app process.";
+  }
+  if (kind === "keyboard.type_text") {
+    return "Text is written only through the focused editable element.";
+  }
+  if (kind === "element.click") {
+    return "Pointer input targets an accessibility element or target app process.";
+  }
+  if (kind === "app.open") {
+    return "This command can bring the target app forward.";
+  }
+  return "This command mutates the target app through Accessibility.";
 }
 
 function StatusBadge({
@@ -249,6 +291,105 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
+function PendingApprovalsPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [decisionLoadable, decideCommand] = useLoadableSet(
+    decideDesktopComputerUseCommand$,
+  );
+  const pending = decisionLoadable.state === "loading";
+
+  if (state.host.pendingApprovals.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="zero-border bg-card rounded-xl overflow-hidden">
+      <div className="border-b px-5 py-4">
+        <h2 className="text-sm font-semibold text-foreground">
+          Pending approvals
+        </h2>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Command</TableHead>
+            <TableHead>App</TableHead>
+            <TableHead>Input risk</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Decision</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {state.host.pendingApprovals.map((event) => {
+            return (
+              <TableRow key={event.commandId}>
+                <TableCell className="font-medium">{event.kind}</TableCell>
+                <TableCell>{event.app ?? "-"}</TableCell>
+                <TableCell>
+                  <div className="font-medium">
+                    {inputRiskLabel(event.kind)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {inputRiskDescription(event.kind)}
+                  </div>
+                </TableCell>
+                <TableCell>{formatDateTime(event.createdAt)}</TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => {
+                        detach(
+                          decideCommand(
+                            {
+                              commandId: event.commandId,
+                              decision: "approve",
+                            },
+                            pageSignal,
+                          ),
+                          Reason.DomCallback,
+                        );
+                      }}
+                    >
+                      <IconCircleCheck size={15} />
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => {
+                        detach(
+                          decideCommand(
+                            {
+                              commandId: event.commandId,
+                              decision: "deny",
+                            },
+                            pageSignal,
+                          ),
+                          Reason.DomCallback,
+                        );
+                      }}
+                    >
+                      <IconCircleX size={15} />
+                      Deny
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </section>
+  );
+}
+
 function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
   return (
     <section className="zero-border bg-card rounded-xl overflow-hidden">
@@ -267,6 +408,8 @@ function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
             <TableRow>
               <TableHead>Command</TableHead>
               <TableHead>App</TableHead>
+              <TableHead>Dispatch</TableHead>
+              <TableHead>Input risk</TableHead>
               <TableHead>Event</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
@@ -277,6 +420,14 @@ function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
                 <TableRow key={`${event.commandId}-${event.event}`}>
                   <TableCell className="font-medium">{event.kind}</TableCell>
                   <TableCell>{event.app ?? "-"}</TableCell>
+                  <TableCell>
+                    {auditMetadataValue(event.redactedResult, "dispatchMode") ??
+                      "-"}
+                  </TableCell>
+                  <TableCell>
+                    {auditMetadataValue(event.redactedResult, "inputRisk") ??
+                      inputRiskLabel(event.kind)}
+                  </TableCell>
                   <TableCell>
                     {event.event}
                     {event.approvalOutcome ? ` / ${event.approvalOutcome}` : ""}
@@ -364,6 +515,7 @@ function DesktopComputerUsePageBody() {
               />
             </div>
             <RuntimePanel state={dataLoadable.data} />
+            <PendingApprovalsPanel state={dataLoadable.data} />
             <HistoryPanel state={dataLoadable.data} />
           </>
         )}
