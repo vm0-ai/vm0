@@ -188,6 +188,23 @@ impl SandboxCreateTransaction {
         }
     }
 
+    pub(super) fn abort_workspace_rename_after_error(&mut self) -> sandbox::Result<()> {
+        let current = std::mem::take(&mut self.workspace);
+        match current {
+            WorkspaceOwnership::RenameInProgress { slot, .. } => {
+                self.workspace = WorkspaceOwnership::Slot(slot);
+                Ok(())
+            }
+            other => {
+                self.workspace = other;
+                Err(create_transaction_invalid_state(&format!(
+                    "cannot abort workspace rename while workspace state is {}",
+                    self.workspace.state_name()
+                )))
+            }
+        }
+    }
+
     #[cfg(test)]
     fn track_workspace_for_test(&mut self, workspace: PathBuf) -> sandbox::Result<()> {
         if !matches!(self.workspace, WorkspaceOwnership::None) {
@@ -813,6 +830,34 @@ mod tests {
                 "remove_dir:workspace:sandbox-workspace"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn create_transaction_rollback_after_rename_error_preserves_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slot_workspace = tmp.path().join("slot-workspace");
+        let target_workspace = tmp.path().join("sandbox-workspace");
+        tokio::fs::create_dir_all(&slot_workspace).await.unwrap();
+        tokio::fs::write(slot_workspace.join("cow.img"), b"cow")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(&target_workspace).await.unwrap();
+        tokio::fs::write(target_workspace.join("owner.txt"), b"other")
+            .await
+            .unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.track_slot(test_slot("slot", slot_workspace.clone()))
+            .unwrap();
+        tx.begin_workspace_rename(target_workspace.clone()).unwrap();
+        tx.abort_workspace_rename_after_error().unwrap();
+        let cleanup = RecordingCreateRollbackCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(!slot_workspace.exists());
+        assert!(target_workspace.join("owner.txt").exists());
+        assert_eq!(cleanup.events(), vec!["destroy_slot:slot"]);
     }
 
     #[tokio::test]

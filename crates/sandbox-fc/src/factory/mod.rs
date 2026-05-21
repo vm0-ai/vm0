@@ -248,6 +248,7 @@ impl SandboxFactory for FirecrackerFactory {
                 clean_stale_workspace_dir(&id, &target_workspace).await?;
                 let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
                 if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
+                    tx.abort_workspace_rename_after_error()?;
                     return Err(SandboxError::Initialization {
                         phase: SandboxInitializationPhase::SandboxAllocation,
                         message: format!("rename workspace: {e}"),
