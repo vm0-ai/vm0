@@ -19,6 +19,24 @@ from logging_utils import log_proxy_entry
 from .counters import _decrement_reports, _increment_reports
 
 
+def _log_webhook_entry(
+    proxy_log_path: str,
+    level: str,
+    message: str,
+    url: str,
+    log_type: str,
+    payload: dict,
+    attempt: int | None = None,
+    error: str | None = None,
+) -> None:
+    extra: dict = {"type": log_type, "url": url, "payload": payload}
+    if attempt is not None:
+        extra["attempt"] = attempt
+    if error is not None:
+        extra["error"] = error
+    log_proxy_entry(proxy_log_path, level, message, **extra)
+
+
 def _post_webhook(url: str, sandbox_token: str, payload: dict) -> None:
     """POST JSON payload to a platform webhook.  Raises on failure."""
     data = json.dumps(payload).encode()
@@ -68,39 +86,39 @@ def _do_post_webhook_attempts(
     for attempt in range(max_retries + 1):
         try:
             _post_webhook(url, sandbox_token, payload)
-            log_proxy_entry(
+            _log_webhook_entry(
                 proxy_log_path,
                 "info",
                 f"Webhook POST to {url} succeeded",
-                type=log_type,
-                url=url,
+                url,
+                log_type,
+                payload,
                 attempt=attempt + 1,
-                **payload,
             )
             return
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             if attempt < max_retries:
-                log_proxy_entry(
+                _log_webhook_entry(
                     proxy_log_path,
                     "warn",
                     f"Webhook POST to {url} attempt {attempt + 1} failed, retrying: {exc}",
-                    type=log_type,
-                    url=url,
-                    error=str(exc),
+                    url,
+                    log_type,
+                    payload,
                     attempt=attempt + 1,
-                    **payload,
+                    error=str(exc),
                 )
                 time.sleep(0.5)
             else:
-                log_proxy_entry(
+                _log_webhook_entry(
                     proxy_log_path,
                     "error",
                     f"Webhook POST to {url} failed after {attempt + 1} attempts, giving up: {exc}",
-                    type=log_type,
-                    url=url,
-                    error=str(exc),
+                    url,
+                    log_type,
+                    payload,
                     attempt=attempt + 1,
-                    **payload,
+                    error=str(exc),
                 )
         except Exception as exc:
             # Catch-all by design: non-retryable failures (TypeError on
@@ -109,15 +127,15 @@ def _do_post_webhook_attempts(
             # being re-raised into ``ThreadPoolExecutor``'s Future, which
             # would otherwise swallow them silently.  Tightening to
             # specific types would regress this debuggability.
-            log_proxy_entry(
+            _log_webhook_entry(
                 proxy_log_path,
                 "error",
                 f"Webhook POST to {url} failed with non-retryable error: {exc}",
-                type=log_type,
-                url=url,
-                error=str(exc),
+                url,
+                log_type,
+                payload,
                 attempt=attempt + 1,
-                **payload,
+                error=str(exc),
             )
             raise
 
@@ -138,13 +156,13 @@ def _enqueue_webhook(
     falls back to synchronous delivery so the report is not silently lost.
     """
     copied = copy.deepcopy(payload)
-    log_proxy_entry(
+    _log_webhook_entry(
         proxy_log_path,
         "info",
         f"Webhook POST to {url} enqueued",
-        type=log_type,
-        url=url,
-        **copied,
+        url,
+        log_type,
+        copied,
     )
     _increment_reports()
     try:

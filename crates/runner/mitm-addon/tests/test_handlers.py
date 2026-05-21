@@ -5333,6 +5333,26 @@ class TestUsageWebhookDelivery:
         assert "giving up" not in log_text
         assert "non-retryable" in log_text
 
+    def test_programming_error_with_payload_collision_preserves_original_error(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        with patch.object(usage.webhook, "_opener") as mock_opener:
+            mock_opener.open.side_effect = TypeError("boom")
+            with pytest.raises(TypeError, match="boom"):
+                usage.webhook._do_post_webhook_attempts(
+                    "https://api.vm0.ai/x",
+                    "tok",
+                    {"url": "payload-url", "runId": "run-1", "events": []},
+                    str(proxy_log),
+                    "usage",
+                    max_retries=1,
+                )
+            assert mock_opener.open.call_count == 1  # urllib external boundary (#9991)
+
+        entry = json.loads(proxy_log.read_text())
+        assert entry["url"] == "https://api.vm0.ai/x"
+        assert entry["payload"]["url"] == "payload-url"
+        assert "non-retryable" in entry["message"]
+
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)
@@ -5701,6 +5721,38 @@ class TestUsagePendingCounter:
             }
         finally:
             usage.counters._decrement_reports()
+
+    def test_enqueue_logs_payload_collisions_under_payload(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        payload = {
+            "url": "payload-url",
+            "type": "payload-type",
+            "attempt": 99,
+            "error": "payload-error",
+            "runId": "run-1",
+            "events": [],
+        }
+
+        try:
+            with patch.object(usage.webhook.usage_executor, "submit") as mock_submit:
+                usage.webhook._enqueue_webhook(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    payload,
+                    str(proxy_log),
+                    "usage_event",
+                )
+            mock_submit.assert_called_once()
+        finally:
+            usage.counters._decrement_reports()
+
+        entry = json.loads(proxy_log.read_text())
+        assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
+        assert entry["type"] == "usage_event"
+        assert entry["payload"]["url"] == "payload-url"
+        assert entry["payload"]["type"] == "payload-type"
+        assert entry["payload"]["attempt"] == 99
+        assert entry["payload"]["error"] == "payload-error"
 
     def test_submit_failure_rolls_back_pending_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
