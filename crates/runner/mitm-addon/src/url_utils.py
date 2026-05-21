@@ -71,11 +71,12 @@ def _parse_host_authority(authority: str) -> tuple[str, int | None]:
 def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
     """Resolve the authority trusted for firewall/auth decisions.
 
-    In transparent HTTPS mode, mitmproxy's request host can be the
-    ``SO_ORIGINAL_DST`` IP. The TLS SNI is the domain authority used for
+    In transparent mode, mitmproxy's request host is the ``SO_ORIGINAL_DST``
+    destination. For HTTPS, the TLS SNI is the domain authority used for
     upstream TLS, while Host/``:authority`` is only a client assertion. Require
     the HTTP authority to agree with SNI before using the URL for firewall
-    matching or credential injection.
+    matching or credential injection. For non-HTTPS traffic there is no SNI
+    binding, so use the transparent destination host and do not trust Host.
     """
     scheme = flow.request.scheme
     port = flow.request.port
@@ -84,8 +85,11 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
     request_host = flow.request.host
 
     if scheme != "https":
-        host = flow.request.pretty_host
-        return TrustedAuthority(host=host, port=port, url=_build_url(scheme, host, port, path))
+        return TrustedAuthority(
+            host=request_host,
+            port=port,
+            url=_build_url(scheme, request_host, port, path),
+        )
 
     raw_sni = getattr(flow.client_conn, "sni", None)
     sni = raw_sni.strip() if isinstance(raw_sni, str) else None

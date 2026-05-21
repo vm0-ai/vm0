@@ -63,6 +63,16 @@ class TestGetOriginalUrl:
 
         assert exc_info.value.reason == "authority_mismatch"
 
+    def test_http_uses_request_host_not_host_header(self, real_flow, headers):
+        flow = real_flow(
+            scheme="http",
+            host="203.0.113.10",
+            port=80,
+            path="/v1/data",
+            request_headers=headers(("Host", "api.example.com")),
+        )
+        assert get_original_url(flow) == "http://203.0.113.10/v1/data"
+
 
 class TestLogProxyEntry:
     def test_writes_jsonl(self, tmp_path):
