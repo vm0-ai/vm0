@@ -23,7 +23,6 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -41,8 +40,6 @@ const context = testContext();
 const mockApi = createMockApi(context);
 const GITHUB_CONNECT_URL =
   "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id";
-const GITHUB_START_AUTHORIZATION_URL =
-  "https://github.com/login/oauth/authorize?client_id=github-oauth-client-id&redirect_uri=https%3A%2F%2Fwww.vm0.ai%2Fapi%2Fconnectors%2Fgithub%2Fcallback";
 
 function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   const defaults: SlackOrgStatus = {
@@ -65,17 +62,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
   server.use(
     mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
       return respond(200, { ...defaults, ...overrides });
-    }),
-  );
-}
-
-function mockGithubConnectorOauthStart(): void {
-  server.use(
-    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
-      expect(params.type).toBe("github");
-      return respond(200, {
-        authorizationUrl: GITHUB_START_AUTHORIZATION_URL,
-      });
     }),
   );
 }
@@ -264,7 +250,6 @@ describe("works page - GitHub integration card", () => {
     });
     setMockGithubIntegration(integration);
     setMockConnectors([]);
-    mockGithubConnectorOauthStart();
     const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
@@ -308,7 +293,6 @@ describe("works page - GitHub integration card", () => {
     });
     setMockGithubIntegration(integration);
     setMockConnectors([createGithubConnector()]);
-    mockGithubConnectorOauthStart();
     const mockWindow = createMockAuthWindow();
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });

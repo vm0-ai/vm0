@@ -7,7 +7,6 @@ import {
   type GithubLabelTriggerMode,
   type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -233,22 +232,10 @@ export const watchGithubIntegration$ = command(
 );
 
 export const connectGithubInstallation$ = command(
-  async ({ get }, _connectUrl: string, signal: AbortSignal): Promise<void> => {
-    const authWindow = openGithubOAuthWindow();
-    const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
-      apiBase: "www",
-    });
-    const startResult = await accept(
-      startClient.start({
-        params: { type: "github" },
-        body: {},
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
+  (_ctx, connectUrl: string, signal: AbortSignal): void => {
     signal.throwIfAborted();
-
-    const fresh = new URL(startResult.body.authorizationUrl);
+    const authWindow = openGithubOAuthWindow();
+    const fresh = new URL(connectUrl, window.location.origin);
     fresh.searchParams.set("_t", String(Date.now()));
     authWindow.location.href = fresh.toString();
   },

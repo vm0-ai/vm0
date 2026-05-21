@@ -12,6 +12,7 @@ import {
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
 import { pathname$ } from "../../../signals/route.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 
@@ -66,6 +67,33 @@ describe("github settings page", () => {
       expect(screen.getByText("Danger zone")).toBeInTheDocument();
       expect(screen.getByText("Connect")).toBeInTheDocument();
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+  });
+
+  it("refreshes from the route-level GitHub realtime subscription", async () => {
+    const integration = createDefaultMockGithubIntegration({
+      isConnected: false,
+      connectedGithubUserId: null,
+      connectedGithubUsername: null,
+    });
+    setMockGithubIntegration(integration);
+    setupGithubPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(hasSubscription("github:changed")).toBeTruthy();
+    });
+
+    setMockGithubIntegration({
+      ...integration,
+      isConnected: true,
+      connectedGithubUserId: "98765",
+      connectedGithubUsername: "octocat",
+    });
+    triggerAblyEvent("github:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected as @octocat")).toBeInTheDocument();
     });
   });
 
