@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildSpotifyAuthorizationUrl,
   exchangeSpotifyCode,
   getSpotifySecretName,
   refreshSpotifyToken,
 } from "./spotify";
-export const spotifyProvider: OAuthConnectorProvider = {
+export const spotifyProvider = defineConnectorOAuthProvider("spotify", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildSpotifyAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeSpotifyCode(
@@ -36,18 +32,12 @@ export const spotifyProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.SPOTIFY_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.SPOTIFY_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getSpotifySecretName,
   getRefreshSecretName: () => {
     return "SPOTIFY_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshSpotifyToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

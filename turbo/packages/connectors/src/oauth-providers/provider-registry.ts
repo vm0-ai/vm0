@@ -2,9 +2,15 @@ import type {
   ConnectorType,
   OAuthConnectorType,
 } from "@vm0/connectors/connectors";
-import { getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv } from "@vm0/connectors/connector-utils";
+import {
+  getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
+  isStaticConfidentialConnectorOAuthCredentials,
+  isStaticConnectorOAuthCredentials,
+  type ConnectorOAuthCredentials,
+} from "@vm0/connectors/connector-utils";
 import {
   type AuthUrlResult,
+  type ConnectorOAuthProviderFor,
   type OAuthAuthorizeArgs,
   type OAuthExchangeArgs,
   type OAuthRefreshArgs,
@@ -72,6 +78,54 @@ export type {
 export type { ProviderEnv };
 export { providerEnvFromObject, isOAuthRefreshProvider };
 
+type ConnectorOAuthProviderMap = {
+  readonly [Type in OAuthConnectorType]: ConnectorOAuthProviderFor<Type>;
+};
+
+type DispatchAuthorizeProvider = {
+  buildAuthUrl(
+    args: OAuthAuthorizeArgs,
+  ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
+};
+
+type DispatchExchangeProvider = {
+  exchangeCode(args: OAuthExchangeArgs): Promise<OAuthTokenResult>;
+};
+
+type DispatchRefreshProvider = {
+  refreshToken(args: OAuthRefreshArgs): Promise<OAuthRefreshResult>;
+};
+
+function connectorProviderFor<T extends OAuthConnectorType>(
+  type: T,
+): ConnectorOAuthProviderFor<T> {
+  return CONNECTOR_OAUTH_PROVIDERS[type] as ConnectorOAuthProviderFor<T>;
+}
+
+function connectorCredentialArgs(
+  credentials: ConnectorOAuthCredentials,
+): Pick<OAuthExchangeArgs, "clientId" | "clientSecret"> {
+  if (!isStaticConnectorOAuthCredentials(credentials)) {
+    return {};
+  }
+  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
+    return {
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+    };
+  }
+  return { clientId: credentials.clientId };
+}
+
+function assertConfiguredConnectorOAuthCredentials(
+  type: OAuthConnectorType,
+  credentials: ConnectorOAuthCredentials,
+): void {
+  if (!credentials.configured) {
+    throw new Error(`${type} OAuth not configured`);
+  }
+}
+
 export const CONNECTOR_OAUTH_PROVIDERS = {
   ahrefs: ahrefsProvider,
   airtable: airtableProvider,
@@ -118,7 +172,7 @@ export const CONNECTOR_OAUTH_PROVIDERS = {
   xero: xeroProvider,
   zoom: zoomProvider,
   "test-oauth": testOauthProvider,
-} satisfies Record<OAuthConnectorType, OAuthConnectorProvider>;
+} satisfies ConnectorOAuthProviderMap;
 
 export function isOAuthConnectorType(type: string): type is OAuthConnectorType {
   return Object.hasOwn(CONNECTOR_OAUTH_PROVIDERS, type);
@@ -131,6 +185,63 @@ export function getConnectorOAuthProvider(
     return undefined;
   }
   return CONNECTOR_OAUTH_PROVIDERS[type];
+}
+
+export async function buildConnectorOAuthAuthUrl(args: {
+  readonly type: OAuthConnectorType;
+  readonly credentials: ConnectorOAuthCredentials;
+  readonly redirectUri: string;
+  readonly state: string;
+}): Promise<string | AuthUrlResult> {
+  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
+  const provider = connectorProviderFor(
+    args.type,
+  ) as unknown as DispatchAuthorizeProvider;
+  return await provider.buildAuthUrl({
+    ...connectorCredentialArgs(args.credentials),
+    redirectUri: args.redirectUri,
+    state: args.state,
+  });
+}
+
+export async function exchangeConnectorOAuthCode(args: {
+  readonly type: OAuthConnectorType;
+  readonly credentials: ConnectorOAuthCredentials;
+  readonly code: string;
+  readonly redirectUri: string;
+  readonly state: string | undefined;
+  readonly codeVerifier: string | undefined;
+  readonly oauthContext: string | undefined;
+}): Promise<OAuthTokenResult> {
+  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
+  const provider = connectorProviderFor(
+    args.type,
+  ) as unknown as DispatchExchangeProvider;
+  return await provider.exchangeCode({
+    ...connectorCredentialArgs(args.credentials),
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  });
+}
+
+export async function refreshConnectorOAuthToken(args: {
+  readonly type: OAuthConnectorType;
+  readonly credentials: ConnectorOAuthCredentials;
+  readonly refreshToken: string;
+}): Promise<OAuthRefreshResult> {
+  assertConfiguredConnectorOAuthCredentials(args.type, args.credentials);
+  const provider = connectorProviderFor(args.type);
+  if (!isOAuthRefreshProvider(provider)) {
+    throw new Error(`${args.type} OAuth provider does not support refresh`);
+  }
+  const dispatchProvider = provider as unknown as DispatchRefreshProvider;
+  return await dispatchProvider.refreshToken({
+    ...connectorCredentialArgs(args.credentials),
+    refreshToken: args.refreshToken,
+  });
 }
 
 /**

@@ -1,8 +1,4 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
@@ -10,13 +6,13 @@ import {
   refreshLinearToken,
   revokeLinearToken,
 } from "./linear";
-export const linearProvider: OAuthConnectorProvider = {
+export const linearProvider = defineConnectorOAuthProvider("linear", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildLinearAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeLinearCode(
@@ -37,22 +33,16 @@ export const linearProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.LINEAR_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.LINEAR_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getLinearSecretName,
   getRefreshSecretName: () => {
     return "LINEAR_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshLinearToken(clientId, clientSecret, args.refreshToken);
   },
   revokeToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return revokeLinearToken(clientId, clientSecret, args.accessToken);
   },
-};
+});

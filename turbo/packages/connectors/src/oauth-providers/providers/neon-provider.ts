@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildNeonAuthorizationUrl,
   exchangeNeonCode,
   getNeonSecretName,
   refreshNeonToken,
 } from "./neon";
-export const neonProvider: OAuthConnectorProvider = {
+export const neonProvider = defineConnectorOAuthProvider("neon", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildNeonAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeNeonCode(
@@ -36,18 +32,12 @@ export const neonProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.NEON_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.NEON_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getNeonSecretName,
   getRefreshSecretName: () => {
     return "NEON_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshNeonToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

@@ -1,20 +1,16 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildTodoistAuthorizationUrl,
   exchangeTodoistCode,
   getTodoistSecretName,
 } from "./todoist";
-export const todoistProvider: OAuthConnectorProvider = {
+export const todoistProvider = defineConnectorOAuthProvider("todoist", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildTodoistAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeTodoistCode(
@@ -34,11 +30,5 @@ export const todoistProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.TODOIST_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.TODOIST_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getTodoistSecretName,
-};
+});

@@ -5,6 +5,7 @@ import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { reloadEnv } from "../../../../../env";
 import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
+import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { googleAdsProvider } from "@vm0/connectors/oauth-providers/providers/google-ads-provider";
 
@@ -49,20 +50,21 @@ describe("connector/providers/google-ads", () => {
       );
     });
 
-    it("getClientId returns GOOGLE_OAUTH_CLIENT_ID from env", () => {
-      const env = {
+    it("resolves OAuth client credentials from Google env keys", () => {
+      const env: Record<string, string> = {
         GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
-      } as Parameters<typeof googleAdsProvider.getClientId>[0];
-
-      expect(googleAdsProvider.getClientId(env)).toBe("test-client-id");
-    });
-
-    it("getClientSecret returns GOOGLE_OAUTH_CLIENT_SECRET from env", () => {
-      const env = {
         GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
-      } as Parameters<typeof googleAdsProvider.getClientSecret>[0];
+      };
 
-      expect(googleAdsProvider.getClientSecret(env)).toBe("test-client-secret");
+      expect(
+        getConnectorOAuthCredentials("google-ads", (name) => {
+          return env[name];
+        }),
+      ).toMatchObject({
+        configured: true,
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+      });
     });
 
     it("getSecretName returns GOOGLE_ADS_ACCESS_TOKEN", () => {

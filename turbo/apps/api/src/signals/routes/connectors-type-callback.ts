@@ -5,15 +5,13 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   getConnectorOAuthCredentials,
   getOAuthConnectorConfig,
-  isStaticConfidentialConnectorOAuthCredentials,
-  isStaticConnectorOAuthCredentials,
-  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type OAuthConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  exchangeConnectorOAuthCode,
   isOAuthConnectorType,
   CONNECTOR_OAUTH_PROVIDERS,
   type OAuthTokenResult,
@@ -173,22 +171,6 @@ function redirectWithError(
   return response;
 }
 
-function getProviderCredentialArgs(credentials: ConnectorOAuthCredentials): {
-  readonly clientId?: string;
-  readonly clientSecret?: string;
-} {
-  if (!isStaticConnectorOAuthCredentials(credentials)) {
-    return {};
-  }
-  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
-    return {
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-    };
-  }
-  return { clientId: credentials.clientId };
-}
-
 function invalidStateRedirectResponse(origin: string, type: string): Response {
   return redirectWithError(
     origin,
@@ -217,7 +199,6 @@ async function exchangeTokenForConnector(args: {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  const provider = CONNECTOR_OAUTH_PROVIDERS[args.connectorType];
   const credentials = getConnectorOAuthCredentials(
     args.connectorType,
     optionalEnv,
@@ -226,8 +207,9 @@ async function exchangeTokenForConnector(args: {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
-  return await provider.exchangeCode({
-    ...getProviderCredentialArgs(credentials),
+  return await exchangeConnectorOAuthCode({
+    type: args.connectorType,
+    credentials,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,

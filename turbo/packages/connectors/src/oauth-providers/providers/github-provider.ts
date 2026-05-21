@@ -1,8 +1,4 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildGitHubAuthorizationUrl,
   exchangeGitHubCode,
@@ -10,13 +6,13 @@ import {
   getGitHubSecretName,
   revokeGitHubGrant,
 } from "./github";
-export const githubProvider: OAuthConnectorProvider = {
+export const githubProvider = defineConnectorOAuthProvider("github", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildGitHubAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const { accessToken, scopes } = await exchangeGitHubCode(
@@ -28,15 +24,9 @@ export const githubProvider: OAuthConnectorProvider = {
     const userInfo = await fetchGitHubUserInfo(accessToken);
     return { accessToken, scopes, userInfo };
   },
-  getClientId: (e) => {
-    return e.GH_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.GH_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getGitHubSecretName,
   revokeToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return revokeGitHubGrant(clientId, clientSecret, args.accessToken);
   },
-};
+});

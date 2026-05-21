@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildRedditAuthorizationUrl,
   exchangeRedditCode,
   getRedditSecretName,
   refreshRedditToken,
 } from "./reddit";
-export const redditProvider: OAuthConnectorProvider = {
+export const redditProvider = defineConnectorOAuthProvider("reddit", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildRedditAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeRedditCode(
@@ -36,18 +32,12 @@ export const redditProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.REDDIT_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.REDDIT_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getRedditSecretName,
   getRefreshSecretName: () => {
     return "REDDIT_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshRedditToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

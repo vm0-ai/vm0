@@ -3,20 +3,20 @@ import { Buffer } from "node:buffer";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
   getConnectorOAuthCredentials,
-  isStaticConfidentialConnectorOAuthCredentials,
-  isStaticConnectorOAuthCredentials,
   type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import type { OAuthConnectorType } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorOAuthProvider,
+  isOAuthConnectorType,
   isOAuthRefreshProvider,
+  refreshConnectorOAuthToken,
   type ProviderEnv,
 } from "@vm0/connectors/oauth-providers";
 import type {
-  OAuthConnectorProvider,
+  OAuthProviderMetadata,
   OAuthRefreshProvider,
 } from "@vm0/connectors/oauth-providers/provider-types";
 import {
@@ -49,7 +49,7 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 type OAuthSecretSource = "connector" | "model-provider";
 type SecretType = OAuthSecretSource;
 type RegisteredOAuthProvider =
-  | OAuthConnectorProvider
+  | OAuthProviderMetadata
   | ModelProviderOAuthProvider;
 
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
@@ -168,33 +168,24 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
 interface RefreshTokenContext {
   readonly refreshTokenSecret: string;
   readonly currentRefreshToken: string;
-  readonly clientId: string | undefined;
-  readonly clientSecret: string | undefined;
+  readonly clientId?: string;
+  readonly clientSecret?: string;
   readonly accessTokenSecret: string;
   readonly secretUserId: string;
 }
 
-interface PreparedRefreshTokenContext {
-  readonly sourceType: OAuthSecretSource;
-  readonly provider: OAuthRefreshProvider;
-  readonly context: RefreshTokenContext;
-}
-
-function getRefreshCredentialArgs(credentials: ConnectorOAuthCredentials): {
-  readonly clientId: string | undefined;
-  readonly clientSecret: string | undefined;
-} {
-  if (!isStaticConnectorOAuthCredentials(credentials)) {
-    return { clientId: undefined, clientSecret: undefined };
-  }
-  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
-    return {
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
+type PreparedRefreshTokenContext =
+  | {
+      readonly sourceType: "connector";
+      readonly connectorType: OAuthConnectorType;
+      readonly credentials: ConnectorOAuthCredentials;
+      readonly context: RefreshTokenContext;
+    }
+  | {
+      readonly sourceType: "model-provider";
+      readonly provider: OAuthRefreshProvider;
+      readonly context: RefreshTokenContext;
     };
-  }
-  return { clientId: credentials.clientId, clientSecret: undefined };
-}
 
 interface SyncRefreshTokensArgs {
   readonly db: Db;
@@ -284,12 +275,6 @@ function resolveRefreshMetadata(
   };
 }
 
-function getConnectorOAuthProviderByKey(
-  connectorType: string,
-): OAuthConnectorProvider | null {
-  return getConnectorOAuthProvider(connectorType) ?? null;
-}
-
 function getOAuthProviderByKey(
   connectorType: string,
   sourceType: OAuthSecretSource,
@@ -298,7 +283,7 @@ function getOAuthProviderByKey(
     return getModelProviderOAuthProvider(connectorType) ?? null;
   }
 
-  return getConnectorOAuthProviderByKey(connectorType);
+  return getConnectorOAuthProvider(connectorType) ?? null;
 }
 
 function currentProviderEnv(): ProviderEnv {
@@ -629,18 +614,20 @@ function prepareRefreshTokenContext(
     };
   }
 
-  const provider = getConnectorOAuthProviderByKey(args.connectorType);
+  if (!isOAuthConnectorType(args.connectorType)) {
+    L.debug(`${args.connectorType} is not an OAuth connector type, skipping`);
+    return null;
+  }
+  const provider = getConnectorOAuthProvider(args.connectorType);
   if (!provider || !isOAuthRefreshProvider(provider)) {
     return null;
   }
-  const typeResult = connectorTypeSchema.safeParse(args.connectorType);
-  if (!typeResult.success) {
-    L.debug(`${args.connectorType} is not a connector type, skipping`);
-    return null;
-  }
-  const credentials = getConnectorOAuthCredentials(typeResult.data, (name) => {
-    return optionalEnv(name);
-  });
+  const credentials = getConnectorOAuthCredentials(
+    args.connectorType,
+    (name) => {
+      return optionalEnv(name);
+    },
+  );
   if (!credentials?.configured) {
     L.debug(
       `${args.connectorType} OAuth credentials not configured, skipping token refresh`,
@@ -655,12 +642,9 @@ function prepareRefreshTokenContext(
     return null;
   }
 
-  const credentialArgs = getRefreshCredentialArgs(credentials);
   const context: RefreshTokenContext = {
     refreshTokenSecret,
     currentRefreshToken,
-    clientId: credentialArgs.clientId,
-    clientSecret: credentialArgs.clientSecret,
     accessTokenSecret: provider.getSecretName(),
     secretUserId: resolveSecretUserId(
       args.sourceType,
@@ -670,8 +654,9 @@ function prepareRefreshTokenContext(
   };
 
   return {
-    sourceType: args.sourceType,
-    provider,
+    sourceType: "connector",
+    connectorType: args.connectorType,
+    credentials,
     context,
   };
 }
@@ -788,11 +773,18 @@ async function refreshConnectorAccessToken(
     return null;
   }
 
-  const refreshPromise = prepared.provider.refreshToken({
-    clientId: prepared.context.clientId,
-    clientSecret: prepared.context.clientSecret,
-    refreshToken: prepared.context.currentRefreshToken,
-  });
+  const refreshPromise =
+    prepared.sourceType === "connector"
+      ? refreshConnectorOAuthToken({
+          type: prepared.connectorType,
+          credentials: prepared.credentials,
+          refreshToken: prepared.context.currentRefreshToken,
+        })
+      : prepared.provider.refreshToken({
+          clientId: prepared.context.clientId,
+          clientSecret: prepared.context.clientSecret,
+          refreshToken: prepared.context.currentRefreshToken,
+        });
   const refreshResult = await settle(refreshPromise);
 
   if (!refreshResult.ok) {

@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildCanvaAuthorizationUrl,
   exchangeCanvaCode,
   getCanvaSecretName,
   refreshCanvaToken,
 } from "./canva";
-export const canvaProvider: OAuthConnectorProvider = {
+export const canvaProvider = defineConnectorOAuthProvider("canva", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildCanvaAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const state = args.state;
@@ -41,18 +37,12 @@ export const canvaProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.CANVA_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.CANVA_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getCanvaSecretName,
   getRefreshSecretName: () => {
     return "CANVA_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshCanvaToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

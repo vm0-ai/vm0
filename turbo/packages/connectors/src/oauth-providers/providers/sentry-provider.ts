@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildSentryAuthorizationUrl,
   exchangeSentryCode,
   getSentrySecretName,
   refreshSentryToken,
 } from "./sentry";
-export const sentryProvider: OAuthConnectorProvider = {
+export const sentryProvider = defineConnectorOAuthProvider("sentry", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildSentryAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeSentryCode(
@@ -36,18 +32,12 @@ export const sentryProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.SENTRY_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.SENTRY_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getSentrySecretName,
   getRefreshSecretName: () => {
     return "SENTRY_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshSentryToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

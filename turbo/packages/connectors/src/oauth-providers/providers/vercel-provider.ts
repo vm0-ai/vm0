@@ -1,20 +1,16 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildVercelAuthorizationUrl,
   exchangeVercelCode,
   getVercelSecretName,
 } from "./vercel";
-export const vercelProvider: OAuthConnectorProvider = {
+export const vercelProvider = defineConnectorOAuthProvider("vercel", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildVercelAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeVercelCode(
@@ -33,11 +29,5 @@ export const vercelProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.VERCEL_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.VERCEL_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getVercelSecretName,
-};
+});

@@ -1,8 +1,4 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
@@ -10,13 +6,13 @@ import {
   getSlackSecretName,
   revokeSlackToken,
 } from "./slack";
-export const slackProvider: OAuthConnectorProvider = {
+export const slackProvider = defineConnectorOAuthProvider("slack", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildSlackAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const slackResult = await exchangeSlackCode(
@@ -39,15 +35,9 @@ export const slackProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.SLACK_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.SLACK_CLIENT_SECRET;
-  },
   getSecretName: getSlackSecretName,
   revokeToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return revokeSlackToken(clientId, clientSecret, args.accessToken);
   },
-};
+});

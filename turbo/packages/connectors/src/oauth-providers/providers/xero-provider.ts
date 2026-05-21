@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildXeroAuthorizationUrl,
   exchangeXeroCode,
   getXeroSecretName,
   refreshXeroToken,
 } from "./xero";
-export const xeroProvider: OAuthConnectorProvider = {
+export const xeroProvider = defineConnectorOAuthProvider("xero", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildXeroAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeXeroCode(
@@ -36,18 +32,12 @@ export const xeroProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.XERO_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.XERO_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getXeroSecretName,
   getRefreshSecretName: () => {
     return "XERO_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshXeroToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

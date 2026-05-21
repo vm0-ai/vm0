@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
   getGumroadSecretName,
   refreshGumroadToken,
 } from "./gumroad";
-export const gumroadProvider: OAuthConnectorProvider = {
+export const gumroadProvider = defineConnectorOAuthProvider("gumroad", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildGumroadAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeGumroadCode(
@@ -36,18 +32,12 @@ export const gumroadProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.GUMROAD_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.GUMROAD_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getGumroadSecretName,
   getRefreshSecretName: () => {
     return "GUMROAD_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshGumroadToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

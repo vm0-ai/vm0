@@ -1,17 +1,13 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildAirtableAuthorizationUrl,
   exchangeAirtableCode,
   getAirtableSecretName,
   refreshAirtableToken,
 } from "./airtable";
-export const airtableProvider: OAuthConnectorProvider = {
+export const airtableProvider = defineConnectorOAuthProvider("airtable", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildAirtableAuthorizationUrl(
       clientId,
       args.redirectUri,
@@ -19,7 +15,7 @@ export const airtableProvider: OAuthConnectorProvider = {
     );
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const codeVerifier = args.codeVerifier;
@@ -42,18 +38,12 @@ export const airtableProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.AIRTABLE_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.AIRTABLE_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getAirtableSecretName,
   getRefreshSecretName: () => {
     return "AIRTABLE_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshAirtableToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

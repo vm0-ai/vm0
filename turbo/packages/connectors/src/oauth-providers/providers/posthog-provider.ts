@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildPosthogAuthorizationUrl,
   exchangePosthogCode,
   getPosthogSecretName,
   refreshPosthogToken,
 } from "./posthog";
-export const posthogProvider: OAuthConnectorProvider = {
+export const posthogProvider = defineConnectorOAuthProvider("posthog", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildPosthogAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangePosthogCode(
@@ -36,18 +32,12 @@ export const posthogProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.POSTHOG_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.POSTHOG_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getPosthogSecretName,
   getRefreshSecretName: () => {
     return "POSTHOG_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshPosthogToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

@@ -1,21 +1,15 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildTestOAuthAuthorizationUrl,
   exchangeTestOAuthCode,
   fetchTestOAuthUserInfo,
   refreshTestOAuthToken,
   TEST_OAUTH_ACCESS_SECRET_NAME,
-  TEST_OAUTH_CLIENT_ID,
-  TEST_OAUTH_CLIENT_SECRET,
   TEST_OAUTH_REFRESH_SECRET_NAME,
 } from "./test-oauth";
-export const testOauthProvider: OAuthConnectorProvider = {
+export const testOauthProvider = defineConnectorOAuthProvider("test-oauth", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildTestOAuthAuthorizationUrl(
       clientId,
       args.redirectUri,
@@ -23,7 +17,7 @@ export const testOauthProvider: OAuthConnectorProvider = {
     );
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const token = await exchangeTestOAuthCode(
@@ -41,12 +35,6 @@ export const testOauthProvider: OAuthConnectorProvider = {
       userInfo: user,
     };
   },
-  getClientId: () => {
-    return TEST_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: () => {
-    return TEST_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: () => {
     return TEST_OAUTH_ACCESS_SECRET_NAME;
   },
@@ -54,7 +42,7 @@ export const testOauthProvider: OAuthConnectorProvider = {
     return TEST_OAUTH_REFRESH_SECRET_NAME;
   },
   refreshToken: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const refreshToken = args.refreshToken;
     const result = await refreshTestOAuthToken(
       clientId,
@@ -67,4 +55,4 @@ export const testOauthProvider: OAuthConnectorProvider = {
       expiresIn: result.expiresIn,
     };
   },
-};
+});

@@ -1,16 +1,12 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildMailchimpAuthorizationUrl,
   exchangeMailchimpCode,
   getMailchimpSecretName,
 } from "./mailchimp";
-export const mailchimpProvider: OAuthConnectorProvider = {
+export const mailchimpProvider = defineConnectorOAuthProvider("mailchimp", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildMailchimpAuthorizationUrl(
       clientId,
       args.redirectUri,
@@ -18,7 +14,7 @@ export const mailchimpProvider: OAuthConnectorProvider = {
     );
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeMailchimpCode(
@@ -38,11 +34,5 @@ export const mailchimpProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.MAILCHIMP_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.MAILCHIMP_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getMailchimpSecretName,
-};
+});
