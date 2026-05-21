@@ -77,11 +77,6 @@ class TestMatchPath:
         assert matching.match_path("", "") == {}
 
 
-# =========================================================================
-# match_firewall_request
-# =========================================================================
-
-
 class TestMatchHost:
     def test_exact_host(self):
         assert match_host("api.github.com", "api.github.com") == {}
@@ -472,8 +467,3 @@ class TestAnthropicFirewallScope:
     def test_messages_with_query_string_matches(self):
         result = match_base_url(f"{self.BASE}?beta=1", self.BASE)
         assert result == ("/", {})
-
-
-# =========================================================================
-# get_firewall_headers (caching)
-# =========================================================================

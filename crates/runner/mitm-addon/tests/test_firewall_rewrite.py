@@ -717,8 +717,3 @@ class TestAuthQueryInjection:
         assert flow.request.headers["Authorization"] == "Bearer real"
         # No query params should have been added
         assert len(flow.request.query) == 0
-
-
-# =========================================================================
-# Three-level matching (network_policies)
-# =========================================================================

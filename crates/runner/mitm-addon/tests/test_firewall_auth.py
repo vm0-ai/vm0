@@ -1079,8 +1079,3 @@ class TestForwardRequestResourceCleanup:
         ):
             auth._forward_request_sync("https://example.com", "GET", {}, None)
         resp.__exit__.assert_called_once()
-
-
-# =========================================================================
-# auth.base URL rewriting
-# =========================================================================

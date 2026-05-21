@@ -706,11 +706,6 @@ class TestMatchFirewallRequest:
         assert result is None
 
 
-# =========================================================================
-# match_host
-# =========================================================================
-
-
 class TestMatchFirewallRequestMixedSegments:
     def test_mixed_base_and_rule_round_trip(self):
         """End-to-end: base URL with mixed {repo}.git segment,
