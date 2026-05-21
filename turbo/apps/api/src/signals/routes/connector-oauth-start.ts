@@ -61,9 +61,9 @@ export function resolveConnectorOAuthStartType(
   return { ok: true, type };
 }
 
-// This helper intentionally prepares only provider-specific data. Callers must
-// resolve the route's ConnectorType first so non-OAuth connectors keep their
-// existing route-specific error responses.
+// Prepare only synchronous OAuth start data. Callers must resolve the route's
+// ConnectorType first so non-OAuth connectors keep their route-specific errors,
+// then build the provider authorization URL at the normal async commit point.
 export function prepareResolvedConnectorOAuthStart(args: {
   readonly type: OAuthConnectorType;
   readonly origin: string;
