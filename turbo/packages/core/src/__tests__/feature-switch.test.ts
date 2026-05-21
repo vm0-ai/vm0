@@ -128,7 +128,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.CodexDeviceAuth]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
   });
 

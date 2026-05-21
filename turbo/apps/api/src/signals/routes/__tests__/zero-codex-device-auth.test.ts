@@ -148,7 +148,11 @@ function expectOAuthTokenBody(calls: {
   expect(body?.get("code_verifier")).toBe("code_verifier_test");
 }
 
-async function enableCodexDeviceAuth(userId: string, orgId: string) {
+async function setCodexDeviceAuthOverride(
+  userId: string,
+  orgId: string,
+  enabled: boolean,
+) {
   const db = store.set(writeDb$);
   await db
     .insert(userFeatureSwitches)
@@ -156,14 +160,14 @@ async function enableCodexDeviceAuth(userId: string, orgId: string) {
       orgId,
       userId,
       switches: {
-        [FeatureSwitchKey.CodexDeviceAuth]: true,
+        [FeatureSwitchKey.CodexDeviceAuth]: enabled,
       },
     })
     .onConflictDoUpdate({
       target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
       set: {
         switches: {
-          [FeatureSwitchKey.CodexDeviceAuth]: true,
+          [FeatureSwitchKey.CodexDeviceAuth]: enabled,
         },
       },
     });
@@ -258,20 +262,20 @@ describe("Codex device auth routes", () => {
     }
   });
 
-  async function setupUser(role: "org:admin" | "org:member" = "org:admin") {
+  function setupUser(role: "org:admin" | "org:member" = "org:admin") {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     fixtures.push({ userId, orgId });
     mocks.clerk.session(userId, orgId, role);
-    await enableCodexDeviceAuth(userId, orgId);
     return { userId, orgId };
   }
 
-  it("requires the Codex device auth feature switch before contacting OpenAI auth", async () => {
+  it("respects a disabled Codex device auth override before contacting OpenAI auth", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     fixtures.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
+    await setCodexDeviceAuthOverride(userId, orgId, false);
     const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
@@ -287,7 +291,7 @@ describe("Codex device auth routes", () => {
   });
 
   it("rejects member org-scope starts before contacting OpenAI auth", async () => {
-    const { userId, orgId } = await setupUser("org:member");
+    const { userId, orgId } = setupUser("org:member");
     const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
@@ -306,7 +310,7 @@ describe("Codex device auth routes", () => {
   });
 
   it("starts Codex device auth and returns browser confirmation details", async () => {
-    const { userId, orgId } = await setupUser();
+    const { userId, orgId } = setupUser();
     const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
@@ -344,7 +348,7 @@ describe("Codex device auth routes", () => {
   });
 
   it("cancels pending device auth", async () => {
-    const { userId, orgId } = await setupUser();
+    const { userId, orgId } = setupUser();
     mockCodexDeviceAuthHttp();
 
     const start = await accept(
@@ -375,7 +379,7 @@ describe("Codex device auth routes", () => {
   });
 
   it("completes org-scope device auth and imports ChatGPT secrets", async () => {
-    const { userId, orgId } = await setupUser();
+    const { userId, orgId } = setupUser();
     const calls = mockCodexDeviceAuthHttp({ tokenScope: "org" });
 
     const start = await accept(
@@ -418,7 +422,7 @@ describe("Codex device auth routes", () => {
   });
 
   it("completes personal-scope device auth for non-admin members", async () => {
-    const { userId, orgId } = await setupUser("org:member");
+    const { userId, orgId } = setupUser("org:member");
     const calls = mockCodexDeviceAuthHttp({ tokenScope: "personal" });
 
     const start = await accept(
