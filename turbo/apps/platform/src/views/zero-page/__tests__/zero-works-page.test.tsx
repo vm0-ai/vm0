@@ -636,6 +636,37 @@ describe("works page - Phone integration card", () => {
   });
 });
 
+describe("works page - WhatsApp transport card", () => {
+  it("hides WhatsApp when the transport switch is off", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.WhatsAppTransport]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("WhatsApp")).not.toBeInTheDocument();
+  });
+
+  it("shows the WhatsApp entry when the transport switch is on", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPage({
+      featureSwitches: { [FeatureSwitchKey.WhatsAppTransport]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("WhatsApp")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect WhatsApp")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Connect WhatsApp"));
+    await expect(screen.findByRole("dialog")).resolves.toHaveTextContent(
+      "Connect WhatsApp",
+    );
+  });
+});
+
 describe("works page - install and connect button visibility", () => {
   it("shows Install to Slack button when not installed and user is admin (CONN-C-060)", async () => {
     mockSlackAPI({

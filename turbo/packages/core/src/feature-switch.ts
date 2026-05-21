@@ -283,6 +283,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WhatsAppTransport]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show the WhatsApp via Twilio transport entry point while the shared-number connection flow rolls out.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "ethan@vm0.ai",
     description:

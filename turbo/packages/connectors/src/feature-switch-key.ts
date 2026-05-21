@@ -51,6 +51,7 @@ export enum FeatureSwitchKey {
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
   ApiBackend = "apiBackend",
+  WhatsAppTransport = "whatsappTransport",
 
   ZapierConnector = "zapierConnector",
   HostedSites = "hostedSites",

@@ -4,6 +4,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertTriangle,
+  IconBrandWhatsapp,
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
@@ -31,6 +32,10 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
+import {
+  setWhatsAppConnectDialogOpen$,
+  whatsAppConnectDialogOpen$,
+} from "../../signals/zero-page/zero-whatsapp.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -308,6 +313,68 @@ function TelegramCard() {
   );
 }
 
+function WhatsAppCard() {
+  const dialogOpen = useGet(whatsAppConnectDialogOpen$);
+  const setDialogOpen = useSet(setWhatsAppConnectDialogOpen$);
+
+  return (
+    <>
+      <div className="zero-card flex flex-col">
+        <div className="flex items-center gap-4 p-4">
+          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden text-[#25D366]">
+            <IconBrandWhatsapp size={28} stroke={1.7} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-sm font-medium text-foreground">
+                WhatsApp
+              </div>
+            </div>
+            <div className="truncate text-sm text-muted-foreground">
+              WhatsApp messaging through Twilio
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 rounded-lg"
+            aria-label="Connect WhatsApp"
+            onClick={() => {
+              setDialogOpen(true);
+            }}
+          >
+            Connect
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connect WhatsApp</DialogTitle>
+            <DialogDescription>
+              WhatsApp via Twilio is staged behind a rollout switch. The
+              connection flow will use a shared WhatsApp Business number once
+              the backend transport is enabled.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => {
+                setDialogOpen(false);
+              }}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
@@ -316,6 +383,7 @@ export function ZeroWorksPage() {
       : "Zero";
   const features = useGet(featureSwitch$);
   const showGithubCard = features[FeatureSwitchKey.GitHubIntegration] ?? false;
+  const showWhatsApp = features[FeatureSwitchKey.WhatsAppTransport] ?? false;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -336,6 +404,7 @@ export function ZeroWorksPage() {
           {showGithubCard ? <GithubCard /> : null}
           <TelegramCard />
           <AgentPhoneCard />
+          {showWhatsApp ? <WhatsAppCard /> : null}
         </div>
       </main>
     </div>
