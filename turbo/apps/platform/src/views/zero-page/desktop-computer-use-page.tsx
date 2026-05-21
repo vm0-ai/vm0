@@ -22,7 +22,6 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  decideDesktopComputerUseCommand$,
   desktopComputerUseData$,
   openDesktopComputerUseAccessibilitySettings$,
   openDesktopComputerUseScreenRecordingSettings$,
@@ -105,7 +104,7 @@ function PermissionPanel({
 
   return (
     <section className="zero-border bg-card rounded-xl px-5 py-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
             {granted ? (
@@ -119,12 +118,12 @@ function PermissionPanel({
               <h2 className="text-sm font-semibold text-foreground">{title}</h2>
               <StatusBadge status={granted ? "granted" : "missing"} />
             </div>
-            <p className="mt-1 max-w-[620px] text-sm text-muted-foreground">
+            <p className="mt-1 max-w-[680px] text-sm text-muted-foreground">
               {body}
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pl-12">
           {kind === "accessibility" ? (
             <Button
               variant={granted ? "outline" : "default"}
@@ -250,103 +249,6 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
 }
 
-function ApprovalsPanel({
-  state,
-}: {
-  readonly state: DesktopComputerUseState;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const [decisionLoadable, decideCommand] = useLoadableSet(
-    decideDesktopComputerUseCommand$,
-  );
-  const pending = decisionLoadable.state === "loading";
-  return (
-    <section className="zero-border bg-card rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            Pending approvals
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Write commands wait for a local decision before execution.
-          </p>
-        </div>
-        <StatusBadge
-          status={`${state.host.pendingApprovals.length.toString()} pending`}
-        />
-      </div>
-      {state.host.pendingApprovals.length === 0 ? (
-        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-          No pending approvals.
-        </div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Command</TableHead>
-              <TableHead>App</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="w-[170px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {state.host.pendingApprovals.map((approval) => {
-              return (
-                <TableRow key={approval.commandId}>
-                  <TableCell className="font-medium">{approval.kind}</TableCell>
-                  <TableCell>{approval.app ?? "-"}</TableCell>
-                  <TableCell>{formatDateTime(approval.createdAt)}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => {
-                          detach(
-                            decideCommand(
-                              {
-                                commandId: approval.commandId,
-                                decision: "deny",
-                              },
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        }}
-                      >
-                        Deny
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => {
-                          detach(
-                            decideCommand(
-                              {
-                                commandId: approval.commandId,
-                                decision: "approve",
-                              },
-                              pageSignal,
-                            ),
-                            Reason.DomCallback,
-                          );
-                        }}
-                      >
-                        Approve
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
-    </section>
-  );
-}
-
 function HistoryPanel({ state }: { readonly state: DesktopComputerUseState }) {
   return (
     <section className="zero-border bg-card rounded-xl overflow-hidden">
@@ -416,7 +318,7 @@ function DesktopComputerUseHeader() {
             Computer Use
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Desktop host setup, permissions, and command approvals
+            Desktop host setup, permissions, and command execution
           </p>
         </div>
         <Button
@@ -462,7 +364,6 @@ function DesktopComputerUsePageBody() {
               />
             </div>
             <RuntimePanel state={dataLoadable.data} />
-            <ApprovalsPanel state={dataLoadable.data} />
             <HistoryPanel state={dataLoadable.data} />
           </>
         )}

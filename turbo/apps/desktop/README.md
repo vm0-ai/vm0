@@ -9,7 +9,7 @@ permission status.
 
 When the user is signed in and the feature switch is enabled, the main process
 registers a Desktop Computer Use host through the Zero API command queue. It
-uses the Electron session for auth, polls approved commands, executes them with
+uses the Electron session for auth, polls queued commands, executes them with
 macOS Accessibility/JXA, and completes commands back to the API.
 
 ## Development

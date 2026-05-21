@@ -88,12 +88,8 @@ afterEach(() => {
 });
 
 describe("zero desktop Computer Use page", () => {
-  it("renders desktop permissions, runtime state, and approval actions", async () => {
-    const user = userEvent.setup();
+  it("renders desktop permissions, runtime state, and command history", async () => {
     const state = computerUseState();
-    const decideCommand = vi.fn(() => {
-      return Promise.resolve(state);
-    });
     installDesktopComputerUseApi({
       getState() {
         return Promise.resolve(state);
@@ -110,7 +106,9 @@ describe("zero desktop Computer Use page", () => {
       openScreenRecordingSettings() {
         return Promise.resolve();
       },
-      decideCommand,
+      decideCommand() {
+        return Promise.resolve(state);
+      },
       subscribe() {
         return () => {};
       },
@@ -134,17 +132,8 @@ describe("zero desktop Computer Use page", () => {
     expect(screen.getByText("host-1")).toBeInTheDocument();
     expect(screen.getAllByText("element.click")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Safari")[0]).toBeInTheDocument();
-
-    const approveButton = screen.getByText("Approve").closest("button");
-    expect(approveButton).toBeInstanceOf(HTMLButtonElement);
-    await user.click(approveButton as HTMLButtonElement);
-
-    await waitFor(() => {
-      expect(decideCommand).toHaveBeenCalledWith({
-        commandId: "command-1",
-        decision: "approve",
-      });
-    });
+    expect(screen.queryByText("Pending approvals")).not.toBeInTheDocument();
+    expect(screen.queryByText("Approve")).not.toBeInTheDocument();
   });
 
   it("runs native permission onboarding actions", async () => {
