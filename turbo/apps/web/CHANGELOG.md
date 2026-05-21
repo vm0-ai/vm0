@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.382.0](https://github.com/vm0-ai/vm0/compare/web-v12.381.6...web-v12.382.0) (2026-05-21)
+
+
+### Features
+
+* add codex device auth login ([#14286](https://github.com/vm0-ai/vm0/issues/14286)) ([dfb9d35](https://github.com/vm0-ai/vm0/commit/dfb9d35612e6b86d7a0bd0d379180b6818e39f53))
+
+
+### Refactoring
+
+* clarify connector oauth config getters ([#14430](https://github.com/vm0-ai/vm0/issues/14430)) ([66063df](https://github.com/vm0-ai/vm0/commit/66063dfd60f7d97acb110a47fa44c7b1c72135e6))
+* narrow web docs feature switch overrides ([#14439](https://github.com/vm0-ai/vm0/issues/14439)) ([2b5ae3a](https://github.com/vm0-ai/vm0/commit/2b5ae3aad8a00f7e53a34787cfb55c5e06573609))
+* remove stale web volume upload service ([#14441](https://github.com/vm0-ai/vm0/issues/14441)) ([9791aab](https://github.com/vm0-ai/vm0/commit/9791aab3597b69ea7cfaa6a68032760801c20828))
+* type connector oauth provider credentials ([#14409](https://github.com/vm0-ai/vm0/issues/14409)) ([b3bc3f5](https://github.com/vm0-ai/vm0/commit/b3bc3f5b6367b7d90275b56aba16b9373113a4c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.0
+    * @vm0/connectors bumped to 1.26.0
+    * @vm0/core bumped to 8.287.0
+    * @vm0/db bumped to 1.17.6
+
 ## [12.381.6](https://github.com/vm0-ai/vm0/compare/web-v12.381.5...web-v12.381.6) (2026-05-21)
 
 

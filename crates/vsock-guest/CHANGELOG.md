@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.7](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.6...vsock-guest-v0.18.7) (2026-05-21)
+
+
+### Refactoring
+
+* **vsock-guest:** extract reconnect retry policy ([#14437](https://github.com/vm0-ai/vm0/issues/14437)) ([d3b8ece](https://github.com/vm0-ai/vm0/commit/d3b8eceba8d53d88eb6e713d48c0acb810a19772))
+
 ## [0.18.6](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.5...vsock-guest-v0.18.6) (2026-05-21)
 
 

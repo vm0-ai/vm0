@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.8](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.7...vsock-host-v0.17.8) (2026-05-21)
+
+
+### Refactoring
+
+* centralize vsock-host exec dispatch ([#14440](https://github.com/vm0-ai/vm0/issues/14440)) ([f161112](https://github.com/vm0-ai/vm0/commit/f161112789c7441da1d6408e50c22a8281a60e34))
+* centralize vsock-host request lifecycle ([#14419](https://github.com/vm0-ai/vm0/issues/14419)) ([b2832f0](https://github.com/vm0-ai/vm0/commit/b2832f04a37c349df6ca4b0779a5fed3faf9a867))
+
 ## [0.17.7](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.6...vsock-host-v0.17.7) (2026-05-21)
 
 

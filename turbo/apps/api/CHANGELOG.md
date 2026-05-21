@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.63.0](https://github.com/vm0-ai/vm0/compare/api-v1.62.5...api-v1.63.0) (2026-05-21)
+
+
+### Features
+
+* add codex device auth login ([#14286](https://github.com/vm0-ai/vm0/issues/14286)) ([dfb9d35](https://github.com/vm0-ai/vm0/commit/dfb9d35612e6b86d7a0bd0d379180b6818e39f53))
+
+
+### Bug Fixes
+
+* run computer use writes without approval prompts ([#14429](https://github.com/vm0-ai/vm0/issues/14429)) ([42b694c](https://github.com/vm0-ai/vm0/commit/42b694ce02666194ca78cbb834f7eaef2c3f3405))
+
+
+### Refactoring
+
+* clarify connector oauth config getters ([#14430](https://github.com/vm0-ai/vm0/issues/14430)) ([66063df](https://github.com/vm0-ai/vm0/commit/66063dfd60f7d97acb110a47fa44c7b1c72135e6))
+* type connector oauth provider credentials ([#14409](https://github.com/vm0-ai/vm0/issues/14409)) ([b3bc3f5](https://github.com/vm0-ai/vm0/commit/b3bc3f5b6367b7d90275b56aba16b9373113a4c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.0
+    * @vm0/connectors bumped to 1.26.0
+    * @vm0/core bumped to 8.287.0
+    * @vm0/db bumped to 1.17.6
+
 ## [1.62.5](https://github.com/vm0-ai/vm0/compare/api-v1.62.4...api-v1.62.5) (2026-05-21)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.373.0](https://github.com/vm0-ai/vm0/compare/app-v0.372.2...app-v0.373.0) (2026-05-21)
+
+
+### Features
+
+* add codex device auth login ([#14286](https://github.com/vm0-ai/vm0/issues/14286)) ([dfb9d35](https://github.com/vm0-ai/vm0/commit/dfb9d35612e6b86d7a0bd0d379180b6818e39f53))
+
+
+### Bug Fixes
+
+* run computer use writes without approval prompts ([#14429](https://github.com/vm0-ai/vm0/issues/14429)) ([42b694c](https://github.com/vm0-ai/vm0/commit/42b694ce02666194ca78cbb834f7eaef2c3f3405))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.0
+    * @vm0/connectors bumped to 1.26.0
+    * @vm0/core bumped to 8.287.0
+
 ## [0.372.2](https://github.com/vm0-ai/vm0/compare/app-v0.372.1...app-v0.372.2) (2026-05-21)
 
 

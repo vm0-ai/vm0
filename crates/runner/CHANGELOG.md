@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.103.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.3...runner-rs-v0.103.4) (2026-05-21)
+
+
+### Bug Fixes
+
+* **mitm-addon:** filter malformed registry vm entries ([#14434](https://github.com/vm0-ai/vm0/issues/14434)) ([1123ceb](https://github.com/vm0-ai/vm0/commit/1123cebe80005c0435f24a6ff219ce0017aadd8d))
+* **mitm-addon:** reject spoofed host authority ([#14432](https://github.com/vm0-ai/vm0/issues/14432)) ([1ec6e5c](https://github.com/vm0-ai/vm0/commit/1ec6e5c894b757d29a4a044a87207ae69fd178c1))
+* **mitm-addon:** skip empty decoded request body capture ([#14421](https://github.com/vm0-ai/vm0/issues/14421)) ([fa3faf6](https://github.com/vm0-ai/vm0/commit/fa3faf67034fe0248de77d505db77da9213faf81))
+* reject json trailing commas in mitm parser ([#14411](https://github.com/vm0-ai/vm0/issues/14411)) ([c863b19](https://github.com/vm0-ai/vm0/commit/c863b1976cf4a61a5242d84c2126434cb8474661))
+
+
+### Documentation
+
+* **mitm-addon:** document openai responses usage entry points ([#14417](https://github.com/vm0-ai/vm0/issues/14417)) ([d95d180](https://github.com/vm0-ai/vm0/commit/d95d18027a6a3cd86fbef78f105bbabe1f768c41))
+
+
+### Refactoring
+
+* centralize runner log filename patterns ([#14400](https://github.com/vm0-ai/vm0/issues/14400)) ([b24ebce](https://github.com/vm0-ai/vm0/commit/b24ebce2edeb1a978c1a840d6a6a3a00db4ff6ce))
+
+
+### Performance Improvements
+
+* **mitm-addon:** adapt brotli decompression chunk size ([#14418](https://github.com/vm0-ai/vm0/issues/14418)) ([ba9151e](https://github.com/vm0-ai/vm0/commit/ba9151ee894e617ab312047de12cae7a944cf12c))
+
 ## [0.103.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.103.2...runner-rs-v0.103.3) (2026-05-21)
 
 
