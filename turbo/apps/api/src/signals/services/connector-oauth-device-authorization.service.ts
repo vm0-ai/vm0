@@ -101,6 +101,18 @@ const connectorOauthDeviceAuthorizationDisabled = Object.freeze({
   }),
 });
 
+function internalServerError(message: string) {
+  return {
+    status: 500 as const,
+    body: {
+      error: {
+        message,
+        code: "INTERNAL_SERVER_ERROR",
+      },
+    },
+  };
+}
+
 function sessionTokenHash(sessionToken: string): string {
   return createHash("sha256").update(sessionToken).digest("hex");
 }
@@ -150,16 +162,24 @@ function shouldWaitBeforeProviderPoll(
   );
 }
 
+function isFreshPollingSession(session: DeviceSessionRow, now: Date): boolean {
+  return (
+    session.status === "polling" &&
+    session.updatedAt.getTime() > now.getTime() - POLLING_STALE_MS
+  );
+}
+
 function resolveDeviceAuthorizationType(
   type: ConnectorType,
 ):
   | OAuthDeviceAuthorizationConnectorType
-  | ReturnType<typeof badRequestMessage> {
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof internalServerError> {
   if (!getConnectorAuthMethod(type, "oauth")) {
     return badRequestMessage(`${type} connector does not use OAuth`);
   }
   if (!isOAuthConnectorType(type)) {
-    return badRequestMessage(`${type} OAuth provider is not configured`);
+    return internalServerError(`${type} OAuth provider is not configured`);
   }
   if (!isOAuthDeviceAuthorizationConnectorType(type)) {
     return badRequestMessage(
@@ -171,10 +191,12 @@ function resolveDeviceAuthorizationType(
 
 function resolveConfiguredCredentials(
   type: OAuthDeviceAuthorizationConnectorType,
-): ConfiguredConnectorOAuthCredentials | ReturnType<typeof badRequestMessage> {
+):
+  | ConfiguredConnectorOAuthCredentials
+  | ReturnType<typeof internalServerError> {
   const credentials = getConnectorOAuthCredentials(type, optionalEnv);
   if (!credentials?.configured) {
-    return badRequestMessage(`${type} OAuth is not configured`);
+    return internalServerError(`${type} OAuth is not configured`);
   }
   return credentials;
 }
@@ -670,19 +692,16 @@ export const pollConnectorOauthDeviceSession$ = command(
     }
 
     const now = nowDate();
-    if (now > session.expiresAt) {
-      return await expireSession({ writeDb, session, now, signal });
-    }
-
     if (shouldWaitBeforeProviderPoll(session, now)) {
       return pendingResponse(session);
     }
 
-    if (
-      session.status === "polling" &&
-      session.updatedAt.getTime() > now.getTime() - POLLING_STALE_MS
-    ) {
+    if (isFreshPollingSession(session, now)) {
       return pendingResponse(session);
+    }
+
+    if (now > session.expiresAt) {
+      return await expireSession({ writeDb, session, now, signal });
     }
 
     const claimStartedAt = nowDate();

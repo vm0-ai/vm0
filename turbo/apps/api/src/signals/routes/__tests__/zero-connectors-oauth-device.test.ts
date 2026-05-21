@@ -525,6 +525,40 @@ describe("OAuth device authorization connector routes", () => {
     expect(pollCount).toBe(1);
   });
 
+  it("does not expire a session while another runner owns a fresh polling claim", async () => {
+    const { userId, orgId } = await setupUser();
+    const now = nowDate();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+      status: "polling",
+      updatedAt: now,
+      expiresAt: new Date(now.getTime() - 1000),
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceSessionContract,
+    );
+    let pollCount = 0;
+    testOauthDeviceProvider.pollDeviceAuthorization = () => {
+      pollCount += 1;
+      return Promise.resolve({ status: "pending" });
+    };
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ status: "pending", interval: 5 });
+    expect(pollCount).toBe(0);
+    expect((await onlySession(session.id)).status).toBe("polling");
+  });
+
   it("returns terminal completion idempotently without polling the provider again", async () => {
     const { userId, orgId } = await setupUser();
     const session = await createSession({
