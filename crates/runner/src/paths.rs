@@ -341,6 +341,56 @@ pub struct LogPaths {
     dir: PathBuf,
 }
 
+#[derive(Clone, Copy)]
+struct LogFilenamePattern {
+    prefix: &'static str,
+    suffix: &'static str,
+}
+
+impl LogFilenamePattern {
+    fn path(self, dir: &Path, run_id: RunId) -> PathBuf {
+        dir.join(format!("{}{run_id}{}", self.prefix, self.suffix))
+    }
+
+    fn matches(self, name: &str) -> bool {
+        name.starts_with(self.prefix) && name.ends_with(self.suffix)
+    }
+}
+
+const NETWORK_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "network-",
+    suffix: ".jsonl",
+};
+const PROXY_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "proxy-",
+    suffix: ".jsonl",
+};
+const SYSTEM_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "system-",
+    suffix: ".log",
+};
+const METRICS_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "metrics-",
+    suffix: ".jsonl",
+};
+const SANDBOX_OPS_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "sandbox-ops-",
+    suffix: ".jsonl",
+};
+
+const PER_RUN_LOG_PATTERNS: &[LogFilenamePattern] = &[
+    NETWORK_LOG_PATTERN,
+    PROXY_LOG_PATTERN,
+    SYSTEM_LOG_PATTERN,
+    METRICS_LOG_PATTERN,
+    SANDBOX_OPS_LOG_PATTERN,
+];
+
+const RUNNER_INSTANCE_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
+    prefix: "runner-",
+    suffix: ".log",
+};
+
 impl LogPaths {
     pub fn new(dir: PathBuf) -> Self {
         Self { dir }
@@ -351,23 +401,23 @@ impl LogPaths {
     }
 
     pub fn network_log(&self, run_id: RunId) -> PathBuf {
-        self.dir.join(format!("network-{run_id}.jsonl"))
+        NETWORK_LOG_PATTERN.path(&self.dir, run_id)
     }
 
     pub fn proxy_log(&self, run_id: RunId) -> PathBuf {
-        self.dir.join(format!("proxy-{run_id}.jsonl"))
+        PROXY_LOG_PATTERN.path(&self.dir, run_id)
     }
 
     pub fn system_log(&self, run_id: RunId) -> PathBuf {
-        self.dir.join(format!("system-{run_id}.log"))
+        SYSTEM_LOG_PATTERN.path(&self.dir, run_id)
     }
 
     pub fn metrics_log(&self, run_id: RunId) -> PathBuf {
-        self.dir.join(format!("metrics-{run_id}.jsonl"))
+        METRICS_LOG_PATTERN.path(&self.dir, run_id)
     }
 
     pub fn sandbox_ops_log(&self, run_id: RunId) -> PathBuf {
-        self.dir.join(format!("sandbox-ops-{run_id}.jsonl"))
+        SANDBOX_OPS_LOG_PATTERN.path(&self.dir, run_id)
     }
 
     /// Whether `name` matches any GC-eligible log file pattern.
@@ -380,12 +430,10 @@ impl LogPaths {
     }
 
     fn is_final_gc_eligible_log(name: &str) -> bool {
-        (name.starts_with("network-") && name.ends_with(".jsonl"))
-            || (name.starts_with("system-") && name.ends_with(".log"))
-            || (name.starts_with("metrics-") && name.ends_with(".jsonl"))
-            || (name.starts_with("sandbox-ops-") && name.ends_with(".jsonl"))
-            || (name.starts_with("proxy-") && name.ends_with(".jsonl"))
-            || (name.starts_with("runner-") && name.ends_with(".log"))
+        PER_RUN_LOG_PATTERNS
+            .iter()
+            .any(|pattern| pattern.matches(name))
+            || RUNNER_INSTANCE_LOG_PATTERN.matches(name)
     }
 
     fn is_gc_eligible_log_temp(name: &str) -> bool {
@@ -564,15 +612,34 @@ mod tests {
     fn log_paths_structure() {
         let lp = LogPaths::new(PathBuf::from("/test/logs"));
         let id = RunId::nil();
-        assert!(lp.network_log(id).to_string_lossy().contains("network-"));
-        assert!(lp.system_log(id).to_string_lossy().contains("system-"));
-        assert!(lp.metrics_log(id).to_string_lossy().contains("metrics-"));
-        assert!(
-            lp.sandbox_ops_log(id)
-                .to_string_lossy()
-                .contains("sandbox-ops-")
-        );
-        assert!(lp.proxy_log(id).to_string_lossy().contains("proxy-"));
+        let paths = [
+            (
+                lp.network_log(id),
+                PathBuf::from(format!("/test/logs/network-{id}.jsonl")),
+            ),
+            (
+                lp.system_log(id),
+                PathBuf::from(format!("/test/logs/system-{id}.log")),
+            ),
+            (
+                lp.metrics_log(id),
+                PathBuf::from(format!("/test/logs/metrics-{id}.jsonl")),
+            ),
+            (
+                lp.sandbox_ops_log(id),
+                PathBuf::from(format!("/test/logs/sandbox-ops-{id}.jsonl")),
+            ),
+            (
+                lp.proxy_log(id),
+                PathBuf::from(format!("/test/logs/proxy-{id}.jsonl")),
+            ),
+        ];
+
+        for (actual, expected) in paths {
+            assert_eq!(actual, expected);
+            let file_name = actual.file_name().and_then(|name| name.to_str()).unwrap();
+            assert!(LogPaths::is_gc_eligible_log(file_name));
+        }
     }
 
     #[test]
