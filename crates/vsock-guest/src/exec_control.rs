@@ -1599,20 +1599,25 @@ mod tests {
         let (guest, mut host) = UnixStream::pair().unwrap();
         host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
 
-        assert!(
-            sink.try_forward(
-                OwnedExecControlRequest {
-                    response_seq: 17,
-                    target_seq: 9,
-                    deadline: request_deadline(5000),
-                    control_nonce: NONCE,
-                    message_id: "msg-after-close".to_owned(),
-                    payload: b"payload".to_vec(),
-                },
-                GuestWriter::new(guest),
-            )
-            .is_none()
-        );
+        let pending_slot = sink.reserve_pending_slot().unwrap();
+        let worker = std::thread::spawn({
+            let sink = Arc::clone(&sink);
+            move || {
+                forward_control_request(
+                    sink,
+                    pending_slot,
+                    OwnedExecControlRequest {
+                        response_seq: 17,
+                        target_seq: 9,
+                        deadline: request_deadline(5000),
+                        control_nonce: NONCE,
+                        message_id: "msg-after-close".to_owned(),
+                        payload: b"payload".to_vec(),
+                    },
+                    GuestWriter::new(guest),
+                );
+            }
+        });
 
         sink.close();
 
@@ -1622,6 +1627,7 @@ mod tests {
         assert_eq!(status, ExecControlStatus::Inactive);
         assert_eq!(message_id, "msg-after-close");
         assert_eq!(diagnostic, "exec operation is not active");
+        worker.join().unwrap();
         assert_eq!(sink.pending.load(Ordering::Acquire), 0);
         drop(stream_guard);
 
