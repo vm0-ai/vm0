@@ -29,6 +29,7 @@ import {
   isAgentPhoneChannel,
   markdownToImessagePlain,
   resolveAgentPhoneAuditLogsUrl,
+  resolveAgentPhoneReplyFooterText,
   resolveAgentPhoneUserLink,
   saveAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
@@ -157,10 +158,12 @@ async function resolveCompletionText(args: {
 function buildAgentPhoneCompletionText(args: {
   readonly mainText: string;
   readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
 }): string {
   return [
     markdownToImessagePlain(args.mainText),
     args.logsUrl ? formatAgentPhoneAuditLink(args.logsUrl) : null,
+    args.footerText,
   ]
     .filter((part): part is string => {
       return Boolean(part);
@@ -351,11 +354,19 @@ async function handleCompletion(args: {
         signal: args.signal,
       })
     : undefined;
+  const footerText = run
+    ? await resolveAgentPhoneReplyFooterText({
+        db: args.db,
+        orgId: run.orgId,
+        composeId: args.payload.agentId,
+      })
+    : undefined;
   args.signal.throwIfAborted();
 
   const body = buildAgentPhoneCompletionText({
     mainText,
     logsUrl,
+    footerText,
   });
 
   const sendResult = await sendAgentPhoneCompletionMessage({

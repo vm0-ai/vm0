@@ -2173,6 +2173,58 @@ export function markdownToImessagePlain(markdown: string): string {
   return text.trim();
 }
 
+function plainLabel(value: string | null | undefined): string | undefined {
+  const label = value?.trim().replace(/\s+/gu, " ");
+  return label || undefined;
+}
+
+function displayLabel(row: {
+  readonly agentDisplayName: string | null;
+  readonly agentName: string | null;
+  readonly composeName: string;
+}): string {
+  return (
+    plainLabel(row.agentDisplayName) ??
+    plainLabel(row.agentName) ??
+    plainLabel(row.composeName) ??
+    "zero"
+  );
+}
+
+async function resolveComposeLabel(
+  db: ReadonlyDb,
+  composeId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({
+      agentDisplayName: zeroAgents.displayName,
+      agentName: zeroAgents.name,
+      composeName: agentComposes.name,
+    })
+    .from(agentComposes)
+    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  return row ? displayLabel(row) : undefined;
+}
+
+export async function resolveAgentPhoneReplyFooterText(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly composeId: string;
+}): Promise<string | undefined> {
+  const orgDefaultComposeId = await resolveOrgDefaultComposeId(
+    args.db,
+    args.orgId,
+  );
+  if (!orgDefaultComposeId || args.composeId === orgDefaultComposeId) {
+    return undefined;
+  }
+
+  const label = await resolveComposeLabel(args.db, args.composeId);
+  return label ? `Responded by ${label}` : undefined;
+}
+
 export async function resolveAgentPhoneAuditLogsUrl(args: {
   readonly getFeatureOverrides: (
     orgId: string,
