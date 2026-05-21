@@ -5,6 +5,7 @@ import io
 import json
 import time
 import urllib.error
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
@@ -1591,10 +1592,17 @@ class TestGetFirewallHeaders:
             task = asyncio.create_task(
                 auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
             )
-            await fetch_entered.wait()
-            auth.request_force_refresh(cache_key)
-            allow_fetch_return.set()
-            result = await task
+            try:
+                await asyncio.wait_for(fetch_entered.wait(), timeout=5)
+                auth.request_force_refresh(cache_key)
+                allow_fetch_return.set()
+                result = await task
+            finally:
+                allow_fetch_return.set()
+                if not task.done():
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
 
         assert first_force_refresh_values == [False]
         assert result["headers"] == {"Authorization": "Bearer maybe-stale"}
