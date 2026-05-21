@@ -11,10 +11,12 @@ import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { attachDatabasePool } from "@vercel/functions";
 
 import { env } from "./env";
+import { logger } from "./log";
 import { singleton } from "./singleton";
 import { deriveSqlSpanName } from "./sql-span-name";
 
 const HTTP_ROUTE_BAGGAGE_KEY = "http.route";
+const log = logger("api:db");
 
 const pool = singleton((): Pool => {
   // `@opentelemetry/instrumentation-pg` would normally hook `pg.Pool` via
@@ -147,6 +149,9 @@ const pool = singleton((): Pool => {
       connectionTimeoutMillis: env("DB_POOL_CONNECT_TIMEOUT_MS"),
     }),
   );
+  pgPool.on("error", (error: Error) => {
+    log.warn("idle database client error", { error: error.message });
+  });
 
   attachDatabasePool(pgPool);
 
