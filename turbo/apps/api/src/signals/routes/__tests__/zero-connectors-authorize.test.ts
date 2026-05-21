@@ -7,6 +7,7 @@ import {
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -120,12 +121,17 @@ async function requestAuthorize(
   options: {
     readonly session?: string;
     readonly authenticated?: boolean;
+    readonly userId?: string;
+    readonly orgId?: string;
     readonly headers?: HeadersInit;
     readonly origin?: string;
   } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    mocks.clerk.session(
+      options.userId ?? `user_${randomUUID()}`,
+      options.orgId ?? `org_${randomUUID()}`,
+    );
   }
   const headers = new Headers(options.headers);
   if (options.authenticated) {
@@ -163,8 +169,28 @@ async function requestOauthStart(
   });
 }
 
+async function createPendingConnectorSession(args: {
+  readonly userId: string;
+  readonly type?: string;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [session] = await db
+    .insert(connectorSessions)
+    .values({
+      code: randomUUID().slice(0, 9).toUpperCase(),
+      type: args.type ?? "github",
+      userId: args.userId,
+      status: "pending",
+      expiresAt: new Date(now() + 15 * 60 * 1000),
+    })
+    .returning({ id: connectorSessions.id });
+  expect(session).toBeDefined();
+  return session!.id;
+}
+
 describe("GET /api/zero/connectors/:type/authorize", () => {
   const orgIds: string[] = [];
+  const sessionIds: string[] = [];
   let restoreDynamicTestOAuthAuthorize: (() => void) | undefined;
 
   beforeEach(() => {
@@ -176,6 +202,14 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     restoreDynamicTestOAuthAuthorize = undefined;
 
     const db = store.set(writeDb$);
+    while (sessionIds.length > 0) {
+      const sessionId = sessionIds.pop();
+      if (sessionId) {
+        await db
+          .delete(connectorSessions)
+          .where(eq(connectorSessions.id, sessionId));
+      }
+    }
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
       if (orgId) {
@@ -302,9 +336,15 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
-    const sessionId = randomUUID();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    const sessionId = await createPendingConnectorSession({ userId });
+    sessionIds.push(sessionId);
     const response = await requestAuthorize("github", {
       authenticated: true,
+      userId,
+      orgId,
       session: sessionId,
     });
 
@@ -314,6 +354,36 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
         return cookie.startsWith(`connector_oauth_session=${sessionId}`);
       }),
     ).toBeTruthy();
+  });
+
+  it("rejects unknown connector session ids before clearing local state", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    const db = store.set(writeDb$);
+    const [connector] = await db
+      .insert(connectors)
+      .values({ orgId, userId, type: "github", authMethod: "oauth" })
+      .returning({ id: connectors.id });
+    expect(connector).toBeDefined();
+
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      userId,
+      orgId,
+      session: randomUUID(),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid connector session",
+    });
+    const survivors = await db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.id, connector!.id));
+    expect(survivors).toHaveLength(1);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });
 
   it("rejects invalid connector session ids", async () => {

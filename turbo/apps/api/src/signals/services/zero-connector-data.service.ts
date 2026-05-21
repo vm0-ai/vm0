@@ -984,6 +984,31 @@ export const upsertOAuthConnector$ = command(
   },
 );
 
+export async function hasPendingConnectorOAuthSession(args: {
+  readonly db: ConnectorWriteDb;
+  readonly sessionId: string;
+  readonly type: OAuthConnectorType;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const currentDate = nowDate();
+  const [session] = await args.db
+    .select({ id: connectorSessions.id })
+    .from(connectorSessions)
+    .where(
+      and(
+        eq(connectorSessions.id, args.sessionId),
+        eq(connectorSessions.type, args.type),
+        eq(connectorSessions.userId, args.userId),
+        eq(connectorSessions.status, "pending"),
+        gt(connectorSessions.expiresAt, currentDate),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  return Boolean(session);
+}
+
 export const completeOAuthConnectorSession$ = command(
   async (
     { get, set },

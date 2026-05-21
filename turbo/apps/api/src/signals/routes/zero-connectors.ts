@@ -49,6 +49,7 @@ import { writeDb$ } from "../external/db";
 import {
   deleteComputerConnector$,
   deleteZeroConnectorLocalState$,
+  hasPendingConnectorOAuthSession,
   zeroConnectorByType,
   zeroConnectorList,
   zeroConnectorScopeDiff,
@@ -104,6 +105,11 @@ type PreparedConnectorOAuthStart =
       readonly oauthContext: string | undefined;
     }
   | { readonly ok: false; readonly reason: "not_configured" };
+
+type SuccessfulConnectorOAuthStart = Extract<
+  PreparedConnectorOAuthStart,
+  { readonly ok: true }
+>;
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -197,6 +203,51 @@ function getAuthorizeClientId(
 
 function invalidConnectorSessionResponse() {
   return jsonResponse({ error: "Invalid connector session" }, 400);
+}
+
+function appendOAuthStartCookies(args: {
+  readonly response: Response;
+  readonly prepared: SuccessfulConnectorOAuthStart;
+  readonly sessionId: string | undefined;
+}): void {
+  args.response.headers.append(
+    "Set-Cookie",
+    buildOAuthCookieHeader(
+      CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+      args.prepared.state,
+      CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+    ),
+  );
+  if (args.prepared.codeVerifier) {
+    args.response.headers.append(
+      "Set-Cookie",
+      buildOAuthCookieHeader(
+        CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
+        args.prepared.codeVerifier,
+        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+      ),
+    );
+  }
+  if (args.prepared.oauthContext) {
+    args.response.headers.append(
+      "Set-Cookie",
+      buildOAuthCookieHeader(
+        CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
+        args.prepared.oauthContext,
+        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+      ),
+    );
+  }
+  if (args.sessionId) {
+    args.response.headers.append(
+      "Set-Cookie",
+      buildOAuthCookieHeader(
+        CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
+        args.sessionId,
+        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
+      ),
+    );
+  }
 }
 
 function internalServerError(message: string) {
@@ -516,6 +567,18 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     if (sessionId === null) {
       return invalidConnectorSessionResponse();
     }
+    if (sessionId) {
+      const hasValidSession = await hasPendingConnectorOAuthSession({
+        db: set(writeDb$),
+        sessionId,
+        type: oauthType.type,
+        userId: auth.userId,
+        signal,
+      });
+      if (!hasValidSession) {
+        return invalidConnectorSessionResponse();
+      }
+    }
 
     const prepared = await prepareConnectorOAuthStart({
       request,
@@ -533,44 +596,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
 
     const response = redirectResponse(prepared.authorizationUrl);
-    response.headers.append(
-      "Set-Cookie",
-      buildOAuthCookieHeader(
-        CONNECTOR_OAUTH_STATE_COOKIE_NAME,
-        prepared.state,
-        CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-      ),
-    );
-    if (prepared.codeVerifier) {
-      response.headers.append(
-        "Set-Cookie",
-        buildOAuthCookieHeader(
-          CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
-          prepared.codeVerifier,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
-    if (prepared.oauthContext) {
-      response.headers.append(
-        "Set-Cookie",
-        buildOAuthCookieHeader(
-          CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
-          prepared.oauthContext,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
-    if (sessionId) {
-      response.headers.append(
-        "Set-Cookie",
-        buildOAuthCookieHeader(
-          CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
-          sessionId,
-          CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
-        ),
-      );
-    }
+    appendOAuthStartCookies({ response, prepared, sessionId });
     return response;
   });
 }

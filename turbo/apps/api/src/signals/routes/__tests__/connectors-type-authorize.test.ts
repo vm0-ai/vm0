@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
+import { createStore } from "ccstate";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { writeDb$ } from "../../external/db";
 import { testContext } from "../../../__tests__/test-helpers";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
@@ -26,10 +32,18 @@ function sessionHeaders(): HeadersInit {
 
 async function requestAuthorize(
   type: string,
-  options: { readonly session?: string; readonly authenticated?: boolean } = {},
+  options: {
+    readonly session?: string;
+    readonly authenticated?: boolean;
+    readonly userId?: string;
+    readonly orgId?: string;
+  } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    mocks.clerk.session(
+      options.userId ?? `user_${randomUUID()}`,
+      options.orgId ?? `org_${randomUUID()}`,
+    );
   }
   const app = createApp({ signal: context.signal });
   return await app.request(authorizeUrl(type, options.session), {
@@ -38,7 +52,28 @@ async function requestAuthorize(
   });
 }
 
+async function createPendingConnectorSession(args: {
+  readonly userId: string;
+  readonly type?: string;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [session] = await db
+    .insert(connectorSessions)
+    .values({
+      code: randomUUID().slice(0, 9).toUpperCase(),
+      type: args.type ?? "github",
+      userId: args.userId,
+      status: "pending",
+      expiresAt: new Date(now() + 15 * 60 * 1000),
+    })
+    .returning({ id: connectorSessions.id });
+  expect(session).toBeDefined();
+  return session!.id;
+}
+
 describe("GET /api/connectors/:type/authorize", () => {
+  const sessionIds: string[] = [];
+
   beforeEach(() => {
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
     mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
@@ -60,6 +95,18 @@ describe("GET /api/connectors/:type/authorize", () => {
     mockOptionalEnv("SLACK_CLIENT_SECRET", "test-slack-client-secret");
     mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
     mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+  });
+
+  afterEach(async () => {
+    const db = store.set(writeDb$);
+    while (sessionIds.length > 0) {
+      const sessionId = sessionIds.pop();
+      if (sessionId) {
+        await db
+          .delete(connectorSessions)
+          .where(eq(connectorSessions.id, sessionId));
+      }
+    }
   });
 
   it("returns 400 for an unknown connector type", async () => {
@@ -117,9 +164,12 @@ describe("GET /api/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
-    const sessionId = randomUUID();
+    const userId = `user_${randomUUID()}`;
+    const sessionId = await createPendingConnectorSession({ userId });
+    sessionIds.push(sessionId);
     const response = await requestAuthorize("github", {
       authenticated: true,
+      userId,
       session: sessionId,
     });
 

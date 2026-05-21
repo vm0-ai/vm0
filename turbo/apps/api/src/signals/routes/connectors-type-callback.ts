@@ -34,6 +34,7 @@ import {
 } from "../services/connector-oauth-state.service";
 import {
   completeOAuthConnectorSession$,
+  hasPendingConnectorOAuthSession,
   upsertOAuthConnector$,
 } from "../services/zero-connector-data.service";
 import { settle } from "../utils";
@@ -372,32 +373,6 @@ async function rejectInvalidStoredOAuthStateForCallbackIfPresent(
   return invalidStateResponse;
 }
 
-async function hasPendingConnectorSession(
-  db: Db,
-  input: ConnectorSessionTransitionInput,
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (!input.sessionId) {
-    return true;
-  }
-  const currentDate = nowDate();
-  const [session] = await db
-    .select({ id: connectorSessions.id })
-    .from(connectorSessions)
-    .where(
-      and(
-        eq(connectorSessions.id, input.sessionId),
-        eq(connectorSessions.type, input.connectorType),
-        eq(connectorSessions.userId, input.userId),
-        eq(connectorSessions.status, "pending"),
-        gt(connectorSessions.expiresAt, currentDate),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return Boolean(session);
-}
-
 async function markConnectorSessionError(
   db: Db,
   input: ConnectorSessionTransitionInput,
@@ -453,16 +428,15 @@ const completeOAuthCallback$ = command(
     signal: AbortSignal,
   ): Promise<Response> => {
     const writeDb = set(writeDb$);
-    const session = {
-      sessionId: args.sessionId,
-      connectorType: args.connectorType,
-      userId: args.identity.userId,
-    };
-    const hasValidSession = await hasPendingConnectorSession(
-      writeDb,
-      session,
-      signal,
-    );
+    const hasValidSession = args.sessionId
+      ? await hasPendingConnectorOAuthSession({
+          db: writeDb,
+          sessionId: args.sessionId,
+          type: args.connectorType,
+          userId: args.identity.userId,
+          signal,
+        })
+      : true;
     if (!hasValidSession) {
       return redirectWithError(
         args.origin,
