@@ -5,6 +5,7 @@ import {
   type GithubInstallationNotFoundResponse,
   type GithubInstallationResponse,
   type GithubLabelTriggerMode,
+  type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
@@ -30,6 +31,11 @@ export interface GithubLabelListenerForm {
   readonly agentId: string;
   readonly triggerMode: GithubLabelTriggerMode;
   readonly prompt: string;
+}
+
+interface UpdateGithubLabelListenerInput {
+  readonly listenerId: string;
+  readonly body: UpdateGithubLabelListenerBody;
 }
 
 const internalReload$ = state(0);
@@ -180,6 +186,30 @@ export const createGithubLabelListener$ = command(
     signal.throwIfAborted();
     set(reloadGithubIntegration$);
     toast.success("GitHub label listener added");
+  },
+);
+
+export const updateGithubLabelListener$ = command(
+  async (
+    { get, set },
+    input: UpdateGithubLabelListenerInput,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(integrationsGithubContract, {
+      apiBase: "api",
+    });
+    await accept(
+      client.updateLabelListener({
+        headers: {},
+        params: { listenerId: input.listenerId },
+        body: input.body,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadGithubIntegration$);
+    toast.success("GitHub label listener updated");
   },
 );
 

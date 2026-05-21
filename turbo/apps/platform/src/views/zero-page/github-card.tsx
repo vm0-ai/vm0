@@ -50,11 +50,13 @@ import {
   setGithubLabelListenerForm$,
   setGithubManageDialogOpen$,
   uninstallGithubInstallation$,
+  updateGithubLabelListener$,
   type GithubIntegrationData,
   type GithubLabelListenerForm,
   type GithubLabelTriggerMode,
 } from "../../signals/zero-page/zero-github.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
 
 type GithubListener = GithubIntegrationData["labelListeners"][number];
@@ -86,7 +88,11 @@ function GithubListenerList({
   const [deleteLoadable, deleteListener] = useLoadableSet(
     deleteGithubLabelListener$,
   );
+  const [updateLoadable, updateListener] = useLoadableSet(
+    updateGithubLabelListener$,
+  );
   const deleting = deleteLoadable.state === "loading";
+  const updating = updateLoadable.state === "loading";
 
   if (listeners.length === 0) {
     return (
@@ -120,12 +126,27 @@ function GithubListenerList({
                 {getTriggerModeLabel(listener.triggerMode)}
               </div>
             </div>
+            <LoadingSwitch
+              checked={listener.enabled}
+              loading={updating}
+              size="sm"
+              ariaLabel={`Toggle ${listener.labelName} listener`}
+              onCheckedChange={(enabled) => {
+                detach(
+                  updateListener(
+                    { listenerId: listener.id, body: { enabled } },
+                    pageSignal,
+                  ),
+                  Reason.DomCallback,
+                );
+              }}
+            />
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0"
-              disabled={deleting}
+              disabled={deleting || updating}
               aria-label={`Delete ${listener.labelName}`}
               onClick={() => {
                 detach(

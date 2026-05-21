@@ -173,6 +173,48 @@ describe("works page - GitHub integration card", () => {
       screen.getAllByText(/Any issue\/PR with this label/u).length,
     ).toBeGreaterThan(0);
   });
+
+  it("toggles a GitHub label listener from the manage dialog", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        labelListeners: [
+          {
+            id: "b0000000-0000-4000-a000-000000000001",
+            labelName: "ready-for-zero",
+            triggerMode: "created_by_me",
+            prompt: "Review the labeled issue or pull request.",
+            enabled: true,
+            agent: {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "zero",
+            },
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          },
+        ],
+      }),
+    );
+    renderWorksPage();
+
+    await waitFor(() => {
+      expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByText("Manage"));
+
+    const dialog = await screen.findByRole("dialog");
+    const toggle = within(dialog).getByRole("switch", {
+      name: "Toggle ready-for-zero listener",
+    });
+    expect(toggle).toBeChecked();
+    click(toggle);
+
+    await waitFor(() => {
+      const integration = getMockGithubIntegration();
+      expect(integration?.labelListeners[0]?.enabled).toBeFalsy();
+      expect(within(dialog).getByText("Disabled")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("works page - telegram integration card", () => {
