@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.382.1](https://github.com/vm0-ai/vm0/compare/web-v12.382.0...web-v12.382.1) (2026-05-21)
+
+
+### Refactoring
+
+* move cli auth approval to api ([#14447](https://github.com/vm0-ai/vm0/issues/14447)) ([380c53b](https://github.com/vm0-ai/vm0/commit/380c53b2210b933642a37cd7cbe7a22fe6d0121b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.1
+    * @vm0/connectors bumped to 1.26.1
+    * @vm0/core bumped to 8.288.0
+    * @vm0/db bumped to 1.17.7
+
 ## [12.382.0](https://github.com/vm0-ai/vm0/compare/web-v12.381.6...web-v12.382.0) (2026-05-21)
 
 

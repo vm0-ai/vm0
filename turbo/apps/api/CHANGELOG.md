@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.64.0](https://github.com/vm0-ai/vm0/compare/api-v1.63.0...api-v1.64.0) (2026-05-21)
+
+
+### Features
+
+* enable codex device auth ([#14462](https://github.com/vm0-ai/vm0/issues/14462)) ([1f93728](https://github.com/vm0-ai/vm0/commit/1f93728c3a294d34bbea61c50f860fede41f567f))
+
+
+### Bug Fixes
+
+* preserve admin role for workspace settings ([#14463](https://github.com/vm0-ai/vm0/issues/14463)) ([de67de4](https://github.com/vm0-ai/vm0/commit/de67de4cbc436136a4a17cf6ce971bbeb2b9bc73))
+
+
+### Refactoring
+
+* deduplicate connector oauth start helpers ([#14445](https://github.com/vm0-ai/vm0/issues/14445)) ([748a2d4](https://github.com/vm0-ai/vm0/commit/748a2d4398b3ead44ba869869470376595f6bbb4))
+* move cli auth approval to api ([#14447](https://github.com/vm0-ai/vm0/issues/14447)) ([380c53b](https://github.com/vm0-ai/vm0/commit/380c53b2210b933642a37cd7cbe7a22fe6d0121b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.1
+    * @vm0/connectors bumped to 1.26.1
+    * @vm0/core bumped to 8.288.0
+    * @vm0/db bumped to 1.17.7
+
 ## [1.63.0](https://github.com/vm0-ai/vm0/compare/api-v1.62.5...api-v1.63.0) (2026-05-21)
 
 

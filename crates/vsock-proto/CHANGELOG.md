@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.5](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.4...vsock-proto-v0.18.5) (2026-05-21)
+
+
+### Refactoring
+
+* **vsock-proto:** compact message type ids ([#14444](https://github.com/vm0-ai/vm0/issues/14444)) ([e04d036](https://github.com/vm0-ai/vm0/commit/e04d0367080afa277b770ede370449b6f2416e0e))
+* **vsock-proto:** group message type ids ([#14460](https://github.com/vm0-ai/vm0/issues/14460)) ([45906ed](https://github.com/vm0-ai/vm0/commit/45906ed1d43839558e8721455c443dc747b22501))
+
 ## [0.18.4](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.3...vsock-proto-v0.18.4) (2026-05-21)
 
 

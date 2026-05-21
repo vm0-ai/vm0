@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.160.7](https://github.com/vm0-ai/vm0/compare/cli-v9.160.6...cli-v9.160.7) (2026-05-21)
+
+
+### Bug Fixes
+
+* **cli:** save computer-use screenshots locally ([#14459](https://github.com/vm0-ai/vm0/issues/14459)) ([924af97](https://github.com/vm0-ai/vm0/commit/924af977e5280cc4b9e34f53a816e7e7651bbd38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.36.1
+    * @vm0/connectors bumped to 1.26.1
+    * @vm0/core bumped to 8.288.0
+
 ## [9.160.6](https://github.com/vm0-ai/vm0/compare/cli-v9.160.5...cli-v9.160.6) (2026-05-21)
 
 

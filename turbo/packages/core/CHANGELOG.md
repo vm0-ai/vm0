@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.288.0](https://github.com/vm0-ai/vm0/compare/core-v8.287.0...core-v8.288.0) (2026-05-21)
+
+
+### Features
+
+* enable codex device auth ([#14462](https://github.com/vm0-ai/vm0/issues/14462)) ([1f93728](https://github.com/vm0-ai/vm0/commit/1f93728c3a294d34bbea61c50f860fede41f567f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.36.1
+    * @vm0/connectors bumped to 1.26.1
+
 ## [8.287.0](https://github.com/vm0-ai/vm0/compare/core-v8.286.5...core-v8.287.0) (2026-05-21)
 
 
