@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
+import { delay } from "signal-timers";
 import {
   storedExecutionContextSchema,
   type StoredExecutionContext,
@@ -65,6 +66,9 @@ type UpdateEncryptedRow = (
 
 const DEFAULT_BATCH_SIZE = 100;
 const PROGRESS_ROW_INTERVAL = 25;
+const MAX_TRANSIENT_RETRY_ATTEMPTS = 8;
+const TRANSIENT_RETRY_BASE_DELAY_MS = 1000;
+const TRANSIENT_RETRY_MAX_DELAY_MS = 30_000;
 
 function emptyCounts(): CiphertextCounts {
   return { legacy: 0, dual: 0, kms: 0 };
@@ -181,6 +185,102 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function stringProperty(value: unknown, property: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const propertyValue = value[property];
+  return typeof propertyValue === "string" ? propertyValue : undefined;
+}
+
+function numberProperty(value: unknown, property: string): number | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const propertyValue = value[property];
+  return typeof propertyValue === "number" ? propertyValue : undefined;
+}
+
+function isTransientErrorCode(code: string): boolean {
+  return (
+    code === "ECONNRESET" ||
+    code === "ECONNREFUSED" ||
+    code === "EPIPE" ||
+    code === "ETIMEDOUT" ||
+    code === "EAI_AGAIN"
+  );
+}
+
+function isTransientErrorName(name: string): boolean {
+  return (
+    name === "TimeoutError" ||
+    name === "RequestTimeout" ||
+    name === "ServiceUnavailableException" ||
+    name === "Throttling" ||
+    name === "ThrottlingException" ||
+    name === "TooManyRequestsException"
+  );
+}
+
+function isTransientOperationError(error: unknown): boolean {
+  const code = stringProperty(error, "code");
+  if (code && isTransientErrorCode(code)) {
+    return true;
+  }
+
+  const name = stringProperty(error, "name");
+  if (name && isTransientErrorName(name)) {
+    return true;
+  }
+
+  const metadata = isRecord(error) ? error.$metadata : undefined;
+  const statusCode = numberProperty(metadata, "httpStatusCode");
+  return statusCode === 429 || (statusCode !== undefined && statusCode >= 500);
+}
+
+function describeError(error: unknown): string {
+  const name = stringProperty(error, "name");
+  const code = stringProperty(error, "code");
+  const message = stringProperty(error, "message");
+  return [name, code, message].filter(Boolean).join(" ");
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(
+    TRANSIENT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+    TRANSIENT_RETRY_MAX_DELAY_MS,
+  );
+}
+
+async function withTransientRetry<T>(
+  operation: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    const result = await settle(action());
+    if (result.ok) {
+      return result.value;
+    }
+
+    if (
+      attempt >= MAX_TRANSIENT_RETRY_ATTEMPTS ||
+      !isTransientOperationError(result.error)
+    ) {
+      throw result.error;
+    }
+
+    const delayMs = retryDelayMs(attempt);
+    logProgress(
+      `${operation}: transient error on attempt ${attempt}/${MAX_TRANSIENT_RETRY_ATTEMPTS}; retrying in ${delayMs}ms; ${describeError(
+        result.error,
+      )}`,
+    );
+    await delay(delayMs, { signal: new AbortController().signal });
+  }
+}
+
 function parseStoredExecutionContext(value: unknown): StoredExecutionContext {
   if (isRecord(value) && isRecord(value.storageManifest)) {
     const storageManifest = value.storageManifest;
@@ -202,11 +302,16 @@ async function reencryptCiphertext(
   encrypted: string,
   mode: Exclude<StoredSecretWriteMode, "legacy">,
 ): Promise<string> {
-  const plaintext = await decryptPersistentSecretValueWithMode(
-    encrypted,
-    "prefer-legacy",
+  return await withTransientRetry(
+    "persistent secret re-encryption",
+    async () => {
+      const plaintext = await decryptPersistentSecretValueWithMode(
+        encrypted,
+        "prefer-legacy",
+      );
+      return await encryptPersistentSecretValueWithMode(plaintext, mode);
+    },
   );
-  return await encryptPersistentSecretValueWithMode(plaintext, mode);
 }
 
 async function reencryptExecutionContextSecrets(
@@ -558,9 +663,14 @@ async function migrateAgentRunQueuePayloads(
         continue;
       }
 
-      const payload = await decryptQueuedRunnerJobPayloadWithMode(
-        row.encrypted,
-        "prefer-legacy",
+      const payload = await withTransientRetry(
+        `${targetName}: decrypt queued payload`,
+        async () => {
+          return await decryptQueuedRunnerJobPayloadWithMode(
+            row.encrypted,
+            "prefer-legacy",
+          );
+        },
       );
       if (!payload) {
         continue;
@@ -578,12 +688,17 @@ async function migrateAgentRunQueuePayloads(
       }
 
       candidates += 1;
-      const encryptedParams = await encryptQueuedRunnerJobPayloadWithMode(
-        {
-          ...payload,
-          executionContext,
+      const encryptedParams = await withTransientRetry(
+        `${targetName}: encrypt queued payload`,
+        async () => {
+          return await encryptQueuedRunnerJobPayloadWithMode(
+            {
+              ...payload,
+              executionContext,
+            },
+            args.mode,
+          );
         },
-        args.mode,
       );
       if (!args.dryRun) {
         const updated = await database
