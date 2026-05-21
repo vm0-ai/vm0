@@ -560,48 +560,16 @@ async fn write_request_frame(
     Ok(())
 }
 
-async fn request_on_shared_with_pending_response<C, W>(
-    shared: &Arc<Shared>,
-    msg_type: u8,
-    seq: u32,
-    payload: &[u8],
-    timeout: Duration,
-    prepare_pending_context: impl FnOnce() -> io::Result<C>,
-    prepare_pending: impl FnOnce(oneshot::Sender<RawMessage>, C) -> io::Result<(PendingResponse, W)>,
-) -> io::Result<RawMessage>
-where
-    W: FnOnce() -> io::Result<()>,
-{
-    let data = vsock_proto::encode(msg_type, seq, payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-
-    // Keep request-specific setup after frame encoding, while leaving
-    // `PendingResponse` construction inside the connected-state branch below.
-    // That preserves normal-operation rejection ordering and closed-state
-    // priority for fallible composite handles.
-    let pending_context = prepare_pending_context()?;
-    let (rx, before_write) =
-        register_pending_response(shared, seq, pending_context, prepare_pending)?;
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-
-    // The pending guard removes the pending entry on write failure, timeout,
-    // or cancellation before reader_loop dispatches a response. The write
-    // helper separately poisons the connection if cancellation interrupts an
-    // in-progress frame write.
-    write_request_frame(shared, &data, before_write).await?;
-
-    await_pending_response(rx, timeout).await
+fn encode_request_frame(msg_type: u8, seq: u32, payload: &[u8]) -> io::Result<Vec<u8>> {
+    vsock_proto::encode(msg_type, seq, payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))
 }
 
-fn register_pending_response<C, W>(
+fn register_pending_response(
     shared: &Arc<Shared>,
     seq: u32,
-    pending_context: C,
-    prepare_pending: impl FnOnce(oneshot::Sender<RawMessage>, C) -> io::Result<(PendingResponse, W)>,
-) -> io::Result<(oneshot::Receiver<RawMessage>, W)>
-where
-    W: FnOnce() -> io::Result<()>,
-{
+    build_pending: impl FnOnce(oneshot::Sender<RawMessage>) -> io::Result<PendingResponse>,
+) -> io::Result<oneshot::Receiver<RawMessage>> {
     // Register under the state lock: `Closed` short-circuits to an
     // immediate error, and insertion into `pending` is serialised with
     // the `Connected -> Closed` transition in `close()`. There is no
@@ -610,17 +578,34 @@ where
     let (tx, rx) = oneshot::channel();
     let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
     if let ConnectionState::Connected { pending, .. } = &mut *guard {
-        let (pending_response, before_write) = prepare_pending(tx, pending_context)?;
+        let pending_response = build_pending(tx)?;
         pending.insert(seq, pending_response);
-        Ok((rx, before_write))
+        Ok(rx)
     } else {
-        drop(guard);
-        drop(pending_context);
         Err(io::Error::new(
             io::ErrorKind::ConnectionReset,
             "connection closed",
         ))
     }
+}
+
+async fn write_registered_request_and_wait(
+    shared: &Arc<Shared>,
+    seq: u32,
+    data: &[u8],
+    timeout: Duration,
+    before_write: impl FnOnce() -> io::Result<()>,
+    rx: oneshot::Receiver<RawMessage>,
+) -> io::Result<RawMessage> {
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+
+    // The pending guard removes the pending entry on write failure, timeout,
+    // or cancellation before reader_loop dispatches a response. The write
+    // helper separately poisons the connection if cancellation interrupts an
+    // in-progress frame write.
+    write_request_frame(shared, data, before_write).await?;
+
+    await_pending_response(rx, timeout).await
 }
 
 async fn await_pending_response(
@@ -652,25 +637,16 @@ async fn request_raw_on_shared(
     payload: &[u8],
     timeout: Duration,
 ) -> io::Result<RawMessage> {
-    request_on_shared_with_pending_response(
-        shared,
-        msg_type,
-        seq,
-        payload,
-        timeout,
-        || Ok(()),
-        |tx, ()| {
-            Ok((
-                PendingResponse {
-                    response_tx: tx,
-                    normal_operation: None,
-                    normal_terminal_msg_types: &[],
-                },
-                || Ok(()),
-            ))
-        },
-    )
-    .await
+    let data = encode_request_frame(msg_type, seq, payload)?;
+    let rx = register_pending_response(shared, seq, |tx| {
+        Ok(PendingResponse {
+            response_tx: tx,
+            normal_operation: None,
+            normal_terminal_msg_types: &[],
+        })
+    })?;
+
+    write_registered_request_and_wait(shared, seq, &data, timeout, || Ok(()), rx).await
 }
 
 async fn normal_request_on_shared_with_write_observer(
@@ -703,27 +679,26 @@ async fn normal_request_on_shared_with_pre_write_observer(
     write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
+    let data = encode_request_frame(msg_type, seq, payload)?;
+    let normal_operation = shared.reserve_normal_operation()?;
+    let rx = register_pending_response(shared, seq, |tx| {
+        Ok(PendingResponse {
+            response_tx: tx,
+            normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
+            normal_terminal_msg_types: terminal_msg_types,
+        })
+    })?;
 
-    request_on_shared_with_pending_response(
+    write_registered_request_and_wait(
         shared,
-        msg_type,
         seq,
-        payload,
+        &data,
         timeout,
-        || shared.reserve_normal_operation(),
-        |tx, normal_operation| {
-            Ok((
-                PendingResponse {
-                    response_tx: tx,
-                    normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
-                    normal_terminal_msg_types: terminal_msg_types,
-                },
-                move || {
-                    mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
-                    write_observer.record_write_start()
-                },
-            ))
+        || {
+            mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
+            write_observer.record_write_start()
         },
+        rx,
     )
     .await
 }
@@ -738,29 +713,27 @@ async fn request_on_shared_with_composite_operation_and_observer(
     write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
+    let data = encode_request_frame(msg_type, seq, payload)?;
+    let rx = register_pending_response(shared, seq, |tx| {
+        Ok(PendingResponse {
+            response_tx: tx,
+            normal_operation: Some(PendingNormalOperation::Composite(
+                normal_operation.transition_handle()?,
+            )),
+            normal_terminal_msg_types: terminal_msg_types,
+        })
+    })?;
 
-    request_on_shared_with_pending_response(
+    write_registered_request_and_wait(
         shared,
-        msg_type,
         seq,
-        payload,
+        &data,
         timeout,
-        || Ok(()),
-        |tx, ()| {
-            Ok((
-                PendingResponse {
-                    response_tx: tx,
-                    normal_operation: Some(PendingNormalOperation::Composite(
-                        normal_operation.transition_handle()?,
-                    )),
-                    normal_terminal_msg_types: terminal_msg_types,
-                },
-                move || {
-                    normal_operation.mark_possible_guest_write_started()?;
-                    write_observer.record_write_start()
-                },
-            ))
+        || {
+            normal_operation.mark_possible_guest_write_started()?;
+            write_observer.record_write_start()
         },
+        rx,
     )
     .await
 }
