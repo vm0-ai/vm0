@@ -728,7 +728,7 @@ const getConnectorSessionByIdInner$ = command(
     }
 
     if (session.status === "pending" && nowDate() > session.expiresAt) {
-      await writeDb
+      const [expiredSession] = await writeDb
         .update(connectorSessions)
         .set({ status: "expired" })
         .where(
@@ -738,15 +738,43 @@ const getConnectorSessionByIdInner$ = command(
             eq(connectorSessions.userId, auth.userId),
             eq(connectorSessions.status, "pending"),
           ),
-        );
+        )
+        .returning({ id: connectorSessions.id });
       signal.throwIfAborted();
+
+      if (expiredSession) {
+        return {
+          status: 200 as const,
+          body: {
+            status: "expired" as const,
+            errorMessage: "Session has expired",
+          },
+        };
+      }
+
+      const [currentSession] = await writeDb
+        .select({
+          status: connectorSessions.status,
+          errorMessage: connectorSessions.errorMessage,
+        })
+        .from(connectorSessions)
+        .where(
+          and(
+            eq(connectorSessions.id, params.sessionId),
+            eq(connectorSessions.type, params.type),
+            eq(connectorSessions.userId, auth.userId),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!currentSession) {
+        return notFound("Connector session not found");
+      }
 
       return {
         status: 200 as const,
-        body: {
-          status: "expired" as const,
-          errorMessage: "Session has expired",
-        },
+        body: currentSession,
       };
     }
 
