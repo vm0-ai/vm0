@@ -231,8 +231,14 @@ mod tests {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
-        let _ = pool.park(make_synthetic_parked_candidate("sess-1"));
-        let _ = pool.park(make_synthetic_parked_candidate("sess-2"));
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-1")),
+            ParkResult::Parked,
+        ));
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-2")),
+            ParkResult::Parked,
+        ));
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
@@ -254,7 +260,11 @@ mod tests {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
-        let _ = pool.park(make_synthetic_parked_candidate("sess-1"));
+        assert!(matches!(
+            pool.park(make_synthetic_parked_candidate("sess-1")),
+            ParkResult::Parked,
+        ));
+        assert_eq!(pool.len(), 1);
         let profiles = test_profiles();
 
         let state = collect_heartbeat_state(
