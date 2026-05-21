@@ -549,6 +549,22 @@ class TestAddCaptureFields:
         assert "response_body_encoding" not in entry
         assert "response_headers" in entry  # headers still captured
 
+    def test_empty_stream_buffer_does_not_require_truncated_state(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray()
+        flow.metadata["stream_buffer_state"] = {"total_bytes": 0}
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry
+
     def test_stream_buffer_truncated_marks_truncation(self, real_flow):
         """When stream_buffer was truncated, response_body_truncated should be set."""
         body = b"x" * STREAM_BUFFER_LIMIT
