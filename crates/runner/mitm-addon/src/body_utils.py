@@ -344,5 +344,5 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             "response",
             body,
             res_ct,
-            already_truncated=bool(stream_state and stream_state["truncated"]),
+            already_truncated=bool(body and stream_state and stream_state["truncated"]),
         )
