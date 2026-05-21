@@ -323,6 +323,26 @@ class TestAddCaptureFields:
         assert "request_headers" in entry  # headers always captured
         assert "response_headers" in entry  # headers captured despite empty body
 
+    def test_request_body_gzip_empty_skips_body_and_captures_response(self, real_flow):
+        compressed = gzip.compress(b"")
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=compressed,
+            request_encoding="gzip",
+            response_body=b'{"ok": true}',
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_body_encoding" not in entry
+        assert "request_headers" in entry
+        assert entry["response_body"] == '{"ok": true}'
+        assert entry["response_body_encoding"] == "utf-8"
+
     def test_response_decompression_error_skips_body(self, real_flow, headers):
         # Content-Encoding: gzip + non-gzip bytes makes flow.response.content
         # raise ValueError, which add_capture_fields is expected to catch.
