@@ -95,6 +95,31 @@ describe("GET /api/zero/connectors/:type/sessions/:sessionId", () => {
     expect(response.body.status).toBe("complete");
   });
 
+  it("returns errored session status with the error message", async () => {
+    const userId = `user_${randomUUID()}`;
+    const sessionId = await seedSession({
+      userId,
+      status: "error",
+      errorMessage: "OAuth authorization failed",
+    });
+    sessionIds.push(sessionId);
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionByIdContract);
+    const response = await accept(
+      client.get({
+        params: { type: "github", sessionId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      status: "error",
+      errorMessage: "OAuth authorization failed",
+    });
+  });
+
   it("marks expired pending sessions and returns expired status", async () => {
     const userId = `user_${randomUUID()}`;
     const sessionId = await seedSession({
@@ -134,6 +159,24 @@ describe("GET /api/zero/connectors/:type/sessions/:sessionId", () => {
     const response = await accept(
       client.get({
         params: { type: "github", sessionId: randomUUID() },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("does not return another connector type's session", async () => {
+    const userId = `user_${randomUUID()}`;
+    const sessionId = await seedSession({ userId, type: "slack" });
+    sessionIds.push(sessionId);
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionByIdContract);
+    const response = await accept(
+      client.get({
+        params: { type: "github", sessionId },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
