@@ -1974,6 +1974,59 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(storedState?.consumedAt).toBeInstanceOf(Date);
   });
 
+  it("marks server-side connector sessions as error when the provider returns an error", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const sessionId = await seedSession({ userId });
+    sessionIds.push(sessionId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+      sessionId,
+    });
+    oauthStateIds.push(oauthStateId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: {
+        error: "access_denied",
+        error_description: "The user denied access",
+        state,
+      },
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "The user denied access",
+    });
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select({ consumedAt: connectorOauthStates.consumedAt })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, oauthStateId));
+    expect(storedState?.consumedAt).toBeInstanceOf(Date);
+
+    const [session] = await db
+      .select({
+        status: connectorSessions.status,
+        errorMessage: connectorSessions.errorMessage,
+      })
+      .from(connectorSessions)
+      .where(eq(connectorSessions.id, sessionId));
+    expect(session).toStrictEqual({
+      status: "error",
+      errorMessage: "The user denied access",
+    });
+  });
+
   it("rejects an invalid server-side OAuth handoff state before provider errors", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
