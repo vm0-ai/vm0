@@ -247,7 +247,9 @@ impl SandboxFactory for FirecrackerFactory {
                 let target_workspace = self.factory_paths.workspace(&id);
                 clean_stale_workspace_dir(&id, &target_workspace).await?;
                 let slot_workspace = tx.begin_workspace_rename(target_workspace.clone())?;
-                if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
+                // Keep rename cancellation-safe: tokio::fs::rename may keep
+                // running on the blocking pool after its future is dropped.
+                if let Err(e) = std::fs::rename(&slot_workspace, &target_workspace) {
                     tx.abort_workspace_rename_after_error()?;
                     return Err(SandboxError::Initialization {
                         phase: SandboxInitializationPhase::SandboxAllocation,
