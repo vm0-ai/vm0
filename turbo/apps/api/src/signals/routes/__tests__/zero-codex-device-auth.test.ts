@@ -8,23 +8,12 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import {
-  clearMockSandboxClient,
-  emptyBoundedTextOutput,
-  mockSandboxClient,
-  type BoundedTextOutput,
-  type CreateSandboxOptions,
-  type ReadSandboxFileOptions,
-  type RunSandboxCommandOptions,
-  type SandboxCleanupResult,
-  type SandboxCommandResult,
-  type SandboxHandle,
-  type StopSandboxOptions,
-} from "../../external/sandbox";
+import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { decryptSecretValue } from "../../services/crypto.utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -36,37 +25,6 @@ const ORG_SENTINEL_USER_ID = "__org__";
 
 function client() {
   return setupApp({ context })(zeroCodexDeviceAuthContract);
-}
-
-function textOutput(text: string): BoundedTextOutput {
-  return {
-    text,
-    bytes: Buffer.byteLength(text),
-    limitBytes: 16 * 1024,
-    truncated: false,
-  };
-}
-
-function commandResult(args: {
-  readonly sandboxId?: string;
-  readonly exitCode: number | null;
-  readonly stdout?: string;
-  readonly stderr?: string;
-}): SandboxCommandResult {
-  return {
-    sandboxId: args.sandboxId ?? "sandbox_codex_device_auth_test",
-    commandId: "cmd_codex_device_auth_test",
-    detached: false,
-    exitCode: args.exitCode,
-    stdout:
-      args.stdout === undefined
-        ? emptyBoundedTextOutput(16 * 1024)
-        : textOutput(args.stdout),
-    stderr:
-      args.stderr === undefined
-        ? emptyBoundedTextOutput(16 * 1024)
-        : textOutput(args.stderr),
-  };
 }
 
 function base64UrlEncode(input: string): string {
@@ -98,103 +56,96 @@ function makeIdToken(opts: {
   });
 }
 
-function makeAuthJson(scope: "org" | "personal"): string {
+function makeAccessToken(): string {
   const accessExp = Math.floor(now() / 1000) + 7200;
-  return JSON.stringify({
-    OPENAI_API_KEY: null,
-    tokens: {
-      access_token: makeJwt({ exp: accessExp }),
-      refresh_token: `rt_${scope}_synthetic_high_entropy`,
-      account_id: "ws_acct_plain",
-      id_token: makeIdToken({
-        accountId: `ws_acct_from_id_token_${scope}`,
-        planType: "plus",
-        workspaceName: scope === "org" ? "Org Acme" : "Personal Acme",
-      }),
-    },
-  });
+  return makeJwt({ exp: accessExp });
 }
 
-function mockCodexDeviceAuthSandbox(
+function makeTokenResponse(scope: "org" | "personal") {
+  return {
+    access_token: makeAccessToken(),
+    refresh_token: `rt_${scope}_synthetic_high_entropy`,
+    id_token: makeIdToken({
+      accountId: `ws_acct_from_id_token_${scope}`,
+      planType: "plus",
+      workspaceName: scope === "org" ? "Org Acme" : "Personal Acme",
+    }),
+  };
+}
+
+function mockCodexDeviceAuthHttp(
   args: {
-    readonly authJsonScope?: "org" | "personal";
-    readonly output?: string;
+    readonly tokenScope?: "org" | "personal";
+    readonly deviceTokenStatus?: "pending" | "complete";
   } = {},
 ) {
   const calls = {
-    create: [] as CreateSandboxOptions[],
-    run: [] as {
-      readonly handle: SandboxHandle;
-      readonly options: RunSandboxCommandOptions;
-    }[],
-    read: [] as {
-      readonly handle: SandboxHandle;
-      readonly options: ReadSandboxFileOptions;
-    }[],
-    stop: [] as {
-      readonly handle: SandboxHandle;
-      readonly options: StopSandboxOptions | undefined;
-    }[],
+    userCode: [] as unknown[],
+    deviceToken: [] as unknown[],
+    oauthToken: [] as URLSearchParams[],
   };
 
-  mockSandboxClient({
-    create(options = {}) {
-      calls.create.push(options);
-      return Promise.resolve({ sandboxId: "sandbox_codex_device_auth_test" });
-    },
-    get(sandboxId) {
-      return Promise.resolve({ sandboxId });
-    },
-    runCommand(handle, options) {
-      calls.run.push({ handle, options });
-      return Promise.resolve(
-        commandResult({
-          sandboxId: handle.sandboxId,
-          exitCode: 0,
-        }),
-      );
-    },
-    readFile(handle, options) {
-      calls.read.push({ handle, options });
-      if (options.path.endsWith("login-output.txt")) {
-        return Promise.resolve({
-          status: "ok",
-          data: Buffer.from(
-            args.output ??
-              "Open https://auth.openai.com/codex/device and enter ABCD-EFGH",
-          ),
-          bytes: 64,
-          limitBytes: 16 * 1024,
-          truncated: false,
+  server.use(
+    http.post(
+      "https://auth.openai.com/api/accounts/deviceauth/usercode",
+      async ({ request }) => {
+        calls.userCode.push(await request.json());
+        return HttpResponse.json({
+          device_auth_id: "device_auth_test",
+          user_code: "ABCD-EFGH",
+          interval: "5",
         });
-      }
-      if (options.path.endsWith("login-status.txt")) {
-        return Promise.resolve({ status: "missing" });
-      }
-      if (options.path.endsWith("auth.json")) {
-        return Promise.resolve({
-          status: "ok",
-          data: Buffer.from(makeAuthJson(args.authJsonScope ?? "org")),
-          bytes: 512,
-          limitBytes: 16 * 1024,
-          truncated: false,
+      },
+    ),
+    http.post(
+      "https://auth.openai.com/api/accounts/deviceauth/token",
+      async ({ request }) => {
+        calls.deviceToken.push(await request.json());
+        if (args.deviceTokenStatus === "pending") {
+          return HttpResponse.json(
+            { error: "authorization_pending" },
+            { status: 403 },
+          );
+        }
+        return HttpResponse.json({
+          authorization_code: "auth_code_test",
+          code_challenge: "code_challenge_test",
+          code_verifier: "code_verifier_test",
         });
-      }
-      return Promise.resolve({ status: "missing" });
-    },
-    updateNetworkPolicy() {
-      throw new Error("updateNetworkPolicy is not used by Codex device auth");
-    },
-    extendTimeout() {
-      throw new Error("extendTimeout is not used by Codex device auth");
-    },
-    stop(handle, options): Promise<SandboxCleanupResult> {
-      calls.stop.push({ handle, options });
-      return Promise.resolve({ status: "stopped" });
-    },
-  });
+      },
+    ),
+    http.post("https://auth.openai.com/oauth/token", async ({ request }) => {
+      calls.oauthToken.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json(makeTokenResponse(args.tokenScope ?? "org"));
+    }),
+  );
 
   return calls;
+}
+
+function expectDeviceTokenBody(calls: {
+  readonly deviceToken: readonly unknown[];
+}) {
+  expect(calls.deviceToken).toStrictEqual([
+    {
+      device_auth_id: "device_auth_test",
+      user_code: "ABCD-EFGH",
+    },
+  ]);
+}
+
+function expectOAuthTokenBody(calls: {
+  readonly oauthToken: readonly URLSearchParams[];
+}) {
+  expect(calls.oauthToken).toHaveLength(1);
+  const body = calls.oauthToken[0];
+  expect(body?.get("grant_type")).toBe("authorization_code");
+  expect(body?.get("code")).toBe("auth_code_test");
+  expect(body?.get("redirect_uri")).toBe(
+    "https://auth.openai.com/deviceauth/callback",
+  );
+  expect(body?.get("client_id")).toBe("app_EMoamEEZ73f0CkXaXp7hrann");
+  expect(body?.get("code_verifier")).toBe("code_verifier_test");
 }
 
 async function enableCodexDeviceAuth(userId: string, orgId: string) {
@@ -299,7 +250,6 @@ describe("Codex device auth routes", () => {
   const fixtures: { readonly userId: string; readonly orgId: string }[] = [];
 
   afterEach(async () => {
-    clearMockSandboxClient();
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
@@ -317,12 +267,12 @@ describe("Codex device auth routes", () => {
     return { userId, orgId };
   }
 
-  it("requires the Codex device auth feature switch before creating a sandbox", async () => {
+  it("requires the Codex device auth feature switch before contacting OpenAI auth", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     fixtures.push({ userId, orgId });
     mocks.clerk.session(userId, orgId);
-    const calls = mockCodexDeviceAuthSandbox();
+    const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
       client().start({
@@ -333,12 +283,12 @@ describe("Codex device auth routes", () => {
     );
 
     expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(calls.create).toHaveLength(0);
+    expect(calls.userCode).toHaveLength(0);
   });
 
-  it("rejects member org-scope starts before creating a sandbox", async () => {
+  it("rejects member org-scope starts before contacting OpenAI auth", async () => {
     const { userId, orgId } = await setupUser("org:member");
-    const calls = mockCodexDeviceAuthSandbox();
+    const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
       client().start({
@@ -352,12 +302,12 @@ describe("Codex device auth routes", () => {
     await expect(codexDeviceAuthSessions(userId, orgId)).resolves.toStrictEqual(
       [],
     );
-    expect(calls.create).toHaveLength(0);
+    expect(calls.userCode).toHaveLength(0);
   });
 
   it("starts Codex device auth and returns browser confirmation details", async () => {
     const { userId, orgId } = await setupUser();
-    const calls = mockCodexDeviceAuthSandbox();
+    const calls = mockCodexDeviceAuthHttp();
 
     const response = await accept(
       client().start({
@@ -375,16 +325,9 @@ describe("Codex device auth routes", () => {
       verificationCode: "ABCD-EFGH",
       interval: 5,
     });
-    expect(response.body.sessionToken).not.toContain(
-      "sandbox_codex_device_auth_test",
-    );
-    expect(calls.create[0]).toMatchObject({
-      runtime: "node24",
-      timeoutMs: 20 * 60 * 1000,
-    });
-    const startScript = calls.run[0]?.options.args?.[1] ?? "";
-    expect(startScript).toContain("@openai/codex@0.131.0");
-    expect(startScript).toContain("login --device-auth");
+    expect(calls.userCode).toStrictEqual([
+      { client_id: "app_EMoamEEZ73f0CkXaXp7hrann" },
+    ]);
 
     const sessions = await codexDeviceAuthSessions(userId, orgId);
     expect(sessions).toHaveLength(1);
@@ -392,7 +335,7 @@ describe("Codex device auth routes", () => {
       connectorType: "codex-oauth-token",
       source: "codex-device-auth",
       status: "awaiting_user_approval",
-      sandboxId: "sandbox_codex_device_auth_test",
+      sandboxId: null,
       approvalUrl: "https://auth.openai.com/codex/device",
       verificationCode: "ABCD-EFGH",
       errorMessage: null,
@@ -400,9 +343,40 @@ describe("Codex device auth routes", () => {
     expect(sessions[0]?.encryptedProviderState).toBeTruthy();
   });
 
+  it("cancels pending device auth", async () => {
+    const { userId, orgId } = await setupUser();
+    mockCodexDeviceAuthHttp();
+
+    const start = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { scope: "org" },
+      }),
+      [200],
+    );
+    const cancel = await accept(
+      client().cancel({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionToken: start.body.sessionToken },
+      }),
+      [200],
+    );
+
+    expect(cancel.body).toStrictEqual({ status: "cancelled" });
+
+    const sessions = await codexDeviceAuthSessions(userId, orgId);
+    expect(sessions[0]).toMatchObject({
+      status: "cancelled",
+      approvalUrl: null,
+      verificationCode: null,
+      errorMessage: "Codex device auth session was cancelled",
+    });
+    expect(sessions[0]?.cancelledAt).toBeInstanceOf(Date);
+  });
+
   it("completes org-scope device auth and imports ChatGPT secrets", async () => {
     const { userId, orgId } = await setupUser();
-    const calls = mockCodexDeviceAuthSandbox({ authJsonScope: "org" });
+    const calls = mockCodexDeviceAuthHttp({ tokenScope: "org" });
 
     const start = await accept(
       client().start({
@@ -429,6 +403,8 @@ describe("Codex device auth routes", () => {
         planType: "plus",
       },
     });
+    expectDeviceTokenBody(calls);
+    expectOAuthTokenBody(calls);
     await expect(
       chatgptSecret({
         orgId,
@@ -436,7 +412,6 @@ describe("Codex device auth routes", () => {
         name: "CHATGPT_REFRESH_TOKEN",
       }),
     ).resolves.toBe("rt_org_synthetic_high_entropy");
-    expect(calls.stop).toHaveLength(1);
 
     const sessions = await codexDeviceAuthSessions(userId, orgId);
     expect(sessions[0]?.status).toBe("imported");
@@ -444,7 +419,7 @@ describe("Codex device auth routes", () => {
 
   it("completes personal-scope device auth for non-admin members", async () => {
     const { userId, orgId } = await setupUser("org:member");
-    const calls = mockCodexDeviceAuthSandbox({ authJsonScope: "personal" });
+    const calls = mockCodexDeviceAuthHttp({ tokenScope: "personal" });
 
     const start = await accept(
       client().start({
@@ -468,6 +443,8 @@ describe("Codex device auth routes", () => {
         workspaceName: "Personal Acme",
       },
     });
+    expectDeviceTokenBody(calls);
+    expectOAuthTokenBody(calls);
     await expect(
       chatgptSecret({
         orgId,
@@ -475,6 +452,5 @@ describe("Codex device auth routes", () => {
         name: "CHATGPT_REFRESH_TOKEN",
       }),
     ).resolves.toBe("rt_personal_synthetic_high_entropy");
-    expect(calls.stop).toHaveLength(1);
   });
 });

@@ -1,17 +1,17 @@
 /**
  * Tests for OrgProvidersTab — specifically the stale-session reconnect
- * banner button (#11980 replaces the broken cross-origin <a href> with a
- * button that opens the codex auth.json paste dialog in reconnect mode).
+ * banner button.
  *
  * Covers:
- * - Re-paste button opens the paste dialog with reconnect title
- * - Successful re-paste clears needsReconnect → banner unmounts
+ * - Reconnect button opens the Codex device login dialog with reconnect title
+ * - Successful reconnect clears needsReconnect → banner unmounts
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { server } from "../../../../../mocks/server.ts";
 import { mockApi } from "../../../../../mocks/msw-contract.ts";
@@ -19,7 +19,6 @@ import { testContext } from "../../../../../signals/__tests__/test-helpers.ts";
 import {
   detachedSetupPage,
   click,
-  fill,
 } from "../../../../../__tests__/page-helper.ts";
 import {
   setMockOrgModelProviders,
@@ -27,7 +26,6 @@ import {
 } from "../../../../../mocks/handlers/api-org-model-providers.ts";
 import { resetMockOrgModelPolicies } from "../../../../../mocks/handlers/api-org-model-policies.ts";
 import { setMockFeatureSwitches } from "../../../../../mocks/handlers/api-feature-switches.helpers.ts";
-import { setCodexPasteDialogState$ } from "../../../../../signals/zero-page/settings/org-model-providers.ts";
 
 vi.mock("@vm0/ui/components/ui/sonner", async (importOriginal) => {
   const actual =
@@ -95,13 +93,6 @@ beforeEach(() => {
   vi.mocked(toast.success).mockClear();
 });
 
-afterEach(() => {
-  context.store.set(setCodexPasteDialogState$, {
-    open: false,
-    mode: "connect",
-  });
-});
-
 async function openProvidersPage(): Promise<void> {
   detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
@@ -109,8 +100,8 @@ async function openProvidersPage(): Promise<void> {
   });
 }
 
-async function findRepasteButton(): Promise<HTMLElement> {
-  return await screen.findByText("Re-paste auth.json");
+async function findReconnectButton(): Promise<HTMLElement> {
+  return await screen.findByText("Reconnect");
 }
 
 function findReconnectDialogTitle(): HTMLElement | null {
@@ -413,29 +404,44 @@ describe("org-providers-tab — stale banner reconnect", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens the paste dialog in reconnect mode when Re-paste button is clicked", async () => {
+  it("opens the device login dialog in reconnect mode when Reconnect is clicked", async () => {
     setMockFeatureSwitches({});
     setMockOrgModelProviders([makeStaleProvider()]);
     await openProvidersPage();
 
-    click(await findRepasteButton());
+    click(await findReconnectButton());
 
     await waitFor(() => {
       expect(findReconnectDialogTitle()).toBeInTheDocument();
     });
+    expect(screen.getByTestId("codex-device-auth-start")).toBeInTheDocument();
+    expect(screen.getByText("Reconnect ChatGPT")).toBeInTheDocument();
   });
 
-  it("clears the stale banner after a successful re-paste", async () => {
+  it("clears the stale banner after a successful reconnect", async () => {
     setMockFeatureSwitches({});
     setMockOrgModelProviders([makeStaleProvider()]);
     server.use(
-      mockApi(zeroModelProvidersMainContract.upsert, ({ respond }) => {
+      mockApi(zeroCodexDeviceAuthContract.start, ({ respond }) => {
+        return respond(200, {
+          sessionToken: "mock-codex-device-session",
+          type: "codex",
+          status: "pending",
+          scope: "org",
+          browserUrl: "https://auth.openai.com/codex/device",
+          verificationCode: "ABCD-EFGH",
+          expiresIn: 30,
+          interval: 1,
+        });
+      }),
+      mockApi(zeroCodexDeviceAuthContract.complete, ({ respond }) => {
         const fresh = makeFreshProvider();
-        // Reflect the post-submit state so the next list refresh sees a
-        // non-stale provider; the dialog drives the refresh via the
-        // internal reload counter inside submitCodexAuthJson$.
         setMockOrgModelProviders([fresh]);
-        return respond(200, { provider: fresh, created: false });
+        return respond(200, {
+          status: "complete",
+          created: false,
+          provider: fresh,
+        });
       }),
     );
 
@@ -447,13 +453,8 @@ describe("org-providers-tab — stale banner reconnect", () => {
       ).toBeInTheDocument();
     });
 
-    click(await findRepasteButton());
-
-    await fill(
-      await screen.findByTestId("codex-paste-textarea"),
-      '{"OPENAI_API_KEY":"sk","tokens":{"access_token":"a"}}',
-    );
-    click(screen.getByTestId("codex-paste-submit"));
+    click(await findReconnectButton());
+    click(await screen.findByTestId("codex-device-auth-start"));
 
     await waitFor(() => {
       expect(

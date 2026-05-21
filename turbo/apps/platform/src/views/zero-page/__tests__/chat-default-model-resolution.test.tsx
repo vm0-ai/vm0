@@ -434,7 +434,7 @@ describe("chat composer — default model resolution", () => {
     });
   });
 
-  it("blocks agent chat submit and opens ChatGPT auth.json paste from the model warning", async () => {
+  it("blocks agent chat submit and opens ChatGPT device login from the model warning", async () => {
     const user = userEvent.setup();
     const openSpy = vi
       .spyOn(window, "open")
@@ -482,7 +482,7 @@ describe("chat composer — default model resolution", () => {
     await user.click(warning);
 
     await expect(
-      screen.findByTestId("codex-paste-textarea"),
+      screen.findByTestId("codex-device-auth-start"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();
@@ -509,7 +509,7 @@ describe("chat composer — default model resolution", () => {
     await expectComposerShowsModel("Claude Opus 4.6");
   });
 
-  it("blocks thread submit and opens ChatGPT auth.json paste from the model warning", async () => {
+  it("blocks thread submit and opens ChatGPT device login from the model warning", async () => {
     const user = userEvent.setup();
     const openSpy = vi
       .spyOn(window, "open")
@@ -557,7 +557,7 @@ describe("chat composer — default model resolution", () => {
     await user.click(warning);
 
     await expect(
-      screen.findByTestId("codex-paste-textarea"),
+      screen.findByTestId("codex-device-auth-start"),
     ).resolves.toBeInTheDocument();
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();

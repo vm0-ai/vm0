@@ -84,7 +84,7 @@ import {
   usePersonalOauthConfigurationAction,
 } from "./model-first-oauth-submit-blocker.ts";
 import { PersonalProviderDialog } from "./components/settings/personal-provider-dialog.tsx";
-import { PersonalCodexAuthPasteDialog } from "./components/settings/codex-auth-paste-dialog.tsx";
+import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
 function getTagline(
   agentName: string,
@@ -626,7 +626,7 @@ export function AgentChatPage() {
         </div>
       </main>
       <PersonalProviderDialog />
-      <PersonalCodexAuthPasteDialog />
+      <PersonalCodexDeviceAuthDialog />
       {lightboxUrl && <AttachmentLightbox />}
     </div>
   );

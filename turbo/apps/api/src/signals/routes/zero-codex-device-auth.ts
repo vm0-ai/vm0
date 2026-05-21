@@ -9,6 +9,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import {
+  cancelCodexDeviceAuth$,
   codexDeviceAuthUnavailable,
   completeCodexDeviceAuth$,
   startCodexDeviceAuth,
@@ -58,6 +59,9 @@ const startCodexDeviceAuthBody$ = bodyResultOf(
 );
 const completeCodexDeviceAuthBody$ = bodyResultOf(
   zeroCodexDeviceAuthContract.complete,
+);
+const cancelCodexDeviceAuthBody$ = bodyResultOf(
+  zeroCodexDeviceAuthContract.cancel,
 );
 
 const startCodexDeviceAuthInner$ = command(
@@ -188,6 +192,43 @@ const completeCodexDeviceAuthInner$ = command(
   },
 );
 
+const cancelCodexDeviceAuthInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const body = await get(cancelCodexDeviceAuthBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const result = await set(
+      cancelCodexDeviceAuth$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        sessionToken: body.data.sessionToken,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    switch (result.status) {
+      case "cancelled": {
+        return {
+          status: 200 as const,
+          body: { status: "cancelled" as const },
+        };
+      }
+      case "invalid_token": {
+        return badRequestMessage(result.message);
+      }
+      case "forbidden": {
+        return notFound(result.message);
+      }
+    }
+  },
+);
+
 export const zeroCodexDeviceAuthRoutes: readonly RouteEntry[] = [
   {
     route: zeroCodexDeviceAuthContract.start,
@@ -196,5 +237,9 @@ export const zeroCodexDeviceAuthRoutes: readonly RouteEntry[] = [
   {
     route: zeroCodexDeviceAuthContract.complete,
     handler: authRoute(modelProviderWriteAuth, completeCodexDeviceAuthInner$),
+  },
+  {
+    route: zeroCodexDeviceAuthContract.cancel,
+    handler: authRoute(modelProviderWriteAuth, cancelCodexDeviceAuthInner$),
   },
 ];

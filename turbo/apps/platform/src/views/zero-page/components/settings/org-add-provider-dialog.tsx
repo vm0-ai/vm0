@@ -1,6 +1,5 @@
 import { useLastResolved, useSet } from "ccstate-react";
 import { IconPlus } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Dialog,
   DialogContent,
@@ -15,9 +14,7 @@ import {
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
-  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { setCodexDeviceAuthDialogState$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
@@ -74,12 +71,8 @@ export function OrgAddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
-  const features = useLastResolved(featureSwitch$);
   const openAdd = useSet(orgOpenAddDialog$);
-  const openCodexPaste = useSet(setCodexPasteDialogState$);
   const openCodexDeviceAuth = useSet(setCodexDeviceAuthDialogState$);
-  const codexDeviceAuthEnabled =
-    features?.[FeatureSwitchKey.CodexDeviceAuth] ?? false;
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
       return p.type;
@@ -88,11 +81,7 @@ export function OrgAddProviderDialog({
 
   const handleAdd = (type: ModelProviderType) => {
     if (type === "codex-oauth-token") {
-      if (codexDeviceAuthEnabled) {
-        openCodexDeviceAuth({ open: true, mode: "connect" });
-      } else {
-        openCodexPaste({ open: true, mode: "connect" });
-      }
+      openCodexDeviceAuth({ open: true, mode: "connect" });
       onOpenChange(false);
       return;
     }

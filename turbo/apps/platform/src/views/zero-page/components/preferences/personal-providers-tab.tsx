@@ -1,12 +1,5 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useLoadable,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { IconDotsVertical, IconPlus } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
   DropdownMenu,
@@ -23,15 +16,12 @@ import {
   personalActionPromise$,
   personalConfiguredProviders$,
   personalOpenOAuthCredentialDialog$,
-  setCodexPasteDialogStatePersonal$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
-import { PersonalCodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dialog.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
@@ -41,7 +31,6 @@ export function PersonalProvidersTab() {
     <div className="flex flex-col gap-8">
       <OAuthCredentialsSection />
       <PersonalProviderDialog />
-      <PersonalCodexAuthPasteDialog />
       <PersonalCodexDeviceAuthDialog />
     </div>
   );
@@ -49,9 +38,7 @@ export function PersonalProvidersTab() {
 
 function OAuthCredentialsSection() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
-  const features = useLastResolved(featureSwitch$);
   const openCredentialDialog = useSet(personalOpenOAuthCredentialDialog$);
-  const openCodexPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
   const openCodexDeviceAuthDialog = useSet(
     setCodexDeviceAuthDialogStatePersonal$,
   );
@@ -66,18 +53,12 @@ function OAuthCredentialsSection() {
   const openAI = findProvider(providers, "codex-oauth-token");
   const openAIStatus = getOpenAIStatus(openAI);
   const disconnecting = actionLoadable.state === "loading";
-  const codexDeviceAuthEnabled =
-    features?.[FeatureSwitchKey.CodexDeviceAuth] ?? false;
   const connectOpenAI = () => {
     const next = {
       open: true,
       mode: openAI?.needsReconnect ? "reconnect" : "connect",
     } as const;
-    if (codexDeviceAuthEnabled) {
-      openCodexDeviceAuthDialog(next);
-      return;
-    }
-    openCodexPasteDialog(next);
+    openCodexDeviceAuthDialog(next);
   };
 
   return (
@@ -138,11 +119,7 @@ function OAuthCredentialsSection() {
             <OAuthCredentialCard
               type="codex-oauth-token"
               title="ChatGPT (Codex)"
-              description={
-                codexDeviceAuthEnabled
-                  ? "Connect with Codex device login for Codex-backed model routes."
-                  : "Paste Codex auth.json for Codex-backed model routes."
-              }
+              description="Connect with Codex device login for Codex-backed model routes."
               status={openAIStatus}
               menuItems={
                 openAI

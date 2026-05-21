@@ -76,10 +76,9 @@ export const deletePersonalModelProvider$ = command(
 );
 
 /**
- * Force-refresh `personalModelProviders$` — used by the codex auth.json
- * paste flow after a successful (re-)connect so the stale-provider banner
- * unmounts. Mirrors `reloadOrgModelProviders$` in
- * `external/org-model-providers.ts`.
+ * Force-refresh `personalModelProviders$` after a successful higher-level
+ * provider mutation, such as Codex device login. Mirrors
+ * `reloadOrgModelProviders$` in `external/org-model-providers.ts`.
  */
 export const reloadPersonalModelProviders$ = command(({ set }) => {
   set(internalReloadPersonalModelProviders$, (x) => {

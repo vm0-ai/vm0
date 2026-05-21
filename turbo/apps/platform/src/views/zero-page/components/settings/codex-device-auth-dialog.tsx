@@ -3,14 +3,15 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
+import { IconLoader2 } from "@tabler/icons-react";
 
 import {
+  closeCodexDeviceAuthDialog$,
+  closeCodexDeviceAuthDialogPersonal$,
   codexDeviceAuthDialogState$,
   codexDeviceAuthDialogStatePersonal$,
   codexDeviceAuthFlowState$,
@@ -23,25 +24,22 @@ import {
   setCodexDeviceAuthDialogStatePersonal$,
   type CodexDeviceAuthFlowState,
 } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
-import { setCodexPasteDialogState$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { setCodexPasteDialogStatePersonal$ } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { ConnectorHelpText } from "./connector-help-text.tsx";
+import { ProviderIcon } from "./provider-icons.tsx";
 
 type CodexDeviceAuthDialogState = {
   open: boolean;
   mode: "connect" | "reconnect";
 };
 
-type RunLoadable = ReturnType<typeof useLoadableSet<boolean, [AbortSignal]>>[0];
-
 interface CodexDeviceAuthScopeBundle {
   dialog: CodexDeviceAuthDialogState;
   flow: CodexDeviceAuthFlowState;
   setDialog: (next: CodexDeviceAuthDialogState) => void;
-  openApprovalPage: () => boolean;
-  openPasteFallback: (mode: "connect" | "reconnect") => void;
-  runLoadable: RunLoadable;
+  close: (signal: AbortSignal) => Promise<void>;
+  openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
   run: (signal: AbortSignal) => Promise<boolean>;
 }
 
@@ -59,19 +57,15 @@ function useOrgCodexDeviceAuthBundle(): CodexDeviceAuthScopeBundle {
   const dialog = useGet(codexDeviceAuthDialogState$);
   const flow = useGet(codexDeviceAuthFlowState$);
   const setDialog = useSet(setCodexDeviceAuthDialogState$);
+  const close = useSet(closeCodexDeviceAuthDialog$);
   const openApprovalPage = useSet(openCodexDeviceAuthApprovalPage$);
-  const setPasteDialog = useSet(setCodexPasteDialogState$);
-  const [runLoadable, run] = useLoadableSet(runCodexDeviceAuth$);
+  const [, run] = useLoadableSet(runCodexDeviceAuth$);
   return {
     dialog,
     flow,
     setDialog,
+    close,
     openApprovalPage,
-    openPasteFallback: (mode) => {
-      setDialog({ open: false, mode });
-      setPasteDialog({ open: true, mode });
-    },
-    runLoadable,
     run,
   };
 }
@@ -80,19 +74,15 @@ function usePersonalCodexDeviceAuthBundle(): CodexDeviceAuthScopeBundle {
   const dialog = useGet(codexDeviceAuthDialogStatePersonal$);
   const flow = useGet(codexDeviceAuthFlowStatePersonal$);
   const setDialog = useSet(setCodexDeviceAuthDialogStatePersonal$);
+  const close = useSet(closeCodexDeviceAuthDialogPersonal$);
   const openApprovalPage = useSet(openCodexDeviceAuthApprovalPagePersonal$);
-  const setPasteDialog = useSet(setCodexPasteDialogStatePersonal$);
-  const [runLoadable, run] = useLoadableSet(runCodexDeviceAuthPersonal$);
+  const [, run] = useLoadableSet(runCodexDeviceAuthPersonal$);
   return {
     dialog,
     flow,
     setDialog,
+    close,
     openApprovalPage,
-    openPasteFallback: (mode) => {
-      setDialog({ open: false, mode });
-      setPasteDialog({ open: true, mode });
-    },
-    runLoadable,
     run,
   };
 }
@@ -103,63 +93,41 @@ function CodexDeviceAuthDialogView({
   bundle: CodexDeviceAuthScopeBundle;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const { dialog, flow, setDialog, openApprovalPage, openPasteFallback, run } =
-    bundle;
+  const { dialog, flow, setDialog, close, openApprovalPage, run } = bundle;
   const title =
     dialog.mode === "reconnect" ? "Re-connect Codex" : "Connect Codex";
-  const startDisabled = flow.status === "starting" || flow.status === "polling";
-  const showStart =
-    flow.status === "idle" ||
-    flow.status === "error" ||
-    flow.status === "expired";
 
   function handleOpenChange(nextOpen: boolean): void {
-    setDialog({ ...dialog, open: nextOpen });
+    if (nextOpen) {
+      setDialog({ ...dialog, open: true });
+      return;
+    }
+    detach(close(pageSignal), Reason.DomCallback);
+  }
+
+  function handleStart(): void {
+    detach(run(pageSignal), Reason.DomCallback);
   }
 
   return (
     <Dialog open={dialog.open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Sign in with the official Codex device flow. Keep this dialog open
-            while you approve access in your browser.
-          </DialogDescription>
+          <div className="flex items-center gap-3">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <ProviderIcon type="codex-oauth-token" size={20} />
+            </div>
+            <DialogTitle>{title}</DialogTitle>
+          </div>
         </DialogHeader>
 
-        <CodexDeviceAuthBody flow={flow} openApprovalPage={openApprovalPage} />
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button
-            variant="ghost"
-            onClick={() => {
-              openPasteFallback(dialog.mode);
-            }}
-            disabled={flow.status === "starting" || flow.status === "polling"}
-          >
-            Use auth.json instead
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              return handleOpenChange(false);
-            }}
-          >
-            Cancel
-          </Button>
-          {showStart && (
-            <Button
-              onClick={() => {
-                detach(run(pageSignal), Reason.DomCallback);
-              }}
-              disabled={startDisabled}
-              data-testid="codex-device-auth-start"
-            >
-              {dialog.mode === "reconnect" ? "Reconnect" : "Connect"}
-            </Button>
-          )}
-        </DialogFooter>
+        <CodexDeviceAuthBody
+          flow={flow}
+          mode={dialog.mode}
+          onStart={handleStart}
+          openApprovalPage={openApprovalPage}
+          pageSignal={pageSignal}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -167,25 +135,24 @@ function CodexDeviceAuthDialogView({
 
 function CodexDeviceAuthBody({
   flow,
+  mode,
+  onStart,
   openApprovalPage,
+  pageSignal,
 }: {
   flow: CodexDeviceAuthFlowState;
-  openApprovalPage: () => boolean;
+  mode: "connect" | "reconnect";
+  onStart: () => void;
+  openApprovalPage: (signal: AbortSignal) => Promise<boolean>;
+  pageSignal: AbortSignal;
 }) {
   switch (flow.status) {
     case "idle": {
-      return (
-        <p className="text-sm text-muted-foreground">
-          vm0 will start a short-lived sandbox, get a Codex device code, then
-          open the approval page.
-        </p>
-      );
+      return <CodexDeviceAuthStartContent mode={mode} onStart={onStart} />;
     }
     case "starting": {
       return (
-        <p className="text-sm text-muted-foreground" role="status">
-          Preparing Codex login…
-        </p>
+        <CodexDeviceAuthStartContent mode={mode} onStart={onStart} loading />
       );
     }
     case "pending":
@@ -193,7 +160,9 @@ function CodexDeviceAuthBody({
       return (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <p className="text-xs text-muted-foreground">Device code</p>
+            <p className="text-xs text-muted-foreground">
+              Copy this device code before approving
+            </p>
             <p
               className="mt-1 font-mono text-2xl font-semibold tracking-normal"
               data-testid="codex-device-auth-code"
@@ -209,13 +178,16 @@ function CodexDeviceAuthBody({
           <Button
             type="button"
             variant="outline"
-            onClick={openApprovalPage}
+            className="w-full"
+            onClick={() => {
+              detach(openApprovalPage(pageSignal), Reason.DomCallback);
+            }}
             data-testid="codex-device-auth-open"
           >
-            Open approval page
+            Copy code and open approval page
           </Button>
           <p className="text-xs text-muted-foreground" role="status">
-            Waiting for Codex approval…
+            {codexDeviceAuthStatusText(flow)}
           </p>
         </div>
       );
@@ -223,10 +195,79 @@ function CodexDeviceAuthBody({
     case "expired":
     case "error": {
       return (
-        <p className="text-sm text-destructive" role="alert">
-          {flow.message}
-        </p>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-destructive" role="alert">
+            {flow.message}
+          </p>
+          <CodexDeviceAuthStartButton mode={mode} onStart={onStart} />
+        </div>
       );
     }
   }
+}
+
+function CodexDeviceAuthStartContent({
+  mode,
+  onStart,
+  loading = false,
+}: {
+  mode: "connect" | "reconnect";
+  onStart: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <ConnectorHelpText text="vm0 will start a short-lived Codex login session and show a device code. Open the approval page after the code appears." />
+      <CodexDeviceAuthStartButton
+        mode={mode}
+        onStart={onStart}
+        loading={loading}
+      />
+    </div>
+  );
+}
+
+function CodexDeviceAuthStartButton({
+  mode,
+  onStart,
+  loading = false,
+}: {
+  mode: "connect" | "reconnect";
+  onStart: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={onStart}
+      disabled={loading}
+      className="w-full gap-2"
+      data-testid="codex-device-auth-start"
+    >
+      {loading && <IconLoader2 size={14} className="animate-spin" />}
+      {loading
+        ? "Preparing..."
+        : mode === "reconnect"
+          ? "Reconnect ChatGPT"
+          : "Sign in with ChatGPT"}
+    </Button>
+  );
+}
+
+function codexDeviceAuthStatusText(
+  flow: Extract<CodexDeviceAuthFlowState, { status: "pending" | "polling" }>,
+): string {
+  if (!flow.approvalOpened && !flow.codeCopied) {
+    return "Open the approval page to continue.";
+  }
+  if (flow.codeCopied && !flow.approvalOpened) {
+    return "Device code copied. Try opening the approval page again.";
+  }
+  if (!flow.codeCopied) {
+    return "Approval page opened. Copy the device code before approving.";
+  }
+  return flow.status === "polling"
+    ? "Checking connection..."
+    : "Device code copied. Waiting for approval...";
 }

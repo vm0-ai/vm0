@@ -134,7 +134,9 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     );
     expect(screen.getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
-      screen.getByText("Paste Codex auth.json for Codex-backed model routes."),
+      screen.getByText(
+        "Connect with Codex device login for Codex-backed model routes.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
     expect(screen.queryByText("Personal default")).not.toBeInTheDocument();
@@ -204,7 +206,7 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
     expect(screen.queryByText("Reconnect")).not.toBeInTheDocument();
   });
 
-  it("disconnects ChatGPT (Codex) auth.json from the fixed card", async () => {
+  it("disconnects ChatGPT (Codex) from the fixed card", async () => {
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
@@ -270,8 +272,8 @@ describe("personal-providers-tab — OAuth-only configuration", () => {
   });
 });
 
-describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
-  it("clicking ChatGPT (Codex) connect opens the auth.json paste dialog", async () => {
+describe("personal-providers-tab — ChatGPT (Codex) device login flow", () => {
+  it("clicking ChatGPT (Codex) connect opens the device login dialog", async () => {
     const openSpy = vi
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
@@ -284,13 +286,14 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
     click(await screen.findByLabelText("Connect ChatGPT (Codex)"));
 
     await expect(
-      screen.findByTestId("codex-paste-textarea"),
+      screen.findByTestId("codex-device-auth-start"),
     ).resolves.toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();
     expect(screen.getByText("Connect Codex")).toBeInTheDocument();
+    expect(screen.getByText("Sign in with ChatGPT")).toBeInTheDocument();
   });
 
-  it("opens the auth.json reconnect dialog for stale ChatGPT (Codex)", async () => {
+  it("opens the device reconnect dialog for stale ChatGPT (Codex)", async () => {
     setMockFeatureSwitches({});
     mockPreferences();
     setMockPersonalModelProviders([
@@ -316,7 +319,8 @@ describe("personal-providers-tab — ChatGPT (Codex) auth.json flow", () => {
     await expect(
       screen.findByText("Re-connect Codex"),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByTestId("codex-paste-textarea")).toBeInTheDocument();
+    expect(screen.getByTestId("codex-device-auth-start")).toBeInTheDocument();
+    expect(screen.getByText("Reconnect ChatGPT")).toBeInTheDocument();
     expect(
       screen.queryByText("Your ChatGPT session expired."),
     ).not.toBeInTheDocument();

@@ -2,21 +2,19 @@ import { command, type Setter } from "ccstate";
 import type { CodexDeviceAuthScope } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { connectorCliAuthSessions } from "@vm0/db/schema/connector-cli-auth-session";
-import { and, eq } from "drizzle-orm";
-import { delay } from "signal-timers";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { logger } from "../../lib/log";
-import { now, nowDate } from "../../lib/time";
-import {
-  sandboxOperation,
-  type SandboxClient,
-  type SandboxFileReadResult,
-  type SandboxHandle,
-} from "../external/sandbox";
-import { getVercelSandboxClient } from "../external/vercel-sandbox";
+import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import { safeJsonParse, safeSync, settle } from "../utils";
+import {
+  detach,
+  Mechanism,
+  onRejection,
+  safeJsonParse,
+  safeSync,
+  settle,
+} from "../utils";
 import { decryptSecretValue, encryptSecretValue } from "./crypto.utils";
 import { handleCodexAuthJsonPaste } from "./codex-auth-json-paste-handler";
 import {
@@ -24,22 +22,15 @@ import {
   upsertUserMultiAuthModelProvider$,
 } from "./zero-model-provider.service";
 
-const CODEX_DEVICE_AUTH_RUNTIME = "node24";
-const CODEX_DEVICE_AUTH_PACKAGE = "@openai/codex@0.131.0";
-const CODEX_DEVICE_AUTH_TIMEOUT_MS = 20 * 60 * 1000;
+const CODEX_DEVICE_AUTH_ISSUER = "https://auth.openai.com";
+const CODEX_DEVICE_AUTH_API_BASE_URL = `${CODEX_DEVICE_AUTH_ISSUER}/api/accounts`;
+const CODEX_DEVICE_AUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const CODEX_DEVICE_AUTH_VERIFICATION_URL = `${CODEX_DEVICE_AUTH_ISSUER}/codex/device`;
+const CODEX_DEVICE_AUTH_REDIRECT_URI = `${CODEX_DEVICE_AUTH_ISSUER}/deviceauth/callback`;
 const CODEX_DEVICE_AUTH_SESSION_TTL_SECONDS = 15 * 60;
 const CODEX_DEVICE_AUTH_POLL_INTERVAL_SECONDS = 5;
-const CODEX_DEVICE_AUTH_START_TIMEOUT_MS = 60 * 1000;
-const CODEX_DEVICE_AUTH_START_POLL_MS = 1000;
-const CODEX_DEVICE_AUTH_FILE_LIMIT_BYTES = 16 * 1024;
-const CODEX_DEVICE_AUTH_ROOT = "/vercel/sandbox/cli-auth/codex";
-const CODEX_DEVICE_AUTH_HOME = `${CODEX_DEVICE_AUTH_ROOT}/codex-home`;
-const CODEX_DEVICE_AUTH_OUTPUT_PATH = `${CODEX_DEVICE_AUTH_ROOT}/login-output.txt`;
-const CODEX_DEVICE_AUTH_STATUS_PATH = `${CODEX_DEVICE_AUTH_ROOT}/login-status.txt`;
-const CODEX_DEVICE_AUTH_AUTH_JSON_PATH = `${CODEX_DEVICE_AUTH_HOME}/auth.json`;
 const CODEX_DEVICE_AUTH_CONNECTOR_TYPE = "codex-oauth-token";
 const CODEX_DEVICE_AUTH_SOURCE = "codex-device-auth";
-const L = logger("CodexDeviceAuth");
 
 const codexDeviceAuthSessionTokenSchema = z.object({
   version: z.literal(1),
@@ -50,6 +41,31 @@ const codexDeviceAuthProviderStateSchema = z.object({
   version: z.literal(1),
   type: z.literal("codex"),
   scope: z.enum(["org", "personal"]),
+  deviceAuthId: z.string().min(1),
+  userCode: z.string().min(1),
+});
+
+const codexDeviceUserCodeResponseSchema = z.object({
+  device_auth_id: z.string().min(1),
+  user_code: z.string().min(1).optional(),
+  usercode: z.string().min(1).optional(),
+  interval: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(CODEX_DEVICE_AUTH_POLL_INTERVAL_SECONDS),
+});
+
+const codexDeviceTokenResponseSchema = z.object({
+  authorization_code: z.string().min(1),
+  code_challenge: z.string().min(1),
+  code_verifier: z.string().min(1),
+});
+
+const codexOAuthTokenResponseSchema = z.object({
+  id_token: z.string().min(1),
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1),
 });
 
 type CodexDeviceAuthSessionToken = z.infer<
@@ -60,6 +76,11 @@ type CodexDeviceAuthProviderState = z.infer<
 >;
 type ConnectorCliAuthSession = typeof connectorCliAuthSessions.$inferSelect;
 type ConnectorCliAuthSessionStatus = ConnectorCliAuthSession["status"];
+const CODEX_DEVICE_AUTH_ACTIVE_STATUSES = [
+  "initializing",
+  "awaiting_user_approval",
+  "completing",
+] as const satisfies readonly ConnectorCliAuthSessionStatus[];
 type CodexDeviceAuthFailureCode =
   | "CODEX_DEVICE_AUTH_UNAVAILABLE"
   | "CODEX_DEVICE_AUTH_FAILED"
@@ -111,33 +132,36 @@ type CodexDeviceAuthCompleteResult =
       readonly message: string;
     };
 
-type TextFileReadResult =
+type CodexDeviceAuthCancelResult =
+  | { readonly status: "cancelled" }
+  | { readonly status: "invalid_token"; readonly message: string }
+  | { readonly status: "forbidden"; readonly message: string };
+
+type CodexDeviceUserCode = {
+  readonly deviceAuthId: string;
+  readonly userCode: string;
+  readonly interval: number;
+};
+
+type CodexDeviceTokenPollResult =
   | {
-      readonly status: "missing";
+      readonly status: "pending";
     }
   | {
-      readonly status: "ok";
-      readonly text: string;
-    }
-  | {
-      readonly status: "too_large";
-      readonly text: string;
+      readonly status: "complete";
+      readonly authorizationCode: string;
+      readonly codeVerifier: string;
     }
   | {
       readonly status: "error";
       readonly message: string;
     };
 
-type CodexDeviceStartOutput =
-  | {
-      readonly ok: true;
-      readonly browserUrl: string;
-      readonly verificationCode: string;
-    }
-  | {
-      readonly ok: false;
-      readonly message: string;
-    };
+type CodexOAuthTokens = {
+  readonly idToken: string;
+  readonly accessToken: string;
+  readonly refreshToken: string;
+};
 
 type CodexAuthJsonPasteResult = Awaited<
   ReturnType<typeof handleCodexAuthJsonPaste>
@@ -155,27 +179,6 @@ interface CodexAuthJsonPasteErrorResponse {
 interface CodexAuthJsonPasteSuccessBody {
   readonly provider: ModelProviderResponse;
   readonly created: boolean;
-}
-
-function startCommandScript(): string {
-  return String.raw`set -euo pipefail
-ROOT="${CODEX_DEVICE_AUTH_ROOT}"
-CODEX_HOME="${CODEX_DEVICE_AUTH_HOME}"
-HOME_DIR="$ROOT/home"
-OUT="${CODEX_DEVICE_AUTH_OUTPUT_PATH}"
-STATUS="${CODEX_DEVICE_AUTH_STATUS_PATH}"
-mkdir -p "$ROOT" "$CODEX_HOME" "$HOME_DIR"
-chmod 700 "$CODEX_HOME"
-cat > "$CODEX_HOME/config.toml" <<'EOF'
-cli_auth_credentials_store = "file"
-EOF
-rm -f "$OUT" "$STATUS" "${CODEX_DEVICE_AUTH_AUTH_JSON_PATH}"
-(
-  set +e
-  HOME="$HOME_DIR" CODEX_HOME="$CODEX_HOME" npx -y ${CODEX_DEVICE_AUTH_PACKAGE} login --device-auth > "$OUT" 2>&1
-  printf '%s' "$?" > "$STATUS"
-) &
-printf '%s' "$!" > "$ROOT/login.pid"`;
 }
 
 function encodeSession(payload: CodexDeviceAuthSessionToken): string {
@@ -232,6 +235,10 @@ function sanitizeSessionError(message: string): string {
   return message.slice(0, 500);
 }
 
+function unknownErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function terminalSessionSet(args: {
   readonly status: Extract<
     ConnectorCliAuthSessionStatus,
@@ -272,40 +279,13 @@ function sessionWhere(args: {
   return and(eq(connectorCliAuthSessions.id, args.sessionId), ownerWhere(args));
 }
 
-function sandboxHandleFromSession(
-  session: Pick<ConnectorCliAuthSession, "sandboxId">,
-): SandboxHandle | null {
-  return session.sandboxId ? { sandboxId: session.sandboxId } : null;
-}
-
-async function cleanupSandboxSafely(args: {
-  readonly client: SandboxClient;
-  readonly sandbox: SandboxHandle | null;
-  readonly reason: string;
-}) {
-  const sandbox = args.sandbox;
-  if (!sandbox) {
-    return;
-  }
-  const result = await sandboxOperation("stop", () => {
-    return args.client.stop(sandbox);
-  });
-  if (!result.ok) {
-    L.warn("Failed to clean up Codex device auth sandbox", {
-      sandboxId: sandbox.sandboxId,
-      reason: args.reason,
-      error: result.error,
-    });
-  }
-}
-
 async function cancelActiveSessions(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly now: Date;
-}): Promise<readonly SandboxHandle[]> {
-  const rows = await args.writeDb
+}): Promise<void> {
+  await args.writeDb
     .update(connectorCliAuthSessions)
     .set(
       terminalSessionSet({
@@ -317,14 +297,41 @@ async function cancelActiveSessions(args: {
     .where(
       and(
         ownerWhere(args),
-        eq(connectorCliAuthSessions.status, "awaiting_user_approval"),
+        inArray(connectorCliAuthSessions.status, [
+          ...CODEX_DEVICE_AUTH_ACTIVE_STATUSES,
+        ]),
       ),
-    )
-    .returning({ sandboxId: connectorCliAuthSessions.sandboxId });
+    );
+}
 
-  return rows.flatMap((row) => {
-    return row.sandboxId ? [{ sandboxId: row.sandboxId }] : [];
-  });
+async function cancelSession(args: {
+  readonly writeDb: Db;
+  readonly sessionId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly message: string;
+}): Promise<void> {
+  await args.writeDb
+    .update(connectorCliAuthSessions)
+    .set(
+      terminalSessionSet({
+        status: "cancelled",
+        now: nowDate(),
+        message: args.message,
+      }),
+    )
+    .where(
+      and(
+        sessionWhere({
+          sessionId: args.sessionId,
+          orgId: args.orgId,
+          userId: args.userId,
+        }),
+        inArray(connectorCliAuthSessions.status, [
+          ...CODEX_DEVICE_AUTH_ACTIVE_STATUSES,
+        ]),
+      ),
+    );
 }
 
 async function createSession(args: {
@@ -348,6 +355,32 @@ async function createSession(args: {
     throw new Error("Failed to create Codex device auth session");
   }
   return session;
+}
+
+function registerStartAbortCancellation(args: {
+  readonly signal: AbortSignal;
+  readonly writeDb: Db;
+  readonly session: ConnectorCliAuthSession;
+  readonly orgId: string;
+  readonly userId: string;
+}): () => void {
+  const cleanupOnAbort = () => {
+    detach(
+      cancelSession({
+        writeDb: args.writeDb,
+        sessionId: args.session.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        message: "Codex device auth session was cancelled",
+      }),
+      Mechanism.WaitUntil,
+      "cancel aborted Codex device auth session",
+    );
+  };
+  args.signal.addEventListener("abort", cleanupOnAbort, { once: true });
+  return () => {
+    args.signal.removeEventListener("abort", cleanupOnAbort);
+  };
 }
 
 async function markSessionError(args: {
@@ -382,190 +415,25 @@ async function markSessionExpired(args: {
     .where(eq(connectorCliAuthSessions.id, args.session.id));
 }
 
-async function readSandboxTextFile(args: {
-  readonly client: SandboxClient;
-  readonly sandbox: SandboxHandle;
-  readonly path: string;
-  readonly signal: AbortSignal;
-}): Promise<TextFileReadResult> {
-  const result = await sandboxOperation("read", () => {
-    return args.client.readFile(args.sandbox, {
-      path: args.path,
-      limitBytes: CODEX_DEVICE_AUTH_FILE_LIMIT_BYTES,
-      signal: args.signal,
-    });
-  });
-  if (!result.ok) {
-    return { status: "error", message: result.error.message };
-  }
-  return sandboxFileToText(result.value);
-}
-
-function sandboxFileToText(result: SandboxFileReadResult): TextFileReadResult {
-  if (result.status === "missing") {
-    return { status: "missing" };
-  }
-  const text = result.data.toString("utf8");
-  if (result.status === "too_large") {
-    return { status: "too_large", text };
-  }
-  return { status: "ok", text };
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(
-    new RegExp(String.raw`\u001B\[[0-?]*[ -/]*[@-~]`, "g"),
-    "",
-  );
-}
-
-function parseStartOutput(raw: string): CodexDeviceStartOutput | null {
-  const text = stripAnsi(raw);
-  const url = text.match(
-    /https:\/\/auth\.openai\.com\/codex\/device[^\s'"<>]*/,
-  );
-  const code = text.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,8}\b/);
-  if (url?.[0] && code?.[0]) {
-    return {
-      ok: true,
-      browserUrl: url[0],
-      verificationCode: code[0],
-    };
-  }
-  if (/error|failed|denied/i.test(text)) {
-    return {
-      ok: false,
-      message: text.trim().slice(0, 500) || "Codex device auth failed",
-    };
-  }
-  return null;
-}
-
-async function pollForStartOutput(args: {
-  readonly client: SandboxClient;
-  readonly sandbox: SandboxHandle;
-  readonly signal: AbortSignal;
-}): Promise<CodexDeviceStartOutput> {
-  const deadline = now() + CODEX_DEVICE_AUTH_START_TIMEOUT_MS;
-  while (now() < deadline) {
-    const output = await readSandboxTextFile({
-      ...args,
-      path: CODEX_DEVICE_AUTH_OUTPUT_PATH,
-    });
-    args.signal.throwIfAborted();
-    if (output.status === "too_large") {
-      return {
-        ok: false,
-        message: "Codex device auth output was unexpectedly large",
-      };
-    }
-    if (output.status === "error") {
-      return { ok: false, message: output.message };
-    }
-    if (output.status === "ok") {
-      const parsed = parseStartOutput(output.text);
-      if (parsed) {
-        return parsed;
-      }
-    }
-
-    const status = await readSandboxTextFile({
-      ...args,
-      path: CODEX_DEVICE_AUTH_STATUS_PATH,
-    });
-    args.signal.throwIfAborted();
-    if (status.status === "ok" && status.text.trim() !== "") {
-      const suffix =
-        output.status === "ok" && output.text.trim()
-          ? `: ${output.text.trim().slice(0, 500)}`
-          : "";
-      return {
-        ok: false,
-        message: `codex login exited before printing a device code${suffix}`,
-      };
-    }
-
-    await delay(CODEX_DEVICE_AUTH_START_POLL_MS, { signal: args.signal });
-    args.signal.throwIfAborted();
-  }
-  return {
-    ok: false,
-    message: "Timed out waiting for Codex to print a device code",
-  };
-}
-
-async function createSandbox(args: {
-  readonly client: SandboxClient;
-  readonly signal: AbortSignal;
-}): Promise<
-  | { readonly ok: true; readonly sandbox: SandboxHandle }
-  | { readonly ok: false; readonly message: string }
-> {
-  const result = await sandboxOperation("create", () => {
-    return args.client.create({
-      runtime: CODEX_DEVICE_AUTH_RUNTIME,
-      timeoutMs: CODEX_DEVICE_AUTH_TIMEOUT_MS,
-      signal: args.signal,
-    });
-  });
-  if (!result.ok) {
-    return { ok: false, message: result.error.message };
-  }
-  return { ok: true, sandbox: result.value };
-}
-
-async function runStartCommand(args: {
-  readonly client: SandboxClient;
-  readonly sandbox: SandboxHandle;
-  readonly signal: AbortSignal;
-}): Promise<
-  { readonly ok: true } | { readonly ok: false; readonly message: string }
-> {
-  const result = await sandboxOperation("run", () => {
-    return args.client.runCommand(args.sandbox, {
-      cmd: "bash",
-      args: ["-lc", startCommandScript()],
-      outputLimitBytes: CODEX_DEVICE_AUTH_FILE_LIMIT_BYTES,
-      signal: args.signal,
-    });
-  });
-  if (!result.ok) {
-    return { ok: false, message: result.error.message };
-  }
-  if (result.value.exitCode !== 0) {
-    const text = [result.value.stdout.text, result.value.stderr.text]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-    return {
-      ok: false,
-      message: text
-        ? `Failed to start codex login: ${text.slice(0, 500)}`
-        : "Failed to start codex login",
-    };
-  }
-  return { ok: true };
-}
-
 async function moveSessionToAwaitingApproval(args: {
   readonly writeDb: Db;
   readonly session: ConnectorCliAuthSession;
-  readonly sandbox: SandboxHandle;
   readonly scope: CodexDeviceAuthScope;
-  readonly browserUrl: string;
-  readonly verificationCode: string;
+  readonly deviceAuthId: string;
+  readonly userCode: string;
 }): Promise<ConnectorCliAuthSession> {
   const [updated] = await args.writeDb
     .update(connectorCliAuthSessions)
     .set({
       status: "awaiting_user_approval",
-      sandboxId: args.sandbox.sandboxId,
-      approvalUrl: args.browserUrl,
-      verificationCode: args.verificationCode,
+      approvalUrl: CODEX_DEVICE_AUTH_VERIFICATION_URL,
+      verificationCode: args.userCode,
       encryptedProviderState: encodeProviderState({
         version: 1,
         type: "codex",
         scope: args.scope,
+        deviceAuthId: args.deviceAuthId,
+        userCode: args.userCode,
       }),
       updatedAt: nowDate(),
     })
@@ -577,6 +445,144 @@ async function moveSessionToAwaitingApproval(args: {
   return updated;
 }
 
+async function readJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  const parsed = safeJsonParse(text);
+  if (parsed === undefined) {
+    throw new Error("OpenAI auth returned invalid JSON");
+  }
+  return parsed;
+}
+
+async function readErrorMessage(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  const text = await response.text();
+  const trimmed = text.trim();
+  return trimmed
+    ? `${fallback}: ${trimmed.slice(0, 500)}`
+    : `${fallback} with status ${response.status}`;
+}
+
+async function requestOpenAiDeviceUserCode(
+  signal: AbortSignal,
+): Promise<CodexDeviceUserCode> {
+  const response = await fetch(
+    `${CODEX_DEVICE_AUTH_API_BASE_URL}/deviceauth/usercode`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: CODEX_DEVICE_AUTH_CLIENT_ID }),
+      signal,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, "Codex device code request failed"),
+    );
+  }
+
+  const parsed = codexDeviceUserCodeResponseSchema.safeParse(
+    await readJsonResponse(response),
+  );
+  if (!parsed.success) {
+    throw new Error(
+      "OpenAI auth returned an unrecognized device code response",
+    );
+  }
+  const userCode = parsed.data.user_code ?? parsed.data.usercode;
+  if (!userCode) {
+    throw new Error("OpenAI auth returned a device code response without code");
+  }
+  return {
+    deviceAuthId: parsed.data.device_auth_id,
+    userCode,
+    interval: parsed.data.interval,
+  };
+}
+
+async function pollOpenAiDeviceToken(args: {
+  readonly deviceAuthId: string;
+  readonly userCode: string;
+  readonly signal: AbortSignal;
+}): Promise<CodexDeviceTokenPollResult> {
+  const response = await fetch(
+    `${CODEX_DEVICE_AUTH_API_BASE_URL}/deviceauth/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_auth_id: args.deviceAuthId,
+        user_code: args.userCode,
+      }),
+      signal: args.signal,
+    },
+  );
+
+  if (response.status === 403 || response.status === 404) {
+    return { status: "pending" };
+  }
+  if (!response.ok) {
+    return {
+      status: "error",
+      message: await readErrorMessage(response, "Codex device auth failed"),
+    };
+  }
+
+  const parsed = codexDeviceTokenResponseSchema.safeParse(
+    await readJsonResponse(response),
+  );
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "OpenAI auth returned an unrecognized device token response",
+    };
+  }
+  return {
+    status: "complete",
+    authorizationCode: parsed.data.authorization_code,
+    codeVerifier: parsed.data.code_verifier,
+  };
+}
+
+async function exchangeOpenAiAuthorizationCode(args: {
+  readonly authorizationCode: string;
+  readonly codeVerifier: string;
+  readonly signal: AbortSignal;
+}): Promise<CodexOAuthTokens> {
+  const response = await fetch(`${CODEX_DEVICE_AUTH_ISSUER}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: args.authorizationCode,
+      redirect_uri: CODEX_DEVICE_AUTH_REDIRECT_URI,
+      client_id: CODEX_DEVICE_AUTH_CLIENT_ID,
+      code_verifier: args.codeVerifier,
+    }),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, "Codex token exchange failed"),
+    );
+  }
+
+  const parsed = codexOAuthTokenResponseSchema.safeParse(
+    await readJsonResponse(response),
+  );
+  if (!parsed.success) {
+    throw new Error("OpenAI auth returned an unrecognized token response");
+  }
+  return {
+    idToken: parsed.data.id_token,
+    accessToken: parsed.data.access_token,
+    refreshToken: parsed.data.refresh_token,
+  };
+}
+
 export async function startCodexDeviceAuth(args: {
   readonly writeDb: Db;
   readonly orgId: string;
@@ -584,21 +590,13 @@ export async function startCodexDeviceAuth(args: {
   readonly scope: CodexDeviceAuthScope;
   readonly signal: AbortSignal;
 }): Promise<CodexDeviceAuthStartResult> {
-  const client = getVercelSandboxClient();
   const startedAt = nowDate();
-  const cleanupSandboxes = await cancelActiveSessions({
+  await cancelActiveSessions({
     writeDb: args.writeDb,
     orgId: args.orgId,
     userId: args.userId,
     now: startedAt,
   });
-  for (const sandbox of cleanupSandboxes) {
-    await cleanupSandboxSafely({
-      client,
-      sandbox,
-      reason: "superseded by new Codex device auth session",
-    });
-  }
 
   const session = await createSession({
     writeDb: args.writeDb,
@@ -606,79 +604,42 @@ export async function startCodexDeviceAuth(args: {
     userId: args.userId,
     expiresAt: expiresAt(startedAt),
   });
+  const unregisterAbortCancellation = registerStartAbortCancellation({
+    signal: args.signal,
+    writeDb: args.writeDb,
+    session,
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  const userCodeResult = await onRejection(
+    settle(requestOpenAiDeviceUserCode(args.signal), args.signal),
+    unregisterAbortCancellation,
+  );
+  unregisterAbortCancellation();
   args.signal.throwIfAborted();
-
-  const sandboxResult = await createSandbox({ client, signal: args.signal });
-  args.signal.throwIfAborted();
-  if (!sandboxResult.ok) {
+  if (!userCodeResult.ok) {
+    const message = unknownErrorMessage(
+      userCodeResult.error,
+      "Codex device code request failed",
+    );
     await markSessionError({
       writeDb: args.writeDb,
       sessionId: session.id,
-      message: sandboxResult.message,
+      message,
     });
     return {
       ok: false,
       code: "CODEX_DEVICE_AUTH_UNAVAILABLE",
-      message: sandboxResult.message,
-    };
-  }
-
-  const sandbox = sandboxResult.sandbox;
-  const startResult = await runStartCommand({
-    client,
-    sandbox,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (!startResult.ok) {
-    await markSessionError({
-      writeDb: args.writeDb,
-      sessionId: session.id,
-      message: startResult.message,
-    });
-    await cleanupSandboxSafely({
-      client,
-      sandbox,
-      reason: "codex login start failed",
-    });
-    return {
-      ok: false,
-      code: "CODEX_DEVICE_AUTH_FAILED",
-      message: startResult.message,
-    };
-  }
-
-  const output = await pollForStartOutput({
-    client,
-    sandbox,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (!output.ok) {
-    await markSessionError({
-      writeDb: args.writeDb,
-      sessionId: session.id,
-      message: output.message,
-    });
-    await cleanupSandboxSafely({
-      client,
-      sandbox,
-      reason: "codex device code unavailable",
-    });
-    return {
-      ok: false,
-      code: "CODEX_DEVICE_AUTH_FAILED",
-      message: output.message,
+      message,
     };
   }
 
   const updated = await moveSessionToAwaitingApproval({
     writeDb: args.writeDb,
     session,
-    sandbox,
     scope: args.scope,
-    browserUrl: output.browserUrl,
-    verificationCode: output.verificationCode,
+    deviceAuthId: userCodeResult.value.deviceAuthId,
+    userCode: userCodeResult.value.userCode,
   });
   args.signal.throwIfAborted();
 
@@ -686,10 +647,10 @@ export async function startCodexDeviceAuth(args: {
     ok: true,
     sessionToken: encodeSession({ version: 1, sessionId: session.id }),
     scope: args.scope,
-    browserUrl: output.browserUrl,
-    verificationCode: output.verificationCode,
+    browserUrl: CODEX_DEVICE_AUTH_VERIFICATION_URL,
+    verificationCode: userCodeResult.value.userCode,
     expiresIn: remainingTtlSeconds(updated.expiresAt, nowDate()),
-    interval: CODEX_DEVICE_AUTH_POLL_INTERVAL_SECONDS,
+    interval: userCodeResult.value.interval,
   };
 }
 
@@ -741,43 +702,6 @@ async function markSessionImported(args: {
 
 function isSessionExpired(session: ConnectorCliAuthSession): boolean {
   return session.expiresAt.getTime() <= nowDate().getTime();
-}
-
-async function readAuthJson(args: {
-  readonly client: SandboxClient;
-  readonly session: ConnectorCliAuthSession;
-  readonly signal: AbortSignal;
-}): Promise<
-  | { readonly status: "pending" }
-  | { readonly status: "ok"; readonly rawAuthJson: string }
-  | { readonly status: "error"; readonly message: string }
-> {
-  const sandbox = sandboxHandleFromSession(args.session);
-  if (!sandbox) {
-    return {
-      status: "error",
-      message: "Codex device auth session lost its sandbox",
-    };
-  }
-  const read = await readSandboxTextFile({
-    client: args.client,
-    sandbox,
-    path: CODEX_DEVICE_AUTH_AUTH_JSON_PATH,
-    signal: args.signal,
-  });
-  if (read.status === "missing") {
-    return { status: "pending" };
-  }
-  if (read.status === "too_large") {
-    return {
-      status: "error",
-      message: "Codex auth.json is unexpectedly large",
-    };
-  }
-  if (read.status === "error") {
-    return { status: "error", message: read.message };
-  }
-  return { status: "ok", rawAuthJson: read.text };
 }
 
 async function importCodexAuthJson(args: {
@@ -901,7 +825,7 @@ function extractApiErrorBody(
   }
   return {
     error: {
-      message: "Codex auth.json was rejected",
+      message: "Codex login tokens were rejected",
       code: "BAD_REQUEST",
     },
   };
@@ -928,12 +852,23 @@ function codexAuthJsonPasteSuccessBody(
   ) {
     return response.body as CodexAuthJsonPasteSuccessBody;
   }
-  throw new Error("Codex auth.json import returned an unexpected response");
+  throw new Error("Codex login token import returned an unexpected response");
+}
+
+function authJsonFromTokens(tokens: CodexOAuthTokens): string {
+  return JSON.stringify({
+    OPENAI_API_KEY: null,
+    tokens: {
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      account_id: "device-auth",
+      id_token: tokens.idToken,
+    },
+  });
 }
 
 async function completeLoadedCodexDeviceAuth(args: {
   readonly stateSet: Setter;
-  readonly client: SandboxClient;
   readonly writeDb: Db;
   readonly session: ConnectorCliAuthSession;
   readonly orgId: string;
@@ -941,14 +876,9 @@ async function completeLoadedCodexDeviceAuth(args: {
   readonly orgRole: "admin" | "member" | undefined;
   readonly signal: AbortSignal;
 }): Promise<CodexDeviceAuthCompleteResult> {
-  const { client, writeDb, session, signal } = args;
+  const { writeDb, session, signal } = args;
   if (isSessionExpired(session)) {
     await markSessionExpired({ writeDb, session });
-    await cleanupSandboxSafely({
-      client,
-      sandbox: sandboxHandleFromSession(session),
-      reason: "codex device auth session expired",
-    });
     return {
       status: "invalid_token",
       message: "Codex device auth session expired",
@@ -976,26 +906,25 @@ async function completeLoadedCodexDeviceAuth(args: {
     };
   }
 
-  const authJson = await readAuthJson({ client, session, signal });
+  const deviceToken = await pollOpenAiDeviceToken({
+    deviceAuthId: providerState.deviceAuthId,
+    userCode: providerState.userCode,
+    signal,
+  });
   signal.throwIfAborted();
-  if (authJson.status === "pending") {
+  if (deviceToken.status === "pending") {
     return { status: "pending", errorMessage: null };
   }
-  if (authJson.status === "error") {
+  if (deviceToken.status === "error") {
     await markSessionError({
       writeDb,
       sessionId: session.id,
-      message: authJson.message,
-    });
-    await cleanupSandboxSafely({
-      client,
-      sandbox: sandboxHandleFromSession(session),
-      reason: "codex device auth failed",
+      message: deviceToken.message,
     });
     return {
       status: "error",
       code: "CODEX_DEVICE_AUTH_FAILED",
-      message: authJson.message,
+      message: deviceToken.message,
     };
   }
 
@@ -1007,35 +936,62 @@ async function completeLoadedCodexDeviceAuth(args: {
 
   return await importClaimedCodexDeviceAuth({
     stateSet: args.stateSet,
-    client,
     writeDb,
     session,
     scope: providerState.scope,
     orgId: args.orgId,
     userId: args.userId,
-    rawAuthJson: authJson.rawAuthJson,
+    authorizationCode: deviceToken.authorizationCode,
+    codeVerifier: deviceToken.codeVerifier,
     signal,
   });
 }
 
 async function importClaimedCodexDeviceAuth(args: {
   readonly stateSet: Setter;
-  readonly client: SandboxClient;
   readonly writeDb: Db;
   readonly session: ConnectorCliAuthSession;
   readonly scope: CodexDeviceAuthScope;
   readonly orgId: string;
   readonly userId: string;
-  readonly rawAuthJson: string;
+  readonly authorizationCode: string;
+  readonly codeVerifier: string;
   readonly signal: AbortSignal;
 }): Promise<CodexDeviceAuthCompleteResult> {
+  const tokens = await settle(
+    exchangeOpenAiAuthorizationCode({
+      authorizationCode: args.authorizationCode,
+      codeVerifier: args.codeVerifier,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+
+  if (!tokens.ok) {
+    const message = unknownErrorMessage(
+      tokens.error,
+      "Codex device auth token exchange failed",
+    );
+    await markSessionError({
+      writeDb: args.writeDb,
+      sessionId: args.session.id,
+      message,
+    });
+    return {
+      status: "error",
+      code: "CODEX_DEVICE_AUTH_FAILED",
+      message,
+    };
+  }
+
   const imported = await settle(
     importCodexAuthJson({
       stateSet: args.stateSet,
       scope: args.scope,
       orgId: args.orgId,
       userId: args.userId,
-      rawAuthJson: args.rawAuthJson,
+      rawAuthJson: authJsonFromTokens(tokens.value),
       signal: args.signal,
     }),
     args.signal,
@@ -1043,19 +999,14 @@ async function importClaimedCodexDeviceAuth(args: {
   args.signal.throwIfAborted();
 
   if (!imported.ok) {
-    const message =
-      imported.error instanceof Error
-        ? imported.error.message
-        : "Codex device auth import failed";
+    const message = unknownErrorMessage(
+      imported.error,
+      "Codex device auth import failed",
+    );
     await markSessionError({
       writeDb: args.writeDb,
       sessionId: args.session.id,
       message,
-    });
-    await cleanupSandboxSafely({
-      client: args.client,
-      sandbox: sandboxHandleFromSession(args.session),
-      reason: "codex device auth import failed",
     });
     return {
       status: "error",
@@ -1070,20 +1021,10 @@ async function importClaimedCodexDeviceAuth(args: {
       sessionId: args.session.id,
       message: imported.value.response.body.error.message,
     });
-    await cleanupSandboxSafely({
-      client: args.client,
-      sandbox: sandboxHandleFromSession(args.session),
-      reason: "codex device auth auth.json rejected",
-    });
     return imported.value;
   }
 
   await markSessionImported({ writeDb: args.writeDb, session: args.session });
-  await cleanupSandboxSafely({
-    client: args.client,
-    sandbox: sandboxHandleFromSession(args.session),
-    reason: "codex device auth imported",
-  });
   return {
     status: "complete",
     body: {
@@ -1112,7 +1053,6 @@ export const completeCodexDeviceAuth$ = command(
       };
     }
 
-    const client = getVercelSandboxClient();
     const writeDb = set(writeDb$);
     const session = await loadSession({
       writeDb,
@@ -1130,7 +1070,6 @@ export const completeCodexDeviceAuth$ = command(
     }
     return await completeLoadedCodexDeviceAuth({
       stateSet: set,
-      client,
       writeDb,
       session,
       orgId: args.orgId,
@@ -1138,6 +1077,53 @@ export const completeCodexDeviceAuth$ = command(
       orgRole: args.orgRole,
       signal,
     });
+  },
+);
+
+export const cancelCodexDeviceAuth$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly sessionToken: string;
+    },
+    signal: AbortSignal,
+  ): Promise<CodexDeviceAuthCancelResult> => {
+    const decoded = decodeSession(args.sessionToken);
+    if (!decoded) {
+      return {
+        status: "invalid_token",
+        message: "Invalid Codex device auth session token",
+      };
+    }
+
+    const writeDb = set(writeDb$);
+    const session = await loadSession({
+      writeDb,
+      sessionId: decoded.sessionId,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+
+    if (!session) {
+      return {
+        status: "forbidden",
+        message: "Codex device auth session not found",
+      };
+    }
+
+    await cancelSession({
+      writeDb,
+      sessionId: session.id,
+      orgId: args.orgId,
+      userId: args.userId,
+      message: "Codex device auth session was cancelled",
+    });
+    signal.throwIfAborted();
+
+    return { status: "cancelled" };
   },
 );
 

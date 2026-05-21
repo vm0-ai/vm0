@@ -174,21 +174,6 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
 }
 
 /**
- * Boolean shape check for untrusted JSON strings — returns true when the
- * value parses, false otherwise. Helps callers that just want a sanity
- * gate (e.g. disabling a submit button until paste is parseable) without
- * dealing with the sentinel pattern of `jsonParseOr`.
- */
-export function isValidJson(value: string): boolean {
-  // Defer to the project's safe-parse utility with a unique fallback
-  // reference so we can detect failure without try/catch in the caller.
-  const SENTINEL: object = JSON_INVALID_SENTINEL;
-  return jsonParseOr<object>(value, SENTINEL) !== SENTINEL;
-}
-
-const JSON_INVALID_SENTINEL = Object.freeze({});
-
-/**
  * Best-effort wrapper: await `p` and swallow non-abort errors.
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
  * AbortError propagates — either from `p` itself or from `signal` if one is

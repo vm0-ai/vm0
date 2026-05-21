@@ -11,15 +11,11 @@ import {
   type ModelProviderType,
   type ModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import {
   createOrgModelProvider$,
   deleteOrgModelProvider$,
   orgModelProviders$,
-  reloadOrgModelProviders$,
 } from "../../external/org-model-providers.ts";
-import { zeroClient$ } from "../../api-client.ts";
-import { accept } from "../../../lib/accept.ts";
 import {
   hasTokenInputValue,
   sanitizeTokenInput,
@@ -37,95 +33,6 @@ export const orgAddProviderDialogOpen$ = computed((get) => {
 export const setOrgAddProviderDialogOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalOrgAddProviderDialogOpen$, open);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Codex auth.json paste dialog (replaces broken cross-origin OAuth redirect;
-// see #11980). Same dialog handles both first-time connect and re-paste
-// recovery from a stale session — only the title differs by mode.
-//
-// Submit goes through `submitCodexAuthJson$` below. The dialog component
-// drives that command via `useLoadableSet`, which gives it loading + error
-// state for inline rendering. The command itself closes the dialog and
-// resets the paste textarea on success — the bidirectional flow keeps the
-// component free of try/catch (banned by no-restricted-syntax) and useState
-// (banned by no-restricted-imports).
-// ---------------------------------------------------------------------------
-
-type CodexPasteDialogMode = "connect" | "reconnect";
-
-interface CodexPasteDialogState {
-  open: boolean;
-  mode: CodexPasteDialogMode;
-}
-
-const internalCodexPasteDialogState$ = state<CodexPasteDialogState>({
-  open: false,
-  mode: "connect",
-});
-
-const internalCodexPasteContent$ = state<string>("");
-
-export const codexPasteDialogState$ = computed((get) => {
-  return get(internalCodexPasteDialogState$);
-});
-
-export const codexPasteContent$ = computed((get) => {
-  return get(internalCodexPasteContent$);
-});
-
-export const setCodexPasteDialogState$ = command(
-  ({ set }, next: CodexPasteDialogState) => {
-    set(internalCodexPasteDialogState$, next);
-    if (!next.open) {
-      set(internalCodexPasteContent$, "");
-    }
-  },
-);
-
-export const updateCodexPasteContent$ = command(({ set }, paste: string) => {
-  set(internalCodexPasteContent$, paste);
-});
-
-/**
- * Submit the current codex paste content as `~/.codex/auth.json` via the
- * `auth_json` authMethod. Server-side parser lives in #11978.
- *
- * Suppresses the default toast on error (`{ toast: false }`) so the paste
- * dialog can render typed error codes inline (e.g.
- * `CODEX_AUTH_JSON_SHAPE_INVALID`, `CODEX_FREE_PLAN_REJECTED`) —
- * `useLoadableSet` in the component reads these
- * codes off the rejected ApiError. On success, closes the dialog, resets
- * the paste textarea, and triggers an org-providers refetch so the stale
- * banner unmounts after a re-paste.
- */
-export const submitCodexAuthJson$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const rawJson = get(internalCodexPasteContent$).trim();
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProvidersMainContract);
-    const result = await accept(
-      client.upsert({
-        body: {
-          type: "codex-oauth-token",
-          authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: rawJson },
-        },
-        fetchOptions: { signal },
-      }),
-      [200, 201],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-
-    set(reloadOrgModelProviders$);
-    set(internalCodexPasteContent$, "");
-    set(internalCodexPasteDialogState$, (prev) => {
-      return { ...prev, open: false };
-    });
-
-    return result.body;
   },
 );
 

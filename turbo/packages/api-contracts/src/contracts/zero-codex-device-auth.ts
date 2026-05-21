@@ -31,10 +31,14 @@ const codexDeviceAuthCompleteResponseSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+const codexDeviceAuthCancelResponseSchema = z.object({
+  status: z.literal("cancelled"),
+});
+
 /**
  * Zero contract for Codex device auth.
- * Runs the official `codex login --device-auth` flow in a managed sandbox and
- * imports the resulting auth.json through the existing Codex auth_json parser.
+ * Runs the official Codex device authorization flow through OpenAI auth and
+ * imports the resulting ChatGPT tokens.
  */
 export const zeroCodexDeviceAuthContract = c.router({
   start: {
@@ -49,7 +53,7 @@ export const zeroCodexDeviceAuthContract = c.router({
       403: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Start Codex device auth in a sandbox",
+    summary: "Start Codex device auth",
   },
   complete: {
     method: "POST",
@@ -65,6 +69,20 @@ export const zeroCodexDeviceAuthContract = c.router({
       503: apiErrorSchema,
     },
     summary: "Complete Codex device auth and import ChatGPT credentials",
+  },
+  cancel: {
+    method: "POST",
+    path: "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+    headers: authHeadersSchema,
+    body: z.object({ sessionToken: z.string().min(1) }),
+    responses: {
+      200: codexDeviceAuthCancelResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Cancel Codex device auth",
   },
 });
 

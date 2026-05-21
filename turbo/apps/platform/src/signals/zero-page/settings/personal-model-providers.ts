@@ -17,11 +17,7 @@ import {
   createPersonalModelProvider$,
   deletePersonalModelProvider$,
   personalModelProviders$,
-  reloadPersonalModelProviders$,
 } from "../../external/personal-model-providers.ts";
-import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { zeroClient$ } from "../../api-client.ts";
-import { accept } from "../../../lib/accept.ts";
 import {
   orgModelPolicies$,
   updateOrgModelPolicies$,
@@ -32,18 +28,6 @@ import {
   sanitizeTokenInputRecord,
 } from "./token-input.ts";
 
-// ---------------------------------------------------------------------------
-// Codex auth.json paste dialog (personal scope, mirrors org-side dialog from
-// #11980; unified with org via #12024).
-// ---------------------------------------------------------------------------
-
-type CodexPasteDialogMode = "connect" | "reconnect";
-
-interface CodexPasteDialogState {
-  open: boolean;
-  mode: CodexPasteDialogMode;
-}
-
 interface ModelPolicyRouteAfterPersonalAuth {
   providerType: ModelProviderType;
   model: SupportedRunModel;
@@ -52,31 +36,6 @@ interface ModelPolicyRouteAfterPersonalAuth {
 const internalPersonalModelPolicyRouteAfterAuth$ =
   state<ModelPolicyRouteAfterPersonalAuth | null>(null);
 const internalPersonalDialogHideModelSelector$ = state(false);
-
-const internalCodexPasteDialogStatePersonal$ = state<CodexPasteDialogState>({
-  open: false,
-  mode: "connect",
-});
-
-const internalCodexPasteContentPersonal$ = state<string>("");
-
-export const codexPasteDialogStatePersonal$ = computed((get) => {
-  return get(internalCodexPasteDialogStatePersonal$);
-});
-
-export const codexPasteContentPersonal$ = computed((get) => {
-  return get(internalCodexPasteContentPersonal$);
-});
-
-export const setCodexPasteDialogStatePersonal$ = command(
-  ({ set }, next: CodexPasteDialogState) => {
-    set(internalCodexPasteDialogStatePersonal$, next);
-    if (!next.open) {
-      set(internalCodexPasteContentPersonal$, "");
-      set(internalPersonalModelPolicyRouteAfterAuth$, null);
-    }
-  },
-);
 
 function toOrgModelPolicyUpdate(policy: OrgModelPolicy): UpdateOrgModelPolicy {
   return {
@@ -119,66 +78,6 @@ function applyPersonalAuthRouteToPolicies(
 
   return updates;
 }
-
-export const updateCodexPasteContentPersonal$ = command(
-  ({ set }, paste: string) => {
-    set(internalCodexPasteContentPersonal$, paste);
-  },
-);
-
-/**
- * Submit the current personal codex paste content as `~/.codex/auth.json`
- * via the `auth_json` authMethod. Same semantics as the org-side
- * `submitCodexAuthJson$` — server parses, derives 4 CHATGPT_* secrets,
- * persists; toast suppressed so dialog renders typed errors inline.
- */
-export const submitCodexAuthJsonPersonal$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const rawJson = get(internalCodexPasteContentPersonal$).trim();
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroPersonalModelProvidersMainContract);
-    const result = await accept(
-      client.upsert({
-        body: {
-          type: "codex-oauth-token",
-          authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: rawJson },
-        },
-        fetchOptions: { signal },
-      }),
-      [200, 201],
-      { toast: false },
-    );
-    signal.throwIfAborted();
-
-    const pendingRoute = get(internalPersonalModelPolicyRouteAfterAuth$);
-    if (pendingRoute && pendingRoute.providerType === "codex-oauth-token") {
-      const policyResponse = await get(orgModelPolicies$);
-      signal.throwIfAborted();
-      await set(
-        updateOrgModelPolicies$,
-        {
-          policies: applyPersonalAuthRouteToPolicies(
-            policyResponse.policies,
-            pendingRoute,
-          ),
-          toast: false,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-
-    set(reloadPersonalModelProviders$);
-    set(internalCodexPasteContentPersonal$, "");
-    set(internalPersonalModelPolicyRouteAfterAuth$, null);
-    set(internalCodexPasteDialogStatePersonal$, (prev) => {
-      return { ...prev, open: false };
-    });
-
-    return result.body;
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Dialog state (add/edit single provider form)
