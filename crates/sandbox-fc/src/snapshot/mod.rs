@@ -29,9 +29,23 @@ use self::output::prepare_snapshot_output;
 use self::publish::FirecrackerPendingSnapshotPublish;
 use self::runtime::run_snapshot_workflow;
 
-#[cfg(test)]
-mod tests;
-
+/// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
+///
+/// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
+///  1. Create work directory
+///  2. Create NBD COW device backed by the rootfs image
+///  3. Create network namespace
+///  4. Spawn Firecracker with `--api-sock`
+///  5. Wait for API socket ready
+///  6. Configure VM via API (6 parallel PUT calls)
+///  7. Bind vsock listener
+///  8. Start instance
+///  9. Wait for guest vsock connection
+/// 10. Pre-warm guest caches (PAM/nsswitch, CLI modules)
+/// 11. Pause VM
+/// 12. Create snapshot
+/// 13. Cleanup Firecracker/netns/NBD runtime resources and keep the temporary COW
+/// 14. Move COW file + bitmap to output dir and publish the complete marker
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {

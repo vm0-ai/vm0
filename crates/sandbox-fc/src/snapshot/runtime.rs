@@ -27,16 +27,16 @@ const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Pre-warm should be quiet; keep diagnostics bounded and explicit.
 const PREWARM_EXEC_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 
-pub(super) struct AbortOnDropTask<T> {
+struct AbortOnDropTask<T> {
     handle: JoinHandle<T>,
 }
 
 impl<T> AbortOnDropTask<T> {
-    pub(super) fn new(handle: JoinHandle<T>) -> Self {
+    fn new(handle: JoinHandle<T>) -> Self {
         Self { handle }
     }
 
-    pub(super) fn abort(&self) {
+    fn abort(&self) {
         self.handle.abort();
     }
 }
@@ -204,7 +204,7 @@ pub(super) type StderrBuf = Arc<Mutex<VecDeque<String>>>;
 /// Drain the captured stderr lines into a single newline-joined string.
 /// Used in error reporting when the spawn chain exits prematurely; always
 /// returns a non-empty string so the operator never sees a bare error.
-pub(super) fn drain_stderr_buf(buf: &StderrBuf) -> String {
+fn drain_stderr_buf(buf: &StderrBuf) -> String {
     match buf.lock() {
         Ok(g) => {
             if g.is_empty() {
@@ -394,4 +394,394 @@ async fn run_with_firecracker(
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 
     Ok(output.snapshot_config(&config.id))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use crate::api::ApiError;
+    use crate::config::SnapshotConfig;
+    use crate::snapshot::SnapshotError;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn abort_on_drop_task_aborts_vsock_listener() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("snapshot-vsock");
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let task = AbortOnDropTask::new(tokio::spawn(async move {
+            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        }));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("vsock listener should bind");
+
+        drop(task);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped task should abort and remove vsock listener");
+    }
+
+    #[tokio::test]
+    async fn abort_on_drop_task_explicit_abort_removes_vsock_listener() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("snapshot-vsock-explicit-abort");
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let task = AbortOnDropTask::new(tokio::spawn(async move {
+            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        }));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("vsock listener should bind");
+
+        task.abort();
+        let join = task.await;
+        assert!(
+            join.is_err_and(|e| e.is_cancelled()),
+            "explicit abort should cancel the listener task"
+        );
+
+        assert!(
+            !listener.exists(),
+            "explicit abort should remove the vsock listener socket"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_stderr_forwarder_after_spawn_exit_waits_for_failed_status() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let drained = Arc::new(AtomicBool::new(false));
+        let drained_for_task = Arc::clone(&drained);
+        let handle = tokio::spawn(async move {
+            drained_for_task.store(true, Ordering::SeqCst);
+        });
+
+        let returned =
+            drain_stderr_forwarder_after_spawn_exit(&Ok(Some(exit_status_nonzero())), Some(handle))
+                .await;
+
+        assert!(returned.is_none());
+        assert!(drained.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn drain_stderr_forwarder_after_spawn_exit_preserves_other_handles() {
+        async fn assert_handle_preserved(
+            child_status: std::io::Result<Option<std::process::ExitStatus>>,
+        ) {
+            let handle = tokio::spawn(std::future::pending::<()>());
+
+            let returned = drain_stderr_forwarder_after_spawn_exit(&child_status, Some(handle))
+                .await
+                .expect("handle should be preserved");
+
+            assert!(
+                !returned.is_finished(),
+                "helper should not join or abort the forwarder"
+            );
+            returned.abort();
+            let _ = returned.await;
+        }
+
+        assert_handle_preserved(Ok(None)).await;
+        assert_handle_preserved(Ok(Some(exit_status_zero()))).await;
+        assert_handle_preserved(Err(std::io::Error::from(std::io::ErrorKind::Interrupted))).await;
+    }
+
+    /// Empty stderr buffer should produce a sentinel string rather than
+    /// an empty error body. Verifies the early-exit error path is
+    /// always informative even with no captured output.
+    #[test]
+    fn drain_stderr_buf_reports_empty_with_sentinel() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        let s = drain_stderr_buf(&buf);
+        assert!(s.contains("no stderr"), "got: {s}");
+    }
+
+    /// Captured lines are joined with newlines in insertion order.
+    #[test]
+    fn drain_stderr_buf_joins_lines() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            g.push_back("mount: bind failed".into());
+            g.push_back("exit code 32".into());
+        }
+        assert_eq!(drain_stderr_buf(&buf), "mount: bind failed\nexit code 32");
+    }
+
+    /// Boundary: exactly `STDERR_BUF_LINES` entries — no eviction should
+    /// have happened, and all lines (including `line 0`) must be present.
+    /// Guards against off-by-one in the `if len == N { pop_front }` check.
+    #[test]
+    fn drain_stderr_buf_handles_exact_capacity() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            for i in 0..STDERR_BUF_LINES {
+                if g.len() == STDERR_BUF_LINES {
+                    g.pop_front();
+                }
+                g.push_back(format!("line {i}"));
+            }
+        }
+        let joined = drain_stderr_buf(&buf);
+        assert!(
+            joined.contains("line 0"),
+            "line 0 should survive at exact capacity: {joined}"
+        );
+        assert!(
+            joined.contains(&format!("line {}", STDERR_BUF_LINES - 1)),
+            "last line should be present: {joined}"
+        );
+    }
+
+    /// Ring buffer drops oldest entries past the bound, keeping only the
+    /// most recent N lines — the relevant ones for diagnosing a recent crash.
+    #[test]
+    fn drain_stderr_buf_keeps_only_recent_lines_when_overflowing() {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            // Simulate the same eviction policy used by the stderr forwarder.
+            for i in 0..(STDERR_BUF_LINES + 5) {
+                if g.len() == STDERR_BUF_LINES {
+                    g.pop_front();
+                }
+                g.push_back(format!("line {i}"));
+            }
+        }
+        let joined = drain_stderr_buf(&buf);
+        assert!(
+            !joined.contains("line 0"),
+            "oldest line should be evicted: {joined}"
+        );
+        assert!(
+            joined.contains(&format!("line {}", STDERR_BUF_LINES + 4)),
+            "newest line should be retained: {joined}"
+        );
+    }
+
+    /// Build a placeholder `SnapshotConfig` for `Ok(_)` rewrap cases.
+    /// Values are irrelevant — the rewrap helper never inspects them.
+    fn placeholder_snapshot_config() -> SnapshotConfig {
+        SnapshotConfig {
+            snapshot_path: "/tmp/snapshot.bin".into(),
+            memory_path: "/tmp/memory.bin".into(),
+            cow_path: "/tmp/cow.img".into(),
+            drive_bind_path: "/tmp/cow-device-bind".into(),
+            vsock_bind_dir: "/tmp/vsock".into(),
+        }
+    }
+
+    /// Build a `std::process::ExitStatus` with a given raw value. On Unix
+    /// this encodes: `raw = (exit_code << 8) | signal`. Using
+    /// `ExitStatus::from_raw(0x100)` yields exit code 1 / success=false.
+    fn exit_status_nonzero() -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(0x100)
+    }
+
+    fn exit_status_zero() -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(0)
+    }
+
+    fn stderr_buf_with_lines(lines: &[&str]) -> StderrBuf {
+        let buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
+        {
+            let mut g = buf.lock().expect("lock");
+            for line in lines {
+                g.push_back((*line).to_string());
+            }
+        }
+        buf
+    }
+
+    /// The target case: API error + child already exited non-zero → rewrap
+    /// into a Process error that names the captured stderr.
+    #[test]
+    fn rewrap_replaces_api_error_when_child_exited_nonzero() {
+        let api_err = ApiError::Other("timeout".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["mount: bind failed", "exit 32"]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Process(msg) => {
+                assert!(msg.contains("mount: bind failed"), "got: {msg}");
+                assert!(msg.contains("exit 32"), "got: {msg}");
+                assert!(msg.contains("original API error"), "got: {msg}");
+                // Exit status must appear in the message — operators need it
+                // to distinguish `exit 1` (mount denied) from `signal 9`
+                // (OOM kill) from `exit 32` (mount target missing).
+                assert!(msg.contains("status="), "should include exit status: {msg}");
+            }
+            other => panic!("expected Process error, got {other:?}"),
+        }
+    }
+
+    /// Even when the stderr buffer is empty, the rewrapped message should
+    /// still be informative — falling back to the `<no stderr captured>`
+    /// sentinel rather than a bare `status=...:  (original ...)` string.
+    #[test]
+    fn rewrap_uses_sentinel_when_stderr_empty() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(ApiError::Other("timeout".into()))),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&[]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Process(msg) => {
+                assert!(
+                    msg.contains("no stderr"),
+                    "should fall back to sentinel when buffer is empty: {msg}"
+                );
+                assert!(msg.contains("status="), "got: {msg}");
+            }
+            other => panic!("expected Process error, got {other:?}"),
+        }
+    }
+
+    /// `try_wait` itself returning `Err` (EINTR or similar) must not be
+    /// mistaken for "spawn chain exited" — stay conservative and keep the
+    /// original error instead of asserting something we couldn't observe.
+    #[test]
+    fn rewrap_preserves_api_error_when_try_wait_fails() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(ApiError::Other("timeout".into()))),
+            Err(std::io::Error::from(std::io::ErrorKind::Interrupted)),
+            &stderr_buf_with_lines(&["would-be-rewrapped"]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// FC is still running (try_wait → None) → API error is genuine, keep it.
+    #[test]
+    fn rewrap_preserves_api_error_when_child_still_running() {
+        let api_err = ApiError::Other("misconfigured".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(None),
+            &stderr_buf_with_lines(&[]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// FC exited with code 0 (rare but possible) → not a mount-style crash.
+    #[test]
+    fn rewrap_preserves_api_error_when_child_exited_zero() {
+        let api_err = ApiError::Other("timeout".into());
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Api(api_err)),
+            Ok(Some(exit_status_zero())),
+            &stderr_buf_with_lines(&["noise"]),
+        )
+        .unwrap_err();
+        assert!(matches!(err, SnapshotError::Api(_)), "got: {err:?}");
+    }
+
+    /// Non-API errors already carry their specific cause and should not
+    /// be replaced by a generic "spawn chain exited" message.
+    #[test]
+    fn rewrap_preserves_non_api_errors() {
+        let err = rewrap_spawn_chain_exit(
+            Err(SnapshotError::Setup("pre-warm failed".into())),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["stderr junk"]),
+        )
+        .unwrap_err();
+        match err {
+            SnapshotError::Setup(msg) => assert_eq!(msg, "pre-warm failed"),
+            other => panic!("expected Setup error, got {other:?}"),
+        }
+    }
+
+    /// `Ok(_)` passes through untouched.
+    #[test]
+    fn rewrap_passes_ok_through() {
+        let result = rewrap_spawn_chain_exit(
+            Ok(placeholder_snapshot_config()),
+            Ok(Some(exit_status_nonzero())),
+            &stderr_buf_with_lines(&["noise"]),
+        );
+        assert!(result.is_ok(), "ok should pass through");
+    }
+
+    /// Structural assertion that the unshare inner_cmd uses positional
+    /// parameters (no path interpolation that could shell-inject) and
+    /// performs the bind-then-exec sequence.
+    ///
+    /// The bind mount must run inside `unshare --mount` so it auto-cleans
+    /// when the FC process dies — see issue #9494. This test guards against
+    /// refactor regressions before the kernel-interaction CI job runs.
+    #[test]
+    fn spawn_inner_cmd_uses_positional_args() {
+        // Only positional args, no $0 or unquoted vars.
+        assert!(!SPAWN_INNER_CMD.contains("$0"));
+        for arg in ["$1", "$2", "$3", "$4", "$5"] {
+            let quoted = format!(r#""{arg}""#);
+            assert!(
+                SPAWN_INNER_CMD.contains(&quoted),
+                "expected quoted positional {arg} in inner_cmd: {SPAWN_INNER_CMD}"
+            );
+        }
+        // Strictly 5 positional args — if someone adds a `$6`..`$9` without
+        // updating the spawn site's `.arg(...)` count, the bash call
+        // silently expands to empty strings and fails at runtime.
+        for unexpected in ["$6", "$7", "$8", "$9"] {
+            assert!(
+                !SPAWN_INNER_CMD.contains(unexpected),
+                "unexpected positional {unexpected} in inner_cmd: {SPAWN_INNER_CMD}"
+            );
+        }
+
+        // Flow: bind the device, then exec into ip netns exec firecracker.
+        // `exec` is critical so signals reach FC directly without an extra
+        // bash layer holding a process slot.
+        assert!(
+            SPAWN_INNER_CMD.starts_with("mount --bind"),
+            "inner_cmd must establish bind mount first: {SPAWN_INNER_CMD}"
+        );
+        assert!(
+            SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
+            "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
+        );
+    }
+
+    #[test]
+    fn snapshot_create_unshare_uses_private_mount_propagation() {
+        assert_eq!(UNSHARE_MOUNT_ARGS, ["--mount", "--propagation", "private"]);
+    }
 }
