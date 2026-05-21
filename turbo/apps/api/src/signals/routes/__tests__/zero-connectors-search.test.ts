@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -335,9 +336,7 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
 
-    const unflaggedTypes = (
-      Object.keys(CONNECTOR_TYPES) as ConnectorType[]
-    ).filter((type) => {
+    const unflaggedTypes = CONNECTOR_TYPE_KEYS.filter((type) => {
       return Object.values(CONNECTOR_TYPES[type].authMethods).some((method) => {
         return !method.featureFlag;
       });

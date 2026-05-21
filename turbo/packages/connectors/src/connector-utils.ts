@@ -1,5 +1,6 @@
 import {
   CONNECTOR_AUTH_METHOD_TYPES,
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
@@ -271,7 +272,7 @@ export function getRuntimeAvailableConnectorTypes(
 ): ConnectorType[] {
   const runtimeAvailable = new Set<ConnectorType>();
 
-  for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+  for (const type of CONNECTOR_TYPE_KEYS) {
     const defaultAuthMethod = getConnectorDefaultAuthMethod(type);
     if (
       hasConfiguredOAuth(readEnv, type) ||
@@ -316,15 +317,12 @@ export function getConnectorEnvironmentMapping(
  * include connectors with at least one always-available connection flow.
  */
 export function getEligibleConnectorTypes(): string[] {
-  return Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      return Object.values(config.authMethods).some((method) => {
-        return !method.featureFlag;
-      });
-    })
-    .map(([type]) => {
-      return type;
+  return CONNECTOR_TYPE_KEYS.filter((type) => {
+    const config = CONNECTOR_TYPES[type];
+    return Object.values(config.authMethods).some((method) => {
+      return !method.featureFlag;
     });
+  });
 }
 
 /**
@@ -338,7 +336,7 @@ export function getEligibleConnectorTypes(): string[] {
 export function getConnectorDerivedNames(
   secretName: string,
 ): { connectorLabel: string; envVarNames: string[] } | null {
-  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const allTypes = CONNECTOR_TYPE_KEYS;
 
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
@@ -521,7 +519,7 @@ export function getConnectorManagedSecretNames(
 export function getConnectorTypeForSecretName(
   name: string,
 ): ConnectorType | null {
-  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const allTypes = CONNECTOR_TYPE_KEYS;
   for (const type of allTypes) {
     const config = CONNECTOR_TYPES[type];
     // Check authMethods secrets
@@ -585,7 +583,7 @@ export function deriveApiTokenConnectedTypes(
   userSecretNames: Set<string>,
   userVariableNames?: Set<string>,
 ): ConnectorType[] {
-  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const allTypes = CONNECTOR_TYPE_KEYS;
   const connected: ConnectorType[] = [];
   const varNames = userVariableNames ?? new Set<string>();
 
@@ -793,7 +791,7 @@ export function searchConnectors(
   const keywordTokens = tokenize(trimmed);
 
   const hits: ConnectorSearchResult[] = [];
-  for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+  for (const type of CONNECTOR_TYPE_KEYS) {
     if (filter && !filter(type)) continue;
     const config = CONNECTOR_TYPES[type];
     const hit = scoreConnector(keywordLower, keywordTokens, type, config);

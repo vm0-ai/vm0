@@ -1,5 +1,5 @@
 import {
-  CONNECTOR_TYPES,
+  CONNECTOR_TYPE_KEYS,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { cn } from "@vm0/ui";
@@ -26,7 +26,7 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
         }),
       );
 
-      const connectorKeys = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+      const connectorKeys = CONNECTOR_TYPE_KEYS;
       const filtered: Record<string, string> = {};
       for (const key of connectorKeys) {
         const iconKey =

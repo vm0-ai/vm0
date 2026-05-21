@@ -15,8 +15,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   type ScheduleResponse,
@@ -60,7 +60,7 @@ describe("internal connector logos - display (ORG-D-118)", () => {
     "lists all connector types with labels and type identifiers",
     async () => {
       detachedSetupPage({ context, path: "/__internal-connector-logos" });
-      const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+      const connectorTypes = CONNECTOR_TYPE_KEYS;
       // Verify at least one connector type and its label appears in the document
       // (labels and type keys may appear multiple times due to icon display variants).
       await waitFor(() => {
@@ -86,7 +86,7 @@ describe("internal connector logos - display (ORG-D-119)", () => {
     "heading displays the count of connector types",
     async () => {
       detachedSetupPage({ context, path: "/__internal-connector-logos" });
-      const connectorTypes = Object.keys(CONNECTOR_TYPES);
+      const connectorTypes = CONNECTOR_TYPE_KEYS;
       await waitFor(() => {
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
           connectorTypes.length.toString(),

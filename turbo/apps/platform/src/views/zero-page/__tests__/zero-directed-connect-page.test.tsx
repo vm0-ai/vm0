@@ -13,6 +13,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -230,9 +231,7 @@ describe("directed connect page", () => {
 
   it("opens api-token dialog for a connector without oauth", async () => {
     // Find a connector type that only has api-token auth
-    const apiTokenOnlyType = (
-      Object.keys(CONNECTOR_TYPES) as ConnectorType[]
-    ).find((type) => {
+    const apiTokenOnlyType = CONNECTOR_TYPE_KEYS.find((type) => {
       const methods = CONNECTOR_TYPES[type].authMethods;
       return "api-token" in methods && !("oauth" in methods);
     });

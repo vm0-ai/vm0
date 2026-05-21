@@ -21,6 +21,7 @@ import {
   isOAuthRefreshProvider,
 } from "@vm0/connectors/oauth-providers";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
   type ConnectorAuthMethodType,
@@ -1089,7 +1090,7 @@ export function zeroConnectorSearch(args: {
       overrides,
     });
     const keyword = args.keyword?.toLowerCase();
-    return (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).flatMap((type) => {
+    return CONNECTOR_TYPE_KEYS.flatMap((type) => {
       const config = CONNECTOR_TYPES[type];
       const authMethods: ConnectorSearchAuthMethod[] =
         getAvailableConnectorAuthMethods(type, featureStates, {

@@ -1,6 +1,6 @@
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { useGet, useSet } from "ccstate-react";
 import { CONNECTOR_ICONS } from "./zero-page/components/settings/connector-icons.tsx";
@@ -76,7 +76,7 @@ export function InternalConnectorLogos() {
   const size = useGet(iconSize$);
   const sizes = useGet(iconSizes$);
   const setSize = useSet(setIconSize$);
-  const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const connectorTypes = CONNECTOR_TYPE_KEYS;
 
   return (
     <div style={{ padding: 32, fontFamily: "monospace", background: "#fff" }}>

@@ -3,6 +3,7 @@ import { delay } from "signal-timers";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorAuthMethodType,
   type ConnectorBrowserVerificationCliAuthConnectorType,
@@ -350,25 +351,23 @@ export const allConnectorTypes$ = computed(async (get) => {
     localBrowserHostList.hosts,
   );
 
-  const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
-    .filter((type) => {
-      return (
-        getAvailableConnectorAuthMethods(type, features, {
-          apiAuthMethodPolicy: {
-            includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
-          },
-        }).length > 0
-      );
-    })
-    .map((type) => {
-      return buildConnectorTypeStatus({
-        type,
-        connector: connectorMap.get(type) ?? null,
-        features,
-        localAgentOnlineHosts,
-        localBrowserOnlineHosts,
-      });
+  const items = CONNECTOR_TYPE_KEYS.filter((type) => {
+    return (
+      getAvailableConnectorAuthMethods(type, features, {
+        apiAuthMethodPolicy: {
+          includeForTypes: CONNECTOR_LIST_API_AUTH_METHOD_TYPES,
+        },
+      }).length > 0
+    );
+  }).map((type) => {
+    return buildConnectorTypeStatus({
+      type,
+      connector: connectorMap.get(type) ?? null,
+      features,
+      localAgentOnlineHosts,
+      localBrowserOnlineHosts,
     });
+  });
 
   // Sort connected connectors to the top of the list
   items.sort((a, b) => {

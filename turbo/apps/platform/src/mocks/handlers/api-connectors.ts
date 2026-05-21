@@ -1,7 +1,4 @@
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorsByTypeContract,
@@ -11,7 +8,7 @@ import {
 import { zeroCliAuthStripeContract } from "@vm0/api-contracts/contracts/zero-connectors-cli-auth-stripe";
 import { mockApi } from "../msw-contract.ts";
 
-const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+const ALL_CONNECTOR_TYPES = CONNECTOR_TYPE_KEYS;
 
 let mockConnectors: ConnectorResponse[] = [];
 

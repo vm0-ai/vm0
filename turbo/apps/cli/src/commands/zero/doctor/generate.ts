@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorConfig,
   type ConnectorGenerationType,
@@ -256,7 +257,7 @@ function getBuiltInCommand(
 
 function getAvailableGenerationTypes(): DoctorGenerationType[] {
   const available = new Set<ConnectorGenerationType>();
-  for (const type of Object.keys(CONNECTOR_TYPES) as ConnectorType[]) {
+  for (const type of CONNECTOR_TYPE_KEYS) {
     for (const generationType of getConnectorGenerationTypes(type)) {
       available.add(generationType);
     }
@@ -284,9 +285,9 @@ function parseGenerationType(value: string): DoctorGenerationType {
 function getGenerationConnectors(
   generationType: ConnectorGenerationType,
 ): Array<[ConnectorType, ConnectorConfig]> {
-  return (
-    Object.entries(CONNECTOR_TYPES) as Array<[ConnectorType, ConnectorConfig]>
-  )
+  return CONNECTOR_TYPE_KEYS.map((type): [ConnectorType, ConnectorConfig] => {
+    return [type, CONNECTOR_TYPES[type]];
+  })
     .filter(([type]) => {
       return getConnectorGenerationTypes(type).includes(generationType);
     })

@@ -1,16 +1,16 @@
 import { http, HttpResponse } from "msw";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
 
 function defaultAvailableConnectors() {
-  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
-    .map((type) => {
-      const authMethods = getAvailableConnectorAuthMethods(type, {});
-      return { type, authMethods };
-    })
+  return CONNECTOR_TYPE_KEYS.map((type) => {
+    const authMethods = getAvailableConnectorAuthMethods(type, {});
+    return { type, authMethods };
+  })
     .filter((item) => {
       return item.authMethods.length > 0;
     })

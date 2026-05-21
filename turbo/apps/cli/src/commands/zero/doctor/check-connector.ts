@@ -1,5 +1,6 @@
 import { Command, Option } from "commander";
 import {
+  CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -54,7 +55,7 @@ interface UrlLookupResult {
  * starts with any registered base URL (scheme + host + optional path prefix).
  */
 function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
-  const allTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
+  const allTypes = CONNECTOR_TYPE_KEYS;
 
   // Normalize: strip trailing slash for comparison
   const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
