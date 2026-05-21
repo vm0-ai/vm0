@@ -772,11 +772,11 @@ async fn run_in_sandbox(
     // 6. Wait for exit (or cancellation).
     // On cancel we return immediately — the caller (execute_new_sandbox) will
     // call sandbox.stop() + factory.destroy() in its cleanup path.
-    let result = tokio::select! {
-        result = sandbox.wait_process(handle, JOB_TIMEOUT) => result,
+    let (result, wait_cancelled) = tokio::select! {
+        result = sandbox.wait_process(handle, JOB_TIMEOUT) => (result, false),
         () = cancel.cancelled() => {
             info!(run_id = %context.run_id, "cancel received, aborting sandbox wait");
-            Ok(sandbox::ProcessExit::new(0, EXIT_SIGKILL, Vec::new(), Vec::new()))
+            (Ok(sandbox::ProcessExit::new(0, EXIT_SIGKILL, Vec::new(), Vec::new())), true)
         }
     };
 
@@ -785,7 +785,7 @@ async fn run_in_sandbox(
     // prevent blocking indefinitely on the drain task.
     let mut stdout_drain_report = StdoutDrainReport::default();
     if let Some(task) = stream_task {
-        if cancel.is_cancelled() || result.is_err() {
+        if wait_cancelled || result.is_err() {
             task.abort();
             let _ = task.await;
         } else {
@@ -846,9 +846,7 @@ async fn run_in_sandbox(
     // Check for OOM kill when process was terminated by SIGKILL.
     // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
     // would run against a sandbox that hasn't been stopped yet.
-    if !cancel.is_cancelled()
-        && (exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL)
-    {
+    if !wait_cancelled && (exit.exit_code == EXIT_SIGKILL || exit.exit_code == EXIT_SIGNAL_KILL) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -873,7 +871,7 @@ async fn run_in_sandbox(
         }
     }
 
-    let failure = if cancel.is_cancelled() {
+    let failure = if wait_cancelled {
         // Skip guest file reads — sandbox hasn't been stopped yet.
         Some(ExecutionFailure::cancelled())
     } else if exit.exit_code != 0 {
@@ -3650,6 +3648,84 @@ mod tests {
         )
     }
 
+    struct CancelAfterWaitSandbox {
+        inner: Box<dyn Sandbox>,
+        cancel: tokio_util::sync::CancellationToken,
+    }
+
+    #[async_trait]
+    impl Sandbox for CancelAfterWaitSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &std::path::Path,
+            options: CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            self.inner.copy_file(path, host_path, options).await
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            self.inner.write_file(path, content).await
+        }
+
+        async fn start_process(
+            &self,
+            request: &StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<ProcessExit> {
+            let result = self.inner.wait_process(handle, timeout).await;
+            self.cancel.cancel();
+            result
+        }
+    }
+
     async fn run_execute_inner(
         factory: &MockSandboxFactory,
         ctx: &ExecutionContext,
@@ -3672,6 +3748,60 @@ mod tests {
         )
         .await?;
         Ok((outcome.exit_code(), outcome.error().map(ToOwned::to_owned)))
+    }
+
+    #[tokio::test]
+    async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"partial stdout".to_vec(),
+            truncated: true,
+        }]);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let factory = MockSandboxFactory::with_overrides(overrides);
+        let sandbox = CancelAfterWaitSandbox {
+            inner: factory
+                .create(SandboxConfig {
+                    id: SandboxId::new_v4(),
+                    resources: sandbox::ResourceLimits {
+                        cpu_count: 2,
+                        memory_mb: 2048,
+                    },
+                    device_rate_limits: None,
+                })
+                .await
+                .unwrap(),
+            cancel: cancel.clone(),
+        };
+        let ctx = minimal_context();
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let result = run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            cancel.clone(),
+        )
+        .await
+        .unwrap();
+
+        assert!(cancel.is_cancelled());
+        assert!(result.failure.is_none());
+        assert_eq!(
+            result.stdout_stream_diagnostics,
+            AgentStdoutStreamDiagnostics {
+                chunk_truncated: true,
+                stream_overflowed: false,
+            }
+        );
     }
 
     #[tokio::test]
