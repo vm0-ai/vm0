@@ -560,52 +560,73 @@ async fn write_request_frame(
     Ok(())
 }
 
-/// Send a request with a pre-allocated sequence number.
-async fn request_raw_on_shared(
+async fn request_on_shared_with_pending_response<C, W>(
     shared: &Arc<Shared>,
     msg_type: u8,
     seq: u32,
     payload: &[u8],
     timeout: Duration,
-) -> io::Result<RawMessage> {
+    prepare_pending_context: impl FnOnce() -> io::Result<C>,
+    prepare_pending: impl FnOnce(oneshot::Sender<RawMessage>, C) -> io::Result<(PendingResponse, W)>,
+) -> io::Result<RawMessage>
+where
+    W: FnOnce() -> io::Result<()>,
+{
     let data = vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    // Register under the state lock: `Closed` short-circuits to an
-    // immediate error, and insertion into `pending` is serialised with
-    // the `Connected -> Closed` transition in `close()`. There is no
-    // post-write `is_closed` check because close is observed via the
-    // oneshot receiver becoming `Closed` when `close()` drops the map.
-    let (tx, rx) = oneshot::channel();
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { pending, .. } => {
-                pending.insert(
-                    seq,
-                    PendingResponse {
-                        response_tx: tx,
-                        normal_operation: None,
-                        normal_terminal_msg_types: &[],
-                    },
-                );
-            }
-        }
-    }
+    // Keep request-specific setup after frame encoding, while leaving
+    // `PendingResponse` construction inside the connected-state branch below.
+    // That preserves normal-operation rejection ordering and closed-state
+    // priority for fallible composite handles.
+    let pending_context = prepare_pending_context()?;
+    let (rx, before_write) =
+        register_pending_response(shared, seq, pending_context, prepare_pending)?;
     let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
 
     // The pending guard removes the pending entry on write failure, timeout,
     // or cancellation before reader_loop dispatches a response. The write
     // helper separately poisons the connection if cancellation interrupts an
     // in-progress frame write.
-    write_request_frame(shared, &data, || Ok(())).await?;
+    write_request_frame(shared, &data, before_write).await?;
 
+    await_pending_response(rx, timeout).await
+}
+
+fn register_pending_response<C, W>(
+    shared: &Arc<Shared>,
+    seq: u32,
+    pending_context: C,
+    prepare_pending: impl FnOnce(oneshot::Sender<RawMessage>, C) -> io::Result<(PendingResponse, W)>,
+) -> io::Result<(oneshot::Receiver<RawMessage>, W)>
+where
+    W: FnOnce() -> io::Result<()>,
+{
+    // Register under the state lock: `Closed` short-circuits to an
+    // immediate error, and insertion into `pending` is serialised with
+    // the `Connected -> Closed` transition in `close()`. There is no
+    // post-write `is_closed` check because close is observed via the
+    // oneshot receiver becoming `Closed` when `close()` drops the map.
+    let (tx, rx) = oneshot::channel();
+    let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let ConnectionState::Connected { pending, .. } = &mut *guard {
+        let (pending_response, before_write) = prepare_pending(tx, pending_context)?;
+        pending.insert(seq, pending_response);
+        Ok((rx, before_write))
+    } else {
+        drop(guard);
+        drop(pending_context);
+        Err(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "connection closed",
+        ))
+    }
+}
+
+async fn await_pending_response(
+    rx: oneshot::Receiver<RawMessage>,
+    timeout: Duration,
+) -> io::Result<RawMessage> {
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
     // timeout arm is the only other way out.
@@ -621,6 +642,35 @@ async fn request_raw_on_shared(
             Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
         }
     }
+}
+
+/// Send a request with a pre-allocated sequence number.
+async fn request_raw_on_shared(
+    shared: &Arc<Shared>,
+    msg_type: u8,
+    seq: u32,
+    payload: &[u8],
+    timeout: Duration,
+) -> io::Result<RawMessage> {
+    request_on_shared_with_pending_response(
+        shared,
+        msg_type,
+        seq,
+        payload,
+        timeout,
+        || Ok(()),
+        |tx, ()| {
+            Ok((
+                PendingResponse {
+                    response_tx: tx,
+                    normal_operation: None,
+                    normal_terminal_msg_types: &[],
+                },
+                || Ok(()),
+            ))
+        },
+    )
+    .await
 }
 
 async fn normal_request_on_shared_with_write_observer(
@@ -653,52 +703,29 @@ async fn normal_request_on_shared_with_pre_write_observer(
     write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
-    let data = vsock_proto::encode(msg_type, seq, payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
-    let normal_operation = shared.reserve_normal_operation()?;
 
-    let (tx, rx) = oneshot::channel();
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { pending, .. } => {
-                pending.insert(
-                    seq,
-                    PendingResponse {
-                        response_tx: tx,
-                        normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
-                        normal_terminal_msg_types: terminal_msg_types,
-                    },
-                );
-            }
-        }
-    }
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-
-    write_request_frame(shared, &data, || {
-        mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
-        write_observer.record_write_start()
-    })
-    .await?;
-
-    tokio::select! {
-        biased;
-        result = rx => {
-            result.map_err(|_| io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ))
-        }
-        _ = tokio::time::sleep(timeout) => {
-            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
-        }
-    }
+    request_on_shared_with_pending_response(
+        shared,
+        msg_type,
+        seq,
+        payload,
+        timeout,
+        || shared.reserve_normal_operation(),
+        |tx, normal_operation| {
+            Ok((
+                PendingResponse {
+                    response_tx: tx,
+                    normal_operation: Some(PendingNormalOperation::Owned(normal_operation)),
+                    normal_terminal_msg_types: terminal_msg_types,
+                },
+                move || {
+                    mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
+                    write_observer.record_write_start()
+                },
+            ))
+        },
+    )
+    .await
 }
 
 async fn request_on_shared_with_composite_operation_and_observer(
@@ -711,53 +738,31 @@ async fn request_on_shared_with_composite_operation_and_observer(
     write_observer: FrameWriteObserver,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
-    let data = vsock_proto::encode(msg_type, seq, payload)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    let (tx, rx) = oneshot::channel();
-    {
-        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &mut *guard {
-            ConnectionState::Closed => {
-                return Err(io::Error::new(
-                    io::ErrorKind::ConnectionReset,
-                    "connection closed",
-                ));
-            }
-            ConnectionState::Connected { pending, .. } => {
-                pending.insert(
-                    seq,
-                    PendingResponse {
-                        response_tx: tx,
-                        normal_operation: Some(PendingNormalOperation::Composite(
-                            normal_operation.transition_handle()?,
-                        )),
-                        normal_terminal_msg_types: terminal_msg_types,
-                    },
-                );
-            }
-        }
-    }
-    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
-
-    write_request_frame(shared, &data, || {
-        normal_operation.mark_possible_guest_write_started()?;
-        write_observer.record_write_start()
-    })
-    .await?;
-
-    tokio::select! {
-        biased;
-        result = rx => {
-            result.map_err(|_| io::Error::new(
-                io::ErrorKind::ConnectionReset,
-                "connection closed",
+    request_on_shared_with_pending_response(
+        shared,
+        msg_type,
+        seq,
+        payload,
+        timeout,
+        || Ok(()),
+        |tx, ()| {
+            Ok((
+                PendingResponse {
+                    response_tx: tx,
+                    normal_operation: Some(PendingNormalOperation::Composite(
+                        normal_operation.transition_handle()?,
+                    )),
+                    normal_terminal_msg_types: terminal_msg_types,
+                },
+                move || {
+                    normal_operation.mark_possible_guest_write_started()?;
+                    write_observer.record_write_start()
+                },
             ))
-        }
-        _ = tokio::time::sleep(timeout) => {
-            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
-        }
-    }
+        },
+    )
+    .await
 }
 
 fn mark_pending_normal_operation_possible_guest_write(
