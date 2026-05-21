@@ -15,16 +15,13 @@ import {
   normalizeRunModelId,
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
 import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
@@ -61,7 +58,6 @@ const log = logger("api:agentphone");
 const MAX_CONNECT_AGE_SECONDS = 600;
 const MAX_WEBHOOK_AGE_SECONDS = 300;
 const SIGNATURE_PREFIX = "sha256=";
-const ORG_SENTINEL_USER_ID = "__org__";
 const MAX_CONTEXT_MESSAGES = 10;
 const AGENTPHONE_SMS_MMS_SLASH_COMMAND_RISK_MESSAGE =
   "Note: SMS and MMS replies may not be delivered reliably. For the most reliable experience, use iMessage with this AgentPhone number.";
@@ -2175,125 +2171,6 @@ export function markdownToImessagePlain(markdown: string): string {
   text = text.replace(/^[ \t]*>[ \t]?/gm, "");
   text = text.replace(/\n{3,}/g, "\n\n");
   return text.trim();
-}
-
-function plainLabel(value: string | null | undefined): string | undefined {
-  const label = value?.trim().replace(/\s+/gu, " ");
-  return label || undefined;
-}
-
-function displayLabel(row: {
-  readonly agentDisplayName: string | null;
-  readonly agentName: string | null;
-  readonly composeName: string;
-}): string {
-  return (
-    plainLabel(row.agentDisplayName) ??
-    plainLabel(row.agentName) ??
-    plainLabel(row.composeName) ??
-    "zero"
-  );
-}
-
-async function resolveComposeLabel(
-  db: ReadonlyDb,
-  composeId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({
-      agentDisplayName: zeroAgents.displayName,
-      agentName: zeroAgents.name,
-      composeName: agentComposes.name,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row ? displayLabel(row) : undefined;
-}
-
-async function resolveRespondedByLabel(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly composeId: string;
-}): Promise<string | undefined> {
-  const orgDefaultComposeId = await resolveOrgDefaultComposeId(
-    args.db,
-    args.orgId,
-  );
-  if (!orgDefaultComposeId || args.composeId === orgDefaultComposeId) {
-    return undefined;
-  }
-
-  const label = await resolveComposeLabel(args.db, args.composeId);
-  return label ? `Responded by ${label}` : undefined;
-}
-
-async function resolveRunSelectedModel(
-  db: ReadonlyDb,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.selectedModel ?? undefined;
-}
-
-async function resolveOrgDefaultModelProviderSelectedModel(
-  db: ReadonlyDb,
-  orgId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ selectedModel: modelProviders.selectedModel })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-  return row?.selectedModel ?? undefined;
-}
-
-async function resolveModelLabel(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly runId: string;
-}): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
-  const model =
-    selectedModel ??
-    (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
-  return model ? getModelDisplayName(model) : undefined;
-}
-
-export async function resolveAgentPhoneReplyFooterText(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly runId: string;
-  readonly agentId: string;
-}): Promise<string | undefined> {
-  const [respondedBy, modelLabel] = await Promise.all([
-    resolveRespondedByLabel({
-      db: args.db,
-      orgId: args.orgId,
-      composeId: args.agentId,
-    }),
-    resolveModelLabel({ db: args.db, orgId: args.orgId, runId: args.runId }),
-  ]);
-
-  const parts: string[] = [];
-  if (respondedBy) {
-    parts.push(respondedBy);
-  }
-  if (modelLabel) {
-    parts.push(modelLabel);
-  }
-  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 export async function resolveAgentPhoneAuditLogsUrl(args: {

@@ -526,7 +526,24 @@ const connectAgentPhone$ = command(
         {
           agentphoneAgentId: body.agentphoneAgentId,
           toNumber: phoneHandle,
-          body: "Your phone number is connected to VM0. Send a message here to start chatting with Zero.",
+          body: `Hi, I'm Zero, your AI coworker from vm0.
+
+You can text me like a teammate and I'll actually do the work: research something, draft and send emails, summarize long documents, update a spreadsheet, file or triage tickets, post to Slack, dig through your GitHub or Notion, and a lot more.
+
+I'm most useful once I'm connected to the tools you already use. The ones people hook up most often are GitHub, Gmail, Notion, Google Drive / Sheets / Docs / Calendar, Slack, Sentry, and X. There are 100+ more available, and you can connect any of them whenever you need.
+
+A few things to try right now:
+- "Summarize my unread Gmail from today"
+- "What's on my Google Calendar tomorrow?"
+- "List the open issues in my GitHub repo"
+- "Find my meeting notes in Notion"
+- "Catch me up on my unread Slack messages"
+- "Triage my latest Sentry error and open a GitHub PR to fix it"
+- "What's trending on X about [topic]?"
+
+No tool connected yet? Just ask me anything and I'll still help, then point you to whatever I need access to.
+
+What would you like to start with?`,
         },
         signal,
       ),
