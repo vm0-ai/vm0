@@ -18,7 +18,7 @@ import {
   type OAuthConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
-import { isGoogleOAuthConnectorType } from "./oauth-providers/google-oauth-connectors";
+export { isGoogleOAuthConnector } from "./oauth-providers/google-oauth-connectors";
 
 /**
  * Connector utility vocabulary:
@@ -467,13 +467,6 @@ export function getConnectorOAuthConfig(
   type: OAuthConnectorType,
 ): ConnectorOAuthConfig {
   return CONNECTOR_TYPES[type].oauth;
-}
-
-/**
- * Check if a connector type uses the shared Google OAuth provider.
- */
-export function isGoogleOAuthConnector(type: ConnectorType): boolean {
-  return isGoogleOAuthConnectorType(type);
 }
 
 /**

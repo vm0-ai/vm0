@@ -16,7 +16,10 @@ export type GoogleOAuthConnectorType =
 const GOOGLE_OAUTH_CONNECTOR_TYPE_SET: ReadonlySet<ConnectorType> =
   new Set<ConnectorType>(GOOGLE_OAUTH_CONNECTOR_TYPES);
 
-export function isGoogleOAuthConnectorType(
+/**
+ * Check if a connector type uses the shared Google OAuth provider.
+ */
+export function isGoogleOAuthConnector(
   type: ConnectorType,
 ): type is GoogleOAuthConnectorType {
   return GOOGLE_OAUTH_CONNECTOR_TYPE_SET.has(type);
