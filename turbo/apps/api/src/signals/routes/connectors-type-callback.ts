@@ -130,6 +130,14 @@ type ConnectorSessionTransitionInput = {
   readonly userId: string;
 };
 
+type StoredStateCallbackInput = {
+  readonly db: Db;
+  readonly connectorType: OAuthConnectorType;
+  readonly origin: string;
+  readonly type: string;
+  readonly signal: AbortSignal;
+};
+
 function getCookie(request: Request, name: string): string | undefined {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) {
@@ -324,6 +332,36 @@ async function rejectInvalidStoredOAuthStateForCallback(args: {
   }
 
   return invalidStateRedirectResponse(args.origin, args.type);
+}
+
+async function claimStoredOAuthStateForCallbackIfPresent(
+  args: StoredStateCallbackInput & { readonly state: string | undefined },
+): Promise<ClaimedCallbackState> {
+  if (!args.state) {
+    return { ok: true, storedState: undefined };
+  }
+
+  const claimedState = await claimStoredOAuthStateForCallback({
+    ...args,
+    state: args.state,
+  });
+  args.signal.throwIfAborted();
+  return claimedState;
+}
+
+async function rejectInvalidStoredOAuthStateForCallbackIfPresent(
+  args: StoredStateCallbackInput & { readonly state: string | undefined },
+): Promise<Response | undefined> {
+  if (!args.state) {
+    return undefined;
+  }
+
+  const invalidStateResponse = await rejectInvalidStoredOAuthStateForCallback({
+    ...args,
+    state: args.state,
+  });
+  args.signal.throwIfAborted();
+  return invalidStateResponse;
 }
 
 async function hasPendingConnectorSession(
@@ -589,18 +627,16 @@ const callbackConnectorInner$ = command(
       origin,
       type: params.type,
       signal,
-    };
+    } satisfies StoredStateCallbackInput;
 
     if (query.error) {
-      if (storedStateValue) {
-        const claimedState = await claimStoredOAuthStateForCallback({
-          ...storedStateCallbackArgs,
-          state: storedStateValue,
-        });
-        signal.throwIfAborted();
-        if (!claimedState.ok) {
-          return claimedState.response;
-        }
+      const claimedState = await claimStoredOAuthStateForCallbackIfPresent({
+        ...storedStateCallbackArgs,
+        state: storedStateValue,
+      });
+      signal.throwIfAborted();
+      if (!claimedState.ok) {
+        return claimedState.response;
       }
       return redirectWithError(
         origin,
@@ -612,16 +648,14 @@ const callbackConnectorInner$ = command(
 
     const code = query.code;
     if (!code) {
-      if (storedStateValue) {
-        const invalidStateResponse =
-          await rejectInvalidStoredOAuthStateForCallback({
-            ...storedStateCallbackArgs,
-            state: storedStateValue,
-          });
-        signal.throwIfAborted();
-        if (invalidStateResponse) {
-          return invalidStateResponse;
-        }
+      const invalidStateResponse =
+        await rejectInvalidStoredOAuthStateForCallbackIfPresent({
+          ...storedStateCallbackArgs,
+          state: storedStateValue,
+        });
+      signal.throwIfAborted();
+      if (invalidStateResponse) {
+        return invalidStateResponse;
       }
       return missingAuthorizationCodeRedirectResponse(origin, params.type);
     }
@@ -630,17 +664,11 @@ const callbackConnectorInner$ = command(
       return missingStateRedirectResponse(origin, params.type);
     }
 
-    let claimedState: ClaimedCallbackState = {
-      ok: true,
-      storedState: undefined,
-    };
-    if (storedStateValue) {
-      claimedState = await claimStoredOAuthStateForCallback({
-        ...storedStateCallbackArgs,
-        state: storedStateValue,
-      });
-      signal.throwIfAborted();
-    }
+    const claimedState = await claimStoredOAuthStateForCallbackIfPresent({
+      ...storedStateCallbackArgs,
+      state: storedStateValue,
+    });
+    signal.throwIfAborted();
     if (!claimedState.ok) {
       return claimedState.response;
     }
