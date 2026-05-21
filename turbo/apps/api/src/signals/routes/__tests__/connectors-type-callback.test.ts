@@ -1257,6 +1257,7 @@ describe("GET /api/connectors/:type/callback", () => {
       query: {
         error: "access_denied",
         error_description: "The user denied access",
+        state: "state-123",
       },
       headers: callbackHeaders({ stateCookie: "state-123" }),
     });
@@ -1664,6 +1665,38 @@ describe("GET /api/connectors/:type/callback", () => {
       .from(connectorOauthStates)
       .where(eq(connectorOauthStates.id, oauthStateId));
     expect(storedState?.consumedAt).toBeInstanceOf(Date);
+  });
+
+  it("rejects an invalid server-side OAuth handoff state before provider errors", async () => {
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: false,
+    });
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const state = `state-${randomUUID()}`;
+    orgIds.push(orgId);
+    const oauthStateId = await seedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state,
+      consumedAt: new Date(now()),
+    });
+    oauthStateIds.push(oauthStateId);
+
+    const response = await requestCallback({
+      type: "github",
+      query: {
+        error: "access_denied",
+        error_description: "The user denied access",
+        state,
+      },
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid state - please try again",
+    });
   });
 
   it("rejects an already consumed server-side OAuth handoff state", async () => {
