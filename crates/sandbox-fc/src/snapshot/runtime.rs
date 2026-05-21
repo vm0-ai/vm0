@@ -1,0 +1,397 @@
+use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::Duration;
+
+use tokio::io::AsyncBufReadExt;
+use tokio::task::JoinHandle;
+use tracing::info;
+
+use crate::api::ApiClient;
+use crate::config::SnapshotConfig;
+use crate::factory::InvariantConfig;
+use crate::paths::{SandboxPaths, SnapshotOutputPaths, SockPaths};
+use crate::process::kill_process_group;
+use sandbox::SnapshotCreateConfig;
+
+use super::SnapshotError;
+use super::attempt::SnapshotAttempt;
+
+const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Timeout for waiting for the guest to connect via vsock after start.
+const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Pre-warm should be quiet; keep diagnostics bounded and explicit.
+const PREWARM_EXEC_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+
+pub(super) struct AbortOnDropTask<T> {
+    handle: JoinHandle<T>,
+}
+
+impl<T> AbortOnDropTask<T> {
+    pub(super) fn new(handle: JoinHandle<T>) -> Self {
+        Self { handle }
+    }
+
+    pub(super) fn abort(&self) {
+        self.handle.abort();
+    }
+}
+
+impl<T> Future for AbortOnDropTask<T> {
+    type Output = Result<T, tokio::task::JoinError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        Pin::new(&mut this.handle).poll(cx)
+    }
+}
+
+impl<T> Drop for AbortOnDropTask<T> {
+    fn drop(&mut self) {
+        if !self.handle.is_finished() {
+            self.handle.abort();
+        }
+    }
+}
+
+pub(super) fn spawn_stdout_forwarder(child: &mut tokio::process::Child) -> Option<JoinHandle<()>> {
+    child.stdout.take().map(|stdout| {
+        // Intentionally detached: stdout has no cleanup decision input, and
+        // EOF on the child pipe ends the task after Firecracker exits.
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    info!(target: "firecracker", "{line}");
+                }
+            }
+        })
+    })
+}
+
+pub(super) fn spawn_stderr_forwarder(
+    child: &mut tokio::process::Child,
+    stderr_buf: &StderrBuf,
+) -> Option<JoinHandle<()>> {
+    child.stderr.take().map(|stderr| {
+        let buf = Arc::clone(stderr_buf);
+        // The caller retains this handle only for the early-exit drain path.
+        // Otherwise EOF on the child pipe ends the task after Firecracker exits.
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    tracing::warn!(target: "firecracker", "stderr: {line}");
+                    if let Ok(mut g) = buf.lock() {
+                        if g.len() == STDERR_BUF_LINES {
+                            g.pop_front();
+                        }
+                        g.push_back(line);
+                    }
+                }
+            }
+        })
+    })
+}
+
+pub(super) async fn drain_stderr_forwarder_after_spawn_exit(
+    child_status: &std::io::Result<Option<std::process::ExitStatus>>,
+    stderr_handle: Option<JoinHandle<()>>,
+) -> Option<JoinHandle<()>> {
+    if matches!(child_status, Ok(Some(status)) if !status.success())
+        && let Some(handle) = stderr_handle
+    {
+        // Child's write end of stderr is closed; wait briefly for the
+        // forwarder to finish reading so the captured buffer contains
+        // the crash's final lines.
+        let _ = tokio::time::timeout(STDERR_DRAIN_TIMEOUT, handle).await;
+        None
+    } else {
+        stderr_handle
+    }
+}
+
+pub(super) async fn kill_and_reap_firecracker(child: &mut tokio::process::Child) {
+    kill_process_group(child);
+    let _ = child.wait().await;
+}
+
+pub(super) async fn kill_and_reap_firecracker_bounded(
+    child: &mut tokio::process::Child,
+    timeout: Duration,
+) -> bool {
+    kill_process_group(child);
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(_)) => true,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "failed to wait for snapshot firecracker child during cleanup");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_ms = timeout.as_millis() as u64,
+                "timed out waiting for snapshot firecracker child during cleanup"
+            );
+            false
+        }
+    }
+}
+
+pub(super) async fn drain_or_abort_forwarder(
+    handle: &mut Option<JoinHandle<()>>,
+    pipe: &'static str,
+    timeout: Duration,
+) -> bool {
+    let Some(mut handle) = handle.take() else {
+        return true;
+    };
+
+    tokio::select! {
+        result = &mut handle => {
+            match result {
+                Ok(()) => true,
+                Err(e) if e.is_cancelled() => true,
+                Err(e) => {
+                    tracing::warn!(pipe, error = %e, "snapshot pipe forwarder failed during cleanup");
+                    false
+                }
+            }
+        }
+        () = tokio::time::sleep(timeout) => {
+            handle.abort();
+            if let Err(e) = handle.await
+                && !e.is_cancelled()
+            {
+                tracing::warn!(pipe, error = %e, "snapshot pipe forwarder failed after abort");
+                return false;
+            }
+            true
+        }
+    }
+}
+
+pub(super) const SPAWN_INNER_CMD: &str =
+    r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+pub(super) const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
+
+/// Number of recent stderr lines retained from the spawn chain, used to
+/// surface the underlying cause when the chain (`unshare → bash → ip netns
+/// exec → firecracker`) exits before the API socket appears. 32 is enough
+/// for a typical mount/unshare/netns error plus a few lines of bash/kernel
+/// noise, far less than the memory cost warrants worrying about.
+pub(super) const STDERR_BUF_LINES: usize = 32;
+
+/// Time granted to the stderr forwarder task to drain buffered lines after
+/// the spawn chain has been observed to exit. Kept small: if the forwarder
+/// hasn't caught up in 100ms after the pipe's write end closed, the buffer
+/// we have is what the operator sees.
+const STDERR_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Cancellation finalizer child reap budget after SIGKILL. This is a fallback
+/// path: keep it bounded so a cancelled snapshot cannot pin cleanup forever.
+pub(super) const SNAPSHOT_FINALIZER_CHILD_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Short grace period for stdout/stderr log forwarders after child cleanup.
+pub(super) const SNAPSHOT_FINALIZER_PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Shared bounded ring buffer of recent stderr lines from the spawn chain.
+pub(super) type StderrBuf = Arc<Mutex<VecDeque<String>>>;
+
+/// Drain the captured stderr lines into a single newline-joined string.
+/// Used in error reporting when the spawn chain exits prematurely; always
+/// returns a non-empty string so the operator never sees a bare error.
+pub(super) fn drain_stderr_buf(buf: &StderrBuf) -> String {
+    match buf.lock() {
+        Ok(g) => {
+            if g.is_empty() {
+                "<no stderr captured>".to_string()
+            } else {
+                g.iter().cloned().collect::<Vec<_>>().join("\n")
+            }
+        }
+        Err(_) => {
+            // Poisoning means the stderr forwarder task panicked while
+            // holding the lock — a real bug signal worth surfacing
+            // independently of the error message that carries this sentinel.
+            tracing::warn!("stderr buffer mutex poisoned during forwarder task");
+            "<stderr buffer poisoned>".to_string()
+        }
+    }
+}
+
+/// If the snapshot workflow returned an API error AND the firecracker
+/// spawn chain (unshare → bash → ip netns exec → firecracker) has
+/// already exited with a non-zero status, re-wrap the error with the
+/// captured stderr so the operator sees the underlying cause (e.g.
+/// `mount: bind failed`) instead of a generic API timeout.
+///
+/// In every other case the original result is returned unchanged:
+/// - `Ok(_)`: success — no rewrap.
+/// - `Err(non-Api)`: the error is already specific (Setup / Vsock / Io /
+///   Process) and shouldn't be replaced.
+/// - `Ok(None)` child status: firecracker is still running, so the API
+///   error is about API behavior, not a crashed spawn chain.
+/// - `Ok(Some(success))` child status: firecracker exited cleanly (rare
+///   at this point), not a mount/setup failure.
+/// - `Err(_)` child status: `try_wait` failed for an unrelated reason
+///   (EINTR, etc.); stay conservative and keep the original error.
+pub(super) fn rewrap_spawn_chain_exit(
+    result: Result<SnapshotConfig, SnapshotError>,
+    child_status: std::io::Result<Option<std::process::ExitStatus>>,
+    stderr_buf: &StderrBuf,
+) -> Result<SnapshotConfig, SnapshotError> {
+    match (result, child_status) {
+        (Err(SnapshotError::Api(api_err)), Ok(Some(status))) if !status.success() => {
+            let stderr = drain_stderr_buf(stderr_buf);
+            Err(SnapshotError::Process(format!(
+                "firecracker spawn chain exited (status={status}): {stderr} \
+                 (original API error: {api_err})"
+            )))
+        }
+        (other, _) => other,
+    }
+}
+
+pub(super) async fn run_snapshot_workflow(
+    config: &SnapshotCreateConfig,
+    attempt: &mut SnapshotAttempt,
+) -> Result<SnapshotConfig, SnapshotError> {
+    attempt.prepare_firecracker_files().await?;
+    attempt.acquire_network().await?;
+    attempt.spawn_firecracker(config).await?;
+
+    // Guard: ensure Firecracker and netns cleanup on any explicit exit path.
+    let result = run_with_firecracker(
+        config,
+        attempt.paths(),
+        attempt.sock_paths()?,
+        attempt.output(),
+    )
+    .await;
+    attempt.finish_runtime_after_workflow(result).await
+}
+
+/// Inner workflow that runs while Firecracker is alive.
+async fn run_with_firecracker(
+    config: &SnapshotCreateConfig,
+    paths: &SandboxPaths,
+    sock_paths: &SockPaths,
+    output: &SnapshotOutputPaths,
+) -> Result<SnapshotConfig, SnapshotError> {
+    // 5. Wait for API socket ready.
+    let api_sock = sock_paths.api_sock();
+    let client = ApiClient::new(&api_sock);
+    client.wait_for_ready(API_READY_TIMEOUT).await?;
+
+    info!("firecracker API ready");
+
+    // The COW-device bind mount was established inside `unshare --mount`
+    // at spawn time; `configure_drive` only needs the path string FC will
+    // open inside its private mount namespace.
+    let drive_bind_str = paths.cow_device_bind().display().to_string();
+
+    // 6. Configure VM via API (6 parallel PUT calls).
+    let inv = InvariantConfig::new();
+    let kernel_path = config.kernel_path.display().to_string();
+    tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
+    let vsock_uds_str = sock_paths.vsock().display().to_string();
+
+    tokio::try_join!(
+        client.configure_machine(config.vcpu_count, config.memory_mb),
+        client.configure_boot_source(&kernel_path, &inv.boot_args),
+        client.configure_drive("rootfs", &drive_bind_str, true, false, None),
+        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
+        client.configure_vsock(inv.guest_cid, &vsock_uds_str),
+        client.configure_balloon(
+            inv.balloon.amount_mib,
+            inv.balloon.deflate_on_oom,
+            inv.balloon.stats_polling_interval_s
+        ),
+    )?;
+
+    info!("VM configured");
+
+    // 7. Bind vsock listener BEFORE starting the instance (race: guest connects ~300ms after boot).
+    let vsock_path_for_listen = vsock_uds_str.clone();
+    let vsock_task = AbortOnDropTask::new(tokio::spawn(async move {
+        vsock_host::VsockHost::wait_for_connection(&vsock_path_for_listen, VSOCK_CONNECT_TIMEOUT)
+            .await
+    }));
+
+    // 8. Start instance.
+    let start_result = client.start_instance().await;
+    if let Err(e) = start_result {
+        vsock_task.abort();
+        let _ = vsock_task.await;
+        return Err(e.into());
+    }
+
+    info!("instance started, waiting for guest vsock connection");
+
+    // 9. Wait for guest to connect via vsock.
+    let guest = match vsock_task.await {
+        Ok(Ok(g)) => g,
+        Ok(Err(e)) => return Err(SnapshotError::Vsock(e.to_string())),
+        Err(e) => return Err(SnapshotError::Vsock(format!("vsock task: {e}"))),
+    };
+
+    info!("guest connected");
+
+    // 9.5. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
+    //      are fast. The snapshot captures memory + disk state, so caches
+    //      populated here persist across restores.
+    let prewarm_result = guest
+        .exec_capture(vsock_host::ExecCaptureRequest {
+            command: inv.prewarm_script,
+            timeout_ms: 30_000,
+            env: &[],
+            sudo: false,
+            label: "snapshot-prewarm",
+            stdout_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
+            stderr_limit_bytes: PREWARM_EXEC_CAPTURE_LIMIT_BYTES,
+            expected_exit_codes: &[],
+            wait_timeout: Duration::from_millis(35_000),
+        })
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("pre-warm exec: {e}")))?;
+    if prewarm_result.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&prewarm_result.stderr);
+        return Err(SnapshotError::Setup(format!(
+            "pre-warm failed (exit code {}): {}",
+            prewarm_result.exit_code,
+            stderr.trim(),
+        )));
+    }
+    info!("pre-warm complete");
+
+    // 10. Pause VM.
+    client.pause().await?;
+
+    info!("VM paused");
+
+    // 11. Create snapshot — Firecracker writes directly to output_dir.
+    //
+    // File content durability is guaranteed upstream: as of Firecracker
+    // v1.15.1 (see `FIRECRACKER_VERSION` in `runner/src/deps.rs`), both
+    // snapshot.bin and memory.bin are flushed and fsynced before the API
+    // response returns. References (pinned to the v1.15.1 tag):
+    //   - `snapshot_state_to_file` — https://github.com/firecracker-microvm/firecracker/blob/v1.15.1/src/vmm/src/persist.rs
+    //   - `snapshot_memory_to_file` — https://github.com/firecracker-microvm/firecracker/blob/v1.15.1/src/vmm/src/vstate/vm.rs
+    // Re-verify this guarantee whenever `FIRECRACKER_VERSION` is bumped;
+    // if it ever regresses, add a host-side `sync_all` on both files here.
+    // Directory-entry durability (persisting the `name → inode` mapping)
+    // is handled separately; see #9825.
+    let snapshot_str = output.snapshot().display().to_string();
+    let memory_str = output.memory().display().to_string();
+    client.create_snapshot(&snapshot_str, &memory_str).await?;
+
+    info!("snapshot created");
+
+    info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
+
+    Ok(output.snapshot_config(&config.id))
+}
