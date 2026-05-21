@@ -2,7 +2,6 @@ import { http, HttpResponse } from "msw";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
 

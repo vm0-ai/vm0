@@ -2,7 +2,6 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPE_KEYS,
-  CONNECTOR_TYPES,
   type ConnectorType,
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
