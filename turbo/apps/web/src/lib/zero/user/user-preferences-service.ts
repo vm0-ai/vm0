@@ -149,28 +149,6 @@ export async function updateUserPreferences(
 }
 
 /**
- * Set user timezone if not already set (for auto-detection on first login).
- */
-export async function setTimezoneIfNotSet(
-  orgId: string,
-  userId: string,
-  timezone: string,
-): Promise<void> {
-  if (!isValidTimezone(timezone)) {
-    return; // Silently ignore invalid timezone during auto-detection
-  }
-
-  const { timezone: existingTimezone } = await getUserPreferences(
-    orgId,
-    userId,
-  );
-
-  if (existingTimezone === null) {
-    await updateUserPreferences(orgId, userId, { timezone });
-  }
-}
-
-/**
  * Atomically check and decrement captureNetworkBodiesRemaining.
  * Returns true if a capture quota was consumed (remaining was > 0).
  */

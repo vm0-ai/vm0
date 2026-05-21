@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthOrgContract,
   cliAuthTokenContract,
@@ -19,6 +20,7 @@ import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgCache } from "@vm0/db/schema/org-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
@@ -80,6 +82,15 @@ interface TestTokenResponseBody extends CliTokenResponseBody {
 interface TestApproveResponseBody {
   readonly success: true;
   readonly userId: string;
+}
+
+interface ApproveResponseBody {
+  readonly success: true;
+}
+
+interface ApproveErrorBody {
+  readonly success: false;
+  readonly error: string;
 }
 
 interface TestConnectorResponseBody {
@@ -148,6 +159,22 @@ async function postCliAuthTokenRaw(args: {
   const response = await app.request("/api/cli/auth/token", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    body: JSON.stringify(args.body),
+  });
+  return {
+    status: response.status,
+    body: await parseRawResponseBody(response),
+  };
+}
+
+async function postCliAuthApproveRaw(args: {
+  readonly body: unknown;
+  readonly headers?: Record<string, string>;
+}): Promise<HttpResponse> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request("/api/cli/auth/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...args.headers },
     body: JSON.stringify(args.body),
   });
   return {
@@ -309,6 +336,24 @@ describe("CLI auth routes", () => {
     });
   }
 
+  function mockClerkSession(args: {
+    readonly userId: string;
+    readonly orgId: string | null;
+    readonly orgRole?: "org:admin" | "org:member";
+  }): void {
+    const orgRole = args.orgRole ?? (args.orgId ? "org:admin" : undefined);
+    context.mocks.clerk.authenticateRequest.mockResolvedValue({
+      isAuthenticated: true,
+      toAuth: () => {
+        return {
+          userId: args.userId,
+          orgId: args.orgId,
+          orgRole,
+        };
+      },
+    });
+  }
+
   async function seedOrgCache(args: {
     readonly orgId: string;
     readonly slug: string;
@@ -441,6 +486,24 @@ describe("CLI auth routes", () => {
       .where(eq(cliTokens.token, token))
       .limit(1);
     return row;
+  }
+
+  async function readUserTimezone(args: {
+    readonly orgId: string;
+    readonly userId: string;
+  }): Promise<string | undefined> {
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({ timezone: orgMembersMetadata.timezone })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, args.orgId),
+          eq(orgMembersMetadata.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    return row?.timezone ?? undefined;
   }
 
   async function findOrgModelProviderSecret(
@@ -643,6 +706,9 @@ describe("CLI auth routes", () => {
         .delete(orgMetadata)
         .where(inArray(orgMetadata.orgId, orgIds));
       await writeDb
+        .delete(orgMembersMetadata)
+        .where(inArray(orgMembersMetadata.orgId, orgIds));
+      await writeDb
         .delete(orgMembersCache)
         .where(inArray(orgMembersCache.orgId, orgIds));
       await writeDb.delete(orgCache).where(inArray(orgCache.orgId, orgIds));
@@ -712,6 +778,245 @@ describe("CLI auth routes", () => {
       );
 
       expect(first.body.device_code).not.toBe(second.body.device_code);
+    });
+  });
+
+  describe("POST /api/cli/auth/approve", () => {
+    it("returns 401 when no browser session is provided", async () => {
+      const response = await acceptResponse<ApiErrorBody>(
+        postCliAuthApproveRaw({ body: { device_code: "ZZZZ-ZZZZ" } }),
+        401,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      });
+    });
+
+    it("approves a pending CLI device code for a Clerk browser session", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      const code = await seedDeviceCode({ status: "pending" });
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: code },
+        }),
+        200,
+      );
+
+      expect(response.body).toStrictEqual({ success: true });
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "authenticated",
+        userId,
+        orgId,
+      });
+    });
+
+    it("normalizes spaces and casing before approving", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      const code = await seedDeviceCode({ status: "pending" });
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: ` ${code.toLowerCase().replace("-", " -")} ` },
+        }),
+        200,
+      );
+
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "authenticated",
+        userId,
+        orgId,
+      });
+    });
+
+    it("returns a user-facing error when device_code is missing", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      mockClerkSession({ userId, orgId: null });
+
+      const response = await acceptResponse<ApproveErrorBody>(
+        postCliAuthApproveRaw({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {},
+        }),
+        400,
+      );
+
+      expect(response.body.success).toBeFalsy();
+      expect(response.body.error).toContain("device_code");
+    });
+
+    it("returns a user-facing error for unknown CLI device codes", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApproveErrorBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: "ZZZZ-ZZZZ" },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        success: false,
+        error: "Invalid or expired device code",
+      });
+    });
+
+    it("returns a user-facing error for non-pending CLI device codes", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      const code = await seedDeviceCode({
+        status: "authenticated",
+        userId,
+        orgId,
+      });
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApproveErrorBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: code },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        success: false,
+        error: "Invalid or expired device code",
+      });
+    });
+
+    it("returns a user-facing error for expired CLI device codes", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      const code = await seedDeviceCode({
+        status: "pending",
+        expiresAt: new Date(nowDate().getTime() - 1000),
+      });
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApproveErrorBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: code },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        success: false,
+        error: "Device code has expired",
+      });
+    });
+
+    it("allows browser sessions without an active organization", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const code = await seedDeviceCode({ status: "pending" });
+      mockClerkSession({ userId, orgId: null });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            device_code: code,
+            timezone: "America/Los_Angeles",
+          },
+        }),
+        200,
+      );
+
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "authenticated",
+        userId,
+        orgId: null,
+      });
+    });
+
+    it("sets timezone only when provided, the session has an org, and it is unset", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      const firstCode = await seedDeviceCode({ status: "pending" });
+      mockClerkSession({ userId, orgId });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: firstCode },
+        }),
+        200,
+      );
+      await expect(
+        readUserTimezone({ orgId, userId }),
+      ).resolves.toBeUndefined();
+
+      const secondCode = await seedDeviceCode({ status: "pending" });
+      await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            device_code: secondCode,
+            timezone: "America/Los_Angeles",
+          },
+        }),
+        200,
+      );
+      await expect(readUserTimezone({ orgId, userId })).resolves.toBe(
+        "America/Los_Angeles",
+      );
+
+      const thirdCode = await seedDeviceCode({ status: "pending" });
+      await acceptResponse<ApproveResponseBody>(
+        client.approve({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { device_code: thirdCode, timezone: "Asia/Tokyo" },
+        }),
+        200,
+      );
+      await expect(readUserTimezone({ orgId, userId })).resolves.toBe(
+        "America/Los_Angeles",
+      );
+    });
+
+    it("rejects PAT credentials for browser device approval", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = `org_${randomUUID()}`;
+      await seedOrgMembership({
+        orgId,
+        userId,
+        slug: `cli-auth-approve-${randomUUID()}`,
+      });
+      const token = await seedCliToken({ userId, orgId });
+      const code = await seedDeviceCode({ status: "pending" });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApiErrorBody>(
+        client.approve({
+          headers: { authorization: `Bearer ${token}` },
+          body: { device_code: code },
+        }),
+        403,
+      );
+
+      expect(response.body.error.code).toBe("FORBIDDEN");
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "pending",
+      });
     });
   });
 

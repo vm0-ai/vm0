@@ -411,6 +411,7 @@ export const API_BACKEND_REWRITES = [
     AGENT_SESSION_ID_PATH_RE,
   ],
   ["/api/cli/auth/device", "/api/cli/auth/device"],
+  ["/api/cli/auth/approve", "/api/cli/auth/approve"],
   ["/api/cli/auth/org", "/api/cli/auth/org"],
   ["/api/cli/auth/token", "/api/cli/auth/token"],
   ["/api/cli/auth/test-approve", "/api/cli/auth/test-approve"],

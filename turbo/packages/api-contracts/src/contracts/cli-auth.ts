@@ -76,6 +76,37 @@ const apiErrorResponseSchema = z.object({
   error: z.object({ message: z.string(), code: z.string() }),
 });
 
+const cliAuthApproveErrorSchema = z.object({
+  success: z.literal(false),
+  error: z.string(),
+});
+
+/**
+ * CLI auth browser approval contract for /api/cli/auth/approve
+ */
+export const cliAuthApproveContract = c.router({
+  /**
+   * POST /api/cli/auth/approve
+   * Approve a pending CLI device code from a browser session
+   */
+  approve: {
+    method: "POST",
+    path: "/api/cli/auth/approve",
+    headers: authHeadersSchema,
+    body: z.object({
+      device_code: z.string().min(1, "device_code is required"),
+      timezone: z.string().min(1).optional(),
+    }),
+    responses: {
+      200: z.object({ success: z.literal(true) }),
+      400: cliAuthApproveErrorSchema,
+      401: apiErrorResponseSchema,
+      403: apiErrorResponseSchema,
+    },
+    summary: "Approve a CLI device authorization flow",
+  },
+});
+
 /**
  * CLI auth org switch contract for /api/cli/auth/org
  */
@@ -106,4 +137,5 @@ export const cliAuthOrgContract = c.router({
 
 export type CliAuthDeviceContract = typeof cliAuthDeviceContract;
 export type CliAuthTokenContract = typeof cliAuthTokenContract;
+export type CliAuthApproveContract = typeof cliAuthApproveContract;
 export type CliAuthOrgContract = typeof cliAuthOrgContract;

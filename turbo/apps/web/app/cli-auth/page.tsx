@@ -3,10 +3,55 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { verifyDeviceAction } from "./actions";
 import { useTheme } from "../components/ThemeProvider";
 
 const CODE_LENGTH = 8;
+
+interface VerifyResult {
+  readonly success: boolean;
+  readonly error?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function errorMessageFromResponseBody(body: unknown): string | undefined {
+  if (!isRecord(body)) {
+    return undefined;
+  }
+
+  if (typeof body.error === "string") {
+    return body.error;
+  }
+
+  if (isRecord(body.error) && typeof body.error.message === "string") {
+    return body.error.message;
+  }
+
+  return undefined;
+}
+
+async function verifyDeviceCode(
+  code: string,
+  timezone?: string,
+): Promise<VerifyResult> {
+  const response = await fetch("/api/cli/auth/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_code: code, timezone }),
+  });
+  const body: unknown = await response.json();
+
+  if (response.ok && isRecord(body) && body.success === true) {
+    return { success: true };
+  }
+
+  return {
+    success: false,
+    error: errorMessageFromResponseBody(body) ?? "Failed to verify device code",
+  };
+}
 
 export default function CliAuthPage(): React.JSX.Element {
   const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(""));
@@ -100,7 +145,7 @@ export default function CliAuthPage(): React.JSX.Element {
     // Detect browser timezone for auto-setting on first login
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    verifyDeviceAction(code, timezone)
+    verifyDeviceCode(code, timezone)
       .then((result) => {
         if (result.success) {
           router.push("/cli-auth/success");

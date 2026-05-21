@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 
 import {
+  cliAuthApproveContract,
   cliAuthDeviceContract,
   cliAuthOrgContract,
   cliAuthTokenContract,
@@ -21,6 +22,11 @@ import {
   issueCliToken$,
   orgIdBySlug$,
 } from "../services/cli-auth.service";
+import {
+  updateUserPreferences$,
+  userPreferences,
+} from "../services/zero-user-data.service";
+import { isValidTimeZone } from "../utils";
 
 const DEVICE_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const DEVICE_CODE_EXPIRES_IN_SECONDS = 900;
@@ -45,6 +51,7 @@ function oauthError(
 }
 
 const tokenBody$ = bodyResultOf(cliAuthTokenContract.exchange);
+const approveBody$ = bodyResultOf(cliAuthApproveContract.approve);
 const orgBody$ = bodyResultOf(cliAuthOrgContract.switchOrg);
 
 const createDeviceInner$ = command(async ({ set }, signal: AbortSignal) => {
@@ -160,6 +167,93 @@ const exchangeTokenInner$ = command(
   },
 );
 
+function approveError(error: string) {
+  return { status: 400 as const, body: { success: false as const, error } };
+}
+
+const approveDeviceInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(approveBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return approveError(bodyResult.response.body.error.message);
+    }
+
+    const auth = get(authContext$);
+    const normalizedCode = bodyResult.data.device_code
+      .replace(/\s/g, "")
+      .toUpperCase();
+    const writeDb = set(writeDb$);
+    const [session] = await writeDb
+      .select()
+      .from(deviceCodes)
+      .where(
+        and(
+          eq(deviceCodes.code, normalizedCode),
+          eq(deviceCodes.purpose, "cli"),
+          eq(deviceCodes.status, "pending"),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!session) {
+      return approveError("Invalid or expired device code");
+    }
+
+    if (nowDate() > session.expiresAt) {
+      return approveError("Device code has expired");
+    }
+
+    const timestamp = nowDate();
+    await writeDb
+      .update(deviceCodes)
+      .set({
+        status: "authenticated",
+        userId: auth.userId,
+        orgId: auth.orgId ?? null,
+        updatedAt: timestamp,
+      })
+      .where(
+        and(
+          eq(deviceCodes.code, normalizedCode),
+          eq(deviceCodes.purpose, "cli"),
+          eq(deviceCodes.status, "pending"),
+        ),
+      );
+    signal.throwIfAborted();
+
+    if (bodyResult.data.timezone && auth.orgId) {
+      const preferences = await get(
+        userPreferences({ orgId: auth.orgId, userId: auth.userId }),
+      );
+      signal.throwIfAborted();
+
+      if (
+        preferences.timezone === null &&
+        isValidTimeZone(bodyResult.data.timezone)
+      ) {
+        await set(
+          updateUserPreferences$,
+          {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            preferences: { timezone: bodyResult.data.timezone },
+          },
+          signal,
+        );
+      }
+    }
+
+    return { status: 200 as const, body: { success: true as const } };
+  },
+);
+
+const approveDeviceWithSessionAuth$ = authRoute(
+  { accept: ["session"] },
+  approveDeviceInner$,
+);
+
 const switchOrgInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const bodyResult = await get(orgBody$);
   signal.throwIfAborted();
@@ -242,6 +336,10 @@ const switchOrgRoute$ = command(async ({ set }, signal: AbortSignal) => {
 export const cliAuthRoutes: readonly RouteEntry[] = [
   { route: cliAuthDeviceContract.create, handler: createDeviceInner$ },
   { route: cliAuthTokenContract.exchange, handler: exchangeTokenInner$ },
+  {
+    route: cliAuthApproveContract.approve,
+    handler: approveDeviceWithSessionAuth$,
+  },
   {
     route: cliAuthOrgContract.switchOrg,
     handler: switchOrgRoute$,

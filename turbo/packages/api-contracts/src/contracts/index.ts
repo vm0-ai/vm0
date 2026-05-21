@@ -266,9 +266,11 @@ export {
 export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
+  cliAuthApproveContract,
   cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
+  type CliAuthApproveContract,
   type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
