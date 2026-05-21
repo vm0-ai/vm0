@@ -499,6 +499,19 @@ function readVoiceChatItems(
   });
 }
 
+const PG_FOREIGN_KEY_VIOLATION = "23503";
+
+function isForeignKeyViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const { cause } = error;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
+    return false;
+  }
+  return cause.code === PG_FOREIGN_KEY_VIOLATION;
+}
+
 export const appendVoiceChatItem$ = command(
   async (
     { set },
@@ -515,20 +528,34 @@ export const appendVoiceChatItem$ = command(
     | ErrorResponse<404, "NOT_FOUND">
   > => {
     const writeDb = set(writeDb$);
-    const [inserted] = await writeDb
-      .insert(voiceChatItems)
-      .values({
-        sessionId: args.sessionId,
-        role: args.role,
-        content: args.content,
-        taskId: args.taskId ?? null,
-        realtimeItemId: args.realtimeItemId ?? null,
-      })
-      .onConflictDoNothing({
-        target: [voiceChatItems.sessionId, voiceChatItems.realtimeItemId],
-      })
-      .returning();
+    const insertResult = await settle(
+      writeDb
+        .insert(voiceChatItems)
+        .values({
+          sessionId: args.sessionId,
+          role: args.role,
+          content: args.content,
+          taskId: args.taskId ?? null,
+          realtimeItemId: args.realtimeItemId ?? null,
+        })
+        .onConflictDoNothing({
+          target: [voiceChatItems.sessionId, voiceChatItems.realtimeItemId],
+        })
+        .returning(),
+    );
     signal.throwIfAborted();
+
+    // A voice-chat session can be deleted while detached reasoner work is
+    // still in flight. A vanished parent row surfaces as an FK violation
+    // rather than a conflict — treat it as not-found instead of letting the
+    // background task crash.
+    if (!insertResult.ok) {
+      if (isForeignKeyViolation(insertResult.error)) {
+        return notFound("Voice-chat session not found");
+      }
+      throw insertResult.error;
+    }
+    const [inserted] = insertResult.value;
 
     if (inserted) {
       return { item: inserted, inserted: true };
