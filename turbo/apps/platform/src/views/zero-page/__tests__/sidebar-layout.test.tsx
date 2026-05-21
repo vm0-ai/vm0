@@ -240,6 +240,26 @@ describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", 
         "data-desktop-shell",
       );
     });
+
+    expect(
+      screen.queryByTestId("workspace-titlebar-drag-region"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a workspace titlebar drag region in desktop shell mode", async () => {
+    mockBaseAPIs();
+    Object.defineProperty(window, "vm0DesktopLocalAgent", {
+      configurable: true,
+      value: {},
+    });
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("workspace-titlebar-drag-region"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("syncs collapsed sidebar state to the desktop window chrome bridge", async () => {

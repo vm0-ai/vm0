@@ -294,6 +294,13 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
+        {isDesktopShell && (
+          <div
+            className="zero-workspace-titlebar-drag-region"
+            data-testid="workspace-titlebar-drag-region"
+            aria-hidden="true"
+          />
+        )}
         <InstallBanner />
         <IosInstallModal />
         <MobileTopBar />
