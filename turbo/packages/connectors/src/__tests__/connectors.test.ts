@@ -628,8 +628,7 @@ describe("getConnectorProvidedSecretNames", () => {
 describe("getConnectorOAuthConfig - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
     const config = getConnectorOAuthConfig("google-meet");
-    expect(config).not.toBeNull();
-    const scopes = config!.scopes;
+    const scopes = config.scopes;
     expect(scopes).toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
     );
