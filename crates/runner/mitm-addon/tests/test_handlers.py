@@ -5278,6 +5278,30 @@ class TestUsageWebhookDelivery:
 
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
 
+    def test_retry_with_payload_collision_logs_nested_payload(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        with (
+            patch.object(usage.webhook, "_opener") as mock_opener,
+            patch.object(usage.webhook.time, "sleep") as mock_sleep,
+        ):
+            mock_opener.open.side_effect = [ConnectionError("fail"), MagicMock()]
+            usage.webhook._do_post_webhook_attempts(
+                "https://api.vm0.ai/x",
+                "tok",
+                {"url": "payload-url", "type": "payload-type", "runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
+
+        mock_sleep.assert_called_once_with(0.5)  # syscall boundary; pins retry backoff (#9991)
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert [entry["level"] for entry in entries] == ["warn", "info"]
+        assert [entry["attempt"] for entry in entries] == [1, 2]
+        assert all(entry["url"] == "https://api.vm0.ai/x" for entry in entries)
+        assert all(entry["payload"]["url"] == "payload-url" for entry in entries)
+        assert all(entry["payload"]["type"] == "payload-type" for entry in entries)
+
     def test_gives_up_after_retry_budget(self, tmp_path, real_flow, fresh_usage_executor):
         """Default max_retries=1 → 2 total attempts before giving up."""
         flow = self._model_flow(real_flow, tmp_path)
@@ -5295,6 +5319,26 @@ class TestUsageWebhookDelivery:
         assert mock_opener.open.call_count == 2  # urllib external boundary (#9991)
         assert proxy_log.exists()
         assert "2 attempts" in proxy_log.read_text()
+
+    def test_give_up_with_payload_collision_logs_nested_payload(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        with patch.object(usage.webhook, "_opener") as mock_opener:
+            mock_opener.open.side_effect = ConnectionError("fail")
+            usage.webhook._do_post_webhook_attempts(
+                "https://api.vm0.ai/x",
+                "tok",
+                {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+                max_retries=0,
+            )
+
+        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert entry["level"] == "error"
+        assert entry["attempt"] == 1
+        assert entry["error"] == "fail"
+        assert entry["payload"]["error"] == "payload-error"
+        assert entry["payload"]["attempt"] == 99
 
     def test_sleeps_between_retries(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
