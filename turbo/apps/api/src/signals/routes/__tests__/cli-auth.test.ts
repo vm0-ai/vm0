@@ -33,7 +33,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../../app-factory";
 import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { signPatJwtForTests } from "../../auth/tokens";
+import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
@@ -1014,6 +1014,38 @@ describe("CLI auth routes", () => {
       );
 
       expect(response.body.error.code).toBe("FORBIDDEN");
+      await expect(fetchDeviceCode(code)).resolves.toMatchObject({
+        status: "pending",
+      });
+    });
+
+    it("rejects sandbox credentials for browser device approval", async () => {
+      const userId = `user_${randomUUID()}`;
+      const orgId = `org_${randomUUID()}`;
+      const runId = `run_${randomUUID()}`;
+      const token = signSandboxJwtForTests({
+        scope: "sandbox",
+        userId,
+        orgId,
+        runId,
+        iat: currentSecond(),
+        exp: currentSecond() + 60,
+      });
+      const code = await seedDeviceCode({ status: "pending" });
+      const client = setupApp({ context })(cliAuthApproveContract);
+
+      const response = await acceptResponse<ApiErrorBody>(
+        client.approve({
+          headers: { authorization: `Bearer ${token}` },
+          body: { device_code: code },
+        }),
+        403,
+      );
+
+      expect(response.body.error).toStrictEqual({
+        message: "This endpoint is not available for sandbox tokens",
+        code: "FORBIDDEN",
+      });
       await expect(fetchDeviceCode(code)).resolves.toMatchObject({
         status: "pending",
       });
