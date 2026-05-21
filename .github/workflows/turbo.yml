@@ -752,6 +752,7 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           WEB_API_ENV_FILE: ${{ steps.web-build-env.outputs.file }}
           DEV_MODEL_ANTHROPIC_KEY: fake-key
+          DEV_MODEL_DEEPSEEK_KEY: fake-key
         run: |
           while IFS= read -r line; do
             if [ -n "$line" ]; then
