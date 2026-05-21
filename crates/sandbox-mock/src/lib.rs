@@ -7,7 +7,7 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, shared lifecycle behavior queues, custom `wait_process` exit codes,
+//! results, shared lifecycle behavior queues, custom `wait_process` exits,
 //! and durable [`MockLifecycleGate`] gates for lifecycle and cancellation
 //! testing.
 //!
@@ -283,6 +283,9 @@ pub struct MockSandboxOverrides {
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
     wait_process_error: Option<String>,
+    /// FIFO queue of full wait_process exits consumed by factory-created
+    /// sandboxes. Empty queue follows the existing default/override behavior.
+    wait_process_exits: Mutex<VecDeque<ProcessExit>>,
     /// FIFO queue of create results consumed by every factory built with
     /// these overrides. Empty queue → default Ok(()).
     create_results: Mutex<VecDeque<Result<()>>>,
@@ -311,6 +314,9 @@ pub struct MockSandboxOverrides {
     /// Recorded start_process output modes across all sandboxes built from
     /// this override set.
     start_process_calls: Mutex<Vec<StartProcessCall>>,
+    /// FIFO queue of stdout chunk batches emitted by factory-created
+    /// sandboxes during streaming start_process calls.
+    start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
     /// Total `park()` calls across all sandboxes built from this override set.
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
@@ -327,6 +333,7 @@ impl MockSandboxOverrides {
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_error: None,
+            wait_process_exits: Mutex::new(VecDeque::new()),
             create_results: Mutex::new(VecDeque::new()),
             create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
@@ -337,6 +344,7 @@ impl MockSandboxOverrides {
             destroy_gate: Mutex::new(None),
             destroy_behaviors: Mutex::new(VecDeque::new()),
             start_process_calls: Mutex::new(Vec::new()),
+            start_process_stdout_chunks: Mutex::new(VecDeque::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
             destroy_calls: Mutex::new(0),
@@ -367,6 +375,15 @@ impl MockSandboxOverrides {
             wait_process_error: Some(msg.into()),
             ..Self::new()
         }
+    }
+
+    /// Queue a full `wait_process` exit applied to the next matching wait call.
+    /// Consumed FIFO across all sandboxes; empty queue follows the existing
+    /// default/override behavior.
+    pub fn push_wait_process_exit(&self, exit: ProcessExit) {
+        self.wait_process_exits
+            .lock_ignoring_poison()
+            .push_back(exit);
     }
 
     /// Register a pattern matcher consumed on first match.
@@ -511,6 +528,14 @@ impl MockSandboxOverrides {
     /// override set, in call order.
     pub fn start_process_calls(&self) -> Vec<StartProcessCall> {
         self.start_process_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue stdout chunks emitted by the next streaming `start_process` call.
+    /// Consumed FIFO across all sandboxes; empty queue emits no chunks.
+    pub fn push_start_process_stdout_chunks(&self, chunks: Vec<ProcessOutputChunk>) {
+        self.start_process_stdout_chunks
+            .lock_ignoring_poison()
+            .push_back(chunks);
     }
 }
 
@@ -897,20 +922,45 @@ impl Sandbox for MockSandbox {
                     control: request.control,
                 });
         }
-        let (tx, rx) = match request.output {
+        let (mut tx, rx) = match request.output {
             ProcessOutputMode::Stream { queue_capacity, .. } => {
                 let (tx, rx) = tokio::sync::mpsc::channel(queue_capacity.max(1));
                 (Some(tx), Some(rx))
             }
             ProcessOutputMode::Buffered { .. } => (None, None),
         };
+        if let Some(overrides) = &self.overrides {
+            let chunks = overrides
+                .start_process_stdout_chunks
+                .lock_ignoring_poison()
+                .pop_front();
+            if let Some(chunks) = chunks {
+                let Some(sender) = tx.as_ref() else {
+                    return Err(SandboxError::Operation {
+                        operation: SandboxOperation::StartProcess,
+                        reason: SandboxOperationReason::Other,
+                        message: "mock stdout chunks require streaming output".to_string(),
+                    });
+                };
+                for chunk in chunks {
+                    sender
+                        .try_send(chunk)
+                        .map_err(|_| SandboxError::Operation {
+                            operation: SandboxOperation::StartProcess,
+                            reason: SandboxOperationReason::Other,
+                            message: "mock stdout chunks exceeded process stream capacity"
+                                .to_string(),
+                        })?;
+                }
+            }
+        }
         // When simulating wait_process error (timeout/crash), keep the sender
         // alive so the stdout channel never closes — reproducing the real bug.
         if self
             .overrides
             .as_ref()
             .is_some_and(|o| o.wait_process_error.is_some())
-            && let Some(tx) = tx
+            && let Some(tx) = tx.take()
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
@@ -962,6 +1012,13 @@ impl Sandbox for MockSandbox {
             // Return override exit code when configured.
             if let Some(code) = overrides.wait_process_code {
                 return Ok(ProcessExit::new(handle.pid, code, Vec::new(), Vec::new()));
+            }
+            if let Some(exit) = overrides
+                .wait_process_exits
+                .lock_ignoring_poison()
+                .pop_front()
+            {
+                return Ok(exit);
             }
         }
         Ok(ProcessExit::new(handle.pid, 0, Vec::new(), Vec::new()))
@@ -2251,6 +2308,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_process_emits_queued_stdout_chunks() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"partial".to_vec(),
+            truncated: true,
+        }]);
+        let sandbox = MockSandbox::with_overrides("test", overrides);
+        let mut handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::stream(),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+        let mut stdout_rx = handle.take_stdout_receiver().unwrap();
+
+        let chunk = stdout_rx.recv().await.unwrap();
+
+        assert_eq!(chunk.bytes, b"partial");
+        assert!(chunk.truncated);
+        assert!(stdout_rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
     async fn start_process_returns_control_handle_when_requested() {
         let runtime = MockSandboxRuntime::new();
         let factory = runtime.create_factory(test_factory_config()).await.unwrap();
@@ -2363,6 +2448,64 @@ mod tests {
             }
             Err(other) => panic!("expected wait_process operation error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn wait_process_returns_queued_process_exit() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+        let mut exit = ProcessExit::new(77, 0, b"out".to_vec(), b"err".to_vec());
+        exit.stream_overflowed = true;
+        overrides.push_wait_process_exit(exit);
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let result = sandbox
+            .wait_process(handle, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        assert_eq!(result.pid, 77);
+        assert_eq!(result.stdout, b"out");
+        assert_eq!(result.stderr, b"err");
+        assert!(result.stream_overflowed);
+    }
+
+    #[tokio::test]
+    async fn wait_process_default_exit_is_unchanged_without_queued_exit() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let sandbox = MockSandbox::with_overrides("test", overrides);
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let result = sandbox
+            .wait_process(handle, Duration::from_secs(5))
+            .await
+            .unwrap();
+
+        assert_eq!(result.pid, 1);
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.is_empty());
+        assert!(result.stderr.is_empty());
+        assert!(!result.stream_overflowed);
     }
 
     #[tokio::test]

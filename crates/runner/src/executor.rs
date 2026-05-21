@@ -15,9 +15,9 @@
 //! user-visible completion signal is not blocked on best-effort uploads.
 
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, SeekFrom};
 use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -30,6 +30,7 @@ use sandbox::{
     ProcessControlMode, ProcessOutputMode, ProcessOutputReceiver, Sandbox, SandboxConfig,
     SandboxFactory, SandboxId, StartProcessRequest,
 };
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -45,6 +46,10 @@ const EXIT_SIGNAL_KILL: i32 = 9;
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
+const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
+    b"[vm0] stdout stream reached the guest stream limit; later output was omitted\n";
+const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
+    b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
@@ -148,13 +153,29 @@ impl ExecutionFailure {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct AgentStdoutStreamDiagnostics {
+    chunk_truncated: bool,
+    stream_overflowed: bool,
+}
+
+impl AgentStdoutStreamDiagnostics {
+    fn is_empty(self) -> bool {
+        !self.chunk_truncated && !self.stream_overflowed
+    }
+}
+
 struct AgentExecutionResult {
     failure: Option<ExecutionFailure>,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 }
 
 impl AgentExecutionResult {
     fn success() -> Self {
-        Self { failure: None }
+        Self {
+            failure: None,
+            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+        }
     }
 
     fn failure(
@@ -164,6 +185,7 @@ impl AgentExecutionResult {
     ) -> Self {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
+            stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
         }
     }
 
@@ -173,6 +195,11 @@ impl AgentExecutionResult {
 
     fn exit_code(&self) -> i32 {
         self.failure.as_ref().map_or(0, |failure| failure.exit_code)
+    }
+
+    fn with_stdout_stream_diagnostics(mut self, diagnostics: AgentStdoutStreamDiagnostics) -> Self {
+        self.stdout_stream_diagnostics = diagnostics;
+        self
     }
 }
 
@@ -411,6 +438,11 @@ async fn execute_new_sandbox(
     )
     .await;
 
+    let stdout_stream_diagnostics = result.as_ref().map_or_else(
+        |_| AgentStdoutStreamDiagnostics::default(),
+        |result| result.stdout_stream_diagnostics,
+    );
+
     // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
     post_job_cleanup(
         sandbox.as_ref(),
@@ -418,6 +450,7 @@ async fn execute_new_sandbox(
         context,
         &source_ip,
         cancel.is_cancelled(),
+        stdout_stream_diagnostics,
     )
     .await;
 
@@ -493,6 +526,11 @@ async fn execute_reused_sandbox(
     )
     .await;
 
+    let stdout_stream_diagnostics = result.as_ref().map_or_else(
+        |_| AgentStdoutStreamDiagnostics::default(),
+        |result| result.stdout_stream_diagnostics,
+    );
+
     // Post-job cleanup (copy logs to host, unregister proxy registry)
     post_job_cleanup(
         sandbox.as_ref(),
@@ -500,6 +538,7 @@ async fn execute_reused_sandbox(
         context,
         source_ip,
         cancel.is_cancelled(),
+        stdout_stream_diagnostics,
     )
     .await;
 
@@ -586,8 +625,15 @@ async fn post_job_cleanup(
     context: &ExecutionContext,
     source_ip: &str,
     cancelled: bool,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
+    append_stdout_stream_diagnostics_to_system_log(
+        context.run_id,
+        &config.log_paths.system_log(context.run_id),
+        stdout_stream_diagnostics,
+    )
+    .await;
     unregister_proxy_registry(config, context, source_ip).await;
 }
 
@@ -737,13 +783,16 @@ async fn run_in_sandbox(
     // Wait for streaming to finish (channel closes when process exits).
     // On cancel/timeout/crash the stream channel may not close — abort to
     // prevent blocking indefinitely on the drain task.
+    let mut stdout_drain_report = StdoutDrainReport::default();
     if let Some(task) = stream_task {
         if cancel.is_cancelled() || result.is_err() {
             task.abort();
             let _ = task.await;
         } else {
             match task.await {
-                Ok(Ok(())) => {}
+                Ok(Ok(report)) => {
+                    stdout_drain_report = report;
+                }
                 Ok(Err(e)) => {
                     warn!(run_id = %context.run_id, error = %e, "stdout stream task failed");
                 }
@@ -776,6 +825,10 @@ async fn run_in_sandbox(
     if exit.stream_overflowed {
         warn!(run_id = %context.run_id, "agent stdout stream overflowed before process exit");
     }
+    let stdout_stream_diagnostics = AgentStdoutStreamDiagnostics {
+        chunk_truncated: stdout_drain_report.chunk_truncated,
+        stream_overflowed: exit.stream_overflowed,
+    };
     if !exit.diagnostic.is_empty() {
         warn!(
             run_id = %context.run_id,
@@ -810,7 +863,8 @@ async fn run_in_sandbox(
                 // so callers see a clear error rather than an opaque signal code.
                 let error = "Agent process killed by OOM killer";
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
-                return Ok(AgentExecutionResult::failure(1, error, None));
+                return Ok(AgentExecutionResult::failure(1, error, None)
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -847,8 +901,10 @@ async fn run_in_sandbox(
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
+            stdout_stream_diagnostics,
         },
-        None => AgentExecutionResult::success(),
+        None => AgentExecutionResult::success()
+            .with_stdout_stream_diagnostics(stdout_stream_diagnostics),
     };
     telemetry.record(
         "agent_execute",
@@ -1011,11 +1067,16 @@ enum StdoutDrainError {
     Flush { path: PathBuf, source: io::Error },
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct StdoutDrainReport {
+    chunk_truncated: bool,
+}
+
 /// Drain stdout chunks from the process receiver and write them to a host file.
 async fn drain_stdout_to_file(
     mut rx: ProcessOutputReceiver,
     path: PathBuf,
-) -> Result<(), StdoutDrainError> {
+) -> Result<StdoutDrainReport, StdoutDrainError> {
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -1027,21 +1088,74 @@ async fn drain_stdout_to_file(
             return Err(StdoutDrainError::Open { path, source: e });
         }
     };
+    let mut report = StdoutDrainReport::default();
     while let Some(chunk) = rx.recv().await {
         if chunk.truncated {
+            report.chunk_truncated = true;
             warn!(path = %path.display(), "stdout stream chunk was truncated before host log write");
         }
-        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk.bytes).await {
+        if let Err(e) = file.write_all(&chunk.bytes).await {
             return Err(StdoutDrainError::Write { path, source: e });
         }
     }
     // Flush to ensure the last blocking write completes before we return.
     // tokio::fs::File::poll_write returns Ready before the blocking write finishes,
     // so without flush the caller may observe incomplete file contents.
-    if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+    if let Err(e) = file.flush().await {
         return Err(StdoutDrainError::Flush { path, source: e });
     }
-    Ok(())
+    Ok(report)
+}
+
+async fn append_stdout_stream_diagnostics_to_system_log(
+    run_id: RunId,
+    path: &Path,
+    diagnostics: AgentStdoutStreamDiagnostics,
+) {
+    if diagnostics.is_empty() {
+        return;
+    }
+
+    if let Err(e) = append_stdout_stream_diagnostics(path, diagnostics).await {
+        warn!(
+            run_id = %run_id,
+            path = %path.display(),
+            error = %e,
+            "failed to append stdout stream diagnostic marker to host system log"
+        );
+    }
+}
+
+async fn append_stdout_stream_diagnostics(
+    path: &Path,
+    diagnostics: AgentStdoutStreamDiagnostics,
+) -> io::Result<()> {
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .read(true)
+        .open(path)
+        .await?;
+
+    if file.metadata().await?.len() > 0 {
+        file.seek(SeekFrom::End(-1)).await?;
+        let mut last = [0u8; 1];
+        file.read_exact(&mut last).await?;
+        if last[0] != b'\n' {
+            file.write_all(b"\n").await?;
+        }
+    }
+    if diagnostics.chunk_truncated {
+        file.write_all(STDOUT_STREAM_LIMIT_MARKER).await?;
+    }
+    if diagnostics.stream_overflowed {
+        file.write_all(STDOUT_STREAM_OVERFLOW_MARKER).await?;
+    }
+    file.flush().await
 }
 
 /// Guest log file path prefixes. Each turn creates files named
@@ -2705,8 +2819,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use sandbox::{
-        ExecResult, ProcessOutputChunk, SandboxError, SandboxInitializationPhase, SandboxOperation,
-        SandboxOperationReason,
+        ExecResult, ProcessExit, ProcessOutputChunk, SandboxError, SandboxInitializationPhase,
+        SandboxOperation, SandboxOperationReason,
     };
     use sandbox_mock::MockSandbox;
 
@@ -3255,6 +3369,39 @@ mod tests {
         assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
     }
 
+    #[tokio::test]
+    async fn post_job_cleanup_appends_stream_markers_after_guest_log_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        tokio::fs::write(&system_log_path, b"transient host-streamed stdout\n")
+            .await
+            .unwrap();
+        sandbox.push_copy_file_result(Ok(b"guest system log".to_vec()));
+
+        post_job_cleanup(
+            &sandbox,
+            &config,
+            &ctx,
+            "10.0.0.1",
+            false,
+            AgentStdoutStreamDiagnostics {
+                chunk_truncated: true,
+                stream_overflowed: true,
+            },
+        )
+        .await;
+
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let mut expected = b"guest system log\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+        assert_eq!(system_log, expected);
+    }
+
     // -----------------------------------------------------------------------
     // drain_stdout_to_file tests
     // -----------------------------------------------------------------------
@@ -3279,10 +3426,32 @@ mod tests {
         .unwrap();
         drop(tx); // close channel
 
-        drain_stdout_to_file(rx, path.clone()).await.unwrap();
+        let report = drain_stdout_to_file(rx, path.clone()).await.unwrap();
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(content, "chunk 1\nchunk 2\n");
+        assert!(!report.chunk_truncated);
+    }
+
+    #[tokio::test]
+    async fn drain_stdout_reports_truncated_chunk_without_changing_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stdout.log");
+
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        tx.send(ProcessOutputChunk {
+            bytes: b"partial chunk".to_vec(),
+            truncated: true,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let report = drain_stdout_to_file(rx, path.clone()).await.unwrap();
+
+        let content = tokio::fs::read(&path).await.unwrap();
+        assert_eq!(content, b"partial chunk");
+        assert!(report.chunk_truncated);
     }
 
     #[tokio::test]
@@ -3293,10 +3462,11 @@ mod tests {
         let (_tx, rx) = tokio::sync::mpsc::channel::<ProcessOutputChunk>(1);
         drop(_tx);
 
-        drain_stdout_to_file(rx, path.clone()).await.unwrap();
+        let report = drain_stdout_to_file(rx, path.clone()).await.unwrap();
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         assert!(content.is_empty());
+        assert!(!report.chunk_truncated);
     }
 
     #[tokio::test]
@@ -3307,6 +3477,43 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(error, StdoutDrainError::Open { .. }));
+    }
+
+    #[tokio::test]
+    async fn append_stdout_stream_diagnostics_noops_when_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stdout.log");
+
+        append_stdout_stream_diagnostics(&path, AgentStdoutStreamDiagnostics::default())
+            .await
+            .unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn append_stdout_stream_diagnostics_writes_markers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stdout.log");
+        tokio::fs::write(&path, b"guest system log without newline")
+            .await
+            .unwrap();
+
+        append_stdout_stream_diagnostics(
+            &path,
+            AgentStdoutStreamDiagnostics {
+                chunk_truncated: true,
+                stream_overflowed: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        let content = tokio::fs::read(&path).await.unwrap();
+        let mut expected = b"guest system log without newline\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+        assert_eq!(content, expected);
     }
 
     // -----------------------------------------------------------------------
@@ -3479,6 +3686,53 @@ mod tests {
                 .unwrap();
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_inner_appends_stream_overflow_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, 0, Vec::new(), Vec::new());
+        exit.stream_overflowed = true;
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+            .await
+            .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        assert_eq!(system_log, STDOUT_STREAM_OVERFLOW_MARKER);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_appends_stream_limit_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"partial stdout".to_vec(),
+            truncated: true,
+        }]);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let ctx = minimal_context();
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+
+        let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
+            .await
+            .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error_msg.is_none());
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let mut expected = b"partial stdout\n".to_vec();
+        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        assert_eq!(system_log, expected);
     }
 
     #[tokio::test]
