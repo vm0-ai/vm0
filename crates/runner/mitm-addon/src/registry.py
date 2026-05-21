@@ -40,6 +40,14 @@ def _compile_registry(new_registry: dict) -> dict[str, CompiledFirewallSet]:
     return compiled
 
 
+def _normalize_registry_vms(raw_registry: object) -> tuple[dict, int]:
+    if not isinstance(raw_registry, dict):
+        raise TypeError("proxy registry vms must be an object")
+
+    new_registry = {client_ip: vm for client_ip, vm in raw_registry.items() if isinstance(vm, dict)}
+    return new_registry, len(raw_registry) - len(new_registry)
+
+
 def load_registry(registry_path: str) -> dict:
     """Load the proxy registry from file, with stat-based cache invalidation."""
     global _registry_cache, _registry_compiled_cache, _registry_cache_key
@@ -60,11 +68,18 @@ def load_registry(registry_path: str) -> dict:
 
     try:
         with path.open() as f:
-            new_registry = json.load(f).get("vms", {})
+            raw_registry = json.load(f).get("vms", {})
+        new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
+        if malformed_vm_count:
+            ctx.log.warn(f"Skipped {malformed_vm_count} malformed proxy registry VM entries")
         new_compiled_registry = _compile_registry(new_registry)
 
         # Evict cache entries for runs no longer in the registry.
-        active_run_ids = {run_id for vm in new_registry.values() if (run_id := vm.get("runId"))}
+        active_run_ids = {
+            run_id
+            for vm in new_registry.values()
+            if isinstance(run_id := vm.get("runId"), str) and run_id
+        }
         evict_stale_cache_keys(active_run_ids)
 
         _registry_cache = new_registry
