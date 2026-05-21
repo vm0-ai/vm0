@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentphoneVerificationSendCooldowns } from "@vm0/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -37,19 +35,6 @@ const trackPhone = createFixtureTracker(
   },
 );
 
-const trackSwitch = createFixtureTracker(
-  async (fixture: { readonly orgId: string; readonly userId: string }) => {
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
-  },
-);
-
 const trackVerificationSendCooldown = createFixtureTracker(
   async (fixture: { readonly scope: string; readonly scopeKey: string }) => {
     await writeDb
@@ -72,32 +57,13 @@ function uniquePhone(): string {
   return `+1555${digits}`;
 }
 
-async function enableAgentPhoneUi(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  await writeDb
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches: { [FeatureSwitchKey.AgentPhoneAppUi]: true } },
-    });
-  await trackSwitch(Promise.resolve({ orgId, userId }));
-}
-
-async function setupEnabledUser(): Promise<{
+function setupAgentPhoneUser(): {
   readonly userId: string;
   readonly orgId: string;
-}> {
+} {
   const userId = uniqueId("user");
   const orgId = uniqueId("org");
   mocks.clerk.session(userId, orgId);
-  await enableAgentPhoneUi(orgId, userId);
   mockOptionalEnv("AGENTPHONE_AGENT_ID", "agt-test-agentphone");
   mockOptionalEnv("AGENTPHONE_API_BASE_URL", "https://api.agentphone.to");
   mockOptionalEnv("AGENTPHONE_API_KEY", "agentphone-test-key");
@@ -161,27 +127,8 @@ function agentPhoneSendMessage() {
 }
 
 describe("/api/integrations/agentphone/link", () => {
-  it("hides the link API when the AgentPhone UI switch is disabled", async () => {
-    mocks.clerk.session(uniqueId("user"), uniqueId("org"));
-    const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
-
-    const response = await accept(
-      client.getLinkStatus({
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "AgentPhone app UI is not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-  });
-
   it("returns the current linked phone handle", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     const phone = uniquePhone();
     await insertAgentPhoneUserLink({
       phoneHandle: phone,
@@ -206,7 +153,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("sends a signed verification link and does not silently link the phone", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     await trackAgentPhoneVerificationCooldowns({
       ...user,
       phoneHandles: ["+15555551212"],
@@ -244,7 +191,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("rate limits consecutive verification texts for the same user", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     const firstPhone = uniquePhone();
     const secondPhone = uniquePhone();
     await trackAgentPhoneVerificationCooldowns({
@@ -282,7 +229,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("logs provider details when verification text sending is rejected", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     const phone = uniquePhone();
     await trackAgentPhoneVerificationCooldowns({
       ...user,
@@ -323,7 +270,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("logs fetch failures when verification text sending fails before response", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     const phone = uniquePhone();
     await trackAgentPhoneVerificationCooldowns({
       ...user,
@@ -358,7 +305,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("rejects empty normalized phone input", async () => {
-    await setupEnabledUser();
+    setupAgentPhoneUser();
     const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
 
     const response = await accept(
@@ -375,7 +322,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("rejects phone input without an explicit country code", async () => {
-    await setupEnabledUser();
+    setupAgentPhoneUser();
     const client = setupApp({ context })(zeroIntegrationsAgentPhoneContract);
 
     const response = await accept(
@@ -395,7 +342,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("rejects a phone handle already linked to another owner", async () => {
-    await setupEnabledUser();
+    setupAgentPhoneUser();
     const phone = uniquePhone();
     await insertAgentPhoneUserLink({
       phoneHandle: phone,
@@ -418,7 +365,7 @@ describe("/api/integrations/agentphone/link", () => {
   });
 
   it("disconnects the authenticated user's linked phone", async () => {
-    const user = await setupEnabledUser();
+    const user = setupAgentPhoneUser();
     const phone = uniquePhone();
     await insertAgentPhoneUserLink({
       phoneHandle: phone,

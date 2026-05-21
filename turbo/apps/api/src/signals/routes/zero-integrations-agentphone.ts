@@ -1,6 +1,4 @@
 import { zeroIntegrationsAgentPhoneContract } from "@vm0/api-contracts/contracts/zero-integrations-agentphone";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentphoneVerificationSendCooldowns } from "@vm0/db/schema/agentphone-verification-send-cooldown";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { command, computed } from "ccstate";
@@ -37,7 +35,6 @@ import {
   type AgentPhoneChannel,
   type AgentPhoneMessageEvent,
 } from "../services/zero-agentphone.service";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { safeJsonParse, settle, tapError } from "../utils";
 
 interface AgentPhoneConfig {
@@ -76,18 +73,6 @@ type VerificationSendCooldownScope = "phone" | "user_org";
 interface VerificationSendCooldownKey {
   readonly scope: VerificationSendCooldownScope;
   readonly scopeKey: string;
-}
-
-function forbidden() {
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "AgentPhone app UI is not enabled",
-        code: "FORBIDDEN",
-      },
-    },
-  };
 }
 
 function notConfigured() {
@@ -228,29 +213,8 @@ async function sendAgentPhoneVerificationMessage(params: {
 // platform connect page can verify either origin's signature.
 const APPS_API_CONNECT_CHANNEL: AgentPhoneChannel = "sms";
 
-const requireAgentPhoneUi$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AgentPhoneAppUi, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-
-  if (!enabled) {
-    return { ok: false as const, response: forbidden() };
-  }
-
-  return { ok: true as const, auth };
-});
-
 const getLinkStatus$ = computed(async (get) => {
-  const gate = await get(requireAgentPhoneUi$);
-  if (!gate.ok) {
-    return gate.response;
-  }
+  const auth = get(organizationAuthContext$);
 
   const config = getAgentPhoneConfig();
   const [link] = await get(db$)
@@ -258,8 +222,8 @@ const getLinkStatus$ = computed(async (get) => {
     .from(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, gate.auth.userId),
-        eq(agentphoneUserLinks.orgId, gate.auth.orgId),
+        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
     .limit(1);
@@ -376,11 +340,7 @@ const sendAgentPhoneVerificationText$ = command(
 );
 
 const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const gate = await get(requireAgentPhoneUi$);
-  signal.throwIfAborted();
-  if (!gate.ok) {
-    return gate.response;
-  }
+  const auth = get(organizationAuthContext$);
 
   const bodyResult = await get(startLinkBody$);
   signal.throwIfAborted();
@@ -411,8 +371,8 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, gate.auth.userId),
-        eq(agentphoneUserLinks.orgId, gate.auth.orgId),
+        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
     .limit(1);
@@ -445,8 +405,8 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
 
   const cooldownKeys = agentPhoneCooldownKeys({
-    orgId: gate.auth.orgId,
-    userId: gate.auth.userId,
+    orgId: auth.orgId,
+    userId: auth.userId,
     phoneHandle,
   });
   const sendResult = await set(
@@ -476,18 +436,14 @@ const startLink$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 const unlink$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const gate = await get(requireAgentPhoneUi$);
-  signal.throwIfAborted();
-  if (!gate.ok) {
-    return gate.response;
-  }
+  const auth = get(organizationAuthContext$);
 
   const deleted = await set(writeDb$)
     .delete(agentphoneUserLinks)
     .where(
       and(
-        eq(agentphoneUserLinks.vm0UserId, gate.auth.userId),
-        eq(agentphoneUserLinks.orgId, gate.auth.orgId),
+        eq(agentphoneUserLinks.vm0UserId, auth.userId),
+        eq(agentphoneUserLinks.orgId, auth.orgId),
       ),
     )
     .returning({ id: agentphoneUserLinks.id });

@@ -22,7 +22,6 @@ import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { setMockAgentPhoneIntegration } from "../../../mocks/handlers/api-integrations-agentphone.ts";
@@ -136,22 +135,8 @@ describe("works page - telegram integration card", () => {
   });
 });
 
-describe("works page - AgentPhone integration card", () => {
-  it("hides AgentPhone when the feature switch is off", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Telegram")).toBeInTheDocument();
-      expect(screen.queryByText("AgentPhone")).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows AgentPhone connection status on the list page", async () => {
+describe("works page - Phone integration card", () => {
+  it("shows Phone connection status on the list page", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
       linked: true,
@@ -159,44 +144,36 @@ describe("works page - AgentPhone integration card", () => {
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
+    detachedSetupPage({ context, path: "/works" });
 
     await waitFor(() => {
-      expect(screen.getByText("AgentPhone")).toBeInTheDocument();
-      expect(screen.getByText("Text Zero at +19039853128")).toBeInTheDocument();
-      expect(screen.queryByText(/Connected as/i)).not.toBeInTheDocument();
+      expect(screen.getByText("Phone")).toBeInTheDocument();
+      expect(screen.getByText("iMessage or SMS to")).toBeInTheDocument();
+      expect(screen.getByText("+1 (903) 985-3128")).toBeInTheDocument();
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
       ).toBeInTheDocument();
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
-      ).toHaveTextContent("Connected (+15555551212)");
-      expect(screen.getByLabelText("AgentPhone options")).toBeInTheDocument();
+      ).toHaveTextContent("+15555551212");
+      expect(screen.getByLabelText("Phone options")).toBeInTheDocument();
     });
   });
 
-  it("starts verification from the list page and refreshes when AgentPhone connects", async () => {
+  it("starts verification from the list page and refreshes when the phone connects", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
       linked: false,
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
+    detachedSetupPage({ context, path: "/works" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect phone")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Connect AgentPhone"));
+    click(screen.getByLabelText("Connect phone"));
     const input = await screen.findByTestId("agentphone-phone-input");
     expect(
       screen.getByText(/SMS and MMS replies may not be delivered reliably/u),
@@ -232,7 +209,7 @@ describe("works page - AgentPhone integration card", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
-      ).toHaveTextContent("Connected (+15555551212)");
+      ).toHaveTextContent("+15555551212");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
@@ -244,17 +221,13 @@ describe("works page - AgentPhone integration card", () => {
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
+    detachedSetupPage({ context, path: "/works" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect phone")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Connect AgentPhone"));
+    click(screen.getByLabelText("Connect phone"));
     const input = await screen.findByTestId("agentphone-phone-input");
     await fill(input, "555-1212");
 
@@ -284,7 +257,7 @@ describe("works page - AgentPhone integration card", () => {
     });
   });
 
-  it("disconnects a linked AgentPhone account from the list page", async () => {
+  it("disconnects a linked phone account from the list page", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     setMockAgentPhoneIntegration({
       linked: true,
@@ -292,23 +265,19 @@ describe("works page - AgentPhone integration card", () => {
       agentPhoneNumber: "+19039853128",
       configured: true,
     });
-    detachedSetupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.AgentPhoneAppUi]: true },
-    });
+    detachedSetupPage({ context, path: "/works" });
 
     await waitFor(() => {
       expect(
         screen.getByTestId("agentphone-connected-indicator"),
-      ).toHaveTextContent("Connected (+15555551212)");
+      ).toHaveTextContent("+15555551212");
     });
 
-    click(screen.getByLabelText("AgentPhone options"));
-    click(await screen.findByLabelText("Disconnect AgentPhone"));
+    click(screen.getByLabelText("Phone options"));
+    click(await screen.findByLabelText("Disconnect phone"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect AgentPhone")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect phone")).toBeInTheDocument();
       expect(
         screen.queryByTestId("agentphone-connected-indicator"),
       ).not.toBeInTheDocument();

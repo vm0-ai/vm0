@@ -80,7 +80,6 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
     responses: {
       200: agentPhoneLinkStatusResponseSchema,
       401: apiErrorSchema,
-      403: apiErrorSchema,
     },
     summary: "Check the authenticated user's AgentPhone link status",
   },
@@ -93,7 +92,6 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
       200: agentPhoneStartLinkResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
-      403: apiErrorSchema,
       429: apiErrorSchema,
       409: apiErrorSchema,
       503: apiErrorSchema,
@@ -108,7 +106,6 @@ export const zeroIntegrationsAgentPhoneContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
-      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Disconnect the authenticated user's AgentPhone link",

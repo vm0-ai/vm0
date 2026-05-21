@@ -1,10 +1,4 @@
-import {
-  useGet,
-  useSet,
-  useLastLoadable,
-  useLastResolved,
-  useLoadable,
-} from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -14,7 +8,6 @@ import {
   IconDownload,
   IconSettings,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui";
 import {
   Popover,
@@ -38,7 +31,6 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -326,8 +318,6 @@ function TelegramCard() {
 
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
-  const features = useLastResolved(featureSwitch$);
-  const showAgentPhone = features?.[FeatureSwitchKey.AgentPhoneAppUi] ?? false;
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
@@ -350,7 +340,7 @@ export function ZeroWorksPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
           <TelegramCard />
-          {showAgentPhone ? <AgentPhoneCard /> : null}
+          <AgentPhoneCard />
         </div>
       </main>
     </div>

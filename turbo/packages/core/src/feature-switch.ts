@@ -237,13 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
-  [FeatureSwitchKey.AgentPhoneAppUi]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show first-class AgentPhone app surfaces: Works card and onboarding entry points.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:

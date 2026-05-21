@@ -8,10 +8,12 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconCircleCheck,
+  IconCopy,
   IconDotsVertical,
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
@@ -25,6 +27,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui/components/ui/tooltip";
 import { Input } from "@vm0/ui/components/ui/input";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -45,8 +53,51 @@ import {
   waitForAgentPhoneConnection$,
 } from "../../signals/zero-page/zero-agentphone.ts";
 import { AGENTPHONE_SMS_MMS_CONNECT_RISK_MESSAGE } from "../../signals/zero-page/agentphone-connect-params.ts";
+import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import imessageIconImg from "./components/settings/icons/imessage.svg";
+
+/** Render a US/Canada E.164 number as `+1 (NXX) NXX-XXXX`; other formats are
+ *  returned unchanged. */
+function formatAgentPhoneNumber(raw: string): string {
+  const match = /^\+1(\d{3})(\d{3})(\d{4})$/u.exec(raw);
+  if (!match) {
+    return raw;
+  }
+  return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
+}
+
+function PhoneNumberCopyButton({
+  phoneNumber,
+}: {
+  readonly phoneNumber: string;
+}) {
+  const formatted = formatAgentPhoneNumber(phoneNumber);
+
+  return (
+    <button
+      type="button"
+      aria-label={`Copy ${formatted}`}
+      className="inline-flex items-center gap-1 rounded font-medium text-foreground transition-colors hover:text-foreground/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+      onClick={() => {
+        detach(
+          (async () => {
+            const copied = await writeToClipboard(phoneNumber);
+            if (copied) {
+              toast.success("Phone number copied");
+            } else {
+              toast.error("Failed to copy phone number");
+            }
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      {formatted}
+      <IconCopy size={13} className="shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
 
 function AgentPhoneVerificationStatus({
   verificationPhone,
@@ -177,7 +228,7 @@ function AgentPhoneConnectDialog() {
     <Dialog open={open} onOpenChange={close}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Connect AgentPhone</DialogTitle>
+          <DialogTitle>Connect phone</DialogTitle>
           <DialogDescription>
             Enter your phone number. We will text a verification link that
             connects this workspace.
@@ -256,9 +307,7 @@ export function AgentPhoneCard() {
   const disconnecting = disconnectLoadable.state === "loading";
   const isConnected = status?.linked ?? false;
   const connectedPhone = status?.linked ? status.phoneHandle : null;
-  const summary = status?.agentPhoneNumber
-    ? `Text Zero at ${status.agentPhoneNumber}`
-    : "Text-message access to Zero";
+  const agentPhoneNumber = status?.agentPhoneNumber ?? null;
 
   return (
     <>
@@ -270,23 +319,37 @@ export function AgentPhoneCard() {
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex min-w-0 items-center gap-2">
               <div className="truncate text-sm font-medium text-foreground">
-                AgentPhone
+                Phone
               </div>
             </div>
             <div className="truncate text-sm text-muted-foreground">
-              {summary}
+              {agentPhoneNumber ? (
+                <span className="inline-flex max-w-full items-center gap-1">
+                  <span className="shrink-0">iMessage or SMS to</span>
+                  <PhoneNumberCopyButton phoneNumber={agentPhoneNumber} />
+                </span>
+              ) : (
+                "Text-message access to Zero"
+              )}
             </div>
           </div>
           {isConnected ? (
-            <span
-              data-testid="agentphone-connected-indicator"
-              className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-            >
-              <IconCircleCheck className="h-3 w-3 text-green-600" />
-              <span className="min-w-0 truncate" title={connectedPhone ?? ""}>
-                {connectedPhone ? `Connected (${connectedPhone})` : "Connected"}
-              </span>
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    data-testid="agentphone-connected-indicator"
+                    className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+                  >
+                    <IconCircleCheck className="h-3 w-3 text-green-600" />
+                    <span className="min-w-0 truncate">
+                      {connectedPhone ?? "Connected"}
+                    </span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Authorized Sender</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : null}
           {status !== null && !isConnected ? (
             <Button
@@ -294,7 +357,7 @@ export function AgentPhoneCard() {
               variant="outline"
               size="sm"
               className="h-8 shrink-0 gap-1.5 rounded-lg"
-              aria-label="Connect AgentPhone"
+              aria-label="Connect phone"
               onClick={() => {
                 setConnectOpen(true);
               }}
@@ -308,7 +371,7 @@ export function AgentPhoneCard() {
                 <button
                   type="button"
                   className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="AgentPhone options"
+                  aria-label="Phone options"
                 >
                   <IconDotsVertical size={16} stroke={1.5} />
                 </button>
@@ -319,7 +382,7 @@ export function AgentPhoneCard() {
               >
                 <button
                   type="button"
-                  aria-label="Disconnect AgentPhone"
+                  aria-label="Disconnect phone"
                   disabled={disconnecting}
                   className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                   onClick={() => {
