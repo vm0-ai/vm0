@@ -465,3 +465,24 @@ class TestLogNetworkEntry:
     def test_no_path_is_noop(self):
         with patch.object(logging_utils.ctx, "log", MagicMock(), create=True):
             logging_utils.log_network_entry("", {"action": "ALLOW"})
+
+    def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
+        log_path = tmp_path / "missing" / "net.jsonl"
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
+
+        log.warn.assert_called_once()
+        assert "Failed to write network log:" in log.warn.call_args.args[0]
+
+    def test_non_serializable_entry_warns_without_creating_file(self, tmp_path):
+        log_path = tmp_path / "net.jsonl"
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
+
+        log.warn.assert_called_once()
+        assert "Failed to write network log:" in log.warn.call_args.args[0]
+        assert not log_path.exists()

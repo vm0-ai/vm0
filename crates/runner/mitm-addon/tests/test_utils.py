@@ -1,10 +1,12 @@
 """Tests for URL and logging utility functions."""
 
 import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from logging_utils import log_proxy_entry
+import logging_utils
 from url_utils import get_original_url
 
 
@@ -44,7 +46,7 @@ class TestGetOriginalUrl:
 class TestLogProxyEntry:
     def test_writes_jsonl(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
-        log_proxy_entry(proxy_path, "warn", "test message", extra_field="value")
+        logging_utils.log_proxy_entry(proxy_path, "warn", "test message", extra_field="value")
         entry = json.loads((tmp_path / "proxy-test.jsonl").read_text().strip())
         assert entry["level"] == "warn"
         assert entry["message"] == "test message"
@@ -53,13 +55,67 @@ class TestLogProxyEntry:
 
     def test_appends_multiple_entries(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
-        log_proxy_entry(proxy_path, "info", "first")
-        log_proxy_entry(proxy_path, "warn", "second")
+        logging_utils.log_proxy_entry(proxy_path, "info", "first")
+        logging_utils.log_proxy_entry(proxy_path, "warn", "second")
         lines = (tmp_path / "proxy-test.jsonl").read_text().strip().split("\n")
         assert len(lines) == 2
         assert json.loads(lines[0])["message"] == "first"
         assert json.loads(lines[1])["message"] == "second"
 
     def test_empty_path_no_op(self, tmp_path):
-        log_proxy_entry("", "warn", "should not write")
+        logging_utils.log_proxy_entry("", "warn", "should not write")
         assert not list(tmp_path.iterdir())
+
+    def test_missing_parent_path_warns_and_does_not_raise(self, tmp_path):
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                str(tmp_path / "missing" / "proxy.jsonl"), "warn", "message"
+            )
+
+        log.warn.assert_called_once()
+        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+
+    def test_directory_path_warns_and_does_not_raise(self, tmp_path):
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
+
+        log.warn.assert_called_once()
+        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+
+    def test_non_serializable_extra_warns_without_creating_file(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        log = MagicMock()
+
+        with patch.object(logging_utils.ctx, "log", log, create=True):
+            logging_utils.log_proxy_entry(
+                str(proxy_path), "warn", "message", payload={"body": b"binary"}
+            )
+
+        log.warn.assert_called_once()
+        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        assert not proxy_path.exists()
+
+    def test_extra_cannot_override_reserved_fields(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        extra = {
+            "timestamp": "caller-timestamp",
+            "level": "caller-level",
+            "message": "caller-message",
+            "log_level": "caller-log-level",
+            "log_message": "caller-log-message",
+            "extra_field": "value",
+        }
+
+        logging_utils.log_proxy_entry(str(proxy_path), "warn", "logger-message", **extra)
+
+        entry = json.loads(Path(proxy_path).read_text().strip())
+        assert entry["timestamp"] != "caller-timestamp"
+        assert entry["level"] == "warn"
+        assert entry["message"] == "logger-message"
+        assert entry["log_level"] == "caller-log-level"
+        assert entry["log_message"] == "caller-log-message"
+        assert entry["extra_field"] == "value"

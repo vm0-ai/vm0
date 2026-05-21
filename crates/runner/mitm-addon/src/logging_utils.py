@@ -10,39 +10,46 @@ import time
 
 from mitmproxy import ctx, http
 
+_PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 
-def log_network_entry(log_path: str, entry: dict) -> None:
-    """Write a network log entry to the per-run JSONL file."""
+
+def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
+    """Best-effort JSONL write for proxy-hook logging paths."""
     if not log_path:
         return
     try:
+        line = (json.dumps(entry) + "\n").encode()
         fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
         try:
-            os.write(fd, (json.dumps(entry) + "\n").encode())
+            os.write(fd, line)
         finally:
             os.close(fd)
     except Exception as e:
-        ctx.log.warn(f"Failed to write network log: {e}")
+        ctx.log.warn(f"Failed to write {log_name} log: {e}")
 
 
-def log_proxy_entry(proxy_log_path: str, level: str, message: str, **extra: object) -> None:
+def log_network_entry(log_path: str, entry: dict) -> None:
+    """Write a network log entry to the per-run JSONL file."""
+    _write_jsonl_entry(log_path, entry, "network")
+
+
+def log_proxy_entry(
+    proxy_log_path: str,
+    log_level: str,
+    log_message: str,
+    /,
+    **extra: object,
+) -> None:
     """Write a diagnostic log entry to the per-job proxy log file (JSONL)."""
-    if not proxy_log_path:
-        return
     entry: dict = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-        "level": level,
-        "message": message,
+        "level": log_level,
+        "message": log_message,
     }
-    entry.update(extra)
-    try:
-        fd = os.open(proxy_log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
-        try:
-            os.write(fd, (json.dumps(entry) + "\n").encode())
-        finally:
-            os.close(fd)
-    except Exception as e:
-        ctx.log.warn(f"Failed to write proxy log: {e}")
+    for key, value in extra.items():
+        if key not in _PROXY_LOG_RESERVED_FIELDS:
+            entry[key] = value
+    _write_jsonl_entry(proxy_log_path, entry, "proxy")
 
 
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
