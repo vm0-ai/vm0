@@ -1,0 +1,32 @@
+"""Shared firewall test helpers."""
+
+import asyncio
+
+
+def _wrap_firewalls(apis, name="test"):
+    """Wrap a list of API entries into a firewall entry list."""
+    return [{"name": name, "apis": apis}]
+
+
+def _grant_all(firewalls, unknown_policy="deny"):
+    """Build networkPolicies that grants all permissions for each firewall."""
+    result = {}
+    for fw in firewalls or []:
+        perms = set()
+        for api in fw.get("apis", []):
+            for perm in api.get("permissions", []):
+                perms.add(perm["name"])
+        result[fw["name"]] = {
+            "allow": list(perms),
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": unknown_policy,
+        }
+    return result
+
+
+async def _cancel_pending_task(task: asyncio.Task | None) -> None:
+    if task is None or task.done():
+        return
+    task.cancel()
+    _ = await asyncio.gather(task, return_exceptions=True)
