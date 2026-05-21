@@ -16,6 +16,7 @@ import {
   linkGithubVm0User,
   loadComposeFeatureSwitchContext,
   parseGithubOauthState,
+  resolveGithubOauthOrgId,
   tryLinkGithubFromLocalRecord,
   tryLinkGithubFromRemoteInstallations,
 } from "../services/github-oauth.service";
@@ -82,21 +83,25 @@ const installGithubOauth$ = command(
 
     if (appId && privateKey && query.vm0UserId) {
       const db = set(writeDb$);
-      const linkedFromLocal = await tryLinkGithubFromLocalRecord({
-        db,
-        vm0UserId: query.vm0UserId,
-        signal,
-      });
+      const linkedFromLocal = query.orgId
+        ? await tryLinkGithubFromLocalRecord({
+            db,
+            orgId: query.orgId,
+            vm0UserId: query.vm0UserId,
+            signal,
+          })
+        : false;
       signal.throwIfAborted();
 
       if (linkedFromLocal) {
-        return redirectResponse(appUrl("/settings?tab=integrations"));
+        return redirectResponse(appUrl("/works?github=connected"));
       }
 
       const linkedFromRemote = await tryLinkGithubFromRemoteInstallations({
         db,
         appId,
         privateKey,
+        orgId: query.orgId ?? null,
         vm0UserId: query.vm0UserId,
         composeId: query.composeId ?? null,
         signal,
@@ -104,12 +109,13 @@ const installGithubOauth$ = command(
       signal.throwIfAborted();
 
       if (linkedFromRemote) {
-        return redirectResponse(appUrl("/settings?tab=integrations"));
+        return redirectResponse(appUrl("/works?github=connected"));
       }
     }
 
     const state = await buildGithubOauthState({
       vm0UserId: query.vm0UserId,
+      orgId: query.orgId,
       composeId: query.composeId,
       secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
     });
@@ -145,7 +151,7 @@ const callbackGithubOauth$ = command(
     const query = get(queryOf(githubOauthContract.callback));
 
     if (query.setup_action === "update") {
-      return redirectResponse(appUrl("/works"));
+      return redirectResponse(appUrl("/works?github=installed"));
     }
 
     const secretsEncryptionKey = env("SECRETS_ENCRYPTION_KEY");
@@ -175,17 +181,25 @@ const callbackGithubOauth$ = command(
     }
 
     const db = set(writeDb$);
+    const orgId = await resolveGithubOauthOrgId({
+      db,
+      orgId: state.orgId,
+      composeId,
+      signal,
+    });
+    signal.throwIfAborted();
 
     if (query.setup_action === "request") {
       await createPendingGithubInstallation({
         db,
+        orgId,
         targetId: query.target_id ?? null,
         targetType: query.target_type ?? "Organization",
         composeId,
         signal,
       });
 
-      return redirectResponse(appUrl("/works?pending=true"));
+      return redirectResponse(appUrl("/works?github=pending"));
     }
 
     const installationId = query.installation_id;
@@ -196,6 +210,7 @@ const callbackGithubOauth$ = command(
     const existing = await findGithubInstallationByInstallationId({
       db,
       installationId,
+      orgId,
       signal,
     });
     if (existing) {
@@ -207,7 +222,7 @@ const callbackGithubOauth$ = command(
           signal,
         });
       }
-      return redirectResponse(appUrl("/works"));
+      return redirectResponse(appUrl("/works?github=connected"));
     }
 
     const installInfo = await getGithubInstallationInfo({
@@ -236,6 +251,7 @@ const callbackGithubOauth$ = command(
     });
     const installRecordId = await createOrActivateGithubInstallation({
       db,
+      orgId,
       installationId,
       installInfo,
       encryptedAccessToken: await encryptPersistentSecretValue(
@@ -257,7 +273,7 @@ const callbackGithubOauth$ = command(
       });
     }
 
-    return redirectResponse(appUrl("/works"));
+    return redirectResponse(appUrl("/works?github=installed"));
   },
 );
 

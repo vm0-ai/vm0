@@ -25,6 +25,11 @@ import {
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { setMockAgentPhoneIntegration } from "../../../mocks/handlers/api-integrations-agentphone.ts";
+import {
+  createDefaultMockGithubIntegration,
+  getMockGithubIntegration,
+  setMockGithubIntegration,
+} from "../../../mocks/handlers/api-integrations-github.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
@@ -57,6 +62,14 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
 
 function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
+}
+
+function getGithubCard(): HTMLElement {
+  const card = screen.getByText("GitHub").closest(".zero-card");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error("GitHub card not found");
+  }
+  return card;
 }
 
 describe("works page - slack integration status display", () => {
@@ -103,6 +116,62 @@ describe("works page - slack integration status display", () => {
     await waitFor(() => {
       expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe("works page - GitHub integration card", () => {
+  it("shows the GitHub install action when no installation exists", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    renderWorksPage();
+
+    await waitFor(() => {
+      expect(
+        within(getGithubCard()).getByText("Install GitHub"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("creates a GitHub label listener with the any-label trigger mode", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        labelListeners: [],
+      }),
+    );
+    renderWorksPage();
+
+    await waitFor(() => {
+      expect(within(getGithubCard()).getByText("Manage")).toBeInTheDocument();
+    });
+    click(within(getGithubCard()).getByText("Manage"));
+
+    const dialog = await screen.findByRole("dialog");
+    await fill(within(dialog).getByLabelText("Label"), "ready-for-zero");
+    await fill(
+      within(dialog).getByLabelText("Prompt"),
+      "Review the labeled issue or pull request.",
+    );
+
+    const triggerModeSelect = within(dialog).getAllByRole("combobox")[1];
+    click(triggerModeSelect);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: "Any issue/PR with this label" }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByRole("option", { name: "Any issue/PR with this label" }));
+
+    click(within(dialog).getByText("Add listener"));
+
+    await waitFor(() => {
+      const integration = getMockGithubIntegration();
+      expect(integration?.labelListeners).toHaveLength(1);
+      expect(integration?.labelListeners[0]?.triggerMode).toBe("anyone");
+    });
+    expect(screen.getByText("ready-for-zero")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Any issue\/PR with this label/u).length,
+    ).toBeGreaterThan(0);
   });
 });
 

@@ -35,6 +35,7 @@ interface GitHubInstallationInfo {
 
 interface GithubOAuthState {
   readonly vm0UserId: string | null;
+  readonly orgId: string | null;
   readonly composeId: string | null;
   readonly sig: string | null;
 }
@@ -196,6 +197,30 @@ export async function getGithubInstallationAccessToken(args: {
 
 async function createGithubOauthStateSignature(args: {
   readonly vm0UserId: string;
+  readonly orgId: string | null;
+  readonly composeId: string | null;
+  readonly secretsEncryptionKey: string;
+}): Promise<string> {
+  const textEncoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(args.secretsEncryptionKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payload = `${args.vm0UserId}:${args.orgId ?? ""}:${args.composeId ?? ""}`;
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    textEncoder.encode(payload),
+  );
+
+  return Buffer.from(signature).toString("hex");
+}
+
+async function createLegacyGithubOauthStateSignature(args: {
+  readonly vm0UserId: string;
   readonly composeId: string | null;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
@@ -217,18 +242,31 @@ async function createGithubOauthStateSignature(args: {
   return Buffer.from(signature).toString("hex");
 }
 
+function signaturesMatch(actual: string | null, expected: string): boolean {
+  return (
+    actual !== null &&
+    actual.length === expected.length &&
+    timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
+  );
+}
+
 export async function buildGithubOauthState(args: {
   readonly vm0UserId?: string;
+  readonly orgId?: string;
   readonly composeId?: string;
   readonly secretsEncryptionKey: string;
 }): Promise<string> {
   const state: {
     vm0UserId?: string;
+    orgId?: string;
     composeId?: string;
     sig?: string;
   } = {};
   if (args.vm0UserId) {
     state.vm0UserId = args.vm0UserId;
+  }
+  if (args.orgId) {
+    state.orgId = args.orgId;
   }
   if (args.composeId) {
     state.composeId = args.composeId;
@@ -236,6 +274,7 @@ export async function buildGithubOauthState(args: {
   if (state.vm0UserId) {
     state.sig = await createGithubOauthStateSignature({
       vm0UserId: state.vm0UserId,
+      orgId: state.orgId ?? null,
       composeId: state.composeId ?? null,
       secretsEncryptionKey: args.secretsEncryptionKey,
     });
@@ -248,7 +287,7 @@ export function parseGithubOauthState(
   state: string | undefined,
 ): GithubOAuthState | null {
   if (!state) {
-    return { vm0UserId: null, composeId: null, sig: null };
+    return { vm0UserId: null, orgId: null, composeId: null, sig: null };
   }
 
   const parsed = safeJsonParse(state);
@@ -258,6 +297,7 @@ export function parseGithubOauthState(
 
   const stateObject = parsed as {
     readonly vm0UserId?: unknown;
+    readonly orgId?: unknown;
     readonly composeId?: unknown;
     readonly sig?: unknown;
   };
@@ -265,6 +305,7 @@ export function parseGithubOauthState(
   return {
     vm0UserId:
       typeof stateObject.vm0UserId === "string" ? stateObject.vm0UserId : null,
+    orgId: typeof stateObject.orgId === "string" ? stateObject.orgId : null,
     composeId:
       typeof stateObject.composeId === "string" ? stateObject.composeId : null,
     sig: typeof stateObject.sig === "string" ? stateObject.sig : null,
@@ -281,15 +322,26 @@ export async function isGithubOauthStateSignatureValid(args: {
 
   const expectedSig = await createGithubOauthStateSignature({
     vm0UserId: args.state.vm0UserId,
+    orgId: args.state.orgId,
     composeId: args.state.composeId,
     secretsEncryptionKey: args.secretsEncryptionKey,
   });
 
-  return (
-    args.state.sig !== null &&
-    args.state.sig.length === expectedSig.length &&
-    timingSafeEqual(Buffer.from(args.state.sig), Buffer.from(expectedSig))
-  );
+  if (signaturesMatch(args.state.sig, expectedSig)) {
+    return true;
+  }
+
+  if (args.state.orgId !== null) {
+    return false;
+  }
+
+  const legacyExpectedSig = await createLegacyGithubOauthStateSignature({
+    vm0UserId: args.state.vm0UserId,
+    composeId: args.state.composeId,
+    secretsEncryptionKey: args.secretsEncryptionKey,
+  });
+
+  return signaturesMatch(args.state.sig, legacyExpectedSig);
 }
 
 export async function linkGithubVm0User(args: {
@@ -336,6 +388,7 @@ export async function linkGithubVm0User(args: {
 
 export async function tryLinkGithubFromLocalRecord(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly vm0UserId: string;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
@@ -345,7 +398,12 @@ export async function tryLinkGithubFromLocalRecord(args: {
       adminGithubUserId: githubInstallations.adminGithubUserId,
     })
     .from(githubInstallations)
-    .where(eq(githubInstallations.status, "active"))
+    .where(
+      and(
+        eq(githubInstallations.orgId, args.orgId),
+        eq(githubInstallations.status, "active"),
+      ),
+    )
     .limit(1);
   args.signal.throwIfAborted();
 
@@ -399,10 +457,35 @@ export async function loadComposeFeatureSwitchContext(args: {
   );
 }
 
+export async function resolveGithubOauthOrgId(args: {
+  readonly db: Db;
+  readonly orgId: string | null;
+  readonly composeId: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  if (args.orgId) {
+    return args.orgId;
+  }
+
+  const [compose] = await args.db
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, args.composeId))
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  if (!compose) {
+    throw new Error(`Agent compose not found: composeId=${args.composeId}`);
+  }
+
+  return compose.orgId;
+}
+
 export async function tryLinkGithubFromRemoteInstallations(args: {
   readonly db: Db;
   readonly appId: string;
   readonly privateKey: string;
+  readonly orgId: string | null;
   readonly vm0UserId: string;
   readonly composeId: string | null;
   readonly signal: AbortSignal;
@@ -455,6 +538,12 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
   if (!args.composeId) {
     return false;
   }
+  const orgId = await resolveGithubOauthOrgId({
+    db: args.db,
+    orgId: args.orgId,
+    composeId: args.composeId,
+    signal: args.signal,
+  });
   const featureSwitchContext = await loadComposeFeatureSwitchContext({
     db: args.db,
     composeId: args.composeId,
@@ -483,6 +572,7 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
         featureSwitchContext,
       ),
       status: "active",
+      orgId,
       targetType: ghInstall.account.type,
       targetId: String(ghInstall.account.id),
       targetName: ghInstall.account.login,
@@ -513,12 +603,18 @@ export async function tryLinkGithubFromRemoteInstallations(args: {
 export async function findGithubInstallationByInstallationId(args: {
   readonly db: Db;
   readonly installationId: string;
+  readonly orgId: string | null;
   readonly signal: AbortSignal;
 }): Promise<{ readonly id: string } | null> {
+  const filters = [eq(githubInstallations.installationId, args.installationId)];
+  if (args.orgId) {
+    filters.push(eq(githubInstallations.orgId, args.orgId));
+  }
+
   const [existing] = await args.db
     .select({ id: githubInstallations.id })
     .from(githubInstallations)
-    .where(eq(githubInstallations.installationId, args.installationId))
+    .where(and(...filters))
     .limit(1);
   args.signal.throwIfAborted();
 
@@ -527,6 +623,7 @@ export async function findGithubInstallationByInstallationId(args: {
 
 export async function createPendingGithubInstallation(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly targetId: string | null;
   readonly targetType: string;
   readonly composeId: string;
@@ -536,6 +633,7 @@ export async function createPendingGithubInstallation(args: {
     installationId: null,
     encryptedAccessToken: null,
     status: "pending",
+    orgId: args.orgId,
     targetId: args.targetId,
     targetType: args.targetType,
     defaultComposeId: args.composeId,
@@ -545,6 +643,7 @@ export async function createPendingGithubInstallation(args: {
 
 export async function createOrActivateGithubInstallation(args: {
   readonly db: Db;
+  readonly orgId: string;
   readonly installationId: string;
   readonly installInfo: GitHubInstallationInfo;
   readonly encryptedAccessToken: string;
@@ -557,6 +656,7 @@ export async function createOrActivateGithubInstallation(args: {
     .from(githubInstallations)
     .where(
       and(
+        eq(githubInstallations.orgId, args.orgId),
         eq(githubInstallations.targetId, args.installInfo.targetId),
         eq(githubInstallations.status, "pending"),
       ),
@@ -588,6 +688,7 @@ export async function createOrActivateGithubInstallation(args: {
       installationId: args.installationId,
       encryptedAccessToken: args.encryptedAccessToken,
       status: "active",
+      orgId: args.orgId,
       targetType: args.installInfo.targetType,
       targetId: args.installInfo.targetId,
       targetName: args.installInfo.targetName,

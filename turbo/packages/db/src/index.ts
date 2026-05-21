@@ -32,6 +32,7 @@ import * as usageDailySchema from "./schema/usage-daily";
 import * as emailThreadSessionSchema from "./schema/email-thread-session";
 import * as emailReplyRequestSchema from "./schema/email-reply-request";
 import * as githubInstallationSchema from "./schema/github-installation";
+import * as githubLabelListenerSchema from "./schema/github-label-listener";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
@@ -118,6 +119,7 @@ export const schema = {
   ...emailThreadSessionSchema,
   ...emailReplyRequestSchema,
   ...githubInstallationSchema,
+  ...githubLabelListenerSchema,
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,
   ...telegramInstallationSchema,

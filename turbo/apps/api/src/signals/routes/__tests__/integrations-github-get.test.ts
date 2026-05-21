@@ -119,6 +119,7 @@ async function seedGithubFixture(
     .insert(githubInstallations)
     .values({
       installationId: remoteInstallationId(),
+      orgId,
       adminGithubUserId,
       defaultComposeId: composeId,
       targetName: "vm0-test",
@@ -307,7 +308,7 @@ describe("GET /api/integrations/github", () => {
       },
       installUrl: `${WEB_ORIGIN}/api/github/oauth/install?vm0UserId=${encodeURIComponent(
         fixture.userId,
-      )}&composeId=${fixture.composeId}`,
+      )}&orgId=${encodeURIComponent(fixture.orgId)}&composeId=${fixture.composeId}`,
     });
   });
 
@@ -327,7 +328,7 @@ describe("GET /api/integrations/github", () => {
     expect(response.body.installUrl).toBe(
       `http://api.test/api/github/oauth/install?vm0UserId=${encodeURIComponent(
         fixture.userId,
-      )}&composeId=${fixture.composeId}`,
+      )}&orgId=${encodeURIComponent(fixture.orgId)}&composeId=${fixture.composeId}`,
     );
   });
 
@@ -352,6 +353,9 @@ describe("GET /api/integrations/github", () => {
       isAdmin: true,
     });
     expect(response.body.installation.installationId).toBeTruthy();
+    expect(response.body.isConnected).toBeTruthy();
+    expect(response.body.connectUrl).toBe("/connectors/github/connect");
+    expect(response.body.labelListeners).toStrictEqual([]);
     expect(response.body.agent).toStrictEqual({
       id: fixture.composeId,
       name: "github-support-agent",

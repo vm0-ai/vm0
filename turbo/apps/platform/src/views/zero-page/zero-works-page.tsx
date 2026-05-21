@@ -35,6 +35,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
+import { GithubCard } from "./github-card.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -339,6 +340,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
+          <GithubCard />
           <TelegramCard />
           <AgentPhoneCard />
         </div>

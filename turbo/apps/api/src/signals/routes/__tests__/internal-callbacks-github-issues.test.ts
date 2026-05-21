@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
@@ -164,9 +165,18 @@ async function seedGithubInstallation(args: {
   readonly installationId: string | null;
 }> {
   const writeDb = store.set(writeDb$);
+  const [compose] = await writeDb
+    .select({ orgId: agentComposes.orgId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, args.composeId))
+    .limit(1);
+  if (!compose) {
+    throw new Error("seedGithubInstallation: compose not found");
+  }
   const [row] = await writeDb
     .insert(githubInstallations)
     .values({
+      orgId: compose.orgId,
       defaultComposeId: args.composeId,
       installationId:
         args.installationId === undefined

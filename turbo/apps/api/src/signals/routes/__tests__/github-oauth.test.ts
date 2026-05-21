@@ -309,7 +309,7 @@ describe("GitHub OAuth API routes", () => {
     expect(state.composeId).toBe("compose-1");
     expect(state.sig).toBe(
       createHmac("sha256", "a".repeat(64))
-        .update("user-1:compose-1")
+        .update("user-1::compose-1")
         .digest("hex"),
     );
   });
@@ -395,6 +395,7 @@ describe("GitHub OAuth API routes", () => {
       .values({
         installationId: "987654321",
         status: "active",
+        orgId: fixture.orgId,
         adminGithubUserId: null,
         defaultComposeId: fixture.composeId,
       })
@@ -403,13 +404,13 @@ describe("GitHub OAuth API routes", () => {
     cleanup.installationRowIds.push(installation!.id);
 
     const response = await appRequest(
-      `/api/github/oauth/install?vm0UserId=${fixture.userId}&composeId=${fixture.composeId}`,
+      `/api/github/oauth/install?vm0UserId=${fixture.userId}&orgId=${fixture.orgId}&composeId=${fixture.composeId}`,
     );
 
     expect(response.status).toBe(307);
     const location = new URL(response.headers.get("location")!);
-    expect(location.pathname).toBe("/settings");
-    expect(location.searchParams.get("tab")).toBe("integrations");
+    expect(location.pathname).toBe("/works");
+    expect(location.searchParams.get("github")).toBe("connected");
     const links = await findLinksForUser(fixture.userId);
     expect(links).toHaveLength(1);
     expect(links[0]!.githubUserId).toBe(githubUserId);
@@ -437,13 +438,11 @@ describe("GitHub OAuth API routes", () => {
     });
 
     const response = await appRequest(
-      `/api/github/oauth/install?vm0UserId=${fixture.userId}&composeId=${fixture.composeId}`,
+      `/api/github/oauth/install?vm0UserId=${fixture.userId}&orgId=${fixture.orgId}&composeId=${fixture.composeId}`,
     );
 
     expect(response.status).toBe(307);
-    expect(new URL(response.headers.get("location")!).pathname).toBe(
-      "/settings",
-    );
+    expect(new URL(response.headers.get("location")!).pathname).toBe("/works");
     const installations = await findInstallationByRemoteId(installationId);
     expect(installations).toHaveLength(1);
     expect(installations[0]!.defaultComposeId).toBe(fixture.composeId);
@@ -544,7 +543,7 @@ describe("GitHub OAuth API routes", () => {
     );
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain("/works?pending=true");
+    expect(response.headers.get("location")).toContain("/works?github=pending");
     const installations = await findInstallationByTargetId(targetId);
     expect(installations).toHaveLength(1);
     expect(installations[0]).toMatchObject({
@@ -553,6 +552,7 @@ describe("GitHub OAuth API routes", () => {
       status: "pending",
       targetId,
       targetType: "Organization",
+      orgId: fixture.orgId,
       defaultComposeId: fixture.composeId,
     });
   });
@@ -606,6 +606,7 @@ describe("GitHub OAuth API routes", () => {
       targetType: TARGET_TYPE,
       targetId,
       targetName: TARGET_LOGIN,
+      orgId: fixture.orgId,
       defaultComposeId: fixture.composeId,
     });
     expect(decryptSecretValue(installations[0]!.encryptedAccessToken!)).toBe(
@@ -625,6 +626,7 @@ describe("GitHub OAuth API routes", () => {
       .values({
         installationId,
         status: "active",
+        orgId: fixture.orgId,
         targetType: TARGET_TYPE,
         targetId: "101010101",
         defaultComposeId: fixture.composeId,

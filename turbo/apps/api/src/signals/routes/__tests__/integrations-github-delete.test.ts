@@ -70,6 +70,7 @@ async function seedGithubInstallation(args: {
     .insert(githubInstallations)
     .values({
       installationId: args.remoteInstallationId ?? newRemoteInstallationId(),
+      orgId,
       adminGithubUserId,
       defaultComposeId: composeId,
     })
@@ -144,7 +145,7 @@ describe("DELETE /api/integrations/github", () => {
   });
 
   it("returns 404 when the authenticated user has no GitHub installation", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {
@@ -164,7 +165,7 @@ describe("DELETE /api/integrations/github", () => {
   it("deletes the linked admin installation and returns ok", async () => {
     const fixture = await seedGithubInstallation({});
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {
@@ -182,7 +183,7 @@ describe("DELETE /api/integrations/github", () => {
   it("returns 403 and keeps the installation when adminGithubUserId is null", async () => {
     const fixture = await seedGithubInstallation({ adminGithubUserId: null });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {
@@ -208,7 +209,7 @@ describe("DELETE /api/integrations/github", () => {
       linkedGithubUserId: newGithubUserId(),
     });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const app = createApp({ signal: context.signal });
 
     const response = await app.request(ROUTE_PATH, {
@@ -226,7 +227,7 @@ describe("DELETE /api/integrations/github", () => {
     const remoteInstallationId = newRemoteInstallationId();
     const fixture = await seedGithubInstallation({ remoteInstallationId });
     fixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, null);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     mockOptionalEnv("GITHUB_APP_ID", "123456");
     mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", newPrivateKeyBase64());
 

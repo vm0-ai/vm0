@@ -1,7 +1,12 @@
 import { Buffer } from "node:buffer";
 import { createSign } from "node:crypto";
 import { command, computed } from "ccstate";
-import type { GithubInstallationResponse } from "@vm0/api-contracts/contracts/integrations-github";
+import type {
+  CreateGithubLabelListenerBody,
+  GithubInstallationResponse,
+  GithubLabelListener,
+  UpdateGithubLabelListenerBody,
+} from "@vm0/api-contracts/contracts/integrations-github";
 import { extractAndGroupVariables } from "@vm0/core/variable-expander";
 import { getConnectorProvidedSecretNames } from "@vm0/connectors/connector-utils";
 import {
@@ -9,18 +14,23 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
+import {
+  githubLabelListeners,
+  type GithubLabelTriggerMode,
+} from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { request$ } from "../context/hono";
-import { db$, writeDb$ } from "../external/db";
+import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { tapError } from "../utils";
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
+import { linkGithubVm0User } from "./github-oauth.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 import { userSecrets, userVariables } from "./zero-user-data.service";
 
@@ -28,7 +38,7 @@ const INSTALLATION_ID_RE = /^\d+$/;
 const L = logger("IntegrationsGithub");
 
 function errorResponse(
-  status: 400 | 401 | 403 | 404 | 500,
+  status: 400 | 401 | 403 | 404 | 409 | 500,
   message: string,
   code: string,
 ) {
@@ -37,6 +47,7 @@ function errorResponse(
 
 function githubInstallUrl(
   userId: string,
+  orgId: string,
   composeId: string | null,
   origin: string,
 ): string | null {
@@ -46,6 +57,7 @@ function githubInstallUrl(
 
   const url = new URL("/api/github/oauth/install", origin);
   url.searchParams.set("vm0UserId", userId);
+  url.searchParams.set("orgId", orgId);
   if (composeId) {
     url.searchParams.set("composeId", composeId);
   }
@@ -175,35 +187,396 @@ async function deleteRemoteGithubInstallationIfConfigured(args: {
   args.signal.throwIfAborted();
 }
 
-export const deleteGithubInstallation$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const db = set(writeDb$);
+type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
 
-    const [result] = await db
-      .select({
-        id: githubInstallations.id,
-        githubInstallationId: githubInstallations.installationId,
-        adminGithubUserId: githubInstallations.adminGithubUserId,
-        githubUserId: githubUserLinks.githubUserId,
-      })
-      .from(githubUserLinks)
-      .innerJoin(
-        githubInstallations,
-        eq(githubInstallations.id, githubUserLinks.installationId),
-      )
-      .where(eq(githubUserLinks.vm0UserId, auth.userId))
-      .limit(1);
+interface GitHubUserLinkRecord {
+  readonly githubUserId: string;
+}
+
+interface ComposeSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly headVersionId: string | null;
+}
+
+interface ListenerRow {
+  readonly id: string;
+  readonly labelName: string;
+  readonly triggerMode: GithubLabelTriggerMode;
+  readonly prompt: string;
+  readonly enabled: boolean;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly agentId: string | null;
+  readonly agentName: string | null;
+}
+
+function normalizeLabelName(labelName: string): string {
+  return labelName.trim().toLowerCase();
+}
+
+function isInstallationAdmin(
+  installation: GitHubInstallationRecord,
+  link: GitHubUserLinkRecord | null,
+): boolean {
+  return (
+    installation.adminGithubUserId !== null &&
+    link?.githubUserId === installation.adminGithubUserId
+  );
+}
+
+function canManageListener(args: {
+  readonly createdByUserId: string;
+  readonly currentUserId: string;
+  readonly orgRole: string | undefined;
+}): boolean {
+  return (
+    args.createdByUserId === args.currentUserId || args.orgRole === "org:admin"
+  );
+}
+
+function serializeListener(row: ListenerRow): GithubLabelListener {
+  return {
+    id: row.id,
+    labelName: row.labelName,
+    triggerMode: row.triggerMode,
+    prompt: row.prompt,
+    enabled: row.enabled,
+    agent:
+      row.agentId && row.agentName
+        ? { id: row.agentId, name: row.agentName }
+        : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+async function loadOrgDefaultComposeId(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [orgRow] = await db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return orgRow?.defaultAgentId ?? null;
+}
+
+async function loadOrgGithubInstallation(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<GitHubInstallationRecord | null> {
+  const [installation] = await db
+    .select()
+    .from(githubInstallations)
+    .where(
+      and(
+        eq(githubInstallations.orgId, orgId),
+        eq(githubInstallations.status, "active"),
+      ),
+    )
+    .limit(1);
+
+  return installation ?? null;
+}
+
+async function loadUserGithubLink(args: {
+  readonly db: ReadonlyDb;
+  readonly installationId: string;
+  readonly userId: string;
+}): Promise<GitHubUserLinkRecord | null> {
+  const [link] = await args.db
+    .select({ githubUserId: githubUserLinks.githubUserId })
+    .from(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.installationId, args.installationId),
+        eq(githubUserLinks.vm0UserId, args.userId),
+      ),
+    )
+    .limit(1);
+
+  return link ?? null;
+}
+
+async function loadComposeSummary(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly composeId: string;
+}): Promise<ComposeSummary | null> {
+  const [compose] = await args.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(agentComposes.id, args.composeId),
+      ),
+    )
+    .limit(1);
+
+  return compose ?? null;
+}
+
+async function loadComposeByName(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly agentName: string;
+}): Promise<{ readonly id: string } | null> {
+  const [compose] = await args.db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(agentComposes.name, args.agentName),
+      ),
+    )
+    .limit(1);
+
+  return compose ?? null;
+}
+
+async function buildEnvironment(args: {
+  readonly db: ReadonlyDb;
+  readonly compose: ComposeSummary | null;
+}): Promise<GithubInstallationResponse["environment"]> {
+  if (!args.compose?.headVersionId) {
+    return emptyEnvironment();
+  }
+
+  const [version] = await args.db
+    .select({ content: agentComposeVersions.content })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.id, args.compose.headVersionId))
+    .limit(1);
+
+  if (!version) {
+    return emptyEnvironment();
+  }
+
+  const grouped = extractAndGroupVariables(version.content);
+  return {
+    requiredSecrets: grouped.secrets.map((secret) => {
+      return secret.name;
+    }),
+    requiredVars: grouped.vars.map((variable) => {
+      return variable.name;
+    }),
+    missingSecrets: [],
+    missingVars: [],
+  };
+}
+
+async function loadListeners(args: {
+  readonly db: ReadonlyDb;
+  readonly installationId: string;
+}): Promise<readonly GithubLabelListener[]> {
+  const rows = await args.db
+    .select({
+      id: githubLabelListeners.id,
+      labelName: githubLabelListeners.labelName,
+      triggerMode: githubLabelListeners.triggerMode,
+      prompt: githubLabelListeners.prompt,
+      enabled: githubLabelListeners.enabled,
+      createdAt: githubLabelListeners.createdAt,
+      updatedAt: githubLabelListeners.updatedAt,
+      agentId: agentComposes.id,
+      agentName: agentComposes.name,
+    })
+    .from(githubLabelListeners)
+    .leftJoin(
+      agentComposes,
+      eq(agentComposes.id, githubLabelListeners.composeId),
+    )
+    .where(eq(githubLabelListeners.installationId, args.installationId))
+    .orderBy(asc(githubLabelListeners.labelNameNormalized));
+
+  return rows.map((row) => {
+    return serializeListener(row);
+  });
+}
+
+async function loadListener(args: {
+  readonly db: ReadonlyDb;
+  readonly listenerId: string;
+  readonly orgId: string;
+}): Promise<
+  | (ListenerRow & {
+      readonly installationId: string;
+      readonly createdByUserId: string;
+    })
+  | null
+> {
+  const [row] = await args.db
+    .select({
+      id: githubLabelListeners.id,
+      installationId: githubLabelListeners.installationId,
+      createdByUserId: githubLabelListeners.createdByUserId,
+      labelName: githubLabelListeners.labelName,
+      triggerMode: githubLabelListeners.triggerMode,
+      prompt: githubLabelListeners.prompt,
+      enabled: githubLabelListeners.enabled,
+      createdAt: githubLabelListeners.createdAt,
+      updatedAt: githubLabelListeners.updatedAt,
+      agentId: agentComposes.id,
+      agentName: agentComposes.name,
+    })
+    .from(githubLabelListeners)
+    .leftJoin(
+      agentComposes,
+      eq(agentComposes.id, githubLabelListeners.composeId),
+    )
+    .where(
+      and(
+        eq(githubLabelListeners.id, args.listenerId),
+        eq(githubLabelListeners.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function listenerLabelExists(args: {
+  readonly db: ReadonlyDb;
+  readonly installationId: string;
+  readonly labelNameNormalized: string;
+  readonly exceptListenerId?: string;
+}): Promise<boolean> {
+  const filters = [
+    eq(githubLabelListeners.installationId, args.installationId),
+    eq(githubLabelListeners.labelNameNormalized, args.labelNameNormalized),
+  ];
+  if (args.exceptListenerId) {
+    filters.push(ne(githubLabelListeners.id, args.exceptListenerId));
+  }
+
+  const [existing] = await args.db
+    .select({ id: githubLabelListeners.id })
+    .from(githubLabelListeners)
+    .where(and(...filters))
+    .limit(1);
+
+  return Boolean(existing);
+}
+
+async function validateTriggerModeLink(args: {
+  readonly db: ReadonlyDb;
+  readonly installationId: string;
+  readonly userId: string;
+  readonly triggerMode: GithubLabelTriggerMode;
+}): Promise<boolean> {
+  if (args.triggerMode !== "created_by_me") {
+    return true;
+  }
+
+  const link = await loadUserGithubLink({
+    db: args.db,
+    installationId: args.installationId,
+    userId: args.userId,
+  });
+  return link !== null;
+}
+
+async function loadCreatedListener(args: {
+  readonly db: ReadonlyDb;
+  readonly listenerId: string;
+  readonly orgId: string;
+}): Promise<GithubLabelListener> {
+  const listener = await loadListener({
+    db: args.db,
+    listenerId: args.listenerId,
+    orgId: args.orgId,
+  });
+
+  if (!listener) {
+    throw new Error(`GitHub label listener not found: ${args.listenerId}`);
+  }
+
+  return serializeListener(listener);
+}
+
+export const connectGithubUser$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();
 
-    if (!result) {
+    if (!installation) {
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    if (
-      !result.adminGithubUserId ||
-      result.githubUserId !== result.adminGithubUserId
-    ) {
+    const githubUserId = await linkGithubVm0User({
+      db,
+      installRecordId: installation.id,
+      vm0UserId: auth.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (!githubUserId) {
+      return errorResponse(
+        409,
+        "Connect your GitHub account before linking this installation",
+        "GITHUB_ACCOUNT_REQUIRED",
+      );
+    }
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
+export const disconnectGithubUser$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
+    signal.throwIfAborted();
+
+    if (!installation) {
+      return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
+
+    await db
+      .delete(githubUserLinks)
+      .where(
+        and(
+          eq(githubUserLinks.installationId, installation.id),
+          eq(githubUserLinks.vm0UserId, auth.userId),
+        ),
+      );
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
+export const deleteGithubInstallation$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
+    signal.throwIfAborted();
+
+    if (!installation) {
+      return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
+
+    const link = await loadUserGithubLink({
+      db,
+      installationId: installation.id,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+
+    if (!isInstallationAdmin(installation, link)) {
       return errorResponse(
         403,
         "Only the installation admin can uninstall",
@@ -212,13 +585,13 @@ export const deleteGithubInstallation$ = command(
     }
 
     await deleteRemoteGithubInstallationIfConfigured({
-      installationId: result.githubInstallationId,
+      installationId: installation.installationId,
       signal,
     });
 
     await db
       .delete(githubInstallations)
-      .where(eq(githubInstallations.id, result.id));
+      .where(eq(githubInstallations.id, installation.id));
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true as const } };
@@ -231,32 +604,23 @@ export const updateGithubInstallation$ = command(
     args: { readonly agentName: string },
     signal: AbortSignal,
   ) => {
-    const auth = get(authContext$);
+    const auth = get(organizationAuthContext$);
     const db = set(writeDb$);
-
-    const [result] = await db
-      .select({
-        installationId: githubInstallations.id,
-        adminGithubUserId: githubInstallations.adminGithubUserId,
-        githubUserId: githubUserLinks.githubUserId,
-      })
-      .from(githubUserLinks)
-      .innerJoin(
-        githubInstallations,
-        eq(githubInstallations.id, githubUserLinks.installationId),
-      )
-      .where(eq(githubUserLinks.vm0UserId, auth.userId))
-      .limit(1);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
     signal.throwIfAborted();
 
-    if (!result) {
+    if (!installation) {
       return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
     }
 
-    if (
-      !result.adminGithubUserId ||
-      result.githubUserId !== result.adminGithubUserId
-    ) {
+    const link = await loadUserGithubLink({
+      db,
+      installationId: installation.id,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+
+    if (!isInstallationAdmin(installation, link)) {
       return errorResponse(
         403,
         "Only the installation admin can change the default agent",
@@ -264,24 +628,11 @@ export const updateGithubInstallation$ = command(
       );
     }
 
-    if (!auth.orgId) {
-      return errorResponse(
-        400,
-        "Explicit org context required — ensure active org in session",
-        "BAD_REQUEST",
-      );
-    }
-
-    const [compose] = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, auth.orgId),
-          eq(agentComposes.name, args.agentName),
-        ),
-      )
-      .limit(1);
+    const compose = await loadComposeByName({
+      db,
+      orgId: auth.orgId,
+      agentName: args.agentName,
+    });
     signal.throwIfAborted();
 
     if (!compose) {
@@ -291,7 +642,275 @@ export const updateGithubInstallation$ = command(
     await db
       .update(githubInstallations)
       .set({ defaultComposeId: compose.id, updatedAt: nowDate() })
-      .where(eq(githubInstallations.id, result.installationId));
+      .where(eq(githubInstallations.id, installation.id));
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
+export const createGithubLabelListener$ = command(
+  async (
+    { get, set },
+    args: CreateGithubLabelListenerBody,
+    signal: AbortSignal,
+  ) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const installation = await loadOrgGithubInstallation(db, auth.orgId);
+    signal.throwIfAborted();
+
+    if (!installation) {
+      return errorResponse(404, "No GitHub installation found", "NOT_FOUND");
+    }
+
+    const labelName = args.labelName.trim();
+    const labelNameNormalized = normalizeLabelName(args.labelName);
+    const prompt = args.prompt.trim();
+    if (!labelName || !labelNameNormalized || !prompt) {
+      return errorResponse(
+        400,
+        "Label name and prompt are required",
+        "BAD_REQUEST",
+      );
+    }
+
+    const compose = await loadComposeSummary({
+      db,
+      orgId: auth.orgId,
+      composeId: args.agentId,
+    });
+    signal.throwIfAborted();
+
+    if (!compose) {
+      return errorResponse(404, "Agent not found", "NOT_FOUND");
+    }
+
+    if (
+      !(await validateTriggerModeLink({
+        db,
+        installationId: installation.id,
+        userId: auth.userId,
+        triggerMode: args.triggerMode,
+      }))
+    ) {
+      return errorResponse(
+        409,
+        "Connect your GitHub account before using the created-by-me trigger mode",
+        "GITHUB_ACCOUNT_REQUIRED",
+      );
+    }
+    signal.throwIfAborted();
+
+    if (
+      await listenerLabelExists({
+        db,
+        installationId: installation.id,
+        labelNameNormalized,
+      })
+    ) {
+      return errorResponse(
+        409,
+        "A listener for this label already exists",
+        "DUPLICATE_LABEL",
+      );
+    }
+    signal.throwIfAborted();
+
+    const [listener] = await db
+      .insert(githubLabelListeners)
+      .values({
+        installationId: installation.id,
+        orgId: auth.orgId,
+        createdByUserId: auth.userId,
+        labelName,
+        labelNameNormalized,
+        triggerMode: args.triggerMode,
+        prompt,
+        composeId: compose.id,
+        enabled: args.enabled ?? true,
+      })
+      .returning({ id: githubLabelListeners.id });
+    signal.throwIfAborted();
+
+    if (!listener) {
+      throw new Error("Expected GitHub label listener insert to return a row");
+    }
+
+    return {
+      status: 201 as const,
+      body: {
+        listener: await loadCreatedListener({
+          db,
+          listenerId: listener.id,
+          orgId: auth.orgId,
+        }),
+      },
+    };
+  },
+);
+
+export const updateGithubLabelListener$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly listenerId: string;
+      readonly body: UpdateGithubLabelListenerBody;
+    },
+    signal: AbortSignal,
+  ) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const existing = await loadListener({
+      db,
+      listenerId: args.listenerId,
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+
+    if (!existing) {
+      return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
+    }
+
+    if (
+      !canManageListener({
+        createdByUserId: existing.createdByUserId,
+        currentUserId: auth.userId,
+        orgRole: auth.orgRole,
+      })
+    ) {
+      return errorResponse(
+        403,
+        "Only the listener creator or an org admin can update this listener",
+        "FORBIDDEN",
+      );
+    }
+
+    const values: Partial<typeof githubLabelListeners.$inferInsert> = {
+      updatedAt: nowDate(),
+    };
+
+    if (args.body.labelName !== undefined) {
+      const labelName = args.body.labelName.trim();
+      const labelNameNormalized = normalizeLabelName(args.body.labelName);
+      if (!labelName || !labelNameNormalized) {
+        return errorResponse(400, "Label name is required", "BAD_REQUEST");
+      }
+      if (
+        await listenerLabelExists({
+          db,
+          installationId: existing.installationId,
+          labelNameNormalized,
+          exceptListenerId: existing.id,
+        })
+      ) {
+        return errorResponse(
+          409,
+          "A listener for this label already exists",
+          "DUPLICATE_LABEL",
+        );
+      }
+      values.labelName = labelName;
+      values.labelNameNormalized = labelNameNormalized;
+    }
+
+    if (args.body.prompt !== undefined) {
+      const prompt = args.body.prompt.trim();
+      if (!prompt) {
+        return errorResponse(400, "Prompt is required", "BAD_REQUEST");
+      }
+      values.prompt = prompt;
+    }
+
+    if (args.body.agentId !== undefined) {
+      const compose = await loadComposeSummary({
+        db,
+        orgId: auth.orgId,
+        composeId: args.body.agentId,
+      });
+      signal.throwIfAborted();
+      if (!compose) {
+        return errorResponse(404, "Agent not found", "NOT_FOUND");
+      }
+      values.composeId = compose.id;
+    }
+
+    const nextTriggerMode = args.body.triggerMode ?? existing.triggerMode;
+    if (
+      !(await validateTriggerModeLink({
+        db,
+        installationId: existing.installationId,
+        userId: existing.createdByUserId,
+        triggerMode: nextTriggerMode,
+      }))
+    ) {
+      return errorResponse(
+        409,
+        "Connect your GitHub account before using the created-by-me trigger mode",
+        "GITHUB_ACCOUNT_REQUIRED",
+      );
+    }
+    values.triggerMode = nextTriggerMode;
+
+    if (args.body.enabled !== undefined) {
+      values.enabled = args.body.enabled;
+    }
+
+    await db
+      .update(githubLabelListeners)
+      .set(values)
+      .where(eq(githubLabelListeners.id, existing.id));
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        listener: await loadCreatedListener({
+          db,
+          listenerId: existing.id,
+          orgId: auth.orgId,
+        }),
+      },
+    };
+  },
+);
+
+export const deleteGithubLabelListener$ = command(
+  async (
+    { get, set },
+    args: { readonly listenerId: string },
+    signal: AbortSignal,
+  ) => {
+    const auth = get(organizationAuthContext$);
+    const db = set(writeDb$);
+    const existing = await loadListener({
+      db,
+      listenerId: args.listenerId,
+      orgId: auth.orgId,
+    });
+    signal.throwIfAborted();
+
+    if (!existing) {
+      return errorResponse(404, "GitHub label listener not found", "NOT_FOUND");
+    }
+
+    if (
+      !canManageListener({
+        createdByUserId: existing.createdByUserId,
+        currentUserId: auth.userId,
+        orgRole: auth.orgRole,
+      })
+    ) {
+      return errorResponse(
+        403,
+        "Only the listener creator or an org admin can delete this listener",
+        "FORBIDDEN",
+      );
+    }
+
+    await db
+      .delete(githubLabelListeners)
+      .where(eq(githubLabelListeners.id, existing.id));
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true as const } };
@@ -299,41 +918,13 @@ export const updateGithubInstallation$ = command(
 );
 
 export const getGithubInstallation$ = computed(async (get) => {
-  const auth = get(authContext$);
+  const auth = get(organizationAuthContext$);
   const origin = getOAuthWebOrigin(get(request$).raw);
   const db = get(db$);
+  const installation = await loadOrgGithubInstallation(db, auth.orgId);
+  const defaultComposeId = await loadOrgDefaultComposeId(db, auth.orgId);
 
-  const [result] = await db
-    .select({
-      installation: {
-        id: githubInstallations.id,
-        installationId: githubInstallations.installationId,
-        status: githubInstallations.status,
-        targetName: githubInstallations.targetName,
-        targetType: githubInstallations.targetType,
-        adminGithubUserId: githubInstallations.adminGithubUserId,
-        defaultComposeId: githubInstallations.defaultComposeId,
-      },
-      githubUserId: githubUserLinks.githubUserId,
-    })
-    .from(githubUserLinks)
-    .innerJoin(
-      githubInstallations,
-      eq(githubInstallations.id, githubUserLinks.installationId),
-    )
-    .where(eq(githubUserLinks.vm0UserId, auth.userId))
-    .limit(1);
-
-  if (!result) {
-    const [orgRow] = auth.orgId
-      ? await db
-          .select({ defaultAgentId: orgMetadata.defaultAgentId })
-          .from(orgMetadata)
-          .where(eq(orgMetadata.orgId, auth.orgId))
-          .limit(1)
-      : [];
-    const defaultComposeId = orgRow?.defaultAgentId ?? null;
-
+  if (!installation) {
     return {
       status: 404 as const,
       body: {
@@ -341,63 +932,36 @@ export const getGithubInstallation$ = computed(async (get) => {
           message: "No GitHub installation found",
           code: "NOT_FOUND",
         },
-        installUrl: githubInstallUrl(auth.userId, defaultComposeId, origin),
+        installUrl: githubInstallUrl(
+          auth.userId,
+          auth.orgId,
+          defaultComposeId,
+          origin,
+        ),
       },
     };
   }
 
-  const installation = result.installation;
-  const isAdmin =
-    installation.adminGithubUserId !== null &&
-    result.githubUserId === installation.adminGithubUserId;
+  const link = await loadUserGithubLink({
+    db,
+    installationId: installation.id,
+    userId: auth.userId,
+  });
+  const isAdmin = isInstallationAdmin(installation, link);
+  const compose = await loadComposeSummary({
+    db,
+    orgId: auth.orgId,
+    composeId: installation.defaultComposeId,
+  });
+  const environment = await buildEnvironment({ db, compose });
 
-  const [compose] = await db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, installation.defaultComposeId))
-    .limit(1);
-
-  let environment = emptyEnvironment();
-
-  if (compose?.headVersionId) {
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, compose.headVersionId))
-      .limit(1);
-
-    if (version) {
-      const grouped = extractAndGroupVariables(version.content);
-      environment = {
-        requiredSecrets: grouped.secrets.map((secret) => {
-          return secret.name;
-        }),
-        requiredVars: grouped.vars.map((variable) => {
-          return variable.name;
-        }),
-        missingSecrets: [],
-        missingVars: [],
-      };
-    }
-  }
-
-  if (!auth.orgId) {
-    return errorResponse(
-      400,
-      "Explicit org context required — ensure active org in session",
-      "BAD_REQUEST",
-    );
-  }
-
-  const [secretList, variableList, connectorList] = await Promise.all([
-    get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
-    get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
-    get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
-  ]);
+  const [secretList, variableList, connectorList, labelListeners] =
+    await Promise.all([
+      get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
+      get(userVariables({ orgId: auth.orgId, userId: auth.userId })),
+      get(zeroConnectorList({ orgId: auth.orgId, userId: auth.userId })),
+      loadListeners({ db, installationId: installation.id }),
+    ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
     connectorList.connectors.map((connector) => {
@@ -425,6 +989,15 @@ export const getGithubInstallation$ = computed(async (get) => {
       targetType: installation.targetType,
       isAdmin,
     },
+    isConnected: link !== null,
+    connectedGithubUserId: link?.githubUserId ?? null,
+    installUrl: githubInstallUrl(
+      auth.userId,
+      auth.orgId,
+      defaultComposeId,
+      origin,
+    ),
+    connectUrl: "/connectors/github/connect",
     agent: compose ? { id: compose.id, name: compose.name } : null,
     environment: {
       ...environment,
@@ -435,6 +1008,7 @@ export const getGithubInstallation$ = computed(async (get) => {
         return !existingVarNames.has(name);
       }),
     },
+    labelListeners: [...labelListeners],
   };
 
   return { status: 200 as const, body };

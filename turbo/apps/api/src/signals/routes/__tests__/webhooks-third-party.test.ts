@@ -16,6 +16,7 @@ import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connec
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -111,6 +112,15 @@ interface GitHubInstallationRefPayload {
 interface GitHubIssuesPayload {
   readonly action: string;
   readonly issue: GitHubIssuePayload;
+  readonly label?: GitHubLabelPayload;
+  readonly repository: GitHubRepositoryPayload;
+  readonly installation: GitHubInstallationRefPayload;
+  readonly sender: GitHubUserPayload;
+}
+
+interface GitHubPullRequestPayload {
+  readonly action: string;
+  readonly pull_request: GitHubIssuePayload;
   readonly label?: GitHubLabelPayload;
   readonly repository: GitHubRepositoryPayload;
   readonly installation: GitHubInstallationRefPayload;
@@ -358,6 +368,26 @@ function buildGitHubIssuesPayload(
   return {
     action: overrides.action ?? "opened",
     issue: buildGitHubIssuePayload(fixture, overrides),
+    ...(overrides.label ? { label: overrides.label } : {}),
+    repository: { full_name: overrides.repo ?? "vm0-ai/vm0" },
+    installation: {
+      id: Number(overrides.installationId ?? fixture.remoteInstallationId),
+    },
+    sender,
+  };
+}
+
+function buildGitHubPullRequestPayload(
+  fixture: GitHubWebhookFixture,
+  overrides: GitHubIssuesPayloadOverrides = {},
+): GitHubPullRequestPayload {
+  const sender = githubUser({ id: overrides.senderId ?? fixture.githubUserId });
+  return {
+    action: overrides.action ?? "opened",
+    pull_request: buildGitHubIssuePayload(fixture, {
+      ...overrides,
+      issueTitle: overrides.issueTitle ?? "Test Pull Request",
+    }),
     ...(overrides.label ? { label: overrides.label } : {}),
     repository: { full_name: overrides.repo ?? "vm0-ai/vm0" },
     installation: {
@@ -744,6 +774,7 @@ const seedGitHubWebhookFixture$ = command(
       .values({
         installationId: remoteInstallationId,
         status: "active",
+        orgId: fixture.orgId,
         defaultComposeId: compose.id,
       })
       .returning({ id: githubInstallations.id });
@@ -756,6 +787,17 @@ const seedGitHubWebhookFixture$ = command(
       githubUserId,
       installationId: installation.id,
       vm0UserId: fixture.userId,
+    });
+    signal.throwIfAborted();
+    await db.insert(githubLabelListeners).values({
+      installationId: installation.id,
+      orgId: fixture.orgId,
+      createdByUserId: fixture.userId,
+      labelName: GITHUB_APP_SLUG,
+      labelNameNormalized: GITHUB_APP_SLUG.toLowerCase(),
+      triggerMode: "created_by_me",
+      prompt: "Handle this labeled GitHub work",
+      composeId: compose.id,
     });
     signal.throwIfAborted();
 
@@ -1011,12 +1053,11 @@ describe("POST /api/webhooks/github", () => {
 
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.prompt).toContain(
-      "Based on the GitHub issue above and its discussion",
-    );
+    expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
     expect(runs[0]?.appendSystemPrompt).toContain(
       "You are currently running inside: GitHub",
     );
+    expect(runs[0]?.appendSystemPrompt).toContain("Matched label: vm0-agent");
     expect(runs[0]?.appendSystemPrompt).toContain("This is a test issue body");
     expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
     expect(runs[0]?.triggerSource).toBe("github");
@@ -1056,7 +1097,77 @@ describe("POST /api/webhooks/github", () => {
 
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.prompt).toBe("This is a test issue body");
+    expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+  });
+
+  it("dispatches pull requests with a matching label listener", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    mockGitHubAppCredentials();
+    setupGitHubApiMocks({
+      installationId: fixture.remoteInstallationId,
+      comments: [],
+    });
+
+    const response = await postGitHubWebhook({
+      event: "pull_request",
+      payload: buildGitHubPullRequestPayload(fixture, {
+        action: "labeled",
+        labels: [
+          { id: 1, name: GITHUB_APP_SLUG },
+          { id: 2, name: "enhancement" },
+        ],
+        label: { id: 1, name: GITHUB_APP_SLUG },
+      }),
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const runs = await selectGitHubRuns(fixture);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
+    expect(runs[0]?.appendSystemPrompt).toContain("Pull Request: #42");
+  });
+
+  it("respects the label listener trigger mode", async () => {
+    const fixture = await trackGitHub(
+      store.set(seedGitHubWebhookFixture$, undefined, context.signal),
+    );
+    mockGitHubWebhookEnv();
+    const otherGithubUserId = remoteGitHubId();
+
+    const createdByMeResponse = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        senderId: otherGithubUserId,
+      }),
+    });
+    await clearAllDetached();
+    expect(createdByMeResponse.status).toBe(200);
+    await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(0);
+
+    await store
+      .set(writeDb$)
+      .update(githubLabelListeners)
+      .set({ triggerMode: "anyone" })
+      .where(eq(githubLabelListeners.installationId, fixture.installationDbId));
+
+    const anyoneResponse = await postGitHubWebhook({
+      event: "issues",
+      payload: buildGitHubIssuesPayload(fixture, {
+        action: "opened",
+        senderId: otherGithubUserId,
+      }),
+    });
+    await clearAllDetached();
+
+    expect(anyoneResponse.status).toBe(200);
+    await expect(selectGitHubRuns(fixture)).resolves.toHaveLength(1);
   });
 
   it("does not dispatch ignored issue actions or non-matching labels", async () => {
@@ -1127,7 +1238,7 @@ describe("POST /api/webhooks/github", () => {
     );
   });
 
-  it("dispatches GitHub issue comments through API-native run creation", async () => {
+  it("acknowledges GitHub issue comments without triggering mention runs", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1143,18 +1254,7 @@ describe("POST /api/webhooks/github", () => {
     expect(response.body).toBe("OK");
 
     const runs = await selectGitHubRuns(fixture);
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.prompt).toBe(`@${GITHUB_APP_SLUG}[bot] please handle this`);
-    expect(runs[0]?.triggerSource).toBe("github");
-
-    const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
-    expect(callbacks).toHaveLength(1);
-    expect(callbacks[0]?.payload).toMatchObject({
-      repo: "vm0-ai/vm0",
-      issueNumber: 42,
-      triggerCommentId: "77",
-      triggerCommentBody: `@${GITHUB_APP_SLUG}[bot] please handle this`,
-    });
+    expect(runs).toHaveLength(0);
   });
 
   it("does not dispatch ignored issue comments", async () => {
@@ -1241,6 +1341,7 @@ describe("POST /api/webhooks/github", () => {
     const installationId = remoteGitHubId();
     await db.insert(githubInstallations).values({
       status: "pending",
+      orgId: fixture.orgId,
       targetId,
       targetType: "Organization",
       targetName: "pending-org",

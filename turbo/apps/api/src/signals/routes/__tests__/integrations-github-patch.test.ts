@@ -65,6 +65,7 @@ async function seedGithubInstallation(args: {
     .insert(githubInstallations)
     .values({
       installationId: newRemoteInstallationId(),
+      orgId,
       adminGithubUserId,
       defaultComposeId: composeId,
     })

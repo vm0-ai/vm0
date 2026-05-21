@@ -158,6 +158,13 @@ const GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE = "/api/github/oauth/callback";
 const GITHUB_OAUTH_INSTALL_REWRITE_SOURCE = "/api/github/oauth/install";
 const GITHUB_OAUTH_PATH_RE = /^\/api\/github\/oauth\/(?:callback|install)$/;
 const INTEGRATIONS_GITHUB_REWRITE_SOURCE = "/api/integrations/github";
+const INTEGRATIONS_GITHUB_LINK_REWRITE_SOURCE = "/api/integrations/github/link";
+const INTEGRATIONS_GITHUB_LABEL_LISTENERS_REWRITE_SOURCE =
+  "/api/integrations/github/label-listeners";
+const INTEGRATIONS_GITHUB_LABEL_LISTENER_REWRITE_SOURCE =
+  "/api/integrations/github/label-listeners/:listenerId";
+const INTEGRATIONS_GITHUB_LABEL_LISTENER_PATH_RE =
+  /^\/api\/integrations\/github\/label-listeners\/[^/]+$/;
 const BUILT_IN_GENERATIONS_FAL_WEBHOOK_REWRITE_SOURCE = `/api/webhooks/built-in-generations/fal/:generationId(${UUID_PATH_SEGMENT_PATTERN})`;
 const BUILT_IN_GENERATIONS_FAL_WEBHOOK_PATH_RE = new RegExp(
   `^/api/webhooks/built-in-generations/fal/${UUID_PATH_SEGMENT_PATTERN}$`,
@@ -477,6 +484,16 @@ export const API_BACKEND_REWRITES = [
   [GITHUB_OAUTH_CALLBACK_REWRITE_SOURCE, "/api/github/oauth/callback"],
   [GITHUB_OAUTH_INSTALL_REWRITE_SOURCE, "/api/github/oauth/install"],
   [INTEGRATIONS_GITHUB_REWRITE_SOURCE, "/api/integrations/github"],
+  [INTEGRATIONS_GITHUB_LINK_REWRITE_SOURCE, "/api/integrations/github/link"],
+  [
+    INTEGRATIONS_GITHUB_LABEL_LISTENERS_REWRITE_SOURCE,
+    "/api/integrations/github/label-listeners",
+  ],
+  [
+    INTEGRATIONS_GITHUB_LABEL_LISTENER_REWRITE_SOURCE,
+    "/api/integrations/github/label-listeners/:listenerId",
+    INTEGRATIONS_GITHUB_LABEL_LISTENER_PATH_RE,
+  ],
   [AGENT_COMPLETE_REWRITE_SOURCE, "/api/webhooks/agent/complete"],
   [AGENT_EVENTS_REWRITE_SOURCE, "/api/webhooks/agent/events"],
   [AGENT_FIREWALL_AUTH_REWRITE_SOURCE, "/api/webhooks/agent/firewall/auth"],

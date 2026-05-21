@@ -8,10 +8,11 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
+import { githubLabelListeners } from "@vm0/db/schema/github-label-listener";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -84,6 +85,15 @@ export const gitHubIssueCommentEventSchema = z.object({
   sender: gitHubUserSchema,
 });
 
+export const gitHubPullRequestEventSchema = z.object({
+  action: z.string(),
+  pull_request: gitHubIssueSchema,
+  label: gitHubLabelSchema.optional(),
+  repository: gitHubRepositorySchema,
+  installation: gitHubInstallationRefSchema,
+  sender: gitHubUserSchema,
+});
+
 const gitHubInstallationAccountSchema = z.object({
   id: z.number(),
   login: z.string(),
@@ -108,19 +118,24 @@ type GitHubIssue = z.infer<typeof gitHubIssueSchema>;
 type GitHubComment = z.infer<typeof gitHubCommentSchema>;
 type GitHubIssuesEvent = z.infer<typeof gitHubIssuesEventSchema>;
 type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
+type GitHubPullRequestEvent = z.infer<typeof gitHubPullRequestEventSchema>;
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
 type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
+type GitHubLabelListenerRecord = typeof githubLabelListeners.$inferSelect;
+type GitHubTriggerKind = "issue" | "pull_request";
 
 interface DispatchParams {
   readonly ghInstallationId: string;
   readonly repo: string;
   readonly issue: GitHubIssue;
-  readonly senderGithubUserId: string;
+  readonly subjectKind: GitHubTriggerKind;
+  readonly vm0UserId: string;
+  readonly composeId: string;
   readonly prompt: string;
+  readonly matchedLabelName: string;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
   readonly forceNewSession?: boolean;
-  readonly appSlug?: string;
   readonly apiStartTime: number;
 }
 
@@ -154,34 +169,27 @@ function buildGitHubPrompt(issueContext: string): string {
     .join("\n\n");
 }
 
-function buildIssuePrompt(issue: GitHubIssue): string {
-  return issue.body ?? issue.title;
-}
-
-function buildCommentPrompt(comment: GitHubComment): string {
-  return comment.body;
+function normalizeLabelName(labelName: string): string {
+  return labelName.trim().toLowerCase();
 }
 
 function buildPromptParts(
   prompt: string,
   issueContext: string,
-  isCommentTrigger: boolean,
 ): {
   readonly prompt: string;
   readonly appendSystemPrompt: string | undefined;
 } {
   const appendSystemPrompt = buildGitHubPrompt(issueContext) || undefined;
-  const userPrompt = isCommentTrigger
-    ? prompt
-    : issueContext
-      ? "Based on the GitHub issue above and its discussion, analyze the request and decide on the appropriate action."
-      : prompt;
 
-  return { prompt: userPrompt, appendSystemPrompt };
+  return { prompt, appendSystemPrompt };
 }
 
 function formatIssueContext(args: {
   readonly issue: GitHubIssue;
+  readonly subjectKind: GitHubTriggerKind;
+  readonly repo: string;
+  readonly matchedLabelName: string;
   readonly comments: readonly GithubIssueComment[];
   readonly lastCommentId: string | undefined;
   readonly currentCommentId: string | undefined;
@@ -202,7 +210,17 @@ function formatIssueContext(args: {
     return "";
   }
 
-  const parts: string[] = ["# GitHub Issue Context"];
+  const subjectLabel =
+    args.subjectKind === "pull_request" ? "Pull Request" : "Issue";
+  const parts: string[] = [
+    "# GitHub Label Trigger",
+    "",
+    `Repository: ${args.repo}`,
+    `${subjectLabel}: #${args.issue.number}`,
+    `Matched label: ${args.matchedLabelName}`,
+    "",
+    `# GitHub ${subjectLabel} Context`,
+  ];
 
   if (!args.lastCommentId) {
     parts.push(
@@ -445,30 +463,9 @@ async function maybeAddCommentReaction(args: {
   });
 }
 
-async function loadLinkedVm0UserId(args: {
-  readonly db: Db;
-  readonly githubUserId: string;
-  readonly installationDbId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  const [userLink] = await args.db
-    .select({ vm0UserId: githubUserLinks.vm0UserId })
-    .from(githubUserLinks)
-    .where(
-      and(
-        eq(githubUserLinks.githubUserId, args.githubUserId),
-        eq(githubUserLinks.installationId, args.installationDbId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  return userLink?.vm0UserId;
-}
-
 async function loadGitHubRunTarget(args: {
   readonly db: Db;
-  readonly installation: GitHubInstallationRecord;
+  readonly composeId: string;
   readonly signal: AbortSignal;
 }): Promise<GitHubRunTarget> {
   const [compose] = await args.db
@@ -478,14 +475,12 @@ async function loadGitHubRunTarget(args: {
       orgId: agentComposes.orgId,
     })
     .from(agentComposes)
-    .where(eq(agentComposes.id, args.installation.defaultComposeId))
+    .where(eq(agentComposes.id, args.composeId))
     .limit(1);
   args.signal.throwIfAborted();
 
   if (!compose) {
-    throw new Error(
-      `Agent compose not found: composeId=${args.installation.defaultComposeId}`,
-    );
+    throw new Error(`Agent compose not found: composeId=${args.composeId}`);
   }
 
   const [agent] = await args.db
@@ -560,6 +555,9 @@ async function buildIssueContextForRun(args: {
 
   return formatIssueContext({
     issue: args.params.issue,
+    subjectKind: args.params.subjectKind,
+    repo: args.params.repo,
+    matchedLabelName: args.params.matchedLabelName,
     comments,
     lastCommentId: args.existingSessionId
       ? (args.lastCommentId ?? undefined)
@@ -614,45 +612,142 @@ async function updateExistingSessionComment(args: {
     );
 }
 
-export const handleGithubIssuesEvent$ = command(
+function labelsForAction(args: {
+  readonly action: string;
+  readonly labels: readonly z.infer<typeof gitHubLabelSchema>[];
+  readonly label: z.infer<typeof gitHubLabelSchema> | undefined;
+}): readonly string[] {
+  if (args.action === "labeled") {
+    return args.label ? [args.label.name] : [];
+  }
+
+  if (args.action === "opened") {
+    return args.labels.map((label) => {
+      return label.name;
+    });
+  }
+
+  return [];
+}
+
+async function loadMatchingLabelListener(args: {
+  readonly db: Db;
+  readonly installationId: string;
+  readonly labelNames: readonly string[];
+  readonly signal: AbortSignal;
+}): Promise<GitHubLabelListenerRecord | null> {
+  const normalizedLabels = new Set(
+    args.labelNames.map((labelName) => {
+      return normalizeLabelName(labelName);
+    }),
+  );
+  if (normalizedLabels.size === 0) {
+    return null;
+  }
+
+  const listeners = await args.db
+    .select()
+    .from(githubLabelListeners)
+    .where(
+      and(
+        eq(githubLabelListeners.installationId, args.installationId),
+        eq(githubLabelListeners.enabled, true),
+      ),
+    )
+    .orderBy(asc(githubLabelListeners.createdAt));
+  args.signal.throwIfAborted();
+
+  return (
+    listeners.find((listener) => {
+      return normalizedLabels.has(listener.labelNameNormalized);
+    }) ?? null
+  );
+}
+
+async function issueAuthorMatchesListenerCreator(args: {
+  readonly db: Db;
+  readonly listener: GitHubLabelListenerRecord;
+  readonly authorGithubUserId: string;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  if (args.listener.triggerMode !== "created_by_me") {
+    return true;
+  }
+
+  const [link] = await args.db
+    .select({ githubUserId: githubUserLinks.githubUserId })
+    .from(githubUserLinks)
+    .where(
+      and(
+        eq(githubUserLinks.installationId, args.listener.installationId),
+        eq(githubUserLinks.vm0UserId, args.listener.createdByUserId),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+
+  return link?.githubUserId === args.authorGithubUserId;
+}
+
+interface LabelTriggerEventParams {
+  readonly payload: {
+    readonly action: string;
+    readonly issue: GitHubIssue;
+    readonly label: z.infer<typeof gitHubLabelSchema> | undefined;
+    readonly repository: z.infer<typeof gitHubRepositorySchema>;
+    readonly installation: z.infer<typeof gitHubInstallationRefSchema>;
+  };
+  readonly subjectKind: GitHubTriggerKind;
+  readonly apiStartTime: number;
+}
+
+const dispatchMatchingLabelListener$ = command(
   async (
     { set },
-    args: {
-      readonly payload: GitHubIssuesEvent;
-      readonly appSlug: string | undefined;
-      readonly apiStartTime: number;
-    },
+    args: LabelTriggerEventParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const { action, issue, label, repository, installation, sender } =
-      args.payload;
-
+    const { action, issue, label, repository, installation } = args.payload;
     if (action !== "opened" && action !== "labeled") {
-      L.debug("Ignoring issues event", { action });
+      L.debug("Ignoring GitHub label trigger event", { action });
       return;
     }
 
-    if (!args.appSlug) {
-      L.debug("Ignoring issues event: app slug not configured");
-      return;
-    }
+    const labelNames = labelsForAction({ action, labels: issue.labels, label });
+    const db = set(writeDb$);
+    const installationRecord = await loadActiveInstallation({
+      db,
+      ghInstallationId: String(installation.id),
+      signal,
+    });
+    const listener = await loadMatchingLabelListener({
+      db,
+      installationId: installationRecord.id,
+      labelNames,
+      signal,
+    });
+    signal.throwIfAborted();
 
-    if (action === "labeled" && label?.name !== args.appSlug) {
-      L.debug("Ignoring label that is not app slug", {
-        label: label?.name,
-        expected: args.appSlug,
+    if (!listener) {
+      L.debug("Ignoring GitHub event without a matching label listener", {
+        action,
+        labels: labelNames,
       });
       return;
     }
 
     if (
-      action === "opened" &&
-      !issue.labels.some((candidate) => {
-        return candidate.name === args.appSlug;
-      })
+      !(await issueAuthorMatchesListenerCreator({
+        db,
+        listener,
+        authorGithubUserId: String(issue.user.id),
+        signal,
+      }))
     ) {
-      L.debug("Ignoring opened issue without app slug label", {
-        expected: args.appSlug,
+      L.debug("Ignoring GitHub event because trigger mode requires creator", {
+        listenerId: listener.id,
+        triggerMode: listener.triggerMode,
+        issueAuthorGithubUserId: issue.user.id,
       });
       return;
     }
@@ -663,10 +758,66 @@ export const handleGithubIssuesEvent$ = command(
         ghInstallationId: String(installation.id),
         repo: repository.full_name,
         issue,
-        senderGithubUserId: String(sender.id),
-        prompt: buildIssuePrompt(issue),
+        subjectKind: args.subjectKind,
+        vm0UserId: listener.createdByUserId,
+        composeId: listener.composeId,
+        prompt: listener.prompt,
+        matchedLabelName: listener.labelName,
         forceNewSession: true,
-        appSlug: args.appSlug,
+        apiStartTime: args.apiStartTime,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubIssuesEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GitHubIssuesEvent;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchMatchingLabelListener$,
+      {
+        payload: {
+          action: args.payload.action,
+          issue: args.payload.issue,
+          label: args.payload.label,
+          repository: args.payload.repository,
+          installation: args.payload.installation,
+        },
+        subjectKind: "issue",
+        apiStartTime: args.apiStartTime,
+      },
+      signal,
+    );
+  },
+);
+
+export const handleGithubPullRequestEvent$ = command(
+  async (
+    { set },
+    args: {
+      readonly payload: GitHubPullRequestEvent;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      dispatchMatchingLabelListener$,
+      {
+        payload: {
+          action: args.payload.action,
+          issue: args.payload.pull_request,
+          label: args.payload.label,
+          repository: args.payload.repository,
+          installation: args.payload.installation,
+        },
+        subjectKind: "pull_request",
         apiStartTime: args.apiStartTime,
       },
       signal,
@@ -675,54 +826,19 @@ export const handleGithubIssuesEvent$ = command(
 );
 
 export const handleGithubIssueCommentEvent$ = command(
-  async (
-    { set },
+  (
+    _ctx,
     args: {
       readonly payload: GitHubIssueCommentEvent;
-      readonly appSlug: string | undefined;
       readonly apiStartTime: number;
     },
-    signal: AbortSignal,
+    _signal: AbortSignal,
   ): Promise<void> => {
-    const { action, issue, comment, repository, installation, sender } =
-      args.payload;
-
-    if (action !== "created") {
-      L.debug("Ignoring issue_comment event", { action });
-      return;
-    }
-
-    if (sender.type === "Bot") {
-      L.debug("Ignoring comment from bot", { sender: sender.login });
-      return;
-    }
-
-    if (!args.appSlug) {
-      L.debug("Ignoring comment: app slug not configured");
-      return;
-    }
-
-    const botMention = `@${args.appSlug}[bot]`;
-    if (!comment.body.includes(botMention)) {
-      L.debug("Ignoring comment: no bot mention", { expected: botMention });
-      return;
-    }
-
-    await set(
-      dispatchGithubAgentRun$,
-      {
-        ghInstallationId: String(installation.id),
-        repo: repository.full_name,
-        issue,
-        senderGithubUserId: String(sender.id),
-        prompt: buildCommentPrompt(comment),
-        commentId: String(comment.id),
-        comment,
-        appSlug: args.appSlug,
-        apiStartTime: args.apiStartTime,
-      },
-      signal,
-    );
+    L.debug("Ignoring GitHub issue_comment event: mention triggers disabled", {
+      action: args.payload.action,
+      apiStartTime: args.apiStartTime,
+    });
+    return Promise.resolve();
   },
 );
 
@@ -751,28 +867,18 @@ const dispatchGithubAgentRun$ = command(
     });
     signal.throwIfAborted();
 
-    const vm0UserId = await loadLinkedVm0UserId({
+    const target = await loadGitHubRunTarget({
       db,
-      githubUserId: params.senderGithubUserId,
-      installationDbId: installation.id,
+      composeId: params.composeId,
       signal,
     });
-    if (!vm0UserId) {
-      L.warn("No VM0 user linked for GitHub user", {
-        githubUserId: params.senderGithubUserId,
-        installationId: installation.id,
-      });
-      return;
-    }
-
-    const target = await loadGitHubRunTarget({ db, installation, signal });
     const sessionResult = await resolveDispatchSession({
       db,
       params,
       installationDbId: installation.id,
       issueNumber,
       composeId: target.composeId,
-      vm0UserId,
+      vm0UserId: params.vm0UserId,
       signal,
     });
     if (sessionResult.kind === "duplicate") {
@@ -788,11 +894,7 @@ const dispatchGithubAgentRun$ = command(
       lastCommentId: sessionResult.lastCommentId,
       signal,
     });
-    const promptParts = buildPromptParts(
-      params.prompt,
-      issueContext,
-      Boolean(params.commentId),
-    );
+    const promptParts = buildPromptParts(params.prompt, issueContext);
 
     const callbackPayload = buildCallbackPayload({
       installationDbId: installation.id,
@@ -808,7 +910,7 @@ const dispatchGithubAgentRun$ = command(
         const result = await set(
           createZeroIntegrationRun$,
           {
-            userId: vm0UserId,
+            userId: params.vm0UserId,
             orgId: target.orgId,
             agentId: target.zeroAgentId,
             sessionId: existingSessionId,

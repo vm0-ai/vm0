@@ -9,6 +9,7 @@ import {
   initSlackOrg$,
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
+import { initGithubIntegration$ } from "../zero-page/zero-github.ts";
 import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
@@ -21,6 +22,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroWorksPage), "sidebar");
   set(updateDocumentTitle$, "Works");
   set(initSlackOrg$);
+  set(initGithubIntegration$);
 
   await Promise.all([
     set(hideAppSkeleton$, signal),

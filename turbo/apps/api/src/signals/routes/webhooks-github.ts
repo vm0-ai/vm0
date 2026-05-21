@@ -14,9 +14,11 @@ import {
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
   gitHubIssuesEventSchema,
+  gitHubPullRequestEventSchema,
   handleGithubInstallationEvent$,
   handleGithubIssueCommentEvent$,
   handleGithubIssuesEvent$,
+  handleGithubPullRequestEvent$,
 } from "../services/webhooks-github.service";
 
 const L = logger("WebhookGithubRoute");
@@ -67,7 +69,6 @@ const postGithubWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const apiStartTime = now();
     const webhookSecret = optionalEnv("GITHUB_APP_WEBHOOK_SECRET");
-    const appSlug = optionalEnv("GITHUB_APP_SLUG");
 
     if (!webhookSecret) {
       return jsonError("GitHub App integration is not configured", 503);
@@ -117,11 +118,35 @@ const postGithubWebhook$ = command(
         tapError(
           set(
             handleGithubIssuesEvent$,
-            { payload: parsed.data, appSlug, apiStartTime },
+            { payload: parsed.data, apiStartTime },
             signal,
           ),
           (error) => {
             L.error("Error handling issues event", { error });
+          },
+        ),
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    if (headers.event === "pull_request") {
+      const parsed = gitHubPullRequestEventSchema.safeParse(payload);
+      if (!parsed.success) {
+        L.error("Invalid pull_request event payload", {
+          error: parsed.error,
+        });
+        return jsonError("Invalid payload structure", 400);
+      }
+
+      waitUntil(
+        tapError(
+          set(
+            handleGithubPullRequestEvent$,
+            { payload: parsed.data, apiStartTime },
+            signal,
+          ),
+          (error) => {
+            L.error("Error handling pull_request event", { error });
           },
         ),
       );
@@ -141,7 +166,7 @@ const postGithubWebhook$ = command(
         tapError(
           set(
             handleGithubIssueCommentEvent$,
-            { payload: parsed.data, appSlug, apiStartTime },
+            { payload: parsed.data, apiStartTime },
             signal,
           ),
           (error) => {

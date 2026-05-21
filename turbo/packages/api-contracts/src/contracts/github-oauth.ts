@@ -8,6 +8,7 @@ const jsonErrorSchema = z.object({ error: z.string() });
 
 export const githubOauthInstallQuerySchema = z.object({
   vm0UserId: z.string().optional(),
+  orgId: z.string().optional(),
   composeId: z.string().optional(),
 });
 

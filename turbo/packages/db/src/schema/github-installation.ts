@@ -6,6 +6,7 @@ import {
   timestamp,
   jsonb,
   uniqueIndex,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposes } from "./agent-compose";
@@ -23,6 +24,7 @@ export const githubInstallations = pgTable(
     installationId: varchar("installation_id", { length: 255 }),
     encryptedAccessToken: text("encrypted_access_token"),
     status: varchar("status", { length: 20 }).notNull().default("active"),
+    orgId: text("org_id").notNull(),
     targetType: varchar("target_type", { length: 20 }),
     targetId: varchar("target_id", { length: 255 }),
     targetName: varchar("target_name", { length: 255 }),
@@ -44,6 +46,7 @@ export const githubInstallations = pgTable(
       uniqueIndex("github_installations_installation_id_unique")
         .on(table.installationId)
         .where(sql`installation_id IS NOT NULL`),
+      index("idx_github_installations_org").on(table.orgId),
     ];
   },
 );
