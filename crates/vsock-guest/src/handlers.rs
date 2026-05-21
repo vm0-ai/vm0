@@ -263,15 +263,26 @@ pub(crate) fn handle_basic_message(msg: &RawMessage) -> io::Result<MessageOutcom
         MSG_PING => Ok(MessageOutcome::Response(
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
-        MSG_SHUTDOWN => Ok(MessageOutcome::Shutdown(handle_shutdown(msg.seq)?)),
-        _ => {
-            let payload =
-                vsock_proto::encode_error(&format!("Unknown message type: 0x{:02X}", msg.msg_type));
-            Ok(MessageOutcome::Response(
-                vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
-            ))
+        MSG_SHUTDOWN => {
+            if let Err(error) =
+                vsock_proto::decode_empty_payload("shutdown payload must be empty", &msg.payload)
+            {
+                return encode_error_response(msg.seq, &error.to_string());
+            }
+            Ok(MessageOutcome::Shutdown(handle_shutdown(msg.seq)?))
         }
+        _ => encode_error_response(
+            msg.seq,
+            &format!("Unknown message type: 0x{:02X}", msg.msg_type),
+        ),
     }
+}
+
+fn encode_error_response(seq: u32, message: &str) -> io::Result<MessageOutcome> {
+    let payload = vsock_proto::encode_error(message);
+    Ok(MessageOutcome::Response(
+        vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?,
+    ))
 }
 
 #[cfg(test)]

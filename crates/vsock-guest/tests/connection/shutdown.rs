@@ -3,9 +3,12 @@ use std::thread;
 use std::time::Duration;
 
 use vsock_guest::run;
-use vsock_proto::{self, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
+use vsock_proto::{self, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
 
-use super::support::{read_and_discard_message, read_message, unique_socket_path};
+use super::support::{
+    finish_guest_connection, read_and_discard_message, read_error_response, read_message,
+    start_guest_connection, unique_socket_path,
+};
 
 #[test]
 fn run_exits_after_shutdown_even_when_ack_write_fails() {
@@ -77,4 +80,23 @@ fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
         result.is_ok(),
         "shutdown should stop run() cleanly: {result:?}"
     );
+}
+
+#[test]
+fn shutdown_rejects_non_empty_payload_without_exiting() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let shutdown = vsock_proto::encode(MSG_SHUTDOWN, 42, b"legacy command payload").unwrap();
+    host_stream.write_all(&shutdown).unwrap();
+
+    let error = read_error_response(&mut host_stream, 42);
+    assert_eq!(error, "invalid payload: shutdown payload must be empty");
+
+    let ping = vsock_proto::encode(MSG_PING, 43, &[]).unwrap();
+    host_stream.write_all(&ping).unwrap();
+    let pong = read_message(&mut host_stream);
+    assert_eq!(pong.msg_type, MSG_PONG);
+    assert_eq!(pong.seq, 43);
+
+    finish_guest_connection(handle, host_stream);
 }
