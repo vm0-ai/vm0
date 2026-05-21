@@ -2,6 +2,7 @@ import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
   type ConnectorEnvReader,
+  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorType,
@@ -15,12 +16,17 @@ import {
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
+type ConfiguredConnectorOAuthCredentials = Extract<
+  ConnectorOAuthCredentials,
+  { readonly configured: true }
+>;
+
 type PrepareResolvedConnectorOAuthStartResult =
   | {
       readonly ok: true;
       readonly state: string;
       readonly redirectUri: string;
-      readonly authResult: AuthUrlResult;
+      readonly credentials: ConfiguredConnectorOAuthCredentials;
     }
   | {
       readonly ok: false;
@@ -58,11 +64,11 @@ export function resolveConnectorOAuthStartType(
 // This helper intentionally prepares only provider-specific data. Callers must
 // resolve the route's ConnectorType first so non-OAuth connectors keep their
 // existing route-specific error responses.
-export async function prepareResolvedConnectorOAuthStart(args: {
+export function prepareResolvedConnectorOAuthStart(args: {
   readonly type: OAuthConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
-}): Promise<PrepareResolvedConnectorOAuthStartResult> {
+}): PrepareResolvedConnectorOAuthStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
   const credentials = getConnectorOAuthCredentials(args.type, args.readEnv);
@@ -70,19 +76,26 @@ export async function prepareResolvedConnectorOAuthStart(args: {
     return { ok: false, reason: "oauth_not_configured" };
   }
 
-  const authResult = normalizeAuthUrlResult(
-    await buildConnectorOAuthAuthUrl({
-      type: args.type,
-      credentials,
-      redirectUri,
-      state,
-    }),
-  );
-
   return {
     ok: true,
     state,
     redirectUri,
-    authResult,
+    credentials,
   };
+}
+
+export async function buildResolvedConnectorOAuthAuthResult(args: {
+  readonly type: OAuthConnectorType;
+  readonly credentials: ConfiguredConnectorOAuthCredentials;
+  readonly redirectUri: string;
+  readonly state: string;
+}): Promise<AuthUrlResult> {
+  return normalizeAuthUrlResult(
+    await buildConnectorOAuthAuthUrl({
+      type: args.type,
+      credentials: args.credentials,
+      redirectUri: args.redirectUri,
+      state: args.state,
+    }),
+  );
 }

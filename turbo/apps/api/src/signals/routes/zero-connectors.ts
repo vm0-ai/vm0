@@ -62,6 +62,7 @@ import {
   connectorOAuthRedirectResponse,
 } from "./connector-oauth-route-state";
 import {
+  buildResolvedConnectorOAuthAuthResult,
   prepareResolvedConnectorOAuthStart,
   resolveConnectorOAuthStartType,
 } from "./connector-oauth-start";
@@ -409,15 +410,21 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    const prepared = await prepareResolvedConnectorOAuthStart({
+    const prepared = prepareResolvedConnectorOAuthStart({
       type: startType.type,
       origin,
       readEnv: optionalEnv,
     });
-    signal.throwIfAborted();
     if (!prepared.ok) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
+    const authResult = await buildResolvedConnectorOAuthAuthResult({
+      type: startType.type,
+      credentials: prepared.credentials,
+      redirectUri: prepared.redirectUri,
+      state: prepared.state,
+    });
+    signal.throwIfAborted();
 
     await set(
       deleteZeroConnectorLocalState$,
@@ -426,7 +433,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     );
     signal.throwIfAborted();
 
-    const response = connectorOAuthRedirectResponse(prepared.authResult.url);
+    const response = connectorOAuthRedirectResponse(authResult.url);
     response.headers.append(
       "Set-Cookie",
       buildConnectorOAuthCookieHeader(
@@ -435,22 +442,22 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
       ),
     );
-    if (prepared.authResult.codeVerifier) {
+    if (authResult.codeVerifier) {
       response.headers.append(
         "Set-Cookie",
         buildConnectorOAuthCookieHeader(
           CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
-          prepared.authResult.codeVerifier,
+          authResult.codeVerifier,
           CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
         ),
       );
     }
-    if (prepared.authResult.oauthContext) {
+    if (authResult.oauthContext) {
       response.headers.append(
         "Set-Cookie",
         buildConnectorOAuthCookieHeader(
           CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME,
-          prepared.authResult.oauthContext,
+          authResult.oauthContext,
           CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
         ),
       );
@@ -499,15 +506,21 @@ const startConnectorOauthInner$ = command(
     }
 
     const origin = getConnectorOAuthOrigin(request);
-    const prepared = await prepareResolvedConnectorOAuthStart({
+    const prepared = prepareResolvedConnectorOAuthStart({
       type: startType.type,
       origin,
       readEnv: optionalEnv,
     });
-    signal.throwIfAborted();
     if (!prepared.ok) {
       return internalServerError(`${type} OAuth not configured`);
     }
+    const authResult = await buildResolvedConnectorOAuthAuthResult({
+      type: startType.type,
+      credentials: prepared.credentials,
+      redirectUri: prepared.redirectUri,
+      state: prepared.state,
+    });
+    signal.throwIfAborted();
 
     await set(
       deleteZeroConnectorLocalState$,
@@ -523,8 +536,8 @@ const startConnectorOauthInner$ = command(
       userId: auth.userId,
       orgId: auth.orgId,
       redirectUri: prepared.redirectUri,
-      codeVerifier: prepared.authResult.codeVerifier,
-      oauthContext: prepared.authResult.oauthContext,
+      codeVerifier: authResult.codeVerifier,
+      oauthContext: authResult.oauthContext,
       expiresAt: new Date(
         nowDate().getTime() + CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS * 1000,
       ),
@@ -534,7 +547,7 @@ const startConnectorOauthInner$ = command(
     return {
       status: 200 as const,
       body: {
-        authorizationUrl: prepared.authResult.url,
+        authorizationUrl: authResult.url,
       },
     };
   },
