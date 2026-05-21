@@ -18,8 +18,6 @@ import {
 import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
-  isStaticConnectorOAuthCredentials,
-  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -27,8 +25,8 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
+  buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
-  CONNECTOR_OAUTH_PROVIDERS,
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -186,29 +184,20 @@ function missingOAuthProviderResponse(type: string) {
 
 async function buildProviderAuthorizeUrl(args: {
   readonly type: OAuthConnectorType;
-  readonly clientId?: string;
+  readonly credentials: NonNullable<
+    ReturnType<typeof getConnectorOAuthCredentials>
+  >;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<AuthUrlResult> {
-  const provider = CONNECTOR_OAUTH_PROVIDERS[args.type];
   return normalizeAuthUrlResult(
-    await provider.buildAuthUrl({
-      clientId: args.clientId,
+    await buildConnectorOAuthAuthUrl({
+      type: args.type,
+      credentials: args.credentials,
       redirectUri: args.redirectUri,
       state: args.state,
     }),
   );
-}
-
-function getAuthorizeClientId(
-  credentials: ConnectorOAuthCredentials,
-): string | undefined {
-  if (!credentials.configured) {
-    return undefined;
-  }
-  return isStaticConnectorOAuthCredentials(credentials)
-    ? credentials.clientId
-    : undefined;
 }
 
 function internalServerError(message: string) {
@@ -488,7 +477,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const authResult = await buildProviderAuthorizeUrl({
       type,
-      clientId: getAuthorizeClientId(credentials),
+      credentials,
       redirectUri,
       state,
     });
@@ -574,7 +563,7 @@ const startConnectorOauthInner$ = command(
 
     const authResult = await buildProviderAuthorizeUrl({
       type,
-      clientId: getAuthorizeClientId(credentials),
+      credentials,
       redirectUri,
       state,
     });

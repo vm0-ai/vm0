@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildStripeAuthorizationUrl,
   exchangeStripeCode,
   getStripeSecretName,
   refreshStripeToken,
 } from "./stripe";
-export const stripeProvider: OAuthConnectorProvider = {
+export const stripeProvider = defineConnectorOAuthProvider("stripe", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildStripeAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const result = await exchangeStripeCode(clientId, clientSecret, code);
     return {
@@ -29,18 +25,12 @@ export const stripeProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.STRIPE_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.STRIPE_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getStripeSecretName,
   getRefreshSecretName: () => {
     return "STRIPE_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshStripeToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

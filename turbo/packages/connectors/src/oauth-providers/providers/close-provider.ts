@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildCloseAuthorizationUrl,
   exchangeCloseCode,
   getCloseSecretName,
   refreshCloseToken,
 } from "./close";
-export const closeProvider: OAuthConnectorProvider = {
+export const closeProvider = defineConnectorOAuthProvider("close", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildCloseAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeCloseCode(
@@ -36,18 +32,12 @@ export const closeProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.CLOSE_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.CLOSE_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getCloseSecretName,
   getRefreshSecretName: () => {
     return "CLOSE_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshCloseToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

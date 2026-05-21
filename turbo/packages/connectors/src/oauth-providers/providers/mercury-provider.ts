@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildMercuryAuthorizationUrl,
   exchangeMercuryCode,
   getMercurySecretName,
   refreshMercuryToken,
 } from "./mercury";
-export const mercuryProvider: OAuthConnectorProvider = {
+export const mercuryProvider = defineConnectorOAuthProvider("mercury", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildMercuryAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeMercuryCode(
@@ -36,18 +32,12 @@ export const mercuryProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.MERCURY_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.MERCURY_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getMercurySecretName,
   getRefreshSecretName: () => {
     return "MERCURY_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshMercuryToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

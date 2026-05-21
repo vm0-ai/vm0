@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildAsanaAuthorizationUrl,
   exchangeAsanaCode,
   getAsanaSecretName,
   refreshAsanaToken,
 } from "./asana";
-export const asanaProvider: OAuthConnectorProvider = {
+export const asanaProvider = defineConnectorOAuthProvider("asana", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildAsanaAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeAsanaCode(
@@ -36,18 +32,12 @@ export const asanaProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.ASANA_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.ASANA_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getAsanaSecretName,
   getRefreshSecretName: () => {
     return "ASANA_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshAsanaToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

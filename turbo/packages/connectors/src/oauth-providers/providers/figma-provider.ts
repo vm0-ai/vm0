@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildFigmaAuthorizationUrl,
   exchangeFigmaCode,
   getFigmaSecretName,
   refreshFigmaToken,
 } from "./figma";
-export const figmaProvider: OAuthConnectorProvider = {
+export const figmaProvider = defineConnectorOAuthProvider("figma", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildFigmaAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeFigmaCode(
@@ -36,18 +32,12 @@ export const figmaProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.FIGMA_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.FIGMA_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getFigmaSecretName,
   getRefreshSecretName: () => {
     return "FIGMA_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshFigmaToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

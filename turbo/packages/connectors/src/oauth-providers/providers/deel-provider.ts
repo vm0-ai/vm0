@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildDeelAuthorizationUrl,
   exchangeDeelCode,
   getDeelSecretName,
   refreshDeelToken,
 } from "./deel";
-export const deelProvider: OAuthConnectorProvider = {
+export const deelProvider = defineConnectorOAuthProvider("deel", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildDeelAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const state = args.state;
@@ -41,18 +37,12 @@ export const deelProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.DEEL_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.DEEL_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getDeelSecretName,
   getRefreshSecretName: () => {
     return "DEEL_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshDeelToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

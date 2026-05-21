@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildDropboxAuthorizationUrl,
   exchangeDropboxCode,
   getDropboxSecretName,
   refreshDropboxToken,
 } from "./dropbox";
-export const dropboxProvider: OAuthConnectorProvider = {
+export const dropboxProvider = defineConnectorOAuthProvider("dropbox", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildDropboxAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeDropboxCode(
@@ -36,18 +32,12 @@ export const dropboxProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.DROPBOX_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.DROPBOX_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getDropboxSecretName,
   getRefreshSecretName: () => {
     return "DROPBOX_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshDropboxToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

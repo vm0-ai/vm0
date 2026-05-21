@@ -1,21 +1,17 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildNotionAuthorizationUrl,
   exchangeNotionCode,
   getNotionSecretName,
   refreshNotionToken,
 } from "./notion";
-export const notionProvider: OAuthConnectorProvider = {
+export const notionProvider = defineConnectorOAuthProvider("notion", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildNotionAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeNotionCode(
@@ -32,18 +28,12 @@ export const notionProvider: OAuthConnectorProvider = {
       userInfo: result.userInfo,
     };
   },
-  getClientId: (e) => {
-    return e.NOTION_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.NOTION_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getNotionSecretName,
   getRefreshSecretName: () => {
     return "NOTION_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshNotionToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

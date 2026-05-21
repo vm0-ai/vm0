@@ -1,17 +1,13 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildSupabaseAuthorizationUrl,
   exchangeSupabaseCode,
   getSupabaseSecretName,
   refreshSupabaseToken,
 } from "./supabase";
-export const supabaseProvider: OAuthConnectorProvider = {
+export const supabaseProvider = defineConnectorOAuthProvider("supabase", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildSupabaseAuthorizationUrl(
       clientId,
       args.redirectUri,
@@ -19,7 +15,7 @@ export const supabaseProvider: OAuthConnectorProvider = {
     );
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const state = args.state;
@@ -47,18 +43,12 @@ export const supabaseProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.SUPABASE_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.SUPABASE_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getSupabaseSecretName,
   getRefreshSecretName: () => {
     return "SUPABASE_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     return refreshSupabaseToken(clientId, clientSecret, args.refreshToken);
   },
-};
+});

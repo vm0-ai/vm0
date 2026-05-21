@@ -1,20 +1,16 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
   getMetaAdsSecretName,
 } from "./meta-ads";
-export const metaAdsProvider: OAuthConnectorProvider = {
+export const metaAdsProvider = defineConnectorOAuthProvider("meta-ads", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildMetaAdsAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeMetaAdsCode(
@@ -35,11 +31,5 @@ export const metaAdsProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.META_ADS_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.META_ADS_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getMetaAdsSecretName,
-};
+});

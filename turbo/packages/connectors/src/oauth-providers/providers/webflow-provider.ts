@@ -1,20 +1,16 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildWebflowAuthorizationUrl,
   exchangeWebflowCode,
   getWebflowSecretName,
 } from "./webflow";
-export const webflowProvider: OAuthConnectorProvider = {
+export const webflowProvider = defineConnectorOAuthProvider("webflow", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     return buildWebflowAuthorizationUrl(clientId, args.redirectUri, args.state);
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeWebflowCode(
@@ -34,11 +30,5 @@ export const webflowProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.WEBFLOW_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.WEBFLOW_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: getWebflowSecretName,
-};
+});

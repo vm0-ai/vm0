@@ -1,16 +1,12 @@
-import {
-  requireOAuthClientCredentials,
-  requireOAuthClientId,
-  type OAuthConnectorProvider,
-} from "../provider-types";
+import { defineConnectorOAuthProvider } from "../provider-types";
 import {
   buildGoogleAuthorizationUrl,
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "./google-oauth";
-export const googleAdsProvider: OAuthConnectorProvider = {
+export const googleAdsProvider = defineConnectorOAuthProvider("google-ads", {
   buildAuthUrl: (args) => {
-    const clientId = requireOAuthClientId(args);
+    const { clientId } = args;
     const redirectUri = args.redirectUri;
     const state = args.state;
     return buildGoogleAuthorizationUrl(
@@ -21,7 +17,7 @@ export const googleAdsProvider: OAuthConnectorProvider = {
     );
   },
   exchangeCode: async (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const code = args.code;
     const redirectUri = args.redirectUri;
     const result = await exchangeGoogleOAuthCode(
@@ -43,12 +39,6 @@ export const googleAdsProvider: OAuthConnectorProvider = {
       },
     };
   },
-  getClientId: (e) => {
-    return e.GOOGLE_OAUTH_CLIENT_ID;
-  },
-  getClientSecret: (e) => {
-    return e.GOOGLE_OAUTH_CLIENT_SECRET;
-  },
   getSecretName: () => {
     return "GOOGLE_ADS_ACCESS_TOKEN";
   },
@@ -56,7 +46,7 @@ export const googleAdsProvider: OAuthConnectorProvider = {
     return "GOOGLE_ADS_REFRESH_TOKEN";
   },
   refreshToken: (args) => {
-    const { clientId, clientSecret } = requireOAuthClientCredentials(args);
+    const { clientId, clientSecret } = args;
     const refreshToken = args.refreshToken;
     return refreshGoogleToken(
       "google-ads",
@@ -65,4 +55,4 @@ export const googleAdsProvider: OAuthConnectorProvider = {
       refreshToken,
     );
   },
-};
+});

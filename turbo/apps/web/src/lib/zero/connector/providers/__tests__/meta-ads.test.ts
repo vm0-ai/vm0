@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
+import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
 import { CONNECTOR_OAUTH_PROVIDERS } from "@vm0/connectors/oauth-providers";
 import {
   buildMetaAdsAuthorizationUrl,
@@ -160,20 +161,21 @@ describe("connector/providers/meta-ads", () => {
       expect(url).toContain("facebook.com/v22.0/dialog/oauth");
     });
 
-    it("getClientId returns META_ADS_OAUTH_CLIENT_ID from env", () => {
-      const env = {
+    it("resolves OAuth client credentials from Meta Ads env keys", () => {
+      const env: Record<string, string> = {
         META_ADS_OAUTH_CLIENT_ID: "test-client-id",
-      } as Parameters<typeof metaAdsProvider.getClientId>[0];
-
-      expect(metaAdsProvider.getClientId(env)).toBe("test-client-id");
-    });
-
-    it("getClientSecret returns META_ADS_OAUTH_CLIENT_SECRET from env", () => {
-      const env = {
         META_ADS_OAUTH_CLIENT_SECRET: "test-client-secret",
-      } as Parameters<typeof metaAdsProvider.getClientSecret>[0];
+      };
 
-      expect(metaAdsProvider.getClientSecret(env)).toBe("test-client-secret");
+      expect(
+        getConnectorOAuthCredentials("meta-ads", (name) => {
+          return env[name];
+        }),
+      ).toMatchObject({
+        configured: true,
+        clientId: "test-client-id",
+        clientSecret: "test-client-secret",
+      });
     });
 
     it("getSecretName returns META_ADS_ACCESS_TOKEN", () => {
