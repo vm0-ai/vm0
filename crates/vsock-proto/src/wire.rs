@@ -7,7 +7,7 @@ pub const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 /// Minimum body size: type (1) + seq (4).
 pub const MIN_BODY_SIZE: usize = 5;
 
-// Message types are ordered by protocol domain.
+// Connection lifecycle.
 
 /// Guest-to-host ready notification with an empty payload.
 pub const MSG_READY: u8 = 0x00;
@@ -24,6 +24,8 @@ pub const MSG_SHUTDOWN: u8 = 0x03;
 /// Guest-to-host shutdown acknowledgement with an empty payload.
 pub const MSG_SHUTDOWN_ACK: u8 = 0x04;
 
+// Operation gates.
+
 /// Host-to-guest request to fence new guest operations.
 pub const MSG_QUIESCE_OPERATIONS: u8 = 0x05;
 
@@ -36,11 +38,15 @@ pub const MSG_RESUME_OPERATIONS: u8 = 0x07;
 /// Guest-to-host acknowledgement that operations resumed.
 pub const MSG_OPERATIONS_RESUMED: u8 = 0x08;
 
+// File operations.
+
 /// Host-to-guest write-file request.
 pub const MSG_WRITE_FILE: u8 = 0x09;
 
 /// Guest-to-host write-file completion response.
 pub const MSG_WRITE_FILE_RESULT: u8 = 0x0A;
+
+// Exec operations.
 
 /// Host-to-guest exec operation start request.
 pub const MSG_EXEC_START: u8 = 0x0B;
