@@ -590,6 +590,7 @@ export {
   type TriggerSource,
   type LogsFilters,
   type ConnectorType,
+  type OAuthConnectorType,
   type ConnectorConfig,
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,

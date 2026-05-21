@@ -700,6 +700,7 @@ export {
   CONNECTOR_DISPLAY_CATEGORY_META,
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   type ConnectorType,
+  type OAuthConnectorType,
   type ConnectorConfig,
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
