@@ -925,6 +925,10 @@ def test_rejects_missing_separators(payload, error):
     [
         [b"[1,]"],
         [b"[1,2,]"],
+        [b'["x",]'],
+        [b"[true,]"],
+        [b"[false,]"],
+        [b"[null,]"],
         [b"[{},]"],
         [b"[[],]"],
         [b"[1, ]"],
@@ -950,6 +954,10 @@ def test_rejects_trailing_commas_in_arrays(chunks):
     [
         [b'{"a":1,}'],
         [b'{"a":1,"b":2,}'],
+        [b'{"s":"x",}'],
+        [b'{"a":true,}'],
+        [b'{"a":false,}'],
+        [b'{"a":null,}'],
         [b'{"a":{},}'],
         [b'{"a":[],}'],
         [b'{"a":1, }'],
@@ -958,7 +966,7 @@ def test_rejects_trailing_commas_in_arrays(chunks):
 )
 def test_rejects_trailing_commas_in_objects(chunks):
     extractor = JsonSelectiveExtractor(
-        scalar_fields={("a",): ScalarField("int")},
+        scalar_fields={("a",): ScalarField("int"), ("s",): ScalarField("string")},
         array_count_paths={("a",)},
         object_presence_paths={("a",)},
     )
