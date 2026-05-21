@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACCESSIBILITY_SNAPSHOT_OUTPUT_LIMITS,
+  ComputerUseSnapshotStore,
   executeComputerUseCommand,
   normalizeAccessibilitySnapshot,
   renderAccessibilityTree,
@@ -537,6 +538,7 @@ describe("computer use desktop runtime", () => {
           expect(request).toStrictEqual({
             app: "Safari",
             windowNames: ["Example"],
+            windowBounds: [{ name: "Example" }],
           });
           return {
             dataUrl: "data:image/png;base64,abc123",
@@ -681,6 +683,167 @@ describe("computer use desktop runtime", () => {
       'attributeChildren(element, "AXVisibleChildren")',
     );
     expect(capturedScript).toContain("element.click()");
+  });
+
+  it("maps screenshot coordinate clicks through cached snapshot bounds", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const scripts: string[] = [];
+
+    const state = await executeComputerUseCommand(
+      { id: "cmd_1", kind: "app.state", payload: { app: "Safari" } },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        runJxa: async (script) => {
+          scripts.push(script);
+          return JSON.stringify({
+            app: "Safari",
+            snapshotId: "snap_1",
+            elements: [
+              {
+                id: "w0",
+                role: "AXWindow",
+                name: "Example",
+                bounds: { x: 100, y: 200, width: 1600, height: 1200 },
+              },
+            ],
+          });
+        },
+        captureScreenshot: async (request) => {
+          expect(request).toStrictEqual({
+            app: "Safari",
+            windowNames: ["Example"],
+            windowBounds: [
+              {
+                name: "Example",
+                bounds: { x: 100, y: 200, width: 1600, height: 1200 },
+              },
+            ],
+          });
+          return {
+            dataUrl: "data:image/png;base64,abc123",
+            source: "window",
+            sourceName: "Example",
+            width: 800,
+            height: 600,
+            sourceBounds: { x: 100, y: 200, width: 1600, height: 1200 },
+          };
+        },
+      },
+    );
+    expect(state.status).toBe("succeeded");
+
+    const click = await executeComputerUseCommand(
+      {
+        id: "cmd_2",
+        kind: "element.click",
+        payload: {
+          app: "Safari",
+          snapshotId: "snap_1",
+          x: 400,
+          y: 300,
+          button: "right",
+          clickCount: 2,
+        },
+      },
+      { accessibility: true, screenRecording: false },
+      {
+        platform: "darwin",
+        snapshotStore,
+        runJxa: async (script) => {
+          scripts.push(script);
+          return "";
+        },
+        captureScreenshot: async () => {
+          throw new Error("unexpected screenshot capture");
+        },
+      },
+    );
+
+    expect(click).toMatchObject({
+      status: "succeeded",
+      result: {
+        app: "Safari",
+        snapshotId: "snap_1",
+        x: 400,
+        y: 300,
+        screenX: 900,
+        screenY: 800,
+        button: "right",
+        clickCount: 2,
+      },
+    });
+    const clickScript = scripts.at(-1);
+    expect(clickScript).toContain("$.CGPointMake(900, 800)");
+    expect(clickScript).toContain("$.CGEventCreateMouseEvent");
+    expect(clickScript).toContain("postMouseEvent(3, clickIndex)");
+    expect(clickScript).not.toContain("System Events");
+  });
+
+  it("captures fresh app state for coordinate clicks without a cached snapshot", async () => {
+    const snapshotStore = new ComputerUseSnapshotStore();
+    const scripts: string[] = [];
+    let captureCount = 0;
+
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "element.click",
+        payload: { app: "Safari", x: 200, y: 150 },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        snapshotStore,
+        runJxa: async (script) => {
+          scripts.push(script);
+          if (script.includes("snapshotId")) {
+            return JSON.stringify({
+              app: "Safari",
+              snapshotId: "snap_fresh",
+              elements: [
+                {
+                  id: "w0",
+                  role: "AXWindow",
+                  name: "Example",
+                  bounds: { x: 40, y: 80, width: 800, height: 600 },
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        captureScreenshot: async () => {
+          captureCount += 1;
+          return {
+            dataUrl: "data:image/png;base64,abc123",
+            source: "window",
+            sourceName: "Example",
+            width: 400,
+            height: 300,
+            sourceBounds: { x: 40, y: 80, width: 800, height: 600 },
+          };
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        app: "Safari",
+        snapshotId: "snap_fresh",
+        x: 200,
+        y: 150,
+        screenX: 440,
+        screenY: 380,
+        button: "left",
+        clickCount: 1,
+      },
+    });
+    expect(captureCount).toBe(1);
+    expect(scripts).toHaveLength(2);
+    expect(scripts[1]).toContain("$.CGPointMake(440, 380)");
   });
 
   it("requires screen recording permission for app state screenshots", async () => {

@@ -310,7 +310,11 @@ describe("desktop computer-use runtime", () => {
         body: {
           kind: "element.click",
           app: "Safari",
-          elementId: "42",
+          snapshotId: "snap_1",
+          x: 680,
+          y: 600,
+          button: "right",
+          clickCount: 2,
           timeoutMs: 15_000,
         },
         headers: { authorization: `Bearer ${token}` },
@@ -335,7 +339,14 @@ describe("desktop computer-use runtime", () => {
       hostId,
       kind: "element.click",
       status: "running",
-      payload: { app: "Safari", elementId: "42" },
+      payload: {
+        app: "Safari",
+        snapshotId: "snap_1",
+        x: 680,
+        y: 600,
+        button: "right",
+        clickCount: 2,
+      },
     });
 
     await accept(

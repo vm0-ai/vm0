@@ -35,12 +35,7 @@ interface AccessibilityElementSnapshot {
   readonly focused?: boolean;
   readonly enabled?: boolean;
   readonly actions?: readonly string[];
-  readonly bounds?: {
-    readonly x: number;
-    readonly y: number;
-    readonly width: number;
-    readonly height: number;
-  };
+  readonly bounds?: ComputerUseCoordinateBounds;
   readonly children?: readonly AccessibilityElementSnapshot[];
 }
 
@@ -79,6 +74,7 @@ const GENERIC_WRAPPER_ROLES = new Set(["AXGroup", "AXUnknown"]);
 export interface ComputerUseScreenshotCaptureRequest {
   readonly app: string;
   readonly windowNames: readonly string[];
+  readonly windowBounds: readonly ComputerUseWindowCaptureCandidate[];
 }
 
 export interface ComputerUseScreenshotCaptureResult {
@@ -87,6 +83,7 @@ export interface ComputerUseScreenshotCaptureResult {
   readonly sourceName: string;
   readonly width: number;
   readonly height: number;
+  readonly sourceBounds?: ComputerUseCoordinateBounds;
 }
 
 type ComputerUseScreenshotCapture = (
@@ -116,10 +113,83 @@ export type ComputerUseCommandExecutionResult =
 
 type RunJxa = (script: string) => Promise<string>;
 
+export interface ComputerUseCoordinateBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface ComputerUseWindowCaptureCandidate {
+  readonly name: string;
+  readonly bounds?: ComputerUseCoordinateBounds;
+}
+
+interface ComputerUseSnapshotMetadata {
+  readonly app: string;
+  readonly snapshotId: string;
+  readonly screenshotWidth: number;
+  readonly screenshotHeight: number;
+  readonly screenshotSource: "window" | "screen";
+  readonly screenshotSourceName: string;
+  readonly sourceBounds?: ComputerUseCoordinateBounds;
+}
+
+type ComputerUseMouseButton = "left" | "right" | "middle";
+
 interface ComputerUseCommandExecutionDependencies {
   readonly captureScreenshot: ComputerUseScreenshotCapture;
+  readonly snapshotStore?: ComputerUseSnapshotStore;
   readonly platform?: NodeJS.Platform;
   readonly runJxa?: RunJxa;
+}
+
+const DEFAULT_SNAPSHOT_STORE_LIMIT = 50;
+
+function appSnapshotKey(app: string): string {
+  return app.trim().toLowerCase();
+}
+
+export class ComputerUseSnapshotStore {
+  private readonly snapshots = new Map<string, ComputerUseSnapshotMetadata>();
+  private readonly latestByApp = new Map<string, string>();
+
+  constructor(private readonly maxEntries = DEFAULT_SNAPSHOT_STORE_LIMIT) {}
+
+  set(metadata: ComputerUseSnapshotMetadata): void {
+    const key = this.key(metadata.app, metadata.snapshotId);
+    if (this.snapshots.has(key)) {
+      this.snapshots.delete(key);
+    }
+    this.snapshots.set(key, metadata);
+    this.latestByApp.set(appSnapshotKey(metadata.app), key);
+
+    while (this.snapshots.size > this.maxEntries) {
+      const oldestKey = this.snapshots.keys().next().value;
+      if (typeof oldestKey !== "string") {
+        return;
+      }
+      this.snapshots.delete(oldestKey);
+      for (const [appKey, snapshotKey] of this.latestByApp) {
+        if (snapshotKey === oldestKey) {
+          this.latestByApp.delete(appKey);
+        }
+      }
+    }
+  }
+
+  get(app: string, snapshotId: string): ComputerUseSnapshotMetadata | null {
+    return this.snapshots.get(this.key(app, snapshotId)) ?? null;
+  }
+
+  getLatestForApp(app: string): ComputerUseSnapshotMetadata | null {
+    const key = this.latestByApp.get(appSnapshotKey(app));
+    return key ? (this.snapshots.get(key) ?? null) : null;
+  }
+
+  private key(app: string, snapshotId: string): string {
+    return `${appSnapshotKey(app)}\0${snapshotId}`;
+  }
 }
 
 function payloadString(
@@ -355,12 +425,27 @@ export function renderAccessibilityTree(
 function snapshotWindowNames(
   snapshot: AccessibilityAppStateSnapshot,
 ): string[] {
+  return snapshotWindowCaptureCandidates(snapshot).map((window) => {
+    return window.name;
+  });
+}
+
+function snapshotWindowCaptureCandidates(
+  snapshot: AccessibilityAppStateSnapshot,
+): ComputerUseWindowCaptureCandidate[] {
   return snapshot.elements
-    .map((element) => {
-      return element.name?.trim();
+    .map((element): ComputerUseWindowCaptureCandidate | null => {
+      const name = element.name?.trim();
+      if (!name) {
+        return null;
+      }
+      return {
+        name,
+        ...(element.bounds ? { bounds: element.bounds } : {}),
+      };
     })
-    .filter((name): name is string => {
-      return name !== undefined && name.length > 0;
+    .filter((window): window is ComputerUseWindowCaptureCandidate => {
+      return window !== null;
     });
 }
 
@@ -377,6 +462,9 @@ function buildComputerUseAppStateResult(
     screenshotSourceName: screenshot.sourceName,
     screenshotWidth: screenshot.width,
     screenshotHeight: screenshot.height,
+    ...(screenshot.sourceBounds
+      ? { screenshotSourceBounds: screenshot.sourceBounds }
+      : {}),
   };
 }
 
@@ -657,17 +745,20 @@ async function getAppState(
   app: string,
   runJxaCommand: RunJxa,
   captureScreenshot: ComputerUseScreenshotCapture,
+  snapshotStore: ComputerUseSnapshotStore,
 ): Promise<ComputerUseCommandExecutionResult> {
   const id = snapshotId();
   const output = await runJxaCommand(appStateScript(app, id));
   const snapshot = normalizeAccessibilitySnapshot(
     JSON.parse(output) as AccessibilityAppStateSnapshot,
   );
+  const windowBounds = snapshotWindowCaptureCandidates(snapshot);
   let screenshot: ComputerUseScreenshotCaptureResult;
   try {
     screenshot = await captureScreenshot({
       app,
       windowNames: snapshotWindowNames(snapshot),
+      windowBounds,
     });
   } catch (error) {
     return {
@@ -678,6 +769,17 @@ async function getAppState(
       },
     };
   }
+  snapshotStore.set({
+    app: snapshot.app,
+    snapshotId: snapshot.snapshotId,
+    screenshotWidth: screenshot.width,
+    screenshotHeight: screenshot.height,
+    screenshotSource: screenshot.source,
+    screenshotSourceName: screenshot.sourceName,
+    ...(screenshot.sourceBounds
+      ? { sourceBounds: screenshot.sourceBounds }
+      : {}),
+  });
   return {
     status: "succeeded",
     result: buildComputerUseAppStateResult(snapshot, screenshot),
@@ -692,40 +794,179 @@ async function openApp(
   return { status: "succeeded", result: { app, text: `Opened ${app}` } };
 }
 
-async function clickElement(
-  app: string,
-  elementId: string | null,
-  x: number | null,
-  y: number | null,
-  runJxaCommand: RunJxa,
-): Promise<ComputerUseCommandExecutionResult> {
-  if (elementId) {
-    await runJxaCommand(`
-${resolveElementScript(app, elementId)}
-element.click();
-`);
-    return {
-      status: "succeeded",
-      result: { app, elementId, text: `Clicked ${elementId}` },
-    };
-  }
-  if (x !== null && y !== null) {
-    await runJxaCommand(`
-const systemEvents = Application("System Events");
-systemEvents.click({ at: [${x}, ${y}] });
-`);
-    return {
-      status: "succeeded",
-      result: { app, x, y, text: `Clicked ${x},${y}` },
-    };
-  }
+const MOUSE_BUTTON_EVENT_CONFIG = Object.freeze({
+  left: { button: 0, down: 1, up: 2 },
+  right: { button: 1, down: 3, up: 4 },
+  middle: { button: 2, down: 25, up: 26 },
+} satisfies Record<
+  ComputerUseMouseButton,
+  { readonly button: number; readonly down: number; readonly up: number }
+>);
+
+function quartzMouseClickScript(args: {
+  readonly x: number;
+  readonly y: number;
+  readonly button: ComputerUseMouseButton;
+  readonly clickCount: number;
+}): string {
+  const events = MOUSE_BUTTON_EVENT_CONFIG[args.button];
+  return `
+ObjC.import("ApplicationServices");
+const point = $.CGPointMake(${args.x}, ${args.y});
+function postMouseEvent(type, clickState) {
+  const event = $.CGEventCreateMouseEvent(null, type, point, ${events.button});
+  $.CGEventSetIntegerValueField(event, $.kCGMouseEventClickState, clickState);
+  $.CGEventPost($.kCGHIDEventTap, event);
+  $.CFRelease(event);
+}
+for (let clickIndex = 1; clickIndex <= ${args.clickCount}; clickIndex += 1) {
+  postMouseEvent(${events.down}, clickIndex);
+  postMouseEvent(${events.up}, clickIndex);
+  if (clickIndex < ${args.clickCount}) delay(0.05);
+}
+`;
+}
+
+function unsupportedCommand(message: string): ComputerUseCommandFailure {
   return {
     status: "failed",
     error: {
       code: "unsupported_command",
-      message: "element.click requires an element id or coordinates",
+      message,
     },
   };
+}
+
+function roundScreenCoordinate(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function mapScreenshotPointToScreen(args: {
+  readonly metadata: ComputerUseSnapshotMetadata;
+  readonly x: number;
+  readonly y: number;
+}):
+  | { readonly screenX: number; readonly screenY: number }
+  | ComputerUseCommandFailure {
+  const { metadata } = args;
+  if (!metadata.sourceBounds) {
+    return unsupportedCommand(
+      `Snapshot source bounds are unavailable: ${metadata.snapshotId}`,
+    );
+  }
+  if (metadata.screenshotWidth <= 0 || metadata.screenshotHeight <= 0) {
+    return unsupportedCommand(
+      `Snapshot dimensions are invalid: ${metadata.snapshotId}`,
+    );
+  }
+
+  return {
+    screenX: roundScreenCoordinate(
+      metadata.sourceBounds.x +
+        (args.x / metadata.screenshotWidth) * metadata.sourceBounds.width,
+    ),
+    screenY: roundScreenCoordinate(
+      metadata.sourceBounds.y +
+        (args.y / metadata.screenshotHeight) * metadata.sourceBounds.height,
+    ),
+  };
+}
+
+function resolveClickSnapshot(args: {
+  readonly app: string;
+  readonly snapshotId: string | null;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+}): ComputerUseSnapshotMetadata | ComputerUseCommandFailure {
+  if (args.snapshotId) {
+    const snapshot = args.snapshotStore.get(args.app, args.snapshotId);
+    return (
+      snapshot ??
+      unsupportedCommand(
+        `Snapshot not found for ${args.app}: ${args.snapshotId}`,
+      )
+    );
+  }
+
+  const latest = args.snapshotStore.getLatestForApp(args.app);
+  return (
+    latest ??
+    unsupportedCommand(`No app state snapshot is available for ${args.app}`)
+  );
+}
+
+async function clickElement(args: {
+  readonly app: string;
+  readonly elementId: string | null;
+  readonly snapshotId: string | null;
+  readonly x: number | null;
+  readonly y: number | null;
+  readonly button: ComputerUseMouseButton;
+  readonly clickCount: number;
+  readonly runJxaCommand: RunJxa;
+  readonly snapshotStore: ComputerUseSnapshotStore;
+}): Promise<ComputerUseCommandExecutionResult> {
+  if (args.elementId) {
+    if (args.button !== "left") {
+      return unsupportedCommand(
+        "element.click with element id only supports the left button; use coordinates for right or middle clicks",
+      );
+    }
+    await args.runJxaCommand(`
+${resolveElementScript(args.app, args.elementId)}
+for (let clickIndex = 0; clickIndex < ${args.clickCount}; clickIndex += 1) {
+element.click();
+}
+`);
+    return {
+      status: "succeeded",
+      result: {
+        app: args.app,
+        elementId: args.elementId,
+        button: args.button,
+        clickCount: args.clickCount,
+        text: `Clicked ${args.elementId}`,
+      },
+    };
+  }
+  if (args.x !== null && args.y !== null) {
+    const snapshot = resolveClickSnapshot(args);
+    if ("status" in snapshot) {
+      return snapshot;
+    }
+    const screenPoint = mapScreenshotPointToScreen({
+      metadata: snapshot,
+      x: args.x,
+      y: args.y,
+    });
+    if ("status" in screenPoint) {
+      return screenPoint;
+    }
+    await args.runJxaCommand(
+      quartzMouseClickScript({
+        x: screenPoint.screenX,
+        y: screenPoint.screenY,
+        button: args.button,
+        clickCount: args.clickCount,
+      }),
+    );
+    return {
+      status: "succeeded",
+      result: {
+        app: args.app,
+        snapshotId: snapshot.snapshotId,
+        x: args.x,
+        y: args.y,
+        screenX: screenPoint.screenX,
+        screenY: screenPoint.screenY,
+        button: args.button,
+        clickCount: args.clickCount,
+        text: `Clicked ${args.x},${args.y}`,
+      },
+    };
+  }
+  return unsupportedCommand(
+    "element.click requires an element id or coordinates",
+  );
 }
 
 async function setElementValue(
@@ -825,7 +1066,27 @@ function payloadNumber(
   key: string,
 ): number | null {
   const value = payload[key];
-  return typeof value === "number" ? value : null;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function payloadMouseButton(
+  payload: Record<string, unknown>,
+): ComputerUseMouseButton {
+  const value = payload.button;
+  if (value === "right" || value === "middle") {
+    return value;
+  }
+  return "left";
+}
+
+function payloadClickCount(payload: Record<string, unknown>): number {
+  const value = payload.clickCount;
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 3
+    ? value
+    : 1;
 }
 
 export async function executeComputerUseCommand(
@@ -843,6 +1104,8 @@ export async function executeComputerUseCommand(
 
   try {
     const runJxaCommand = dependencies.runJxa ?? runJxa;
+    const snapshotStore =
+      dependencies.snapshotStore ?? new ComputerUseSnapshotStore();
     const app = payloadString(command.payload, "app");
     if (command.kind === "apps.list") {
       return await listApps(runJxaCommand);
@@ -857,21 +1120,50 @@ export async function executeComputerUseCommand(
       }
       return await getAppState(
         app,
-        dependencies.runJxa ?? runJxa,
+        runJxaCommand,
         dependencies.captureScreenshot,
+        snapshotStore,
       );
     }
     if (command.kind === "app.open") {
       return await openApp(app, runJxaCommand);
     }
     if (command.kind === "element.click") {
-      return await clickElement(
+      const x = payloadNumber(command.payload, "x");
+      const y = payloadNumber(command.payload, "y");
+      const snapshotId = payloadString(command.payload, "snapshotId");
+      if (
+        !payloadString(command.payload, "elementId") &&
+        x !== null &&
+        y !== null &&
+        !snapshotId &&
+        !snapshotStore.getLatestForApp(app)
+      ) {
+        const screenRecordingError = requireScreenRecording(permissions);
+        if (screenRecordingError) {
+          return screenRecordingError;
+        }
+        const snapshotResult = await getAppState(
+          app,
+          runJxaCommand,
+          dependencies.captureScreenshot,
+          snapshotStore,
+        );
+        if (snapshotResult.status === "failed") {
+          return snapshotResult;
+        }
+      }
+      return await clickElement({
         app,
-        payloadString(command.payload, "elementId"),
-        payloadNumber(command.payload, "x"),
-        payloadNumber(command.payload, "y"),
+        elementId: payloadString(command.payload, "elementId"),
+        snapshotId,
+        x,
+        y,
+        button: payloadMouseButton(command.payload),
+        clickCount: payloadClickCount(command.payload),
         runJxaCommand,
-      );
+        snapshotStore,
+      });
     }
     if (command.kind === "element.scroll") {
       const elementId = payloadString(command.payload, "elementId");

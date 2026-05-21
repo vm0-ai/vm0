@@ -1,6 +1,9 @@
 import path from "node:path";
 import { app, BrowserWindow, Menu, session, shell } from "electron";
-import { executeComputerUseCommand } from "./computer-use-accessibility";
+import {
+  ComputerUseSnapshotStore,
+  executeComputerUseCommand,
+} from "./computer-use-accessibility";
 import {
   installComputerUseIpc,
   notifyDesktopComputerUseChanged,
@@ -64,6 +67,7 @@ let appIsQuitting = false;
 let quittingAfterLocalAgentStop = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
+const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 
 function preloadPath(): string {
   return path.join(__dirname, "preload.js");
@@ -141,6 +145,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       executeCommand: (command, permissions) => {
         return executeComputerUseCommand(command, permissions, {
           captureScreenshot: captureComputerUseScreenshot,
+          snapshotStore: computerUseSnapshotStore,
         });
       },
       onChange: notifyDesktopComputerUseChanged,

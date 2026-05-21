@@ -225,4 +225,80 @@ describe("computer-use command visibility", () => {
       screenshotBytes,
     );
   });
+
+  it("should send click snapshot coordinates and mouse options", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/write-commands",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            kind: "element.click",
+            app: "Slack",
+            snapshotId: "snap_1",
+            x: 680,
+            y: 600,
+            button: "right",
+            clickCount: 2,
+            timeoutMs: 10_000,
+          });
+          return HttpResponse.json({
+            commandId: "cmd_click",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_click",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_click",
+            kind: "element.click",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {
+              app: "Slack",
+              snapshotId: "snap_1",
+              x: 680,
+              y: 600,
+              button: "right",
+              clickCount: 2,
+            },
+            result: { text: "clicked" },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "click",
+      "--app",
+      "Slack",
+      "--snapshot-id",
+      "snap_1",
+      "--x",
+      "680",
+      "--y",
+      "600",
+      "--button",
+      "right",
+      "--click-count",
+      "2",
+      "--timeout",
+      "10",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain('"text": "clicked"');
+  });
 });
