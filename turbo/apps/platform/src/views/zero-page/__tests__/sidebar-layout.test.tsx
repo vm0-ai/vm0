@@ -256,19 +256,21 @@ describe("sidebar layout - desktop shell text selection scope (SIDEBAR-D-056)", 
     detachedSetupPage({ context, path: "/agents" });
 
     await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenCalledWith(false);
+      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(false);
     });
 
+    setSidebarCollapsed.mockClear();
     await user.keyboard("{Control>}b{/Control}");
 
     await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenCalledWith(true);
+      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(true);
     });
 
+    setSidebarCollapsed.mockClear();
     await user.keyboard("{Control>}b{/Control}");
 
     await waitFor(() => {
-      expect(setSidebarCollapsed).toHaveBeenCalledWith(false);
+      expect(setSidebarCollapsed).toHaveBeenLastCalledWith(false);
     });
   });
 });

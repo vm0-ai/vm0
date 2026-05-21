@@ -91,6 +91,21 @@ function syncExpandedDesktopTrafficLightsRef(element: HTMLDivElement | null) {
   syncDesktopTrafficLights(false);
 }
 
+function DesktopTrafficLightStateSync() {
+  const off = useGet(sidebarOff$);
+  return (
+    <div
+      ref={
+        off
+          ? syncCollapsedDesktopTrafficLightsRef
+          : syncExpandedDesktopTrafficLightsRef
+      }
+      hidden
+      aria-hidden="true"
+    />
+  );
+}
+
 interface ManageNavItem {
   readonly id: SidebarNavId;
   readonly activeKeys: readonly RouteKey[];
@@ -280,11 +295,7 @@ function CollapsedSidebar() {
   }
   return (
     <aside className="zero-nav zero-collapsed-sidebar box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
-      <div
-        ref={syncCollapsedDesktopTrafficLightsRef}
-        className="zero-desktop-titlebar-drag-region"
-        aria-hidden="true"
-      />
+      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <CollapsedExpandButton />
       <CollapsedNavList />
       <CollapsedFooter />
@@ -446,11 +457,7 @@ function ExpandedHeader() {
   const onCollapse = useSidebarCollapseToggle();
   return (
     <div className="zero-sidebar-header shrink-0 px-2 pb-0">
-      <div
-        ref={syncExpandedDesktopTrafficLightsRef}
-        className="zero-desktop-titlebar-drag-region"
-        aria-hidden="true"
-      />
+      <div className="zero-desktop-titlebar-drag-region" aria-hidden="true" />
       <div className="zero-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
         <div className="min-w-0 flex-1">
           <ZeroOrgSwitcher />
@@ -688,6 +695,7 @@ function ExpandedFooterAccountInsights() {
 export function ZeroSidebar() {
   return (
     <>
+      <DesktopTrafficLightStateSync />
       <CollapsedSidebar />
       <ExpandedSidebar />
       <ManagePinnedAgentsDialogContainer />
