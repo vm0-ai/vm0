@@ -38,7 +38,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const { tier, successUrl, cancelUrl } = bodyResult.data;
 
-  const appOrigin = new URL(env("VM0_WEB_URL")).origin;
+  const appOrigin = new URL(env("APP_URL")).origin;
   if (
     new URL(successUrl).origin !== appOrigin ||
     new URL(cancelUrl).origin !== appOrigin

@@ -14,7 +14,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-const APP_ORIGIN = "http://localhost:3001";
+const APP_ORIGIN = "http://localhost:3002";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 
@@ -196,7 +196,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("returns 400 when successUrl origin does not match VM0_WEB_URL", async () => {
+  it("returns 400 when successUrl origin does not match APP_URL", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
