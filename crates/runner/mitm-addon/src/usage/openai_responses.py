@@ -36,25 +36,21 @@ def _store_quantity(target: dict, category: str, value: object) -> None:
         target[category] = value
 
 
-def _input_token_quantities(raw_usage: dict) -> tuple[int | None, int | None]:
+def _split_input_tokens(
+    input_tokens: object,
+    cached_tokens: object,
+) -> tuple[int | None, int | None]:
     # OpenAI's ``input_tokens`` includes cached tokens. The usage_event ledger
     # prices uncached input and cached input as separate platform categories,
     # so split the upstream total before reporting.
-    input_tokens = raw_usage.get("input_tokens")
     if not _is_usage_quantity(input_tokens):
         return None, None
 
-    cached_tokens = None
-    input_details = raw_usage.get("input_tokens_details")
-    if isinstance(input_details, dict):
-        raw_cached_tokens = input_details.get("cached_tokens")
-        if _is_usage_quantity(raw_cached_tokens):
-            cached_tokens = min(raw_cached_tokens, input_tokens)
+    if _is_usage_quantity(cached_tokens):
+        cached_input_tokens = min(cached_tokens, input_tokens)
+        return max(input_tokens - cached_input_tokens, 0), cached_input_tokens
 
-    uncached_tokens = input_tokens
-    if cached_tokens is not None:
-        uncached_tokens = max(input_tokens - cached_tokens, 0)
-    return uncached_tokens, cached_tokens
+    return input_tokens, None
 
 
 def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] = ()) -> None:
@@ -66,13 +62,10 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
-    raw_usage = {
-        "input_tokens": values.get((*prefix, "usage", "input_tokens")),
-        "input_tokens_details": {
-            "cached_tokens": values.get((*prefix, "usage", "input_tokens_details", "cached_tokens"))
-        },
-    }
-    uncached_input_tokens, cached_tokens = _input_token_quantities(raw_usage)
+    uncached_input_tokens, cached_tokens = _split_input_tokens(
+        values.get((*prefix, "usage", "input_tokens")),
+        values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
+    )
     _store_quantity(
         target,
         MODEL_USAGE_CATEGORY_INPUT,

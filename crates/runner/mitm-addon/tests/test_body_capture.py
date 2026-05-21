@@ -906,6 +906,18 @@ class TestExtractOpenAIResponsesUsageFromJson:
         ).encode()
         assert extract_openai_responses_usage_from_json(body, None) is None
 
+    def test_invalid_cached_input_does_not_suppress_valid_input(self):
+        body = (
+            b'{"model":"gpt-5.5","usage":{"input_tokens":10,'
+            b'"input_tokens_details":{"cached_tokens":"bad"}}}'
+        )
+        result = extract_openai_responses_usage_from_json(body, None)
+        assert result == {
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+        }
+        assert "tokens.cache_read" not in result
+
     def test_gzip_compressed(self, headers):
         original = (
             b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
