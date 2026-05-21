@@ -16,6 +16,8 @@ import {
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
   getRuntimeAvailableConnectorTypes,
+  isStaticConfidentialConnectorOAuthCredentials,
+  isStaticConnectorOAuthCredentials,
   isGoogleOAuthConnector,
   resolveConnectorOAuthClientCredentials,
 } from "../connector-utils";
@@ -420,7 +422,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(credentials).toStrictEqual({
       configured: false,
       client: getConnectorOAuthClientConfig("github"),
-      clientId: "github-client-id",
     });
   });
 
@@ -475,6 +476,60 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       configured: true,
       client,
     });
+  });
+
+  it("identifies static OAuth credential variants", () => {
+    const staticCredentials = getConnectorOAuthCredentials("github", (name) => {
+      return (
+        {
+          GH_OAUTH_CLIENT_ID: "github-client-id",
+          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
+        } as Record<string, string>
+      )[name];
+    });
+    if (!staticCredentials) {
+      throw new Error("Expected GitHub OAuth credentials");
+    }
+    expect(isStaticConnectorOAuthCredentials(staticCredentials)).toBeTruthy();
+    expect(
+      isStaticConfidentialConnectorOAuthCredentials(staticCredentials),
+    ).toBeTruthy();
+    if (isStaticConfidentialConnectorOAuthCredentials(staticCredentials)) {
+      const clientSecret: string = staticCredentials.clientSecret;
+      expect(clientSecret).toBe("github-client-secret");
+    }
+
+    const publicCredentials = resolveConnectorOAuthClientCredentials(
+      {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "public-client-id",
+      },
+      emptyEnv,
+    );
+    expect(isStaticConnectorOAuthCredentials(publicCredentials)).toBeTruthy();
+    expect(
+      isStaticConfidentialConnectorOAuthCredentials(publicCredentials),
+    ).toBeFalsy();
+    if (isStaticConnectorOAuthCredentials(publicCredentials)) {
+      const clientId: string = publicCredentials.clientId;
+      expect(clientId).toBe("public-client-id");
+    }
+
+    const dynamicClient = {
+      clientRegistration: "dynamic",
+      clientType: "public",
+      tokenEndpointAuthMethod: "none",
+    } as const;
+    const dynamicCredentials = resolveConnectorOAuthClientCredentials(
+      dynamicClient,
+      emptyEnv,
+    );
+    expect(isStaticConnectorOAuthCredentials(dynamicCredentials)).toBeFalsy();
+    expect(
+      isStaticConfidentialConnectorOAuthCredentials(dynamicCredentials),
+    ).toBeFalsy();
   });
 
   it("includes all connectors that share a configured OAuth app", () => {

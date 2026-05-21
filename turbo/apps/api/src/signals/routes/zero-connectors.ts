@@ -18,6 +18,8 @@ import {
 import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
+  isStaticConnectorOAuthCredentials,
+  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -196,6 +198,17 @@ async function buildProviderAuthorizeUrl(args: {
       state: args.state,
     }),
   );
+}
+
+function getAuthorizeClientId(
+  credentials: ConnectorOAuthCredentials,
+): string | undefined {
+  if (!credentials.configured) {
+    return undefined;
+  }
+  return isStaticConnectorOAuthCredentials(credentials)
+    ? credentials.clientId
+    : undefined;
 }
 
 function internalServerError(message: string) {
@@ -475,7 +488,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const authResult = await buildProviderAuthorizeUrl({
       type,
-      clientId: credentials.clientId,
+      clientId: getAuthorizeClientId(credentials),
       redirectUri,
       state,
     });
@@ -561,7 +574,7 @@ const startConnectorOauthInner$ = command(
 
     const authResult = await buildProviderAuthorizeUrl({
       type,
-      clientId: credentials.clientId,
+      clientId: getAuthorizeClientId(credentials),
       redirectUri,
       state,
     });

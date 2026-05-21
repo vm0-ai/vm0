@@ -5,6 +5,9 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   getConnectorOAuthConfig,
   getConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthCredentials,
+  isStaticConnectorOAuthCredentials,
+  type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -154,6 +157,22 @@ function redirectWithError(
   return response;
 }
 
+function getProviderCredentialArgs(credentials: ConnectorOAuthCredentials): {
+  readonly clientId?: string;
+  readonly clientSecret?: string;
+} {
+  if (!isStaticConnectorOAuthCredentials(credentials)) {
+    return {};
+  }
+  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
+    return {
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+    };
+  }
+  return { clientId: credentials.clientId };
+}
+
 async function exchangeTokenForConnector(args: {
   readonly connectorType: OAuthConnectorType;
   readonly code: string;
@@ -172,8 +191,7 @@ async function exchangeTokenForConnector(args: {
   }
 
   return await provider.exchangeCode({
-    clientId: credentials.clientId,
-    clientSecret: credentials.clientSecret,
+    ...getProviderCredentialArgs(credentials),
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,

@@ -291,6 +291,30 @@ export type ConnectorOAuthClientConfig =
       readonly tokenEndpointAuthMethod: "none";
     };
 
+export type StaticConfidentialConnectorOAuthClientConfig = Extract<
+  ConnectorOAuthClientConfig,
+  {
+    readonly clientRegistration: "static";
+    readonly clientType: "confidential";
+  }
+>;
+
+export type StaticPublicConnectorOAuthClientConfig = Extract<
+  ConnectorOAuthClientConfig,
+  {
+    readonly clientRegistration: "static";
+    readonly clientType: "public";
+  }
+>;
+
+export type DynamicPublicConnectorOAuthClientConfig = Extract<
+  ConnectorOAuthClientConfig,
+  {
+    readonly clientRegistration: "dynamic";
+    readonly clientType: "public";
+  }
+>;
+
 export interface ConnectorOAuthConfig {
   authorizationUrl?: string;
   tokenUrl: string;

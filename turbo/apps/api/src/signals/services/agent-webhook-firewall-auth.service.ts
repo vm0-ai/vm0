@@ -1,7 +1,12 @@
 import { Buffer } from "node:buffer";
 
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
-import { getConnectorOAuthCredentials } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorOAuthCredentials,
+  isStaticConfidentialConnectorOAuthCredentials,
+  isStaticConnectorOAuthCredentials,
+  type ConnectorOAuthCredentials,
+} from "@vm0/connectors/connector-utils";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -173,6 +178,22 @@ interface PreparedRefreshTokenContext {
   readonly sourceType: OAuthSecretSource;
   readonly provider: OAuthRefreshProvider;
   readonly context: RefreshTokenContext;
+}
+
+function getRefreshCredentialArgs(credentials: ConnectorOAuthCredentials): {
+  readonly clientId: string | undefined;
+  readonly clientSecret: string | undefined;
+} {
+  if (!isStaticConnectorOAuthCredentials(credentials)) {
+    return { clientId: undefined, clientSecret: undefined };
+  }
+  if (isStaticConfidentialConnectorOAuthCredentials(credentials)) {
+    return {
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+    };
+  }
+  return { clientId: credentials.clientId, clientSecret: undefined };
 }
 
 interface SyncRefreshTokensArgs {
@@ -634,11 +655,12 @@ function prepareRefreshTokenContext(
     return null;
   }
 
+  const credentialArgs = getRefreshCredentialArgs(credentials);
   const context: RefreshTokenContext = {
     refreshTokenSecret,
     currentRefreshToken,
-    clientId: credentials.clientId,
-    clientSecret: credentials.clientSecret,
+    clientId: credentialArgs.clientId,
+    clientSecret: credentialArgs.clientSecret,
     accessTokenSecret: provider.getSecretName(),
     secretUserId: resolveSecretUserId(
       args.sourceType,

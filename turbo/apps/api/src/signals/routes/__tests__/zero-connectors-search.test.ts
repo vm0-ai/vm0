@@ -4,7 +4,6 @@ import { zeroConnectorsSearchContract } from "@vm0/api-contracts/contracts/zero-
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
-  type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";

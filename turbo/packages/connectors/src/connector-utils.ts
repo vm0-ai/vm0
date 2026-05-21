@@ -9,8 +9,11 @@ import {
   type ConnectorCliAuthFlow,
   type ConnectorConfig,
   type ConnectorGenerationType,
+  type DynamicPublicConnectorOAuthClientConfig,
   type ConnectorOAuthClientConfig,
   type ConnectorOAuthConfig,
+  type StaticConfidentialConnectorOAuthClientConfig,
+  type StaticPublicConnectorOAuthClientConfig,
   type ConnectorType,
   type OAuthConnectorType,
 } from "./connectors";
@@ -172,11 +175,53 @@ export interface ConnectorOAuthEnvKeys {
   readonly clientSecret?: string;
 }
 
-export interface ConnectorOAuthCredentials {
-  readonly configured: boolean;
+export type UnconfiguredConnectorOAuthCredentials = {
+  readonly configured: false;
   readonly client: ConnectorOAuthClientConfig;
-  readonly clientId?: string;
-  readonly clientSecret?: string;
+};
+
+export type StaticConfidentialConnectorOAuthCredentials = {
+  readonly configured: true;
+  readonly client: StaticConfidentialConnectorOAuthClientConfig;
+  readonly clientId: string;
+  readonly clientSecret: string;
+};
+
+export type StaticPublicConnectorOAuthCredentials = {
+  readonly configured: true;
+  readonly client: StaticPublicConnectorOAuthClientConfig;
+  readonly clientId: string;
+};
+
+export type DynamicPublicConnectorOAuthCredentials = {
+  readonly configured: true;
+  readonly client: DynamicPublicConnectorOAuthClientConfig;
+};
+
+export type StaticConnectorOAuthCredentials =
+  | StaticConfidentialConnectorOAuthCredentials
+  | StaticPublicConnectorOAuthCredentials;
+
+export type ConnectorOAuthCredentials =
+  | UnconfiguredConnectorOAuthCredentials
+  | StaticConnectorOAuthCredentials
+  | DynamicPublicConnectorOAuthCredentials;
+
+export function isStaticConnectorOAuthCredentials(
+  credentials: ConnectorOAuthCredentials,
+): credentials is StaticConnectorOAuthCredentials {
+  return (
+    credentials.configured && credentials.client.clientRegistration === "static"
+  );
+}
+
+export function isStaticConfidentialConnectorOAuthCredentials(
+  credentials: ConnectorOAuthCredentials,
+): credentials is StaticConfidentialConnectorOAuthCredentials {
+  return (
+    isStaticConnectorOAuthCredentials(credentials) &&
+    credentials.client.clientType === "confidential"
+  );
 }
 
 function hasEnvValue(readEnv: ConnectorEnvReader, name: string): boolean {
@@ -198,13 +243,15 @@ export function resolveConnectorOAuthClientCredentials(
   }
 
   if ("clientId" in client) {
-    return {
-      configured: true,
-      client,
-      clientId: client.clientId,
-      clientSecret:
-        client.clientType === "confidential" ? client.clientSecret : undefined,
-    };
+    if (client.clientType === "confidential") {
+      return {
+        configured: true,
+        client,
+        clientId: client.clientId,
+        clientSecret: client.clientSecret,
+      };
+    }
+    return { configured: true, client, clientId: client.clientId };
   }
 
   const clientId = readEnv(client.clientIdEnv);
@@ -218,7 +265,7 @@ export function resolveConnectorOAuthClientCredentials(
 
   const clientSecret = readEnv(client.clientSecretEnv);
   if (!clientSecret) {
-    return { configured: false, client, clientId };
+    return { configured: false, client };
   }
 
   return { configured: true, client, clientId, clientSecret };
