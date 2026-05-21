@@ -1,8 +1,7 @@
 import { getConnectorOAuthConfig } from "@vm0/connectors/connector-utils";
 import { z } from "zod";
+import { buildGoogleAuthorizationUrl } from "./google-oauth";
 import { throwOAuthError } from "./oauth-error";
-
-const GMAIL_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
@@ -30,18 +29,7 @@ export function buildGmailAuthorizationUrl(
   redirectUri: string,
   state: string,
 ): string {
-  const oauthConfig = getConnectorOAuthConfig("gmail");
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: oauthConfig.scopes.join(" "),
-    state,
-    access_type: "offline",
-    prompt: "consent",
-  });
-
-  return `${GMAIL_AUTHORIZATION_URL}?${params.toString()}`;
+  return buildGoogleAuthorizationUrl("gmail", clientId, redirectUri, state);
 }
 
 /**
