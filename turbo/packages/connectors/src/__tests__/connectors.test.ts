@@ -717,9 +717,14 @@ describe("isGoogleOAuthConnector", () => {
       if (!authorizationUrl) {
         throw new Error(`${type}: Google connector must have authorizationUrl`);
       }
+      const parsedAuthorizationUrl = new URL(authorizationUrl);
 
       expect(
-        new URL(authorizationUrl).hostname,
+        parsedAuthorizationUrl.protocol,
+        `${type}: Google connector authorizationUrl must use https`,
+      ).toBe("https:");
+      expect(
+        parsedAuthorizationUrl.hostname,
         `${type}: Google connector authorizationUrl must use accounts.google.com`,
       ).toBe("accounts.google.com");
     }
@@ -731,7 +736,7 @@ describe("isGoogleOAuthConnector", () => {
       if (!oauthConfig?.authorizationUrl) {
         continue;
       }
-      if (!oauthConfig.authorizationUrl.startsWith("https://")) {
+      if (oauthConfig.authorizationUrl.startsWith("/")) {
         continue;
       }
 
