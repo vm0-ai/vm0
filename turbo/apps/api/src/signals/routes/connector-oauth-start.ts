@@ -1,12 +1,13 @@
 import {
   getConnectorAuthMethod,
   getConnectorOAuthCredentials,
+  isOAuthAuthorizationCodeConnectorType,
   type ConnectorEnvReader,
   type ConnectorOAuthCredentials,
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorType,
-  OAuthConnectorType,
+  OAuthAuthorizationCodeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
@@ -36,13 +37,14 @@ type PrepareResolvedConnectorOAuthStartResult =
 type ResolveConnectorOAuthStartTypeResult =
   | {
       readonly ok: true;
-      readonly type: OAuthConnectorType;
+      readonly type: OAuthAuthorizationCodeConnectorType;
     }
   | {
       readonly ok: false;
       readonly reason:
         | "connector_does_not_use_oauth"
-        | "oauth_provider_not_configured";
+        | "oauth_provider_not_configured"
+        | "unsupported_oauth_flow";
     };
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
@@ -58,6 +60,9 @@ export function resolveConnectorOAuthStartType(
   if (!isOAuthConnectorType(type)) {
     return { ok: false, reason: "oauth_provider_not_configured" };
   }
+  if (!isOAuthAuthorizationCodeConnectorType(type)) {
+    return { ok: false, reason: "unsupported_oauth_flow" };
+  }
   return { ok: true, type };
 }
 
@@ -65,7 +70,7 @@ export function resolveConnectorOAuthStartType(
 // ConnectorType first so non-OAuth connectors keep their route-specific errors,
 // then build the provider authorization URL at the normal async commit point.
 export function prepareResolvedConnectorOAuthStart(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthAuthorizationCodeConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareResolvedConnectorOAuthStartResult {
@@ -85,7 +90,7 @@ export function prepareResolvedConnectorOAuthStart(args: {
 }
 
 export async function buildResolvedConnectorOAuthAuthResult(args: {
-  readonly type: OAuthConnectorType;
+  readonly type: OAuthAuthorizationCodeConnectorType;
   readonly credentials: ConfiguredConnectorOAuthCredentials;
   readonly redirectUri: string;
   readonly state: string;

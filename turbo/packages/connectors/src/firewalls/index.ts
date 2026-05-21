@@ -646,7 +646,8 @@ export type NonFirewallConnectorType =
   // Other
   | "computer" // not an API connector
   | "local-browser" // virtual connector backed by a user-authorized browser host
-  | "local-agent"; // virtual connector backed by vm0's local-agent API
+  | "local-agent" // virtual connector backed by vm0's local-agent API
+  | "test-oauth-device"; // internal provider capability test connector
 
 /**
  * Compile-time exhaustiveness checks.

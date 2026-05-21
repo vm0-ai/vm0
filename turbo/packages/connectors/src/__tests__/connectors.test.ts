@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
-  type OAuthConnectorType,
+  type OAuthAuthorizationCodeConnectorType,
 } from "../connectors";
 import {
   getApiTokenFieldStorageType,
@@ -17,11 +17,14 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthClientConfig,
+  getConnectorOAuthDeviceAuthorizationConfig,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
   getConnectorOAuthConfigIfSupported,
   getConnectorOAuthFlow,
   getRuntimeAvailableConnectorTypes,
+  isOAuthAuthorizationCodeConnectorType,
+  isOAuthDeviceAuthorizationConnectorType,
   isStaticConfidentialConnectorOAuthCredentials,
   isStaticConnectorOAuthCredentials,
   isGoogleOAuthConnector,
@@ -32,6 +35,8 @@ import {
   buildConnectorOAuthAuthUrl,
   isOAuthConnectorType,
   CONNECTOR_OAUTH_PROVIDERS,
+  pollConnectorOAuthDeviceAuthorization,
+  startConnectorOAuthDeviceAuthorization,
 } from "../oauth-providers/provider-registry";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../oauth-providers/google-oauth-connectors";
 import { buildGoogleAuthorizationUrl } from "../oauth-providers/providers/google-oauth";
@@ -84,7 +89,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   x: "https://twitter.com/i/oauth2/authorize",
   xero: "https://login.xero.com/identity/connect/authorize",
   zoom: "https://zoom.us/oauth/authorize",
-} as const satisfies Record<keyof typeof CONNECTOR_OAUTH_PROVIDERS, string>;
+} as const satisfies Record<OAuthAuthorizationCodeConnectorType, string>;
 
 function authorizationBaseUrl(url: string): string {
   const parsed = new URL(url);
@@ -216,9 +221,9 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
     process.env.VERCEL_INTEGRATION_SLUG = "test-integration";
 
     try {
-      const providerTypes = Object.keys(
-        CONNECTOR_OAUTH_PROVIDERS,
-      ) as OAuthConnectorType[];
+      const providerTypes = connectorTypeSchema.options.filter(
+        isOAuthAuthorizationCodeConnectorType,
+      );
 
       for (const type of providerTypes) {
         const oauthConfig = getConnectorOAuthConfig(type);
@@ -244,6 +249,102 @@ describe("CONNECTOR_OAUTH_PROVIDERS", () => {
     } finally {
       restoreEnv(previousEnv);
     }
+  });
+
+  it("starts and polls the test OAuth device provider", async () => {
+    const credentials = getConnectorOAuthCredentials(
+      "test-oauth-device",
+      () => {
+        return undefined;
+      },
+    );
+    expect(credentials?.configured).toBe(true);
+
+    if (!credentials?.configured) {
+      throw new Error("Expected test-oauth-device OAuth credentials");
+    }
+
+    const startResult = await startConnectorOAuthDeviceAuthorization({
+      type: "test-oauth-device",
+      credentials,
+    });
+    expect(startResult).toStrictEqual({
+      deviceCode: "test-device:test-oauth-device-client:read",
+      userCode: "TEST-DEVICE",
+      verificationUri: "https://oauth-device.test/device",
+      verificationUriComplete:
+        "https://oauth-device.test/device?user_code=TEST-DEVICE",
+      expiresIn: 600,
+      interval: 5,
+    });
+
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "pending",
+      }),
+    ).resolves.toStrictEqual({ status: "pending" });
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "slow-down",
+      }),
+    ).resolves.toStrictEqual({ status: "pending", interval: 10 });
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "denied",
+      }),
+    ).resolves.toStrictEqual({
+      status: "denied",
+      error: "access_denied",
+      errorDescription: "User denied the device authorization request",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "expired",
+      }),
+    ).resolves.toStrictEqual({
+      status: "expired",
+      error: "expired_token",
+      errorDescription: "Device authorization expired",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: "error",
+      }),
+    ).resolves.toStrictEqual({
+      status: "error",
+      error: "invalid_request",
+      errorDescription: "Synthetic device authorization error",
+    });
+    await expect(
+      pollConnectorOAuthDeviceAuthorization({
+        type: "test-oauth-device",
+        credentials,
+        deviceCode: startResult.deviceCode,
+      }),
+    ).resolves.toStrictEqual({
+      status: "complete",
+      token: {
+        accessToken:
+          "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        refreshToken: null,
+        scopes: ["read"],
+        userInfo: {
+          id: "test-oauth-device-user",
+          username: "test-oauth-device-user",
+          email: "test-oauth-device@example.com",
+        },
+      },
+    });
   });
 });
 
@@ -477,6 +578,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
 
     expect(runtimeAvailableTypes).toContain("test-oauth");
+    expect(runtimeAvailableTypes).toContain("test-oauth-device");
   });
 
   it("includes OAuth connectors only when client id and secret are configured", () => {
@@ -766,7 +868,7 @@ describe("getConnectorOAuthConfigIfSupported", () => {
 describe("connector OAuth authorization-code config", () => {
   it("declares the current OAuth connectors as authorization-code flows", () => {
     for (const type of connectorTypeSchema.options) {
-      if (!isOAuthConnectorType(type)) {
+      if (!isOAuthAuthorizationCodeConnectorType(type)) {
         continue;
       }
 
@@ -792,6 +894,31 @@ describe("connector OAuth authorization-code config", () => {
         `${type}: authorization URL should be provider-owned`,
       ).toBe(false);
     }
+  });
+});
+
+describe("connector OAuth device authorization config", () => {
+  it("declares the test OAuth device connector as a device authorization flow", () => {
+    expect(isOAuthDeviceAuthorizationConnectorType("test-oauth-device")).toBe(
+      true,
+    );
+    expect(getConnectorOAuthFlow("test-oauth-device")).toBe(
+      "device-authorization",
+    );
+    expect(
+      getConnectorOAuthDeviceAuthorizationConfig("test-oauth-device"),
+    ).toMatchObject({
+      flow: "device-authorization",
+      deviceAuthorizationUrl: "https://oauth-device.test/device/code",
+      tokenUrl: "https://oauth-device.test/token",
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        tokenEndpointAuthMethod: "none",
+        clientId: "test-oauth-device-client",
+      },
+      scopes: ["read"],
+    });
   });
 });
 

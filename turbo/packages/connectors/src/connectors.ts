@@ -201,6 +201,7 @@ import { supadata } from "./connectors/supadata";
 import { supermemory } from "./connectors/supermemory";
 import { tavily } from "./connectors/tavily";
 import { testOauth } from "./connectors/test-oauth";
+import { testOauthDevice } from "./connectors/test-oauth-device";
 import { testrail } from "./connectors/testrail";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
@@ -315,6 +316,8 @@ export type DynamicPublicConnectorOAuthClientConfig = Extract<
   }
 >;
 
+export type ConnectorOAuthFlow = "authorization-code" | "device-authorization";
+
 export interface ConnectorOAuthAuthorizationCodeConfig {
   readonly flow: "authorization-code";
   readonly tokenUrl: string;
@@ -322,7 +325,17 @@ export interface ConnectorOAuthAuthorizationCodeConfig {
   readonly scopes: string[];
 }
 
-export type ConnectorOAuthConfig = ConnectorOAuthAuthorizationCodeConfig;
+export interface ConnectorOAuthDeviceAuthorizationConfig {
+  readonly flow: "device-authorization";
+  readonly deviceAuthorizationUrl: string;
+  readonly tokenUrl: string;
+  readonly client: StaticPublicConnectorOAuthClientConfig;
+  readonly scopes: string[];
+}
+
+export type ConnectorOAuthConfig =
+  | ConnectorOAuthAuthorizationCodeConfig
+  | ConnectorOAuthDeviceAuthorizationConfig;
 
 /**
  * CLI auth configuration for connectors that can import credentials through a
@@ -746,6 +759,7 @@ const CONNECTOR_TYPES_DEF = {
   ...supermemory,
   ...tavily,
   ...testOauth,
+  ...testOauthDevice,
   ...testrail,
   ...tldv,
   ...together,
@@ -776,6 +790,11 @@ export type OAuthConnectorType = {
 }[ConnectorType];
 export type OAuthAuthorizationCodeConnectorType = {
   [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "authorization-code"
+    ? Type
+    : never;
+}[OAuthConnectorType];
+export type OAuthDeviceAuthorizationConnectorType = {
+  [Type in OAuthConnectorType]: (typeof CONNECTOR_TYPES_DEF)[Type]["oauth"]["flow"] extends "device-authorization"
     ? Type
     : never;
 }[OAuthConnectorType];

@@ -259,6 +259,18 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeTruthy();
   });
 
+  it("returns 400 when authorizing a device authorization connector", async () => {
+    const response = await requestAuthorize("test-oauth-device", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error:
+        "test-oauth-device connector does not use authorization-code OAuth",
+    });
+  });
+
   it("sets Secure on OAuth cookies in production", async () => {
     mockEnv("ENV", "production");
 
@@ -757,6 +769,21 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         message: "serpapi connector does not use OAuth",
+        code: "BAD_REQUEST",
+      },
+    });
+  });
+
+  it("returns 400 when starting browser OAuth for a device authorization connector", async () => {
+    const response = await requestOauthStart("test-oauth-device", {
+      authenticated: true,
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message:
+          "test-oauth-device connector does not use authorization-code OAuth",
         code: "BAD_REQUEST",
       },
     });

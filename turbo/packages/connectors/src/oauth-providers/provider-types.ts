@@ -1,7 +1,9 @@
 import type {
   CONNECTOR_TYPES,
   ConnectorOAuthClientConfig,
+  OAuthAuthorizationCodeConnectorType,
   OAuthConnectorType,
+  OAuthDeviceAuthorizationConnectorType,
 } from "@vm0/connectors/connectors";
 
 export interface ProviderEnv {
@@ -62,6 +64,14 @@ interface OAuthRevokeFlowArgs {
   readonly accessToken: string;
 }
 
+interface OAuthDeviceAuthorizationStartFlowArgs {
+  readonly scopes: readonly string[];
+}
+
+interface OAuthDeviceAuthorizationPollFlowArgs {
+  readonly deviceCode: string;
+}
+
 type OptionalClientCredentialArgs = {
   readonly clientId?: string;
   readonly clientSecret?: string;
@@ -79,11 +89,61 @@ export type OAuthRefreshArgs = OAuthRefreshFlowArgs &
 export type OAuthRevokeArgs = OAuthRevokeFlowArgs &
   OptionalClientCredentialArgs;
 
+export type OAuthDeviceAuthorizationStartArgs =
+  OAuthDeviceAuthorizationStartFlowArgs & OptionalClientCredentialArgs;
+
+export type OAuthDeviceAuthorizationPollArgs =
+  OAuthDeviceAuthorizationPollFlowArgs & OptionalClientCredentialArgs;
+
 export interface OAuthRefreshResult {
   readonly accessToken: string;
   readonly refreshToken: string | null;
   readonly expiresIn?: number;
 }
+
+export interface OAuthDeviceAuthorizationStartResult {
+  readonly deviceCode: string;
+  readonly userCode: string;
+  readonly verificationUri: string;
+  readonly verificationUriComplete?: string;
+  readonly expiresIn: number;
+  readonly interval?: number;
+}
+
+export interface OAuthDeviceAuthorizationPendingResult {
+  readonly status: "pending";
+  readonly interval?: number;
+}
+
+export interface OAuthDeviceAuthorizationCompleteResult {
+  readonly status: "complete";
+  readonly token: OAuthTokenResult;
+}
+
+export interface OAuthDeviceAuthorizationDeniedResult {
+  readonly status: "denied";
+  readonly error?: string;
+  readonly errorDescription?: string;
+}
+
+export interface OAuthDeviceAuthorizationExpiredResult {
+  readonly status: "expired";
+  readonly error?: string;
+  readonly errorDescription?: string;
+}
+
+export interface OAuthDeviceAuthorizationErrorResult {
+  readonly status: "error";
+  readonly error: string;
+  readonly errorDescription?: string;
+}
+
+export type OAuthDeviceAuthorizationPollResult =
+  | OAuthDeviceAuthorizationPendingResult
+  | OAuthDeviceAuthorizationCompleteResult
+  | OAuthDeviceAuthorizationDeniedResult
+  | OAuthDeviceAuthorizationExpiredResult
+  | OAuthDeviceAuthorizationErrorResult;
 
 export type BuildAuthUrlFn = (
   args: OAuthAuthorizeArgs,
@@ -98,6 +158,14 @@ export type RefreshTokenFn = (
 ) => Promise<OAuthRefreshResult>;
 
 export type RevokeTokenFn = (args: OAuthRevokeArgs) => Promise<void>;
+
+export type StartDeviceAuthorizationFn = (
+  args: OAuthDeviceAuthorizationStartArgs,
+) => Promise<OAuthDeviceAuthorizationStartResult>;
+
+export type PollDeviceAuthorizationFn = (
+  args: OAuthDeviceAuthorizationPollArgs,
+) => Promise<OAuthDeviceAuthorizationPollResult>;
 
 type ConnectorOAuthClientFor<T extends OAuthConnectorType> =
   (typeof CONNECTOR_TYPES)[T]["oauth"]["client"];
@@ -134,11 +202,21 @@ export type ConnectorOAuthRefreshArgs<T extends OAuthConnectorType> =
 export type ConnectorOAuthRevokeArgs<T extends OAuthConnectorType> =
   OAuthRevokeFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
 
-type BuildConnectorAuthUrlFn<T extends OAuthConnectorType> = (
+export type ConnectorOAuthDeviceAuthorizationStartArgs<
+  T extends OAuthDeviceAuthorizationConnectorType,
+> = OAuthDeviceAuthorizationStartFlowArgs &
+  StaticClientIdArgs<ConnectorOAuthClientFor<T>>;
+
+export type ConnectorOAuthDeviceAuthorizationPollArgs<
+  T extends OAuthDeviceAuthorizationConnectorType,
+> = OAuthDeviceAuthorizationPollFlowArgs &
+  TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
+
+type BuildConnectorAuthUrlFn<T extends OAuthAuthorizationCodeConnectorType> = (
   args: ConnectorOAuthAuthorizeArgs<T>,
 ) => string | AuthUrlResult | Promise<string | AuthUrlResult>;
 
-type ExchangeConnectorCodeFn<T extends OAuthConnectorType> = (
+type ExchangeConnectorCodeFn<T extends OAuthAuthorizationCodeConnectorType> = (
   args: ConnectorOAuthExchangeArgs<T>,
 ) => Promise<OAuthTokenResult>;
 
@@ -149,6 +227,18 @@ type RefreshConnectorTokenFn<T extends OAuthConnectorType> = (
 type RevokeConnectorTokenFn<T extends OAuthConnectorType> = (
   args: ConnectorOAuthRevokeArgs<T>,
 ) => Promise<void>;
+
+type StartConnectorDeviceAuthorizationFn<
+  T extends OAuthDeviceAuthorizationConnectorType,
+> = (
+  args: ConnectorOAuthDeviceAuthorizationStartArgs<T>,
+) => Promise<OAuthDeviceAuthorizationStartResult>;
+
+type PollConnectorDeviceAuthorizationFn<
+  T extends OAuthDeviceAuthorizationConnectorType,
+> = (
+  args: ConnectorOAuthDeviceAuthorizationPollArgs<T>,
+) => Promise<OAuthDeviceAuthorizationPollResult>;
 
 export interface OAuthProviderMetadata {
   getSecretName(): string;
@@ -162,6 +252,11 @@ export interface OAuthProvider extends OAuthProviderMetadata {
 export type OAuthAuthorizationCodeProvider = OAuthProvider & {
   buildAuthUrl: BuildAuthUrlFn;
   exchangeCode: ExchangeCodeFn;
+};
+
+export type OAuthDeviceAuthorizationProvider = OAuthProvider & {
+  startDeviceAuthorization: StartDeviceAuthorizationFn;
+  pollDeviceAuthorization: PollDeviceAuthorizationFn;
 };
 
 export type OAuthRefreshProvider = OAuthProvider & {
@@ -182,11 +277,19 @@ type OAuthNoRevocationProvider = {
   revokeToken?: never;
 };
 
-type ConnectorOAuthAuthorizationCodeProvider<T extends OAuthConnectorType> =
-  OAuthProviderMetadata & {
-    buildAuthUrl: BuildConnectorAuthUrlFn<T>;
-    exchangeCode: ExchangeConnectorCodeFn<T>;
-  };
+export type ConnectorOAuthAuthorizationCodeProvider<
+  T extends OAuthAuthorizationCodeConnectorType,
+> = OAuthProviderMetadata & {
+  buildAuthUrl: BuildConnectorAuthUrlFn<T>;
+  exchangeCode: ExchangeConnectorCodeFn<T>;
+};
+
+export type ConnectorOAuthDeviceAuthorizationProvider<
+  T extends OAuthDeviceAuthorizationConnectorType,
+> = OAuthProviderMetadata & {
+  startDeviceAuthorization: StartConnectorDeviceAuthorizationFn<T>;
+  pollDeviceAuthorization: PollConnectorDeviceAuthorizationFn<T>;
+};
 
 export type ConnectorOAuthRefreshProvider<T extends OAuthConnectorType> = {
   getRefreshSecretName(): string;
@@ -197,8 +300,15 @@ export type ConnectorOAuthRevocationProvider<T extends OAuthConnectorType> = {
   revokeToken: RevokeConnectorTokenFn<T>;
 };
 
+type ConnectorOAuthFlowProvider<T extends OAuthConnectorType> =
+  T extends OAuthAuthorizationCodeConnectorType
+    ? ConnectorOAuthAuthorizationCodeProvider<T>
+    : T extends OAuthDeviceAuthorizationConnectorType
+      ? ConnectorOAuthDeviceAuthorizationProvider<T>
+      : never;
+
 export type ConnectorOAuthProviderFor<T extends OAuthConnectorType> =
-  ConnectorOAuthAuthorizationCodeProvider<T> &
+  ConnectorOAuthFlowProvider<T> &
     (ConnectorOAuthRefreshProvider<T> | OAuthNoRefreshProvider) &
     (ConnectorOAuthRevocationProvider<T> | OAuthNoRevocationProvider);
 
@@ -226,5 +336,33 @@ export function isOAuthRefreshProvider(
     typeof provider.getRefreshSecretName === "function" &&
     "refreshToken" in provider &&
     typeof provider.refreshToken === "function"
+  );
+}
+
+export function isOAuthAuthorizationCodeProvider(
+  provider: OAuthProviderMetadata,
+): provider is OAuthProviderMetadata & {
+  buildAuthUrl: BuildAuthUrlFn;
+  exchangeCode: ExchangeCodeFn;
+} {
+  return (
+    "buildAuthUrl" in provider &&
+    typeof provider.buildAuthUrl === "function" &&
+    "exchangeCode" in provider &&
+    typeof provider.exchangeCode === "function"
+  );
+}
+
+export function isOAuthDeviceAuthorizationProvider(
+  provider: OAuthProviderMetadata,
+): provider is OAuthProviderMetadata & {
+  startDeviceAuthorization: StartDeviceAuthorizationFn;
+  pollDeviceAuthorization: PollDeviceAuthorizationFn;
+} {
+  return (
+    "startDeviceAuthorization" in provider &&
+    typeof provider.startDeviceAuthorization === "function" &&
+    "pollDeviceAuthorization" in provider &&
+    typeof provider.pollDeviceAuthorization === "function"
   );
 }

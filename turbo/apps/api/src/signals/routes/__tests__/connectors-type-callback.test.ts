@@ -1353,6 +1353,29 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
+  it("redirects device authorization callbacks to the connector error page", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "test-oauth-device",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("type")).toBe("test-oauth-device");
+    expect(url.searchParams.get("message")).toBe(
+      "test-oauth-device connector does not use authorization-code OAuth",
+    );
+  });
+
   it("rejects state mismatch and clears OAuth cookies", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

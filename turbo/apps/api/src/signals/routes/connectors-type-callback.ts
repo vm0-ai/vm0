@@ -3,12 +3,13 @@ import { unescape as decodeCookieComponent } from "node:querystring";
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
+  isOAuthAuthorizationCodeConnectorType,
   getConnectorOAuthCredentials,
   getConnectorOAuthConfig,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type OAuthConnectorType,
+  type OAuthAuthorizationCodeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
@@ -52,7 +53,7 @@ type CallbackIdentity = {
 };
 
 type CompleteOAuthCallbackInput = {
-  readonly connectorType: OAuthConnectorType;
+  readonly connectorType: OAuthAuthorizationCodeConnectorType;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -102,7 +103,7 @@ type ClaimedCallbackState =
 type ResolvedOAuthConnectorType =
   | {
       readonly ok: true;
-      readonly connectorType: OAuthConnectorType;
+      readonly connectorType: OAuthAuthorizationCodeConnectorType;
     }
   | {
       readonly ok: false;
@@ -164,7 +165,7 @@ function missingStateRedirectResponse(origin: string, type: string): Response {
 }
 
 async function exchangeTokenForConnector(args: {
-  readonly connectorType: OAuthConnectorType;
+  readonly connectorType: OAuthAuthorizationCodeConnectorType;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
@@ -191,7 +192,7 @@ async function exchangeTokenForConnector(args: {
 }
 
 function getRequestedScopes(
-  connectorType: OAuthConnectorType,
+  connectorType: OAuthAuthorizationCodeConnectorType,
 ): readonly string[] {
   return getConnectorOAuthConfig(connectorType).scopes;
 }
@@ -229,6 +230,16 @@ function resolveOAuthConnectorType(
       ),
     };
   }
+  if (!isOAuthAuthorizationCodeConnectorType(connectorType)) {
+    return {
+      ok: false,
+      response: redirectWithError(
+        origin,
+        type,
+        `${type} connector does not use authorization-code OAuth`,
+      ),
+    };
+  }
 
   return { ok: true, connectorType };
 }
@@ -236,7 +247,7 @@ function resolveOAuthConnectorType(
 async function claimStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: OAuthConnectorType;
+  readonly connectorType: OAuthAuthorizationCodeConnectorType;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
@@ -265,7 +276,7 @@ async function claimStoredOAuthStateForCallback(args: {
 async function rejectInvalidStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorType: OAuthConnectorType;
+  readonly connectorType: OAuthAuthorizationCodeConnectorType;
   readonly origin: string;
   readonly type: string;
   readonly signal: AbortSignal;
