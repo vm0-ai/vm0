@@ -62,7 +62,7 @@ import {
   connectorOAuthRedirectResponse,
 } from "./connector-oauth-route-state";
 import {
-  prepareConnectorOAuthStart,
+  prepareResolvedConnectorOAuthStart,
   resolveConnectorOAuthStartType,
 } from "./connector-oauth-start";
 
@@ -409,7 +409,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       );
     }
 
-    const prepared = await prepareConnectorOAuthStart({
+    const prepared = await prepareResolvedConnectorOAuthStart({
       type: startType.type,
       origin,
       readEnv: optionalEnv,
@@ -499,7 +499,7 @@ const startConnectorOauthInner$ = command(
     }
 
     const origin = getConnectorOAuthOrigin(request);
-    const prepared = await prepareConnectorOAuthStart({
+    const prepared = await prepareResolvedConnectorOAuthStart({
       type: startType.type,
       origin,
       readEnv: optionalEnv,

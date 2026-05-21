@@ -15,7 +15,7 @@ import {
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
-type PrepareConnectorOAuthStartResult =
+type PrepareResolvedConnectorOAuthStartResult =
   | {
       readonly ok: true;
       readonly state: string;
@@ -55,11 +55,14 @@ export function resolveConnectorOAuthStartType(
   return { ok: true, type };
 }
 
-export async function prepareConnectorOAuthStart(args: {
+// This helper intentionally prepares only provider-specific data. Callers must
+// resolve the route's ConnectorType first so non-OAuth connectors keep their
+// existing route-specific error responses.
+export async function prepareResolvedConnectorOAuthStart(args: {
   readonly type: OAuthConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
-}): Promise<PrepareConnectorOAuthStartResult> {
+}): Promise<PrepareResolvedConnectorOAuthStartResult> {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
   const credentials = getConnectorOAuthCredentials(args.type, args.readEnv);
