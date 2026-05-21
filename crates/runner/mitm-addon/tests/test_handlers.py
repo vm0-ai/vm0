@@ -373,6 +373,34 @@ class TestRequestHandler:
         assert flow.metadata["firewall_base"] == "https://api.github.com"
         assert flow.request.headers["Authorization"] == "Bearer x"
 
+    async def test_accepts_matching_non_default_host_authority_port(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    ):
+        reg_path = _write_github_firewall_registry(
+            tmp_path,
+            base="https://api.github.com:8443",
+        )
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="203.0.113.10",
+            port=8443,
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com:8443")),
+        )
+
+        with (
+            mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+            fake_firewall_headers(),
+        ):
+            await mitm_addon.request(flow)
+
+        assert flow.response is None
+        assert flow.metadata["firewall_base"] == "https://api.github.com:8443"
+        assert flow.metadata["original_url"] == "https://api.github.com:8443/repos"
+        assert flow.request.headers["Authorization"] == "Bearer x"
+
     async def test_rejects_host_authority_port_mismatch(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
