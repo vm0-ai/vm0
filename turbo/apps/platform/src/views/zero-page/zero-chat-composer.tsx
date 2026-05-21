@@ -5,6 +5,7 @@ import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import {
   useGet,
   useSet,
+  useLoadable,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
@@ -63,6 +64,7 @@ import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attach
 import type { Command, Computed } from "ccstate";
 import {
   zeroChatAttachments$ as singletonAttachments$,
+  zeroChatAttachmentUploadSummary$ as singletonAttachmentUploadSummary$,
   uploadZeroAttachment$ as singletonUpload$,
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
@@ -322,12 +324,18 @@ function resolveComposerCanSend({
   draftCanSend,
   input,
   visibleAttachmentCount,
+  uploadsReady,
 }: {
   draftCanSend: boolean;
   input: string;
   visibleAttachmentCount: number;
+  uploadsReady: boolean;
 }): boolean {
-  return draftCanSend && (input.trim() !== "" || visibleAttachmentCount > 0);
+  return (
+    uploadsReady &&
+    draftCanSend &&
+    (input.trim() !== "" || visibleAttachmentCount > 0)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -867,6 +875,9 @@ function useResolvedComposerSignals(
   const attachments = useGet(
     draft ? draft.attachments$ : singletonAttachments$,
   );
+  const attachmentUploadSummary = useLoadable(
+    draft ? draft.attachmentUploadSummary$ : singletonAttachmentUploadSummary$,
+  );
   const canSendSingleton = useGet(singletonCanSend$);
   const canSend = draft
     ? input.trim() !== "" || attachments.length > 0
@@ -894,6 +905,7 @@ function useResolvedComposerSignals(
   return {
     canSend,
     attachments,
+    attachmentUploadSummary,
     uploadAttachment,
     restoreAttachments,
     removeAttachment,
@@ -1084,6 +1096,7 @@ export function ZeroChatComposer({
   const {
     canSend: draftCanSend,
     attachments,
+    attachmentUploadSummary,
     uploadAttachment,
     restoreAttachments,
     removeAttachment,
@@ -1105,6 +1118,10 @@ export function ZeroChatComposer({
     draftCanSend,
     input,
     visibleAttachmentCount: visibleAttachments.length,
+    uploadsReady:
+      attachmentUploadSummary.state === "hasData" &&
+      attachmentUploadSummary.data.readyCount ===
+        attachmentUploadSummary.data.attachmentCount,
   });
   const canSubmit = canSend && !submitBlocker;
 

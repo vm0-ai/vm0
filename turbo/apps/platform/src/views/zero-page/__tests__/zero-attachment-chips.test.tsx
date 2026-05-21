@@ -851,89 +851,101 @@ describe("chat-i-065: new-thread send includes structured attachFiles", () => {
     });
   });
 
-  it("posts only fulfilled uploaded attachments when another upload fails", async () => {
+  it("surfaces and removes failed uploads before sending remaining attachments", async () => {
     const user = userEvent.setup();
     const okUploadUrl = "https://mock-upload.example.com/ok.txt";
     const failedUploadUrl = "https://mock-upload.example.com/failed.txt";
     let capturedAttachFiles: unknown = "not-called";
+    const toastErrorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+      return "" as ReturnType<typeof toast.error>;
+    });
 
-    server.use(
-      mockApi(zeroUploadsContract.prepare, ({ body, respond }) => {
-        if (body.filename === "ok.txt") {
+    try {
+      server.use(
+        mockApi(zeroUploadsContract.prepare, ({ body, respond }) => {
+          if (body.filename === "ok.txt") {
+            return respond(200, {
+              id: "upload-ok",
+              filename: body.filename,
+              contentType: body.contentType,
+              size: body.size,
+              uploadUrl: okUploadUrl,
+              url: "https://example.com/ok.txt",
+            });
+          }
+
           return respond(200, {
-            id: "upload-ok",
+            id: "upload-failed",
             filename: body.filename,
             contentType: body.contentType,
             size: body.size,
-            uploadUrl: okUploadUrl,
-            url: "https://example.com/ok.txt",
+            uploadUrl: failedUploadUrl,
+            url: "https://example.com/failed.txt",
           });
-        }
+        }),
+        http.put(okUploadUrl, () => {
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.put(failedUploadUrl, () => {
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+      mockChatLifecycle();
+      server.use(
+        mockApi(chatMessagesContract.send, ({ body, respond }) => {
+          capturedAttachFiles = body.attachFiles;
+          return respond(201, {
+            runId: "run-new-2",
+            threadId: "thread-test-2",
+            status: "pending",
+            createdAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+      );
 
-        return respond(200, {
-          id: "upload-failed",
-          filename: body.filename,
-          contentType: body.contentType,
-          size: body.size,
-          uploadUrl: failedUploadUrl,
-          url: "https://example.com/failed.txt",
-        });
-      }),
-      http.put(okUploadUrl, () => {
-        return new HttpResponse(null, { status: 200 });
-      }),
-      http.put(failedUploadUrl, () => {
-        return new HttpResponse(null, { status: 500 });
-      }),
-    );
-    mockChatLifecycle();
-    server.use(
-      mockApi(chatMessagesContract.send, ({ body, respond }) => {
-        capturedAttachFiles = body.attachFiles;
-        return respond(201, {
-          runId: "run-new-2",
-          threadId: "thread-test-2",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        });
-      }),
-    );
+      detachedSetupPage({
+        context,
+        path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+      });
 
-    detachedSetupPage({
-      context,
-      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
-    });
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+      });
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    });
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    await user.upload(fileInput!, [
-      new File(["ok"], "ok.txt", { type: "text/plain" }),
-      new File(["failed"], "failed.txt", { type: "text/plain" }),
-    ]);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
-      expect(screen.getByLabelText("Remove failed.txt")).toBeInTheDocument();
-    });
-
-    const textarea = screen.getByPlaceholderText(
-      PLACEHOLDER,
-    ) as HTMLTextAreaElement;
-    await sendMessageInUI(user, textarea, "Please review");
-
-    await waitFor(() => {
-      expect(capturedAttachFiles).toStrictEqual([
-        {
-          id: "upload-ok",
-          filename: "ok.txt",
-          contentType: "text/plain",
-          size: 2,
-        },
+      const fileInput =
+        document.querySelector<HTMLInputElement>('input[type="file"]');
+      await user.upload(fileInput!, [
+        new File(["ok"], "ok.txt", { type: "text/plain" }),
+        new File(["failed"], "failed.txt", { type: "text/plain" }),
       ]);
-    });
+
+      await waitFor(() => {
+        expect(toastErrorSpy).toHaveBeenCalledWith(
+          "Failed to upload failed.txt",
+        );
+      });
+      await waitFor(() => {
+        expect(screen.queryByTitle("failed.txt")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(
+        PLACEHOLDER,
+      ) as HTMLTextAreaElement;
+      await sendMessageInUI(user, textarea, "Please review");
+
+      await waitFor(() => {
+        expect(capturedAttachFiles).toStrictEqual([
+          {
+            id: "upload-ok",
+            filename: "ok.txt",
+            contentType: "text/plain",
+            size: 2,
+          },
+        ]);
+      });
+    } finally {
+      toastErrorSpy.mockRestore();
+    }
   });
 });

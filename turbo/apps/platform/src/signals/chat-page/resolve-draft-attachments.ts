@@ -90,9 +90,35 @@ export function collectSuccessfulAttachmentInfos(
   });
 }
 
+function attachmentUploadFailureMessage(
+  attachments: readonly ZeroChatAttachment[],
+  results: readonly PromiseSettledResult<AttachmentFileInfo | null>[],
+): string | null {
+  const failedFilenames = results.flatMap((result, index) => {
+    const attachment = attachments[index];
+    if (!attachment) {
+      return [];
+    }
+    if (result.status === "rejected" || result.value === null) {
+      return [attachment.filename];
+    }
+    return [];
+  });
+
+  if (failedFilenames.length === 0) {
+    return null;
+  }
+
+  if (failedFilenames.length === 1) {
+    return `Failed to upload ${failedFilenames[0]}. Remove it and try again.`;
+  }
+
+  return "Failed to upload one or more attachments. Remove them and try again.";
+}
+
 /**
  * Resolves a draft's pending attachments (waits for uploads to finish,
- * filters out cancelled/failed entries) and shapes the result into both the
+ * rejects failed entries) and shapes the result into both the
  * outbound `AttachFile[]` for the send contract and the optimistic-UI
  * `PagedChatMessage["attachFiles"]` shape.
  *
@@ -123,6 +149,14 @@ export const prepareUserMessageFromDraft$ = command(
       }),
     );
     signal.throwIfAborted();
+
+    const uploadFailureMessage = attachmentUploadFailureMessage(
+      allAttachments,
+      allInfos,
+    );
+    if (uploadFailureMessage) {
+      throw new Error(uploadFailureMessage);
+    }
 
     const ready = collectSuccessfulAttachmentInfos(allAttachments, allInfos);
 

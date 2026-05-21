@@ -1,10 +1,11 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { resetSignal } from "../utils.ts";
+import { resetSignal, tapError } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -120,6 +121,11 @@ export interface ZeroChatAttachment {
   upload$: Command<Promise<void>, [AbortSignal]>;
 }
 
+export interface AttachmentUploadSummary {
+  attachmentCount: number;
+  readyCount: number;
+}
+
 function createChatAttachment(file: File): ZeroChatAttachment {
   const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
@@ -199,6 +205,7 @@ export interface DraftSignals {
   input$: Computed<string>;
   setInput$: Command<void, [string]>;
   attachments$: Computed<ZeroChatAttachment[]>;
+  attachmentUploadSummary$: Computed<Promise<AttachmentUploadSummary>>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
@@ -259,6 +266,23 @@ export function createDraftSignals(): DraftSignals {
     return get(internalAttachments$);
   });
 
+  const attachmentUploadSummary$ = computed(
+    async (get): Promise<AttachmentUploadSummary> => {
+      const attachments = get(internalAttachments$);
+      const infos = await Promise.all(
+        attachments.map((attachment) => {
+          return get(attachment.fileInfo$);
+        }),
+      );
+      return {
+        attachmentCount: attachments.length,
+        readyCount: infos.filter((info) => {
+          return info !== null;
+        }).length,
+      };
+    },
+  );
+
   const uploadAttachment$ = command(
     async ({ set }, file: File, signal: AbortSignal) => {
       const attachment = createChatAttachment(file);
@@ -266,7 +290,14 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      await set(attachment.upload$, signal);
+      await tapError(set(attachment.upload$, signal), () => {
+        set(internalAttachments$, (prev) => {
+          return prev.filter((a) => {
+            return a !== attachment;
+          });
+        });
+        toast.error(`Failed to upload ${file.name}`);
+      });
     },
   );
 
@@ -321,6 +352,7 @@ export function createDraftSignals(): DraftSignals {
     input$,
     setInput$,
     attachments$,
+    attachmentUploadSummary$,
     uploadAttachment$,
     restoreAttachments$,
     removeAttachment$,
@@ -364,6 +396,13 @@ const zeroChatInput$ = computed((get) => {
 export const zeroChatAttachments$ = computed((get) => {
   const draft = get(currentDraft$);
   return draft ? get(draft.attachments$) : [];
+});
+
+export const zeroChatAttachmentUploadSummary$ = computed(async (get) => {
+  const draft = get(currentDraft$);
+  return draft
+    ? await get(draft.attachmentUploadSummary$)
+    : { attachmentCount: 0, readyCount: 0 };
 });
 
 export const uploadZeroAttachment$ = command(
