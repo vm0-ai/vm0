@@ -302,17 +302,30 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
+    const sessionId = randomUUID();
     const response = await requestAuthorize("github", {
       authenticated: true,
-      session: "session-123",
+      session: sessionId,
     });
 
     const cookies = response.headers.getSetCookie();
     expect(
       cookies.some((cookie) => {
-        return cookie.startsWith("connector_oauth_session=session-123");
+        return cookie.startsWith(`connector_oauth_session=${sessionId}`);
       }),
     ).toBeTruthy();
+  });
+
+  it("rejects invalid connector session ids", async () => {
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      session: "not-a-session-id",
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid connector session",
+    });
   });
 
   it("allows dynamic public OAuth authorize without env credentials", async () => {

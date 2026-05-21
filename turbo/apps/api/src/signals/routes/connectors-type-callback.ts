@@ -48,6 +48,7 @@ import {
   CONNECTOR_OAUTH_PKCE_COOKIE_NAME,
   CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
   CONNECTOR_OAUTH_STATE_COOKIE_NAME,
+  parseConnectorOAuthSessionId,
   redirectResponse,
 } from "./connector-oauth-route-state";
 
@@ -533,6 +534,18 @@ const resolveCallbackState$ = command(
         ),
       };
     }
+    const sessionId = parseConnectorOAuthSessionId(args.sessionId);
+    if (sessionId === null) {
+      return {
+        ok: false,
+        response: redirectWithError(
+          args.origin,
+          args.type,
+          "Invalid session - please try again",
+          true,
+        ),
+      };
+    }
 
     return {
       ok: true,
@@ -540,7 +553,7 @@ const resolveCallbackState$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
       },
-      sessionId: args.sessionId,
+      sessionId,
       codeVerifier: args.codeVerifier,
       oauthContext: args.oauthContext,
       redirectUri: `${args.origin}/api/connectors/${args.type}/callback`,

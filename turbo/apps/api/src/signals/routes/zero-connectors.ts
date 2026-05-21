@@ -72,6 +72,7 @@ import {
   CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
   CONNECTOR_OAUTH_STATE_COOKIE_NAME,
   generateConnectorOAuthState,
+  parseConnectorOAuthSessionId,
   redirectResponse,
 } from "./connector-oauth-route-state";
 
@@ -192,6 +193,10 @@ function getAuthorizeClientId(
   return isStaticConnectorOAuthCredentials(credentials)
     ? credentials.clientId
     : undefined;
+}
+
+function invalidConnectorSessionResponse() {
+  return jsonResponse({ error: "Invalid connector session" }, 400);
 }
 
 function internalServerError(message: string) {
@@ -507,6 +512,10 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         400,
       );
     }
+    const sessionId = parseConnectorOAuthSessionId(query.session);
+    if (sessionId === null) {
+      return invalidConnectorSessionResponse();
+    }
 
     const prepared = await prepareConnectorOAuthStart({
       request,
@@ -552,12 +561,12 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
         ),
       );
     }
-    if (query.session) {
+    if (sessionId) {
       response.headers.append(
         "Set-Cookie",
         buildOAuthCookieHeader(
           CONNECTOR_OAUTH_SESSION_COOKIE_NAME,
-          query.session,
+          sessionId,
           CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS,
         ),
       );

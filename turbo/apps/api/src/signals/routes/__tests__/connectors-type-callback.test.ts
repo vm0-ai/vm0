@@ -1606,6 +1606,34 @@ describe("GET /api/connectors/:type/callback", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("rejects callbacks with malformed connector session cookies", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({
+        stateCookie: "state-123",
+        sessionId: "not-a-session-id",
+      }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid session - please try again",
+    );
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+  });
+
   it.each([
     { status: "complete" as const, completedAt: new Date(now()) },
     { status: "error" as const, errorMessage: "previous failure" },

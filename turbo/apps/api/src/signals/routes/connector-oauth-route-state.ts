@@ -3,6 +3,7 @@ import {
   CONNECTOR_OAUTH_PROVIDERS,
   type AuthUrlResult,
 } from "@vm0/connectors/oauth-providers";
+import { z } from "zod";
 
 import { env } from "../../lib/env";
 
@@ -12,6 +13,7 @@ export const CONNECTOR_OAUTH_PKCE_COOKIE_NAME = "connector_oauth_pkce";
 export const CONNECTOR_OAUTH_CONTEXT_COOKIE_NAME = "connector_oauth_context";
 export const CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS = 15 * 60;
 const CONNECTOR_OAUTH_REDIRECT_STATUS = 307;
+const connectorOAuthSessionIdSchema = z.uuid();
 
 export function generateConnectorOAuthState(): string {
   const array = new Uint8Array(32);
@@ -67,6 +69,16 @@ export function redirectResponse(url: string): Response {
     status: CONNECTOR_OAUTH_REDIRECT_STATUS,
     headers: { location: url },
   });
+}
+
+export function parseConnectorOAuthSessionId(
+  value: string | undefined,
+): string | undefined | null {
+  if (!value) {
+    return undefined;
+  }
+  const result = connectorOAuthSessionIdSchema.safeParse(value);
+  return result.success ? result.data : null;
 }
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
